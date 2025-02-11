@@ -72,10 +72,11 @@ class DaemonLoop(Thread):
             if task is not None:
                 motor, position = task
                 self._do_move(self._motors[motor], position)
-                self._queue.task_done()
             else:
                 # Stop the daemon
                 self._running = False
+            # regardless of the task, mark it as done
+            self._queue.task_done()
 
     def _do_move(self, motor: MotorProtocol, position: float) -> None:
         """Move a motor to a given position.
