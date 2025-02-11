@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from sunflare.engine import Status
 from sunflare.model import ModelProtocol
+from sunflare.log import Loggable
 
 import numpy as np
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from .config import StageModelInfo
 
 
-class MockStageModel(ModelProtocol):
+class MockStageModel(ModelProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
     def __init__(self, name: str, model_info: StageModelInfo) -> None:
@@ -45,7 +46,10 @@ class MockStageModel(ModelProtocol):
 
     def configure(self, name: str, value: Any, /, **kwargs: Any) -> None:
         """Configure mock model."""
-        setattr(self.model_info, name, value)
+        try:
+            setattr(self.model_info, name, value)
+        except AttributeError:
+            self.error(f"Could not set {name} to {value}")
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""

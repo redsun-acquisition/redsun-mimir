@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field, validators, setters
 from sunflare.config import ControllerInfo, ModelInfo, WidgetInfo
 
 __all__ = ["StageControllerInfo", "StageWidgetInfo", "StageModelInfo"]
@@ -25,10 +25,12 @@ class StageModelInfo(ModelInfo):
     egu: str = field(
         default="mm",
         validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
         metadata={"description": "Engineering units."},
     )
     axis: list[str] = field(
         validator=validators.instance_of(list),
+        on_setattr=setters.frozen,
         metadata={"description": "Axis names."},
     )
     step_sizes: dict[str, float] = field(
