@@ -173,6 +173,7 @@ class StageController(Loggable):
         leave empty.
         """
         self._queue.put(None)
+        self._queue.join()
 
     def registration_phase(self) -> None:
         """Register the controller signals to the virtual bus."""
