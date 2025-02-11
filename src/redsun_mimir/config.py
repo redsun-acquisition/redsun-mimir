@@ -3,7 +3,7 @@ from __future__ import annotations
 from attrs import define, field, validators
 from sunflare.config import ControllerInfo, ModelInfo, WidgetInfo
 
-__all__ = ["StageControllerInfo", "StageWidgetInfo"]
+__all__ = ["StageControllerInfo", "StageWidgetInfo", "StageModelInfo"]
 
 
 class StageModelInfo(ModelInfo):
