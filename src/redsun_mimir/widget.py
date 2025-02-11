@@ -50,7 +50,9 @@ class StageWidget(BaseQtWidget):
 
     def connection_phase(self) -> None:
         """Connect your signals to the virtual bus."""
-        self._virtual_bus["StageController"]["sigNewPosition"].connect(thread="main")
+        self._virtual_bus["StageController"]["sigNewPosition"].connect(
+            self._update_position, thread="main"
+        )
 
     def _update_position(self, stage: str, position: float) -> None:
         """Update the stage position."""
