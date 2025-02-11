@@ -92,7 +92,7 @@ class DaemonLoop(Thread):
 
 
 class StageController(Loggable):
-    """Motor stage controller for RedSun Mimir.
+    """Motor stage controller for Redsun Mimir.
 
     The controller allows manual setting of stage positions;
     communication with the user interface is done via
