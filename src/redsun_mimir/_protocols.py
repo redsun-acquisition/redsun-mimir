@@ -1,7 +1,8 @@
 from typing import Protocol, runtime_checkable
+
 from bluesky.protocols import Location
-from sunflare.model import ModelProtocol
 from sunflare.engine import Status
+from sunflare.model import ModelProtocol
 
 
 @runtime_checkable
