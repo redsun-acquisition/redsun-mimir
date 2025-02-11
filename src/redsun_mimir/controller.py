@@ -191,6 +191,7 @@ class StageController(Loggable):
         self._virtual_bus["StageWidget"]["sigGetDescription"].connect(
             self._describe_motors
         )
+        self._virtual_bus["StageWidget"]["sigGetConfiguration"].connect(self._configure)
 
     def _describe_motors(self) -> None:
         """Describe the motor configuration.
@@ -199,6 +200,16 @@ class StageController(Loggable):
         """
         self.sigMotorDescription.emit(self._motors_config_descriptors)
         self.sigMotorConfiguration.emit(self._motors_config_readings)
+
+    def _configure(self, motor: str, name: str, value: object) -> None:
+        """Configure a motor.
+
+        Configure a motor with a new value.
+        """
+        try:
+            self._motors[motor].configure(name, value)
+        except Exception as e:
+            self.exception(f"Failed to configure {motor}: {e}")
 
     @property
     def controller_info(self) -> StageControllerInfo:

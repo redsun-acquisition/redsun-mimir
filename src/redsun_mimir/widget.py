@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtWidgets, QtGui
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
@@ -34,11 +34,16 @@ class StageWidget(BaseQtWidget):
         - str: motor name
         - str: motor axis
         - float: stage new position
+    sigConfigChanged : Signal[str, str, object]
+        Signal emitted when a configuration value is changed.
+        - str: motor name
+        - str: configuration name
+        - object: new configuration value
 
     """
 
     sigMotorMove = Signal(str, str, float)
-    sigGetDescription = Signal()
+    sigConfigChanged = Signal(str, str, object)
 
     def __init__(
         self,
@@ -54,7 +59,8 @@ class StageWidget(BaseQtWidget):
         self._configuration: dict[str, dict[str, Reading]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
-        self._text_edits: dict[str, QtWidgets.QLineEdit] = {}
+        self._groups: dict[str, QtWidgets.QGroupBox] = {}
+        self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
 
         layout = QtWidgets.QGridLayout()
 
@@ -63,11 +69,21 @@ class StageWidget(BaseQtWidget):
             for name, model_info in self._config.models.items()
             if isinstance(model_info, StageModelInfo)
         }
+
+        # row offset
         offset = 0
+
+        # Regular expression for a valid floating-point number
+        float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
+        self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
         # setup the layout and connect the signals
         for name, model_info in self._motors_info.items():
+            self._groups[name] = QtWidgets.QGroupBox(name)
+            self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+
             for i, axis in enumerate(model_info.axis):
+                # create the widgets
                 suffix = f"{name}:{axis}"
                 self._labels["label:" + suffix] = QtWidgets.QLabel(
                     f"<strong>{axis}</strong>"
@@ -83,10 +99,11 @@ class StageWidget(BaseQtWidget):
                 )
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
-                self._text_edits["edit:" + suffix] = QtWidgets.QLineEdit(
+                self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
                     str(model_info.step_sizes[axis])
                 )
 
+                # setup the layout
                 layout.addWidget(self._labels["label:" + suffix], offset + i, 0)
                 layout.addWidget(self._labels["pos:" + suffix], offset + i, 1)
                 layout.addWidget(
@@ -95,13 +112,20 @@ class StageWidget(BaseQtWidget):
                 layout.addWidget(
                     self._buttons["button:" + suffix + ":down"], offset + i, 3
                 )
-                layout.addWidget(self._text_edits["edit:" + suffix], offset + i, 4)
+                layout.addWidget(self._line_edits["edit:" + suffix], offset + i, 4)
 
+                # connect the signals
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
                     lambda _, name=name, axis=axis: self._step(name, axis, True)
                 )
                 self._buttons["button:" + suffix + ":down"].clicked.connect(
                     lambda _, name=name, axis=axis: self._step(name, axis, False)
+                )
+
+                self._line_edits["edit:" + suffix].textEdited.connect(
+                    lambda _, name=name, axis=axis: self._validate_and_notify(
+                        name, axis
+                    )
                 )
 
             offset += len(model_info.axis) + 1
@@ -134,7 +158,7 @@ class StageWidget(BaseQtWidget):
         current_position = float(
             self._labels["pos:" + motor + ":" + axis].text().split()[0]
         )
-        step_size = float(self._text_edits["edit:" + motor + ":" + axis].text())
+        step_size = float(self._line_edits["edit:" + motor + ":" + axis].text())
         if direction_up:
             self.sigMotorMove.emit(motor, axis, current_position + step_size)
         else:
@@ -154,3 +178,29 @@ class StageWidget(BaseQtWidget):
     ) -> None:
         """Update the motor configuration."""
         self._configuration = configuration
+
+    def _validate_and_notify(self, name: str, axis: str) -> None:
+        """Validate the new step size value and notify the virtual bus when input is accepted.
+
+        Parameters
+        ----------
+        name : ``str``
+            Motor name.
+        axis : ``str``
+            Motor axis.
+
+        """
+        text = self._line_edits["edit:" + name + ":" + axis].text()
+        state = self.validator.validate(text, 0)[0]
+        if state == QtGui.QRegularExpressionValidator.State.Invalid:
+            # set red border if input is invalid
+            self._line_edits["edit:" + name + ":" + axis].setStyleSheet(
+                "border: 2px solid red;"
+            )
+        else:
+            # expression is valid
+            self._line_edits["edit:" + name + ":" + axis].setStyleSheet("")
+
+        # only notify the virtual bus if the input is valid
+        if state == QtGui.QRegularExpressionValidator.State.Acceptable:
+            self.sigConfigChanged.emit(name, axis, float(text))
