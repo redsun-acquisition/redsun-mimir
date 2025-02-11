@@ -5,6 +5,7 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/redsun-mimir.svg?color=green)](https://python.org)
 [![tests](https://github.com/redsun-acquisition/redsun-mimir/workflows/tests/badge.svg)](https://github.com/redsun-acquisition/redsun-mimir/actions)
 [![codecov](https://codecov.io/gh/redsun-acquisition/redsun-mimir/branch/main/graph/badge.svg)](https://codecov.io/gh/redsun-acquisition/redsun-mimir)
+[![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
 Plugin bundle for the OpenUC2 "Mimir" microscope
 
@@ -27,7 +28,7 @@ To install latest development version :
 
 ## Contributing
 
-Contributions are very welcome. Tests can be run with [nox], please ensure
+Contributions are very welcome. Tests can be run with [pytest], please ensure
 the coverage at least stays the same before you submit a pull request.
 
 ## License
@@ -46,11 +47,9 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [GNU LGPL v3.0]: http://www.gnu.org/licenses/lgpl-3.0.txt
 [Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
 [Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
-[redsun-plugin-template]: https://github.com/redsun-acquisition/redsun-plugin-template
-
+[redsun-plugin-template]: https://github.com/redsun-acquisition/redsun-plugin-templat
 [file an issue]: https://github.com/redsun-acquisition/redsun-mimir/issues
-
 [Redsun]: https://github.com/redsun-acquisition/redsun
-[nox]: https://nox.thea.codes/en/stable/
+[pytest]: https://docs.pytest.org/en/stable/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
