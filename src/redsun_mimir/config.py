@@ -11,12 +11,12 @@ class StageModelInfo(ModelInfo):
 
     Parameters
     ----------
-    egu : str, optional
+    egu : ``str``, optional
         Engineering units. Default is "mm".
-    axis : list[str]
+    axis : ``list[str]``
         Axis names. Reccomended to be capital single characters.
         (i.e. ["X", "Y", "Z"])
-    step_sizes : dict[str, float]
+    step_sizes : ``dict[str, float]``
         Step sizes for each axis.
         (i.e. {"X": 0.1, "Y": 0.1, "Z": 0.1})
 
