@@ -29,7 +29,7 @@ class DaemonLoop(Thread):
 
     Parameters
     ----------
-    queue : ``Queue[Optional[tuple[str, float]]]``
+    queue : ``Queue[Optional[tuple[str, str, float]]]``
         Queue of new motor positions.
     motors : ``dict[str, MotorProtocol]``
         Mapping of motor names to motor instances.
@@ -52,7 +52,7 @@ class DaemonLoop(Thread):
 
     def __init__(
         self,
-        queue: Queue[Optional[tuple[str, float]]],
+        queue: Queue[Optional[tuple[str, str, float]]],
         motors: dict[str, MotorProtocol],
         exception_cb: Callable[[str], None],
     ) -> None:
@@ -69,20 +69,20 @@ class DaemonLoop(Thread):
             # block until a task is available
             task = self._queue.get()
             if task is not None:
-                motor, position = task
-                self._do_move(self._motors[motor], position)
+                motor, axis, position = task
+                self._do_move(self._motors[motor], axis, position)
             else:
                 # Stop the daemon
                 self._running = False
             # regardless of the task, mark it as done
             self._queue.task_done()
 
-    def _do_move(self, motor: MotorProtocol, position: float) -> None:
+    def _do_move(self, motor: MotorProtocol, axis, position: float) -> None:
         """Move a motor to a given position.
 
         Wait on the status object to complete in a background thread.
         """
-        s = motor.set(position)
+        s = motor.set(position, axis=axis)
         try:
             s.wait()
         except Exception as e:
@@ -146,7 +146,7 @@ class StageController(Loggable):
         self._ctrl_info = ctrl_info
         self._virtual_bus = virtual_bus
         self._plans: list[partial[MsgGenerator[Any]]] = []
-        self._queue: Queue[Optional[tuple[str, float]]] = Queue()
+        self._queue: Queue[Optional[tuple[str, str, float]]] = Queue()
 
         self._motors = {
             name: model
@@ -164,12 +164,12 @@ class StageController(Loggable):
             name: model.read_configuration() for name, model in self._motors.items()
         }
 
-    def move(self, motor: str, position: float) -> None:
+    def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
 
         Sends a new position to the daemon queue.
         """
-        self._queue.put((motor, position))
+        self._queue.put((motor, axis, position))
 
     def shutdown(self) -> None:
         """Shutdown the controller.
