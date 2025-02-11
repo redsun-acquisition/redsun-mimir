@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from sunflare.model import ModelProtocol
 
@@ -13,17 +13,15 @@ if TYPE_CHECKING:
 class MotorProtocol(ModelProtocol, Protocol):
     """Protocol for motor models."""
 
-    def set(self, value: float, **kwargs: Any) -> Status:
-        """Move the motor to a given position.
+    def set(self, value: float, /, axis: str) -> Status:
+        """Move the motor to a given position along `axis`.
 
         Parameters
         ----------
         value : ``float``
             New position.
-        **kwargs, optional
-            Additional keyword arguments.
-            Accepted arguments are:
-            - `axis` : ``str``, axis name.
+        axis : ``str``
+            Motor axis.
 
         Returns
         -------
@@ -33,8 +31,13 @@ class MotorProtocol(ModelProtocol, Protocol):
         """
         ...
 
-    def locate(self) -> Location[float]:
-        """Return the current motor position.
+    def locate(self, /, axis: str) -> Location[float]:
+        """Return the current motor position along `axis`.
+
+        Parameters
+        ----------
+        axis : ``str``
+            Motor axis.
 
         Returns
         -------
