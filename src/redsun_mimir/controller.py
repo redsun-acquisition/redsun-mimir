@@ -155,7 +155,7 @@ class StageController(Loggable):
         }
 
         self._daemon = DaemonLoop(self._queue, self._motors, self.exception)
-        self._daemon.sigNewPosition.connect(self.sigNewPosition.emit)
+        self._daemon.sigNewPosition.connect(self.sigNewPosition.emit, thread="main")
 
     def move(self, motor: str, position: float) -> None:
         """Move a motor to a given position.
