@@ -1,4 +1,4 @@
-# redsun-mimir documentation
+# `redsun-mimir` documentation
 
 Add your content using ``markdown`` syntax, using ``myst-parser``. See the
 [myst-parser] documetation for usage.
@@ -10,4 +10,3 @@ Add your content using ``markdown`` syntax, using ``myst-parser``. See the
 ```
 
 [myst-parser](https://myst-parser.readthedocs.io/en/stable/)
-
