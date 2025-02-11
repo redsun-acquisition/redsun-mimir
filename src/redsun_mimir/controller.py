@@ -188,18 +188,7 @@ class StageController(Loggable):
     def connection_phase(self) -> None:
         """Connect to other controllers/widgets in the active session."""
         self._virtual_bus["StageWidget"]["sigMotorMove"].connect(self.move)
-        self._virtual_bus["StageWidget"]["sigGetDescription"].connect(
-            self._describe_motors
-        )
         self._virtual_bus["StageWidget"]["sigGetConfiguration"].connect(self._configure)
-
-    def _describe_motors(self) -> None:
-        """Describe the motor configuration.
-
-        Sends the motor configuration to the widget.
-        """
-        self.sigMotorDescription.emit(self._motors_config_descriptors)
-        self.sigMotorConfiguration.emit(self._motors_config_readings)
 
     def _configure(self, motor: str, name: str, value: object) -> None:
         """Configure a motor.
