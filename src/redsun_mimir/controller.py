@@ -30,11 +30,11 @@ class DaemonLoop(Thread):
 
     Parameters
     ----------
-    queue : Queue[Optional[tuple[str, float]]]
-        Queue of tasks to execute.
-    motors : dict[str, MotorProtocol]
+    queue : ``Queue[Optional[tuple[str, float]]]``
+        Queue of new motor positions.
+    motors : ``dict[str, MotorProtocol]``
         Mapping of motor names to motor instances.
-    exception_cb : Callable[[str], None]
+    exception_cb : ``Callable[[str], None]``
         Callback to handle exceptions. This should be
         mapped to the main controller ``exception`` method.
 
