@@ -106,6 +106,8 @@ class StageWidget(BaseQtWidget):
 
             offset += len(model_info.axis) + 1
 
+        self.setLayout(layout)
+
     def registration_phase(self) -> None:
         """Register your signals to the virtual bus."""
         self._virtual_bus.register_signals(self)
