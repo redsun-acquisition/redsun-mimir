@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from threading import Thread
-from typing import TYPE_CHECKING, Any, Mapping, Optional, Callable
 from queue import Queue
+from threading import Thread
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
+from bluesky.protocols import Reading
+from event_model.documents.event_descriptor import DataKey
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
 from ._protocols import MotorProtocol
 
-from event_model.documents.event_descriptor import DataKey
-from bluesky.protocols import Reading
-
 if TYPE_CHECKING:
-    from sunflare.model import ModelProtocol
     from functools import partial
 
     from bluesky.utils import MsgGenerator
+    from sunflare.model import ModelProtocol
 
     from .config import StageControllerInfo
 
@@ -135,8 +134,8 @@ class StageController(Loggable):
     """
 
     sigNewPosition = Signal(str, float)
-    sigMotorDescription = Signal(str, dict[str, DataKey])
-    sigMotorConfiguration = Signal(str, dict[str, Reading])
+    sigMotorDescription = Signal(dict[str, dict[str, DataKey]])
+    sigMotorConfiguration = Signal(dict[str, dict[str, Reading]])
 
     def __init__(
         self,
@@ -157,6 +156,13 @@ class StageController(Loggable):
 
         self._daemon = DaemonLoop(self._queue, self._motors, self.exception)
         self._daemon.sigNewPosition.connect(self.sigNewPosition.emit, thread="main")
+
+        self._motors_config_descriptors = {
+            name: model.describe_configuration() for name, model in self._motors.items()
+        }
+        self._motors_config_readings = {
+            name: model.read_configuration() for name, model in self._motors.items()
+        }
 
     def move(self, motor: str, position: float) -> None:
         """Move a motor to a given position.
@@ -182,6 +188,17 @@ class StageController(Loggable):
     def connection_phase(self) -> None:
         """Connect to other controllers/widgets in the active session."""
         self._virtual_bus["StageWidget"]["sigMotorMove"].connect(self.move)
+        self._virtual_bus["StageWidget"]["sigGetDescription"].connect(
+            self._describe_motors
+        )
+
+    def _describe_motors(self) -> None:
+        """Describe the motor configuration.
+
+        Sends the motor configuration to the widget.
+        """
+        self.sigMotorDescription.emit(self._motors_config_descriptors)
+        self.sigMotorConfiguration.emit(self._motors_config_readings)
 
     @property
     def controller_info(self) -> StageControllerInfo:
