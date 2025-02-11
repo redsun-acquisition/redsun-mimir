@@ -171,7 +171,7 @@ class StageController(Loggable):
         If no resource is kept in the controller,
         leave empty.
         """
-        ...
+        self._queue.put(None)
 
     def registration_phase(self) -> None:
         """Register the controller signals to the virtual bus."""
