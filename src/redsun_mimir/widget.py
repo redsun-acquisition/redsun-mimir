@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sunflare.view.qt import BaseQtWidget
 
 if TYPE_CHECKING:
@@ -8,7 +10,10 @@ if TYPE_CHECKING:
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
 
-class StageWidget(BaseQtWidget)
+
+class StageWidget(BaseQtWidget):
+    """Stage widget for RedSun Mimir."""
+
     def __init__(
         self,
         config: RedSunSessionInfo,
@@ -21,7 +26,7 @@ class StageWidget(BaseQtWidget)
         self._virtual_bus = virtual_bus
 
     def registration_phase(self) -> None:
-        """Register your signals to the virtual bus."
+        """Register your signals to the virtual bus."""
 
     def connection_phase(self) -> None:
-        """Connect your signals to the virtual bus."
+        """Connect your signals to the virtual bus."""

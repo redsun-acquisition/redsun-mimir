@@ -7,10 +7,12 @@ except PackageNotFoundError:  # pragma: no cover
 
 
 from .controller import StageController
-from .config import StageControllerInfo
+from .config import StageControllerInfo, StageWidgetInfo
 from .widget import StageWidget
 
 __all__ = (
     "StageController",
     "StageControllerInfo",
+    "StageWidget",
+    "StageWidgetInfo",
 )

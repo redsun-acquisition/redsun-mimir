@@ -1,17 +1,22 @@
-from sunflare.config import 
+from sunflare.config import ControllerInfo, WidgetInfo
 
 __all__ = ["StageControllerInfo"]
 
+
 # Add your custom configuration variables here
-class StageControllerInfo():
-    # begin of user code
-    # add your custom configuration variables here;
-    # they should follow the PEP-8 naming convention
-    
+class StageControllerInfo(ControllerInfo):
+    """Configuration class for the stage controller."""
+
+    # TODO: fill
     string: str
     integer: int
     boolean: bool
 
-    # ... and so on
 
-    # end of user code
+class StageWidgetInfo(WidgetInfo):
+    """Configuration class for the stage widget."""
+
+    # TODO: fill
+    string: str
+    integer: int
+    boolean: bool
