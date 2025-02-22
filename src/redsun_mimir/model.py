@@ -3,14 +3,14 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from sunflare.engine import Status
-from sunflare.model import ModelProtocol
-from sunflare.log import Loggable
-
 import numpy as np
+from bluesky.protocols import Location
+from sunflare.engine import Status
+from sunflare.log import Loggable
+from sunflare.model import ModelProtocol
 
 if TYPE_CHECKING:
-    from bluesky.protocols import Location, Reading
+    from bluesky.protocols import Reading
     from event_model.documents.event_descriptor import DataKey
 
     from .config import StageModelInfo

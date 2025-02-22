@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attrs import define, field, validators, setters
+from attrs import define, field, setters, validators
 from sunflare.config import ControllerInfo, ModelInfo, WidgetInfo
 
 __all__ = ["StageControllerInfo", "StageWidgetInfo", "StageModelInfo"]
