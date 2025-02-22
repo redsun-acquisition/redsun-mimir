@@ -28,8 +28,8 @@ class MockStageModel(ModelProtocol, Loggable):
 
         self._step_sizes = self._model_info.step_sizes
 
-    def set(self, value: float, /, axis: str) -> Status:
-        """Set mock model."""
+    def set(self, value: float, *, axis: str) -> Status:
+        """Set mock model position."""
         s = Status()
         s.add_callback(partial(self._wait_readback, axis=axis))
         steps = np.floor(
@@ -40,7 +40,7 @@ class MockStageModel(ModelProtocol, Loggable):
         s.set_finished()
         return s
 
-    def locate(self, /, axis: str) -> Location[float]:
+    def locate(self, *, axis: str) -> Location[float]:
         """Locate mock model."""
         return self._positions[axis]
 
