@@ -43,6 +43,7 @@ dev = [
     "mypy",
     "pytest",  # https://docs.pytest.org/en/latest/contents.html
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
+    "pre-commit",
 ]
 
 [project.urls]
@@ -89,9 +90,15 @@ exclude_lines = [
 
 [tool.mypy]
 files = "src/**/*.py"
-exclude = ["docs", "tests", "build"]
+exclude = ["docs", "tests"]
 disable_error_code = ["import-untyped"]
 pretty = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = [
+    "src/tests"
+]
 
 [tool.ruff]
 target-version = "py39"
@@ -117,7 +124,7 @@ ignore = [
 source = "vcs"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests"]
+include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 only-include = ["src"]
