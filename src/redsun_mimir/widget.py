@@ -22,23 +22,23 @@ class StageWidget(BaseQtWidget):
 
     Parameters
     ----------
-    config : RedSunSessionInfo
+    config : ``RedSunSessionInfo``
         Configuration for the session.
-    virtual_bus : VirtualBus
+    virtual_bus : ``VirtualBus``
         Virtual bus for the session.
 
     Attributes
     ----------
-    sigMotorMove : Signal[str, str, float]
+    sigMotorMove : ``Signal[str, str, float]``
         Signal emitted when a stage is moved.
-        - str: motor name
-        - str: motor axis
-        - float: stage new position
-    sigConfigChanged : Signal[str, str, object]
+        - ``str``: motor name
+        - ``str``: motor axis
+        - ``float``: stage new position
+    sigConfigChanged : ``Signal[str, str, object]``
         Signal emitted when a configuration value is changed.
-        - str: motor name
-        - str: configuration name
-        - object: new configuration value
+        - ``str``: motor name
+        - ``str``: configuration name
+        - ``object``: new configuration value
 
     """
 
