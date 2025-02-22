@@ -28,7 +28,7 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "sunflare[pyqt]",
+    "sunflare[pyqt]>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -97,8 +97,16 @@ pretty = true
 target-version = "py39"
 extend-exclude = ["docs", "tests"]
 
+[tool.ruff.format]
+docstring-code-format = true
+
 [tool.ruff.lint]
-extend-select = ["D"]
+extend-select = [
+    "D",
+    "I",
+    "TC",
+    "FA102"
+]
 ignore = [
     "D100", # https://docs.astral.sh/ruff/rules/undocumented-public-module/
     "D104", # https://docs.astral.sh/ruff/rules/undocumented-public-package/
