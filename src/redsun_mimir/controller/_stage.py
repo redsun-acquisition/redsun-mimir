@@ -9,7 +9,7 @@ from event_model.documents.event_descriptor import DataKey
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
-from ._protocols import MotorProtocol
+from .._protocols import MotorProtocol
 
 if TYPE_CHECKING:
     from functools import partial
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from bluesky.utils import MsgGenerator
     from sunflare.model import ModelProtocol
 
-    from .config import StageControllerInfo
+    from ..config import StageControllerInfo
 
 
 class DaemonLoop(Thread):
@@ -199,13 +199,3 @@ class StageController(Loggable):
             self._motors[motor].configure(name, value)
         except Exception as e:
             self.exception(f"Failed to configure {motor}: {e}")
-
-    @property
-    def controller_info(self) -> StageControllerInfo:
-        """Controller information container."""
-        return self._ctrl_info
-
-    @property
-    def plans(self) -> list[partial[MsgGenerator[Any]]]:
-        """List of available plans."""
-        return self._plans

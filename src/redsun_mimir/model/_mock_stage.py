@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Reading
     from event_model.documents.event_descriptor import DataKey
 
-    from .config import StageModelInfo
+    from ..config import StageModelInfo
 
 
 class MockStageModel(ModelProtocol, Loggable):
