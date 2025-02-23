@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from functools import partial
+import math
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from bluesky.protocols import Location
 from sunflare.engine import Status
 from sunflare.log import Loggable
@@ -26,38 +25,43 @@ class MockStageModel(ModelProtocol, Loggable):
             axis: Location(setpoint=0.0, readback=0.0) for axis in model_info.axis
         }
 
+        # set the current axis to the first axis
+        self._axis = self._model_info.axis[0]
+
         self._step_sizes = self._model_info.step_sizes
 
-    def set(self, value: float, *, axis: str) -> Status:
+    def set(self, value: float) -> Status:
         """Set mock model position."""
         s = Status()
-        s.add_callback(partial(self._wait_readback, axis=axis))
-        steps = np.floor(
-            (value - self._positions[axis]["setpoint"]) / self._step_sizes[axis]
-        ).astype(float)
+        steps = math.floor(
+            (value - self._positions[self._axis]["setpoint"]) / self._step_sizes[self._axis]
+        )
         for _ in range(steps):
-            self._positions[axis]["setpoint"] += self._step_sizes[axis]
+            self._positions[self._axis]["setpoint"] += self._step_sizes[self._axis]
         s.set_finished()
+        s.add_callback(self._set_readback)
         return s
 
-    def locate(self, *, axis: str) -> Location[float]:
+    def locate(self) -> Location[float]:
         """Locate mock model."""
-        return self._positions[axis]
+        return self._positions[self._current_axis]
 
     def configure(self, name: str, value: Any, /, **kwargs: Any) -> None:
-        """Configure mock model."""
-        try:
-            setattr(self.model_info, name, value)
-        except AttributeError:
-            self.error(f"Could not set {name} to {value}")
+        """Configure the mock model."""
+        if name == "axis":
+            self._current_axis = value
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
-        return self.describe_configuration()
+        return self.model_info.read_configuration()
 
     def describe_configuration(self) -> dict[str, DataKey]:
         """Describe mock configuration."""
         return self.model_info.describe_configuration()
+
+    @property
+    def parent(self) -> None:
+        return None
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -67,7 +71,9 @@ class MockStageModel(ModelProtocol, Loggable):
     def model_info(self) -> StageModelInfo:  # noqa: D102
         return self._model_info
 
-    def _wait_readback(self, _: Status, axis: str) -> None:
+    def shutdown(self) -> None: ...
+
+    def _set_readback(self, _: Status) -> None:
         """Simulate the motor moving to the setpoint via a callback.
 
         Parameters
@@ -78,4 +84,4 @@ class MockStageModel(ModelProtocol, Loggable):
             Axis name.
 
         """
-        self._positions[axis]["readback"] = self._positions[axis]["setpoint"]
+        self._positions[self._axis]["readback"] = self._positions[self._axis]["setpoint"]

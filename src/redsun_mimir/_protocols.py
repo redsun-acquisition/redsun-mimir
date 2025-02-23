@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class MotorProtocol(ModelProtocol, Protocol):
     """Protocol for motor models."""
 
-    def set(self, value: float, *, axis: str) -> Status:
+    def set(self, value: float) -> Status:
         """Move the motor to a given position along `axis`.
 
         Parameters
@@ -31,7 +31,7 @@ class MotorProtocol(ModelProtocol, Protocol):
         """
         ...
 
-    def locate(self, *, axis: str) -> Location[float]:
+    def locate(self) -> Location:
         """Return the current motor position along `axis`.
 
         Parameters
@@ -41,7 +41,7 @@ class MotorProtocol(ModelProtocol, Protocol):
 
         Returns
         -------
-        ``Location[float]``
+        ``Location``
             Location object.
 
         """

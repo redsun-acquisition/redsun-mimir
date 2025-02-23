@@ -1,0 +1,12 @@
+models:
+  Mock motor:
+    model_name: MockStageModel
+    axis:
+      - X
+      - Y
+      - Z
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: "um"

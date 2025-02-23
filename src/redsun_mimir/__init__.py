@@ -6,13 +6,14 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "unknown"
 
 
-from .config import StageControllerInfo, StageWidgetInfo
+from .config import StageControllerInfo, StageModelInfo, StageWidgetInfo
 from .controller import StageController
 from .widget import StageWidget
 
 __all__ = (
     "StageController",
     "StageControllerInfo",
+    "StageModelInfo",
     "StageWidget",
     "StageWidgetInfo",
 )

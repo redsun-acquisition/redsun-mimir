@@ -5,7 +5,7 @@ from sunflare.config import ControllerInfo, ModelInfo, WidgetInfo
 
 __all__ = ["StageControllerInfo", "StageWidgetInfo", "StageModelInfo"]
 
-
+@define(kw_only=True)
 class StageModelInfo(ModelInfo):
     """Configuration class for the stage model.
 

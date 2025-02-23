@@ -77,12 +77,13 @@ class DaemonLoop(Thread):
             # regardless of the task, mark it as done
             self._queue.task_done()
 
-    def _do_move(self, motor: MotorProtocol, axis, position: float) -> None:
+    def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
         """Move a motor to a given position.
 
         Wait on the status object to complete in a background thread.
         """
-        s = motor.set(position, axis=axis)
+        motor.configure("axis", axis)
+        s = motor.set(position)
         try:
             s.wait()
         except Exception as e:
