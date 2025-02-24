@@ -43,6 +43,7 @@ dev = [
     "mypy",
     "pytest",  # https://docs.pytest.org/en/latest/contents.html
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
+    "pytest-qt",
     "pre-commit",
 ]
 
@@ -106,7 +107,7 @@ testpaths = [
 
 [tool.ruff]
 target-version = "py39"
-extend-exclude = ["docs", "tests"]
+extend-exclude = ["docs"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -121,6 +122,7 @@ extend-select = [
 ignore = [
     "D100", # https://docs.astral.sh/ruff/rules/undocumented-public-module/
     "D104", # https://docs.astral.sh/ruff/rules/undocumented-public-package/
+    "D103", # https://docs.astral.sh/ruff/rules/undocumented-public-function/
     "D107", # https://docs.astral.sh/ruff/rules/undocumented-public-init/
 ]
 
