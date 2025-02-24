@@ -82,7 +82,7 @@ class DaemonLoop(Thread):
 
         Wait on the status object to complete in a background thread.
         """
-        motor.configure("axis", axis)
+        motor.configure(axis=axis)
         s = motor.set(position)
         try:
             s.wait()
@@ -175,9 +175,8 @@ class StageController(Loggable):
     def shutdown(self) -> None:
         """Shutdown the controller.
 
-        Free any allocated resource.
-        If no resource is kept in the controller,
-        leave empty.
+        Close the daemon thread and wait
+        for it to finish its last task
         """
         self._queue.put(None)
         self._queue.join()
