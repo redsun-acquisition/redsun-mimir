@@ -132,13 +132,9 @@ class StageController(Loggable):
             New configuration value.
 
         """
-        s = self._motors[motor].set(value, prop=config)
-        if s.done and not s.success:
-            exc = s.exception()
-            if exc is not None:
-                self.exception(
-                    f"Failed to configure {motor} {config} to {value}: {exc}"
-                )
+        ret = self._update_axis(self._motors[motor], value)
+        if not ret:
+            return
         else:
             self.sigNewConfiguration.emit(motor, config, value)
 
@@ -197,17 +193,38 @@ class StageController(Loggable):
 
         """
         if axis != motor.axis:
-            # change the active axis;
-            # discard the status object;
-            # although it should be monitored
-            _ = motor.set(axis, prop="axis")
+            ret = self._update_axis(motor, axis)
+            if not ret:
+                return
         s = motor.set(position)
         try:
-            # TODO: add a timeout as a
-            # configuration parameter
-            # for the controller
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
             self.exception(f"Failed to move {motor.name} to {position}: {e}")
         else:
             self.sigNewPosition.emit(motor.name, axis, position)
+
+    def _update_axis(self, motor: MotorProtocol, axis: str) -> bool:
+        """Update the active axis of a motor.
+
+        Parameters
+        ----------
+        motor : ``MotorProtocol``
+            Motor instance to update.
+        axis : ``str``
+            New active axis.
+
+        Returns
+        -------
+        ``bool``
+            True if the axis was successfully updated.
+            False otherwise.
+
+        """
+        s = motor.set(axis, prop="axis")
+        try:
+            s.wait(self._ctrl_info.timeout)
+        except Exception as e:
+            self.exception(f"Failed set axis on {motor.name}: {e}")
+        finally:
+            return s.success
