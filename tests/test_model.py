@@ -8,7 +8,7 @@ from pathlib import Path
 from bluesky.protocols import Location
 from bluesky.utils import MsgGenerator
 
-from redsun_mimir._protocols import MotorProtocol
+from redsun_mimir.protocols import MotorProtocol
 from redsun_mimir.config import StageModelInfo
 from redsun_mimir.model import MockStageModel
 

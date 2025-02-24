@@ -9,7 +9,7 @@ from event_model.documents.event_descriptor import DataKey
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
-from .._protocols import MotorProtocol
+from ..protocols import MotorProtocol
 
 if TYPE_CHECKING:
     from functools import partial
