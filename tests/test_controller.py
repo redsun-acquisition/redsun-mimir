@@ -55,3 +55,7 @@ def test_stage_controller(
         assert ctrl._motors["Mock motor"].locate() == Location(
             readback=100, setpoint=100
         )
+
+    ctrl.shutdown()
+
+    assert not ctrl._daemon.is_alive()
