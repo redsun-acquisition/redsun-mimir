@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from bluesky.protocols import Reading
 from event_model.documents.event_descriptor import DataKey
@@ -18,78 +18,6 @@ if TYPE_CHECKING:
     from sunflare.model import ModelProtocol
 
     from ..config import StageControllerInfo
-
-
-class DaemonLoop(Thread):
-    """A subclass of ``threading.Thread`` which runs a persistent daemon loop.
-
-    The daemon will continously inspect a queue of tasks to execute.
-    Whenever a task is available (a new position is requested),
-    the daemon will execute it in the background.
-
-    Parameters
-    ----------
-    queue : ``Queue[Optional[tuple[str, str, float]]]``
-        Queue of new motor positions.
-    motors : ``dict[str, MotorProtocol]``
-        Mapping of motor names to motor instances.
-    exception_cb : ``Callable[[str], None]``
-        Callback to handle exceptions. This should be
-        mapped to the main controller ``exception`` method.
-
-    Attributes
-    ----------
-    sigNewPosition : Signal[str, float]
-        Signal emitted when a new position is set.
-        Forwards the response to the controller which will
-        emit the same signal to the widget.
-        - ``str``: motor name
-        - ``float``: new position
-
-    """
-
-    sigNewPosition = Signal(str, float)
-
-    def __init__(
-        self,
-        queue: Queue[Optional[tuple[str, str, float]]],
-        motors: dict[str, MotorProtocol],
-        exception_cb: Callable[[str], None],
-    ) -> None:
-        super().__init__(daemon=True)
-        self._queue = queue
-        self._running = False
-        self._motors = motors
-        self._exception_cb = exception_cb
-
-    def run(self) -> None:
-        """Run the daemon loop."""
-        self._running = True
-        while self._running:
-            # block until a task is available
-            task = self._queue.get()
-            if task is not None:
-                motor, axis, position = task
-                self._do_move(self._motors[motor], axis, position)
-            else:
-                # Stop the daemon
-                self._running = False
-            # regardless of the task, mark it as done
-            self._queue.task_done()
-
-    def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
-        """Move a motor to a given position.
-
-        Wait on the status object to complete in a background thread.
-        """
-        motor.configure(axis=axis)
-        s = motor.set(position)
-        try:
-            s.wait()
-        except Exception as e:
-            self._exception_cb(f"Failed to move {motor.name} to {position}: {e}")
-        else:
-            self.sigNewPosition.emit(motor, position)
 
 
 class StageController(Loggable):
@@ -132,6 +60,27 @@ class StageController(Loggable):
         - ``str``: motor name
         - ``dict[str, Reading]``: motor configuration
 
+    Notes
+    -----
+    ``sigNewPosition`` is emitted from a background thread;
+    when connecting to a slot, ensure that the callback
+    is invoked in the main thread as follows:
+
+    .. code-block:: python
+
+        class MyReceiver:
+            def on_new_position(self, motor: str, position: float) -> None:
+                # do something with the new position
+                ...
+
+            def connection_phase(self) -> None:
+                # connect the signal to the slot;
+                # the slot will be invoked in the main thread
+                self._virtual_bus["StageController"]["sigNewPosition"].connect(
+                    self.on_new_position, thread="main"
+                )
+
+
     """
 
     sigNewPosition = Signal(str, float)
@@ -155,8 +104,7 @@ class StageController(Loggable):
             if isinstance(model, MotorProtocol)
         }
 
-        self._daemon = DaemonLoop(self._queue, self._motors, self.exception)
-        self._daemon.sigNewPosition.connect(self.sigNewPosition.emit, thread="main")
+        self._daemon = Thread(target=self._run_loop, daemon=True)
 
         self._motors_config_descriptors = {
             name: model.describe_configuration() for name, model in self._motors.items()
@@ -194,8 +142,47 @@ class StageController(Loggable):
         """Configure a motor.
 
         Configure a motor with a new value.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        name : ``str``
+            Name of the configuration parameter.
+        value : ``object``
+            New value for the configuration parameter.
+
         """
+        # pack the configuration in a dictionary
+        kwargs = {name: value}
         try:
-            self._motors[motor].configure(name, value)
+            self._motors[motor].configure(**kwargs)
         except Exception as e:
             self.exception(f"Failed to configure {motor}: {e}")
+
+    def _run_loop(self) -> None:
+        while True:
+            # block until a task is available
+            task = self._queue.get()
+            if task is not None:
+                motor, axis, position = task
+                self._do_move(self._motors[motor], axis, position)
+                self._queue.task_done()
+            else:
+                # ensure no pending task
+                self._queue.task_done()
+                break
+
+    def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
+        """Move a motor to a given position.
+
+        Wait on the status object to complete in a background thread.
+        """
+        motor.configure(axis=axis)
+        s = motor.set(position)
+        try:
+            s.wait()
+        except Exception as e:
+            self.exception(f"Failed to move {motor.name} to {position}: {e}")
+        else:
+            self.sigNewPosition.emit(motor, position)

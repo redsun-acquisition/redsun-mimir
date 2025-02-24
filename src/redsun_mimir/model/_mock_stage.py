@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Location, Reading
 from sunflare.engine import Status
-from sunflare.log import Loggable
-from sunflare.model import ModelProtocol
 
 if TYPE_CHECKING:
     from event_model.documents.event_descriptor import DataKey
@@ -14,7 +12,7 @@ if TYPE_CHECKING:
     from ..config import StageModelInfo
 
 
-class MockStageModel(ModelProtocol, Loggable):
+class MockStageModel:
     """Mock stage model for testing purposes."""
 
     def __init__(self, name: str, model_info: StageModelInfo) -> None:

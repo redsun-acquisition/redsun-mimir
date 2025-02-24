@@ -144,7 +144,7 @@ class StageWidget(BaseQtWidget):
         the currently allocated motors to create the proper widget layout.
         """
         self._virtual_bus["StageController"]["sigNewPosition"].connect(
-            self._update_position
+            self._update_position, thread="main"
         )
         self._virtual_bus["StageController"]["sigMotorDescription"].connect(
             self._update_description
