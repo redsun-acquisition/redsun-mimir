@@ -63,6 +63,11 @@ redsun-mimir = "redsun_mimir.__main__:main"
 stagecontroller_config = "redsun_mimir:StageModelInfo"
 #--------------- CONFIG END -----------------#
 
+#-------------- MODELS BEGIN ----------------#
+[project.entry-points."redsun.plugins.models"]
+mockstage = "redsun_mimir:MockStageModel"
+#--------------- MODELS END -----------------#
+
 #-------------- CONTROLLERS BEGIN ----------------#
 [project.entry-points."redsun.plugins.controllers"]
 stagecontroller = "redsun_mimir:StageController"
