@@ -95,8 +95,6 @@ class MockStageModel(ModelProtocol, Loggable):
     def model_info(self) -> StageModelInfo:  # noqa: D102
         return self._model_info
 
-    def shutdown(self) -> None: ...
-
     def _set_readback(self, _: Status) -> None:
         """Simulate the motor moving to the setpoint via a callback.
 
