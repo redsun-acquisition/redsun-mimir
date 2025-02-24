@@ -53,14 +53,14 @@ dev = [
 "Source Code" = "https://github.com/redsun-acquisition/redsun-mimir"
 "User Support" = "https://github.com/redsun-acquisition/redsun-mimir/issues"
 
+[project.scripts]
+redsun-mimir = "redsun_mimir.__main__:main"
+
 [project.entry-points]
 
 #-------------- CONFIG BEGIN ----------------#
-[project.entry-points."redsun.plugins.controllers.config"]
-stagecontroller_config = "redsun_mimir:StageControllerInfo"
-
-[project.entry-points."redsun.plugins.widgets.config"]
-stagewidget_config = "redsun_mimir:StageControllerInfo"
+[project.entry-points."redsun.plugins.models.config"]
+stagecontroller_config = "redsun_mimir:StageModelInfo"
 #--------------- CONFIG END -----------------#
 
 #-------------- CONTROLLERS BEGIN ----------------#

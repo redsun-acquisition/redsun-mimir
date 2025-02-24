@@ -45,9 +45,10 @@ class StageController(Loggable):
 
     Attributes
     ----------
-    sigNewPosition : ``Signal[str, float]``
+    sigNewPosition : ``Signal[str, str, float]``
         Signal emitted when a new position is set.
         - ``str``: motor name
+        - ``str``: motor axis
         - ``float``: new position
     sigNewConfiguration : ``Signal[str, str, object]``
         Signal emitted when a configuration value is changed.
@@ -77,7 +78,7 @@ class StageController(Loggable):
 
     """
 
-    sigNewPosition = Signal(str, float)
+    sigNewPosition = Signal(str, str, float)
     sigNewConfiguration = Signal(str, str, object)
 
     def __init__(
@@ -206,10 +207,11 @@ class StageController(Loggable):
             _ = motor.set(axis, prop="axis")
         s = motor.set(position)
         try:
-            # TODO: add a timeout?
-            # maybe as a model attribute
-            s.wait()
+            # TODO: add a timeout as a
+            # configuration parameter
+            # for the controller
+            s.wait(self._ctrl_info.timeout)
         except Exception as e:
             self.exception(f"Failed to move {motor.name} to {position}: {e}")
         else:
-            self.sigNewPosition.emit(motor.name, position)
+            self.sigNewPosition.emit(motor.name, axis, position)

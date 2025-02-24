@@ -1,0 +1,21 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  Mock motor:
+    model_name: MockStageModel
+    axis:
+      - X
+      - Y
+      - Z
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
+controllers:
+  StageController:
+    timeout: 5.0
+widgets:
+  StageWidget:
+    position: center

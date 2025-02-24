@@ -6,7 +6,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from .config import StageModelInfo
+from ..config import StageModelInfo
 
 if TYPE_CHECKING:
     from typing import Any
@@ -52,9 +52,7 @@ class StageWidget(BaseQtWidget):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        self._config = config
-        self._virtual_bus = virtual_bus
+        super().__init__(config, virtual_bus, *args, **kwargs)
         self._description: dict[str, dict[str, DataKey]] = {}
         self._configuration: dict[str, dict[str, Reading[Any]]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
@@ -77,6 +75,10 @@ class StageWidget(BaseQtWidget):
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
+        vline = QtWidgets.QFrame()
+        vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+
         # setup the layout and connect the signals
         for name, model_info in self._motors_info.items():
             self._groups[name] = QtWidgets.QGroupBox(name)
@@ -86,22 +88,21 @@ class StageWidget(BaseQtWidget):
                 # create the widgets
                 suffix = f"{name}:{axis}"
                 self._labels["label:" + suffix] = QtWidgets.QLabel(
-                    f"<strong>{axis}</strong>"
+                    f"{axis}"
                 )
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
                 self._labels["pos:" + suffix] = QtWidgets.QLabel(
-                    f"<strong>{0:.2f} {model_info.egu}</strong>"
-                )
-                self._labels["pos:" + suffix].setTextFormat(
-                    QtCore.Qt.TextFormat.RichText
+                    f"{0:.2f} {model_info.egu}"
                 )
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
+                self._labels["step:" + suffix] = QtWidgets.QLabel("Step size: ")
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
                     str(model_info.step_sizes[axis])
                 )
+                self._line_edits["edit:" + suffix].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
 
                 # setup the layout
                 layout.addWidget(self._labels["label:" + suffix], offset + i, 0)
@@ -112,7 +113,8 @@ class StageWidget(BaseQtWidget):
                 layout.addWidget(
                     self._buttons["button:" + suffix + ":down"], offset + i, 3
                 )
-                layout.addWidget(self._line_edits["edit:" + suffix], offset + i, 4)
+                layout.addWidget(self._labels["step:" + suffix], offset + i, 5)
+                layout.addWidget(self._line_edits["edit:" + suffix], offset + i, 6)
 
                 # connect the signals
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
@@ -130,6 +132,7 @@ class StageWidget(BaseQtWidget):
 
             offset += len(model_info.axis) + 1
 
+        layout.addWidget(vline, 0, 4, offset, 1)
         self.setLayout(layout)
 
     def registration_phase(self) -> None:
@@ -158,10 +161,10 @@ class StageWidget(BaseQtWidget):
         else:
             self.sigMotorMove.emit(motor, axis, current_position - step_size)
 
-    def _update_position(self, motor: str, position: float) -> None:
+    def _update_position(self, motor: str, axis: str, position: float) -> None:
         """Update the motor position."""
-        new_pos = f"<strong>{position:.2f} {self._motors_info[motor].egu}</strong>"
-        self._labels["pos:" + motor].setText(new_pos)
+        new_pos = f"{position:.2f} {self._motors_info[motor].egu}"
+        self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 
     def _update_description(self, description: dict[str, dict[str, DataKey]]) -> None:
         """Update the motor description."""
