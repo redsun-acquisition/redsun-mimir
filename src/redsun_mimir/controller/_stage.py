@@ -226,5 +226,6 @@ class StageController(Loggable):
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
             self.exception(f"Failed set axis on {motor.name}: {e}")
+            s.set_exception(e)
         finally:
             return s.success
