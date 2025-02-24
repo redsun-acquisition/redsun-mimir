@@ -90,9 +90,6 @@ exclude_lines = [
 
 [tool.mypy]
 files = "src/**/*.py"
-exclude = [
-    '^test\.'
-]
 disable_error_code = ["import-untyped"]
 pretty = true
 
@@ -104,7 +101,7 @@ warn_no_return = true
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = [
-    "src/tests"
+    "tests"
 ]
 
 [tool.ruff]

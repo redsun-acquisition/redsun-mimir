@@ -4,6 +4,7 @@ import bluesky.plan_stubs as bps
 import pytest
 import yaml
 from typing import Any
+from pathlib import Path
 from bluesky.protocols import Location
 from bluesky.utils import MsgGenerator
 
@@ -15,10 +16,12 @@ from sunflare.engine import RunEngine
 
 
 @pytest.fixture
-def motor_config(motor_config_path: str) -> dict[str, StageModelInfo]:
+def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
     """Return the motors configuration."""
 
     motors: dict[str, StageModelInfo] = {}
+
+    motor_config_path = str(config_path / "test_motor_config.yaml")
 
     with open(motor_config_path, "r") as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
