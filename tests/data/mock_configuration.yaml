@@ -18,4 +18,6 @@ controllers:
     timeout: 5.0
 widgets:
   StageWidget:
+    # doesn't have any effect;
+    # used locally for testinng
     position: center

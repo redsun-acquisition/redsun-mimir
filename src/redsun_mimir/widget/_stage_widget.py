@@ -166,16 +166,6 @@ class StageWidget(BaseQtWidget):
         new_pos = f"{position:.2f} {self._motors_info[motor].egu}"
         self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 
-    def _update_description(self, description: dict[str, dict[str, DataKey]]) -> None:
-        """Update the motor description."""
-        self._description = description
-
-    def _update_configuration(
-        self, configuration: dict[str, dict[str, Reading[Any]]]
-    ) -> None:
-        """Update the motor configuration."""
-        self._configuration = configuration
-
     def _validate_and_notify(self, name: str, axis: str) -> None:
         """Validate the new step size value and notify the virtual bus when input is accepted.
 

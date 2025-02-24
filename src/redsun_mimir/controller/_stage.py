@@ -132,8 +132,6 @@ class StageController(Loggable):
             New configuration value.
 
         """
-        # TODO: should this be executed in the
-        # background thread?
         s = self._motors[motor].set(value, prop=config)
         if s.done and not s.success:
             exc = s.exception()
@@ -142,8 +140,6 @@ class StageController(Loggable):
                     f"Failed to configure {motor} {config} to {value}: {exc}"
                 )
         else:
-            # for now just emit the signal with
-            # the input values
             self.sigNewConfiguration.emit(motor, config, value)
 
     def shutdown(self) -> None:
