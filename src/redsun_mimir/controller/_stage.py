@@ -101,13 +101,6 @@ class StageController(Loggable):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self._motors_config_descriptors = {
-            name: model.describe_configuration() for name, model in self._motors.items()
-        }
-        self._motors_config_readings = {
-            name: model.read_configuration() for name, model in self._motors.items()
-        }
-
         self.info("Stage controller initialized")
 
     def move(self, motor: str, axis: str, position: float) -> None:
