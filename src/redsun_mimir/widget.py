@@ -146,12 +146,6 @@ class StageWidget(BaseQtWidget):
         self._virtual_bus["StageController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
-        self._virtual_bus["StageController"]["sigMotorDescription"].connect(
-            self._update_description
-        )
-        self._virtual_bus["StageController"]["sigMotorConfiguration"].connect(
-            self._update_configuration
-        )
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size."""

@@ -1,13 +1,13 @@
-import yaml
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from redsun_mimir import StageModelInfo
 
 
 def test_mock_motor_model_info(config_path: Path) -> None:
     """Test the MockStageModel information model."""
-
     config: StageModelInfo
 
     motor_config_path = str(config_path / "test_motor_config.yaml")

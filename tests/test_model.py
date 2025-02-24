@@ -1,24 +1,21 @@
-from typing import Tuple
+from pathlib import Path
+from typing import Any, Tuple
 
 import bluesky.plan_stubs as bps
 import pytest
 import yaml
-from typing import Any
-from pathlib import Path
 from bluesky.protocols import Location
 from bluesky.utils import MsgGenerator
+from sunflare.engine import RunEngine
 
-from redsun_mimir.protocols import MotorProtocol
 from redsun_mimir.config import StageModelInfo
 from redsun_mimir.model import MockStageModel
-
-from sunflare.engine import RunEngine
+from redsun_mimir.protocols import MotorProtocol
 
 
 @pytest.fixture
 def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
     """Return the motors configuration."""
-
     motors: dict[str, StageModelInfo] = {}
 
     motor_config_path = str(config_path / "test_motor_config.yaml")
@@ -30,14 +27,15 @@ def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
             motors[name] = config
     return motors
 
+
 @pytest.fixture
 def RE() -> RunEngine:
     """Return a ``RunEngine`` instance."""
     return RunEngine()
 
+
 def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
     """Test the motor object construction."""
-
     for name, info in motor_config.items():
         motor = MockStageModel(name, info)
         assert isinstance(motor, MotorProtocol)
@@ -45,6 +43,7 @@ def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
         assert motor.model_info.axis == info.axis
         assert motor.model_info.egu == info.egu
         assert motor.model_info.step_sizes == info.step_sizes
+
 
 def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) -> None:
     for name, info in motor_config.items():
@@ -57,8 +56,9 @@ def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) ->
             "repository": {"value": "N/A", "timestamp": 0},
             "axis": {"value": info.axis, "timestamp": 0},
             "step_sizes": {"value": info.step_sizes, "timestamp": 0},
-            "egu": {"value": info.egu, "timestamp": 0}
+            "egu": {"value": info.egu, "timestamp": 0},
         }
+
 
 def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
     """Test the motor movement via direct invocation of the ``set`` method.
@@ -68,7 +68,6 @@ def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
     the ``Status`` is marked as done and successful, and the ``locate`` method
     returns the new position with the readback value set to the previous position.
     """
-
     for name, info in motor_config.items():
         motor = MockStageModel(name, info)
         # attempting to move a motor along an axis
@@ -89,7 +88,9 @@ def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
             assert motor.locate() == Location(setpoint=200.0, readback=200.0)
 
 
-def test_motor_plan_absolute(motor_config: dict[str, StageModelInfo], RE: RunEngine) -> None:
+def test_motor_plan_absolute(
+    motor_config: dict[str, StageModelInfo], RE: RunEngine
+) -> None:
     """Test motor execution in a ``RunEngine`` plan.
 
     Motors will move based on absolute positions.
@@ -97,19 +98,23 @@ def test_motor_plan_absolute(motor_config: dict[str, StageModelInfo], RE: RunEng
     - first move to position 100;
     - then move to position 200.
     """
+
     def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor to position 100 and then to position 200."""
         for m in motors:
             yield from bps.abs_set(m, axis, prop="axis")
             yield from bps.mv(m, 100)
             yield from bps.mv(m, 200)
-            location = yield from bps.locate(m) # type: ignore
+            location = yield from bps.locate(m)  # type: ignore
             assert location == Location(setpoint=200.0, readback=200.0)
 
     motors = tuple([MockStageModel(name, info) for name, info in motor_config.items()])
     RE(moving_plan(motors, axis="X"))
 
-def test_motor_plan_relative(motor_config: dict[str, StageModelInfo], RE: RunEngine) -> None:
+
+def test_motor_plan_relative(
+    motor_config: dict[str, StageModelInfo], RE: RunEngine
+) -> None:
     """Test motor execution in a ``RunEngine`` plan.
 
     Motors will move based on relative positions.
@@ -117,13 +122,14 @@ def test_motor_plan_relative(motor_config: dict[str, StageModelInfo], RE: RunEng
     - first move of 100;
     - then move of 200.
     """
+
     def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor of 100 steps and then of 200 steps."""
         for m in motors:
             yield from bps.abs_set(m, axis, prop="axis")
             yield from bps.mvr(m, 100)
             yield from bps.mvr(m, 200)
-            location = yield from bps.locate(m) # type: ignore
+            location = yield from bps.locate(m)  # type: ignore
             assert location == Location(setpoint=300.0, readback=300.0)
 
     motors = tuple([MockStageModel(name, info) for name, info in motor_config.items()])

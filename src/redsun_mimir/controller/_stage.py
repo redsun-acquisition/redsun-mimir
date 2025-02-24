@@ -4,8 +4,6 @@ from queue import Queue
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 
-from bluesky.protocols import Reading
-from event_model.documents.event_descriptor import DataKey
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
@@ -51,14 +49,11 @@ class StageController(Loggable):
         Signal emitted when a new position is set.
         - ``str``: motor name
         - ``float``: new position
-    sigMotorDescription : ``Signal[str, dict[str, DataKey]]``
-        Signal emitted when the motor configuration is described.
+    sigNewConfiguration : ``Signal[str, str, object]``
+        Signal emitted when a configuration value is changed.
         - ``str``: motor name
-        - ``dict[str, DataKey]``: motor configuration description
-    sigMotorConfiguration : ``Signal[str, dict[str, Reading]]``
-        Signal emitted when the motor configuration is read.
-        - ``str``: motor name
-        - ``dict[str, Reading]``: motor configuration
+        - ``str``: configuration parameter name
+        - ``object``: new configuration value
 
     Notes
     -----
@@ -80,12 +75,10 @@ class StageController(Loggable):
                     self.on_new_position, thread="main"
                 )
 
-
     """
 
     sigNewPosition = Signal(str, float)
-    sigMotorDescription = Signal(dict[str, dict[str, DataKey]])
-    sigMotorConfiguration = Signal(dict[str, dict[str, Reading[Any]]])
+    sigNewConfiguration = Signal(str, str, object)
 
     def __init__(
         self,
@@ -105,6 +98,7 @@ class StageController(Loggable):
         }
 
         self._daemon = Thread(target=self._run_loop, daemon=True)
+        self._daemon.start()
 
         self._motors_config_descriptors = {
             name: model.describe_configuration() for name, model in self._motors.items()
@@ -113,12 +107,43 @@ class StageController(Loggable):
             name: model.read_configuration() for name, model in self._motors.items()
         }
 
+        self.info("Stage controller initialized")
+
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
 
         Sends a new position to the daemon queue.
         """
         self._queue.put((motor, axis, position))
+
+    def configure(self, motor: str, config: str, value: Any) -> None:
+        """Configure a motor.
+
+        Update the configuration value of a motor.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        config : ``str``
+            Configuration parameter name.
+        value : ``Any``
+            New configuration value.
+
+        """
+        # TODO: should this be executed in the
+        # background thread?
+        s = self._motors[motor].set(value, prop=config)
+        if s.done and not s.success:
+            exc = s.exception()
+            if exc is not None:
+                self.exception(
+                    f"Failed to configure {motor} {config} to {value}: {exc}"
+                )
+        else:
+            # for now just emit the signal with
+            # the input values
+            self.sigNewConfiguration.emit(motor, config, value)
 
     def shutdown(self) -> None:
         """Shutdown the controller.
@@ -136,29 +161,7 @@ class StageController(Loggable):
     def connection_phase(self) -> None:
         """Connect to other controllers/widgets in the active session."""
         self._virtual_bus["StageWidget"]["sigMotorMove"].connect(self.move)
-        self._virtual_bus["StageWidget"]["sigGetConfiguration"].connect(self._configure)
-
-    def _configure(self, motor: str, name: str, value: object) -> None:
-        """Configure a motor.
-
-        Configure a motor with a new value.
-
-        Parameters
-        ----------
-        motor : ``str``
-            Motor name. Used to access the local
-            device registry.
-        name : ``str``
-            Name of the configuration parameter.
-        value : ``object``
-            New value for the configuration parameter.
-
-        """
-        s = self._motors[motor].set(value, prop=name)
-        if s.done and not s.success:
-            exc = s.exception()
-            if s:
-                self.exception(f"Failed to configure {motor}: {exc}")
+        self._virtual_bus["StageWidget"]["sigConfigChanged"].connect(self.configure)
 
     def _run_loop(self) -> None:
         while True:
@@ -166,6 +169,7 @@ class StageController(Loggable):
             task = self._queue.get()
             if task is not None:
                 motor, axis, position = task
+                self.debug(f"Moving {motor} to {position} on {axis}")
                 self._do_move(self._motors[motor], axis, position)
                 self._queue.task_done()
             else:
@@ -177,12 +181,35 @@ class StageController(Loggable):
         """Move a motor to a given position.
 
         Wait on the status object to complete in a background thread.
+        When the movement is completed, emit the ``sigNewPosition`` signal.
+
+        Parameters
+        ----------
+        motor : ``MotorProtocol``
+            Motor instance to move.
+        axis : ``str``
+            Axis to move.
+        position : ``float``
+            New position to set.
+
+        Notes
+        -----
+        ``sigNewPosition`` is emitted from a background thread;
+        users need to ensure that any connected callback is invoked
+        in the main thread; see the class docstring for an example.
+
         """
-        motor.configure(axis=axis)
+        if axis != motor.axis:
+            # change the active axis;
+            # discard the status object;
+            # although it should be monitored
+            _ = motor.set(axis, prop="axis")
         s = motor.set(position)
         try:
+            # TODO: add a timeout?
+            # maybe as a model attribute
             s.wait()
         except Exception as e:
             self.exception(f"Failed to move {motor.name} to {position}: {e}")
         else:
-            self.sigNewPosition.emit(motor, position)
+            self.sigNewPosition.emit(motor.name, position)
