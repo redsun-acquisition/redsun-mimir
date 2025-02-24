@@ -128,8 +128,8 @@ ignore = [
 source = "vcs"
 
 [tool.hatch.build.targets.sdist]
-include = ["src"]
+include = ["src", "tests"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src"]
+only-include = ["src/redsun_mimir"]
 sources = ["src"]
