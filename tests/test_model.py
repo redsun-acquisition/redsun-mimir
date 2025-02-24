@@ -40,6 +40,7 @@ def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
 
     for name, info in motor_config.items():
         motor = MockStageModel(name, info)
+        assert isinstance(motor, MotorProtocol)
         assert motor.name == name
         assert motor.model_info.axis == info.axis
         assert motor.model_info.egu == info.egu
@@ -74,7 +75,7 @@ def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
         # that does not exist should raise an error
 
         for axis in motor.model_info.axis:
-            motor.configure(axis=axis)
+            motor.set(axis, prop="axis")
             status = motor.set(100)
             status.wait()
             assert status.done
@@ -99,7 +100,7 @@ def test_motor_plan_absolute(motor_config: dict[str, StageModelInfo], RE: RunEng
     def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor to position 100 and then to position 200."""
         for m in motors:
-            yield from bps.configure(m, axis=axis)
+            yield from bps.abs_set(m, axis, prop="axis")
             yield from bps.mv(m, 100)
             yield from bps.mv(m, 200)
             location = yield from bps.locate(m) # type: ignore
@@ -119,7 +120,7 @@ def test_motor_plan_relative(motor_config: dict[str, StageModelInfo], RE: RunEng
     def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor of 100 steps and then of 200 steps."""
         for m in motors:
-            yield from bps.configure(m, axis=axis)
+            yield from bps.abs_set(m, axis, prop="axis")
             yield from bps.mvr(m, 100)
             yield from bps.mvr(m, 200)
             location = yield from bps.locate(m) # type: ignore

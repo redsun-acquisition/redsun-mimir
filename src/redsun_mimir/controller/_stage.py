@@ -146,19 +146,19 @@ class StageController(Loggable):
         Parameters
         ----------
         motor : ``str``
-            Motor name.
+            Motor name. Used to access the local
+            device registry.
         name : ``str``
             Name of the configuration parameter.
         value : ``object``
             New value for the configuration parameter.
 
         """
-        # pack the configuration in a dictionary
-        kwargs = {name: value}
-        try:
-            self._motors[motor].configure(**kwargs)
-        except Exception as e:
-            self.exception(f"Failed to configure {motor}: {e}")
+        s = self._motors[motor].set(value, prop=name)
+        if s.done and not s.success:
+            exc = s.exception()
+            if s:
+                self.exception(f"Failed to configure {motor}: {exc}")
 
     def _run_loop(self) -> None:
         while True:

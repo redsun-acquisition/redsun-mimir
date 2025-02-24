@@ -23,55 +23,69 @@ class MockStageModel:
         }
 
         # set the current axis to the first axis
-        self._axis = self._model_info.axis[0]
+        self.axis = self._model_info.axis[0]
 
         self._step_sizes = self._model_info.step_sizes
 
-    def set(self, value: float) -> Status:
-        """Set mock model position."""
+    def set(self, value: Any, **kwargs: Any) -> Status:
+        """Set something in the mock model.
+
+        Either set the motor position or update a configuration value.
+        When setting a configuration value, the keyword argument `prop`
+        must be provided.
+        Accepted updatable properties:
+
+        - ``axis``: motor axis.
+
+        i.e. `set(10)` will set the motor position to 10,
+        `set("Y", prop="axis")` will update the axis to "Y".
+
+        Parameters
+        ----------
+        value : ``Any``
+            New value to set.
+        **kwargs : ``Any``
+            Additional keyword arguments.
+
+        Returns
+        -------
+        ``Status``
+            The status object.
+            For this mock model, it will always be set to finished.
+            If ``value`` is not of type ``float``,
+            the status will set a ``ValueError`` exception.
+
+        """
         s = Status()
+        propr = kwargs.get("prop", None)
+        if propr == "axis" and isinstance(value, str):
+            self.axis = value
+            s.set_finished()
+            return s
+        else:
+            if not isinstance(value, (int, float)):
+                s.set_exception(ValueError("Value must be a float or int."))
+                return s
         steps = math.floor(
-            (value - self._positions[self._axis]["setpoint"])
-            / self._step_sizes[self._axis]
+            (value - self._positions[self.axis]["setpoint"])
+            / self._step_sizes[self.axis]
         )
         for _ in range(steps):
-            self._positions[self._axis]["setpoint"] += self._step_sizes[self._axis]
+            self._positions[self.axis]["setpoint"] += self._step_sizes[self.axis]
         s.set_finished()
         s.add_callback(self._set_readback)
         return s
 
     def locate(self) -> Location[float]:
         """Locate mock model."""
-        return self._positions[self._axis]
+        return self._positions[self.axis]
 
     def configure(self, *_: Any, **kwargs: Any) -> tuple[Reading[Any], Reading[Any]]:
-        """Configure the mock model.
+        """Configure mock model.
 
-        Parameters
-        ----------
-        kwargs : dict
-            Configuration parameters.
-            Accepted values:
-            - ``axis``: axis name.
-
-        Returns
-        -------
-        ``tuple[Reading, Reading]``
-            Old and new configuration readings.
-
-        Raises
-        ------
-        ``KeyError``
-            Invalid configuration key.
-
+        DEPRECATED: use `set` instead.
         """
-        if "axis" in kwargs:
-            old = Reading(value=self._axis, timestamp=0)
-            self._axis = kwargs["axis"]
-            new = Reading(value=self._axis, timestamp=0)
-            return old, new
-        else:
-            raise KeyError("Invalid configuration key")
+        raise DeprecationWarning("Use `set` instead of `configure`.")
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
@@ -106,6 +120,4 @@ class MockStageModel:
             Axis name.
 
         """
-        self._positions[self._axis]["readback"] = self._positions[self._axis][
-            "setpoint"
-        ]
+        self._positions[self.axis]["readback"] = self._positions[self.axis]["setpoint"]
