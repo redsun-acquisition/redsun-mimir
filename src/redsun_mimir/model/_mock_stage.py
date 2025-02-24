@@ -3,13 +3,12 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Location
+from bluesky.protocols import Location, Reading
 from sunflare.engine import Status
 from sunflare.log import Loggable
 from sunflare.model import ModelProtocol
 
 if TYPE_CHECKING:
-    from bluesky.protocols import Reading
     from event_model.documents.event_descriptor import DataKey
 
     from ..config import StageModelInfo
@@ -34,7 +33,8 @@ class MockStageModel(ModelProtocol, Loggable):
         """Set mock model position."""
         s = Status()
         steps = math.floor(
-            (value - self._positions[self._axis]["setpoint"]) / self._step_sizes[self._axis]
+            (value - self._positions[self._axis]["setpoint"])
+            / self._step_sizes[self._axis]
         )
         for _ in range(steps):
             self._positions[self._axis]["setpoint"] += self._step_sizes[self._axis]
@@ -44,12 +44,36 @@ class MockStageModel(ModelProtocol, Loggable):
 
     def locate(self) -> Location[float]:
         """Locate mock model."""
-        return self._positions[self._current_axis]
+        return self._positions[self._axis]
 
-    def configure(self, name: str, value: Any, /, **kwargs: Any) -> None:
-        """Configure the mock model."""
-        if name == "axis":
-            self._current_axis = value
+    def configure(self, *_: Any, **kwargs: Any) -> tuple[Reading[Any], Reading[Any]]:
+        """Configure the mock model.
+
+        Parameters
+        ----------
+        kwargs : dict
+            Configuration parameters.
+            Accepted values:
+            - ``axis``: axis name.
+
+        Returns
+        -------
+        ``tuple[Reading, Reading]``
+            Old and new configuration readings.
+
+        Raises
+        ------
+        ``KeyError``
+            Invalid configuration key.
+
+        """
+        if "axis" in kwargs:
+            old = Reading(value=self._axis, timestamp=0)
+            self._axis = kwargs["axis"]
+            new = Reading(value=self._axis, timestamp=0)
+            return old, new
+        else:
+            raise KeyError("Invalid configuration key")
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
@@ -84,4 +108,6 @@ class MockStageModel(ModelProtocol, Loggable):
             Axis name.
 
         """
-        self._positions[self._axis]["readback"] = self._positions[self._axis]["setpoint"]
+        self._positions[self._axis]["readback"] = self._positions[self._axis][
+            "setpoint"
+        ]

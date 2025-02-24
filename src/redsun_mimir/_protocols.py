@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from sunflare.model import ModelProtocol
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from bluesky.protocols import Location
     from sunflare.engine import Status
 
@@ -31,7 +33,7 @@ class MotorProtocol(ModelProtocol, Protocol):
         """
         ...
 
-    def locate(self) -> Location:
+    def locate(self) -> Location[Any]:
         """Return the current motor position along `axis`.
 
         Parameters

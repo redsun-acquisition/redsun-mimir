@@ -56,7 +56,7 @@ class StageWidget(BaseQtWidget):
         self._config = config
         self._virtual_bus = virtual_bus
         self._description: dict[str, dict[str, DataKey]] = {}
-        self._configuration: dict[str, dict[str, Reading]] = {}
+        self._configuration: dict[str, dict[str, Reading[Any]]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
@@ -174,7 +174,7 @@ class StageWidget(BaseQtWidget):
         self._description = description
 
     def _update_configuration(
-        self, configuration: dict[str, dict[str, Reading]]
+        self, configuration: dict[str, dict[str, Reading[Any]]]
     ) -> None:
         """Update the motor configuration."""
         self._configuration = configuration

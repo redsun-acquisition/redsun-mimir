@@ -136,7 +136,7 @@ class StageController(Loggable):
 
     sigNewPosition = Signal(str, float)
     sigMotorDescription = Signal(dict[str, dict[str, DataKey]])
-    sigMotorConfiguration = Signal(dict[str, dict[str, Reading]])
+    sigMotorConfiguration = Signal(dict[str, dict[str, Reading[Any]]])
 
     def __init__(
         self,
