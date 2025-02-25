@@ -19,7 +19,6 @@ from redsun_mimir import (
 def main() -> None:
     """Run a local mock example."""
     app = QtWidgets.QApplication([])
-    
 
     config_path = (
         Path(__file__).parent.parent.parent
@@ -56,7 +55,7 @@ def main() -> None:
 
     bus = VirtualBus()
 
-    ctrl = StageController(config.controllers["StageController"], mock_models, bus) # type: ignore
+    ctrl = StageController(config.controllers["StageController"], mock_models, bus)  # type: ignore
     widget = StageWidget(config, bus)
 
     ctrl.registration_phase()
@@ -72,6 +71,7 @@ def main() -> None:
     app.exec()
 
     bus.shutdown()
-    
+
+
 if __name__ == "__main__":
     main()

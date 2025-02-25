@@ -89,9 +89,13 @@ exclude_lines = [
     "@abstractmethod",
     "if TYPE_CHECKING:",
     "@overload",
+    "class .*Protocol",
     "except ImportError",
     "except PackageNotFoundError",
     "raise NotImplementedError()",
+]
+omit = [
+    "src/redsun_mimir/__main__.py",
 ]
 
 [tool.mypy]

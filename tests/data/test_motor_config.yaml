@@ -13,3 +13,6 @@ models:
       Y: 100.0
       Z: 100.0
     egu: "um"
+controllers:
+  StageController:
+    timeout: null

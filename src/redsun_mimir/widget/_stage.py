@@ -87,9 +87,7 @@ class StageWidget(BaseQtWidget):
             for i, axis in enumerate(model_info.axis):
                 # create the widgets
                 suffix = f"{name}:{axis}"
-                self._labels["label:" + suffix] = QtWidgets.QLabel(
-                    f"{axis}"
-                )
+                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{axis}")
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
@@ -102,7 +100,9 @@ class StageWidget(BaseQtWidget):
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
                     str(model_info.step_sizes[axis])
                 )
-                self._line_edits["edit:" + suffix].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+                self._line_edits["edit:" + suffix].setAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignHCenter
+                )
 
                 # setup the layout
                 layout.addWidget(self._labels["label:" + suffix], offset + i, 0)
@@ -124,10 +124,8 @@ class StageWidget(BaseQtWidget):
                     lambda _, name=name, axis=axis: self._step(name, axis, False)
                 )
 
-                self._line_edits["edit:" + suffix].textEdited.connect(
-                    lambda _, name=name, axis=axis: self._validate_and_notify(
-                        name, axis
-                    )
+                self._line_edits["edit:" + suffix].editingFinished.connect(
+                    lambda name=name, axis=axis: self._validate_and_notify(name, axis)
                 )
 
             offset += len(model_info.axis) + 1

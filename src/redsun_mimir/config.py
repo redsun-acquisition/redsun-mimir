@@ -7,6 +7,7 @@ from sunflare.config import ControllerInfo, ModelInfo, WidgetInfo
 
 __all__ = ["StageControllerInfo", "StageWidgetInfo", "StageModelInfo"]
 
+
 @define(kw_only=True)
 class StageModelInfo(ModelInfo):
     """Configuration class for the stage model.
@@ -44,7 +45,7 @@ class StageModelInfo(ModelInfo):
 @define
 class StageControllerInfo(ControllerInfo):
     """Configuration class for the stage controller.
-    
+
     Parameters
     ----------
     timeout : ``float``, optional
@@ -56,8 +57,7 @@ class StageControllerInfo(ControllerInfo):
     """
 
     timeout: Optional[float] = field(
-        default=None,
-        validator=validators.optional(validators.instance_of(float))
+        default=None, validator=validators.optional(validators.instance_of(float))
     )
 
 
