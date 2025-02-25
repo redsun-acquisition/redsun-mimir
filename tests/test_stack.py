@@ -7,11 +7,11 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir import (
+    MockStageModel,
     StageController,
     StageControllerInfo,
     StageModelInfo,
     StageWidget,
-    MockStageModel,
 )
 
 
