@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from bluesky.utils import MsgGenerator
     from sunflare.model import ModelProtocol
 
-    from ..config import StageControllerInfo
+    from redsun_mimir.controller import StageControllerInfo
 
 
 class StageController(Loggable):

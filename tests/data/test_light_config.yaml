@@ -1,0 +1,11 @@
+session: test
+frontend: pyqt
+engine: bluesky
+models:
+  Mock light:
+    model_name: MockLightModel
+    egu: "mW"
+    intensity_range:
+      - 0
+      - 100
+    wavelength: 650

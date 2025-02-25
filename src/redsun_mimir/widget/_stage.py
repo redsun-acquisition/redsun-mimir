@@ -6,7 +6,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from ..config import StageModelInfo
+from redsun_mimir.model import StageModelInfo
 
 if TYPE_CHECKING:
     from typing import Any

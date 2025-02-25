@@ -9,7 +9,7 @@ from sunflare.engine import Status
 if TYPE_CHECKING:
     from event_model.documents.event_descriptor import DataKey
 
-    from ..config import StageModelInfo
+    from ._config import StageModelInfo
 
 
 class MockStageModel:

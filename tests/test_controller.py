@@ -6,9 +6,8 @@ from pytestqt.qtbot import QtBot
 from sunflare.controller import ControllerProtocol, HasConnection, HasRegistration
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.config import StageControllerInfo, StageModelInfo
-from redsun_mimir.controller import StageController
-from redsun_mimir.model import MockStageModel
+from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.model import MockStageModel, StageModelInfo
 
 
 def test_stage_controller(

@@ -58,25 +58,16 @@ redsun-mimir = "redsun_mimir.__main__:main"
 
 [project.entry-points]
 
-#-------------- CONFIG BEGIN ----------------#
-[project.entry-points."redsun.plugins.models.config"]
-stagecontroller_config = "redsun_mimir:StageModelInfo"
-#--------------- CONFIG END -----------------#
+[project.entry-points."redsun.plugins.controllers.config"]
+stagecontroller_config = "redsun_mimir:StageControllerInfo"
+[project.entry-points."redsun.plugins.widgets.config"]
+stagewidget_config = "redsun_mimir:StageWidgetInfo"
 
-#-------------- MODELS BEGIN ----------------#
-[project.entry-points."redsun.plugins.models"]
-mockstage = "redsun_mimir:MockStageModel"
-#--------------- MODELS END -----------------#
-
-#-------------- CONTROLLERS BEGIN ----------------#
 [project.entry-points."redsun.plugins.controllers"]
 stagecontroller = "redsun_mimir:StageController"
-#--------------- CONTROLLERS END -----------------#
 
-#-------------- WIDGETS BEGIN ----------------#
 [project.entry-points."redsun.plugins.widgets"]
 stagewidget = "redsun_mimir:StageWidget"
-#--------------- WIDGETS END -----------------#
 
 [tool.coverage.run]
 source = ["redsun_mimir"]

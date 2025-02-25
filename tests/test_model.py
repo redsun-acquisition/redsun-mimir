@@ -4,13 +4,17 @@ from typing import Any, Tuple
 import bluesky.plan_stubs as bps
 import pytest
 import yaml
-from bluesky.protocols import Location
+from bluesky.protocols import Location, Reading
 from bluesky.utils import MsgGenerator
 from sunflare.engine import RunEngine
 
-from redsun_mimir.config import StageModelInfo
-from redsun_mimir.model import MockStageModel
-from redsun_mimir.protocols import MotorProtocol
+from redsun_mimir.model import (
+    LightModelInfo,
+    MockLightModel,
+    MockStageModel,
+    StageModelInfo,
+)
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 
 @pytest.fixture
@@ -26,6 +30,21 @@ def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
             config = StageModelInfo(**values)
             motors[name] = config
     return motors
+
+
+@pytest.fixture
+def light_config(config_path: Path) -> dict[str, LightModelInfo]:
+    """Return the light configuration."""
+    lights: dict[str, LightModelInfo] = {}
+
+    light_config_path = str(config_path / "test_light_config.yaml")
+
+    with open(light_config_path, "r") as file:
+        config_dict: dict[str, Any] = yaml.safe_load(file)
+        for name, values in config_dict["models"].items():
+            config = LightModelInfo(**values)
+            lights[name] = config
+    return lights
 
 
 @pytest.fixture
@@ -134,3 +153,56 @@ def test_motor_plan_relative(
 
     motors = tuple([MockStageModel(name, info) for name, info in motor_config.items()])
     RE(moving_plan(motors, axis="X"))
+
+
+def test_light_construction(light_config: dict[str, LightModelInfo]) -> None:
+    """Test the motor object construction."""
+    for name, info in light_config.items():
+        motor = MockLightModel(name, info)
+        assert isinstance(motor, LightProtocol)
+        assert motor.name == name
+        assert motor.model_info.intensity_range == info.intensity_range
+        assert motor.model_info.egu == info.egu
+
+
+def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) -> None:
+    for name, info in light_config.items():
+        light = MockLightModel(name, info)
+        cfg = light.read_configuration()
+        assert cfg == {
+            "vendor": {"value": "N/A", "timestamp": 0},
+            "serial_number": {"value": "N/A", "timestamp": 0},
+            "plugin_name": {"value": "N/A", "timestamp": 0},
+            "repository": {"value": "N/A", "timestamp": 0},
+            "initial_intensity": {"value": info.initial_intensity, "timestamp": 0},
+            "intensity_range": {"value": info.intensity_range, "timestamp": 0},
+            "egu": {"value": info.egu, "timestamp": 0},
+            "wavelength": {"value": info.wavelength, "timestamp": 0},
+            "step_size": {"value": info.step_size, "timestamp": 0},
+        }
+
+
+def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
+    for name, info in light_config.items():
+        light = MockLightModel(name, info)
+        # attempting to move a motor along an axis
+        # that does not exist should raise an error
+
+        s = light.set(100)
+        s.wait()
+        assert s.done and s.success
+        assert light.read() == {"intensity": Reading(value=100.0, timestamp=0)}
+        with pytest.raises(ValueError):
+            light.set("test")
+
+
+def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> None:
+    def setting_plan(lights: Tuple[LightProtocol, ...]) -> MsgGenerator[None]:
+        """Move the motor of 100 steps and then of 200 steps."""
+        for L in lights:
+            yield from bps.abs_set(L, 100)
+            reading = yield from bps.read(L)
+            assert reading == Reading(value=100.0, timestamp=0)
+
+    motors = tuple([MockLightModel(name, info) for name, info in light_config.items()])
+    RE(setting_plan(motors))

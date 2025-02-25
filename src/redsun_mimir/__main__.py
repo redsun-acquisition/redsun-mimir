@@ -6,14 +6,9 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir import (
-    MockStageModel,
-    StageController,
-    StageControllerInfo,
-    StageModelInfo,
-    StageWidget,
-    StageWidgetInfo,
-)
+from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.model import MockStageModel, StageModelInfo
+from redsun_mimir.widget import StageWidget, StageWidgetInfo
 
 
 def main() -> None:

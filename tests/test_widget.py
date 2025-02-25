@@ -4,15 +4,21 @@ from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir import StageControllerInfo, StageModelInfo, StageWidget
+from redsun_mimir.controller import StageControllerInfo
+from redsun_mimir.model import StageModelInfo
+from redsun_mimir.widget import StageWidget
 
 
 def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
     motor_config_path = str(config_path / "test_motor_config.yaml")
 
     config_dict = RedSunSessionInfo.load_yaml(str(motor_config_path))
-    config_dict["models"] = {k: StageModelInfo(**v) for k, v in config_dict["models"].items()}
-    config_dict["controllers"] = {k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()}
+    config_dict["models"] = {
+        k: StageModelInfo(**v) for k, v in config_dict["models"].items()
+    }
+    config_dict["controllers"] = {
+        k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()
+    }
     config_dict["widgets"] = {}
 
     config = RedSunSessionInfo(**config_dict)
@@ -20,7 +26,10 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
     assert config.models["Mock motor"] == config_dict["models"]["Mock motor"]
     assert config.engine == config_dict["engine"]
     assert config.frontend == config_dict["frontend"]
-    assert config.controllers["StageController"] == config_dict["controllers"]["StageController"]
+    assert (
+        config.controllers["StageController"]
+        == config_dict["controllers"]["StageController"]
+    )
     assert config.widgets == {}
 
     widget = StageWidget(config, bus)

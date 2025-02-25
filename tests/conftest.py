@@ -6,7 +6,7 @@ import yaml
 from sunflare.engine import RunEngine
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.config import StageModelInfo
+from redsun_mimir.model import StageModelInfo
 
 
 @pytest.fixture
