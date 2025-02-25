@@ -50,7 +50,7 @@ class LightModelInfo(ModelInfo):
 
     Parameters
     ----------
-    wavelength : ``float``
+    wavelength : ``int``
         Wavelength in nm.
     egu : ``str``, optional
         Engineering units. Default is "mW".
@@ -63,9 +63,8 @@ class LightModelInfo(ModelInfo):
 
     """
 
-    wavelength: float = field(
-        converter=float,
-        validator=validators.instance_of(float),
+    wavelength: int = field(
+        validator=validators.instance_of(int),
         metadata={"description": "Wavelength in nm."},
     )
     egu: str = field(
@@ -89,3 +88,61 @@ class LightModelInfo(ModelInfo):
         validator=validators.instance_of(int),
         metadata={"description": "Step size for the intensity."},
     )
+
+    wavecolor: str = field(
+        init=False,
+        metadata={"description": "Hexadecimal representation of the light color."},
+    )
+
+    def __attrs_post_init__(self) -> None:
+        self.wavecolor = wavelength_to_hex(self.wavelength)
+
+
+def wavelength_to_hex(wavelength: int) -> str:
+    """Convert a wavelength in nanometers to an RGB color in hexadecimal format."""
+
+    def adjust(color: float, factor: float) -> int:
+        """Adjust the color intensity by the given factor and convert to integer."""
+        return max(0, min(255, int(round(color * factor))))
+
+    if wavelength < 380 or wavelength > 780:
+        return "#000000"  # Return black for wavelengths outside visible spectrum
+
+    r, g, b = 0.0, 0.0, 0.0
+
+    if 380 <= wavelength < 440:
+        r = -(wavelength - 440) / (440 - 380)
+        g = 0.0
+        b = 1.0
+    elif 440 <= wavelength < 490:
+        r = 0.0
+        g = (wavelength - 440) / (490 - 440)
+        b = 1.0
+    elif 490 <= wavelength < 510:
+        r = 0.0
+        g = 1.0
+        b = -(wavelength - 510) / (510 - 490)
+    elif 510 <= wavelength < 580:
+        r = (wavelength - 510) / (580 - 510)
+        g = 1.0
+        b = 0.0
+    elif 580 <= wavelength < 645:
+        r = 1.0
+        g = -(wavelength - 645) / (645 - 580)
+        b = 0.0
+    elif 645 <= wavelength <= 780:
+        r = 1.0
+        g = 0.0
+        b = 0.0
+
+    factor = 1.0
+    if wavelength < 420:
+        factor = 0.3 + 0.7 * (wavelength - 380) / (420 - 380)
+    elif wavelength > 700:
+        factor = 0.3 + 0.7 * (780 - wavelength) / (780 - 700)
+
+    r = adjust(r, factor)
+    g = adjust(g, factor)
+    b = adjust(b, factor)
+
+    return f"#{r:02x}{g:02x}{b:02x}"

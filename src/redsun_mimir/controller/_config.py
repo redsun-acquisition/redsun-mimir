@@ -25,3 +25,22 @@ class StageControllerInfo(ControllerInfo):
     timeout: Optional[float] = field(
         default=None, validator=validators.optional(validators.instance_of(float))
     )
+
+
+@define
+class LightControllerInfo(ControllerInfo):
+    """Configuration class for the light controller.
+
+    Parameters
+    ----------
+    timeout : ``float``, optional
+        Timeout in seconds.
+        If a light source doesn't reach the requested intensity within this time,
+        the controller will raise an exception.
+        Default is ``None`` (no timeout, wait indefinitely).
+
+    """
+
+    timeout: Optional[float] = field(
+        default=None, validator=validators.optional(validators.instance_of(float))
+    )

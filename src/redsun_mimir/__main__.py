@@ -11,7 +11,7 @@ from redsun_mimir.model import MockStageModel, StageModelInfo
 from redsun_mimir.widget import StageWidget, StageWidgetInfo
 
 
-def main() -> None:
+def test_stage_widget() -> None:
     """Run a local mock example."""
     app = QtWidgets.QApplication([])
 
@@ -69,4 +69,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    test_stage_widget()

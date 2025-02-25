@@ -10,3 +10,13 @@ class StageWidgetInfo(WidgetInfo):
     """
 
     ...
+
+
+@define
+class LightWidgetInfo(WidgetInfo):
+    """Light widget information.
+
+    Currently provides no additional information.
+    """
+
+    ...

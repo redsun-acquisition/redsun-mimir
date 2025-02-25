@@ -60,16 +60,13 @@ class StageWidget(BaseQtWidget):
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
 
-        layout = QtWidgets.QGridLayout()
+        main_layout = QtWidgets.QHBoxLayout()
 
         self._motors_info: dict[str, StageModelInfo] = {
             name: model_info
             for name, model_info in self._config.models.items()
             if isinstance(model_info, StageModelInfo)
         }
-
-        # row offset
-        offset = 0
 
         # Regular expression for a valid floating-point number
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
@@ -83,6 +80,9 @@ class StageWidget(BaseQtWidget):
         for name, model_info in self._motors_info.items():
             self._groups[name] = QtWidgets.QGroupBox(name)
             self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+            # group layout
+            layout = QtWidgets.QGridLayout()
 
             for i, axis in enumerate(model_info.axis):
                 # create the widgets
@@ -105,16 +105,12 @@ class StageWidget(BaseQtWidget):
                 )
 
                 # setup the layout
-                layout.addWidget(self._labels["label:" + suffix], offset + i, 0)
-                layout.addWidget(self._labels["pos:" + suffix], offset + i, 1)
-                layout.addWidget(
-                    self._buttons["button:" + suffix + ":up"], offset + i, 2
-                )
-                layout.addWidget(
-                    self._buttons["button:" + suffix + ":down"], offset + i, 3
-                )
-                layout.addWidget(self._labels["step:" + suffix], offset + i, 5)
-                layout.addWidget(self._line_edits["edit:" + suffix], offset + i, 6)
+                layout.addWidget(self._labels["label:" + suffix], i, 0)
+                layout.addWidget(self._labels["pos:" + suffix], i, 1)
+                layout.addWidget(self._buttons["button:" + suffix + ":up"], i, 2)
+                layout.addWidget(self._buttons["button:" + suffix + ":down"], i, 3)
+                layout.addWidget(self._labels["step:" + suffix], i, 5)
+                layout.addWidget(self._line_edits["edit:" + suffix], i, 6)
 
                 # connect the signals
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
@@ -127,11 +123,10 @@ class StageWidget(BaseQtWidget):
                 self._line_edits["edit:" + suffix].editingFinished.connect(
                     lambda name=name, axis=axis: self._validate_and_notify(name, axis)
                 )
+            self._groups[name].setLayout(layout)
+            main_layout.addWidget(self._groups[name])
 
-            offset += len(model_info.axis) + 1
-
-        layout.addWidget(vline, 0, 4, offset, 1)
-        self.setLayout(layout)
+        self.setLayout(main_layout)
 
     def registration_phase(self) -> None:
         """Register your signals to the virtual bus."""
