@@ -1,3 +1,6 @@
+session: test
+frontend: pyqt
+engine: bluesky
 models:
   Mock motor:
     model_name: MockStageModel

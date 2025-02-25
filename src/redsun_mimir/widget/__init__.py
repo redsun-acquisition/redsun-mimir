@@ -1,3 +1,3 @@
-from ._stage_widget import StageWidget
+from ._stage import StageWidget
 
 __all__ = ["StageWidget"]
