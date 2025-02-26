@@ -13,14 +13,18 @@ if TYPE_CHECKING:
     from event_model.documents.event_descriptor import DataKey
     from sunflare.engine import Status
 
+    from redsun_mimir.model import LightModelInfo, StageModelInfo
+
 
 @runtime_checkable
 class Settable(Protocol):
     """Protocol for settable models.
 
+    Reimplemented from the ``Movable`` bluesky protocol
+    for a more generic use case.
+
     Models implementing this protocol should be able to
     set a value and return a status object.
-
     """
 
     @abstractmethod
@@ -102,6 +106,11 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
+    @property
+    @abstractmethod
+    def model_info(self) -> StageModelInfo:  # noqa: D102
+        ...
+
 
 @runtime_checkable
 class LightProtocol(ModelProtocol, Settable, Protocol):
@@ -113,10 +122,27 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
     ----------
     intensity : ``float | int``
         Light intensity.
+    enabled : ``bool``
+        Light activation status.
+        - ``True``: light is on
+        - ``False``: light is off
 
     """
 
     intensity: Union[float, int]
+    enabled: bool
+
+    @abstractmethod
+    def trigger(self) -> Status:
+        """Toggle the activation status of the light source.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
+
+        """
+        ...
 
     @abstractmethod
     def read(self) -> dict[str, Reading[Union[float, int]]]:
@@ -129,7 +155,7 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
             # requires `time` module
             return {
                 "TIRF-channel": Reading(value=5, timestamp=time.time()),
-                "ISCAT-channel": Reading(value=16, timestamp=time.time()),
+                "iSCAT-channel": Reading(value=16, timestamp=time.time()),
             }
 
         Returns
@@ -154,10 +180,17 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         .. code-block:: python
 
             return {
-                "TIRF-channel": DataKey(source="MyLaser", dtype="number", shape=[]),
-                "ISCAT-channel": DataKey(
-                    source="MyOtherLaser", dtype="number", shape=[]
+                "TIRF-channel": DataKey(
+                    source="MyLaserClass", dtype="number", shape=[]
+                ),
+                "iSCAT-channel": DataKey(
+                    source="MyLaserClass", dtype="number", shape=[]
                 ),
             }
         """
+        ...
+
+    @property
+    @abstractmethod
+    def model_info(self) -> LightModelInfo:  # noqa: D102
         ...

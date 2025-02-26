@@ -5,11 +5,5 @@ models:
   Mock laser:
     model_name: MockLightModel
     egu: "mW"
-    intensity_range:
-      - 0
-      - 100
+    intensity_range: [100, 0] # reversed
     wavelength: 650
-  Mock LED:
-    model_name: MockLightModel
-    binary: true
-    wavelength: 300

@@ -5,18 +5,18 @@ from typing import Optional
 from attrs import define, field, validators
 from sunflare.config import ControllerInfo
 
-__all__ = ["StageControllerInfo"]
+__all__ = ["StageControllerInfo", "LightControllerInfo"]
 
 
 @define
-class StageControllerInfo(ControllerInfo):
-    """Configuration class for the stage controller.
+class _CommonControllerInfo(ControllerInfo):
+    """Common configuration class for controllers.
 
     Parameters
     ----------
     timeout : ``float``, optional
         Timeout in seconds.
-        If a motor doesn't reach the requested position within this time,
+        If a controller doesn't reach the requested state within this time,
         the controller will raise an exception.
         Default is ``None`` (no timeout, wait indefinitely).
 
@@ -27,20 +27,13 @@ class StageControllerInfo(ControllerInfo):
     )
 
 
-@define
-class LightControllerInfo(ControllerInfo):
-    """Configuration class for the light controller.
+class StageControllerInfo(_CommonControllerInfo):
+    """Configuration class for the stage controller."""
 
-    Parameters
-    ----------
-    timeout : ``float``, optional
-        Timeout in seconds.
-        If a light source doesn't reach the requested intensity within this time,
-        the controller will raise an exception.
-        Default is ``None`` (no timeout, wait indefinitely).
+    ...
 
-    """
 
-    timeout: Optional[float] = field(
-        default=None, validator=validators.optional(validators.instance_of(float))
-    )
+class LightControllerInfo(_CommonControllerInfo):
+    """Configuration class for the light controller."""
+
+    ...

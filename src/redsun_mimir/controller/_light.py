@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Mapping
 
-from bluesky.protocols import Reading
 from sunflare.log import Loggable
-from sunflare.virtual import Signal
 
 from ..protocols import LightProtocol
 
@@ -27,16 +25,7 @@ class LightController(Loggable):
     bus : ``VirtualBus``
         The bus for communication.
 
-    Attributes
-    ----------
-    sigNewIntensity : ``Signal[str, dict[str, Reading[float]]]``
-        Signal emitted when a new intensity is set.
-        - ``str``: light name
-        - ``dict[str, Reading[float]]``: new intensity
-
     """
-
-    sigNewIntensity = Signal(str, Reading[float])
 
     def __init__(
         self,
@@ -59,14 +48,27 @@ class LightController(Loggable):
 
     def connection_phase(self) -> None:
         """Connect the controller."""
-        ...
+        self._virtual_bus["LightWidget"]["sigToggleLightRequest"].connect(self.trigger)
+        self._virtual_bus["LightWidget"]["sigIntensityRequest"].connect(self.set)
+        self.debug("Connected to LightWidget")
 
-    def set_intensity(self, name: str, intensity: float) -> None:
+    def trigger(self, name: str) -> None:
+        """Toggle the light.
+
+        Parameters
+        ----------
+        name : ``str``
+            Name of the light.
+
+        """
+        s = self._lights[name].trigger()
+        try:
+            s.wait(self._ctrl_info.timeout)
+        except Exception as e:
+            self.exception(f"Failed toggle on {name}: {e}")
+
+    def set(self, name: str, intensity: float) -> None:
         """Set the intensity of the light.
-
-        When the intensity is set, the controller will emit
-        the ``sigNewIntensity`` signal to notify the widget
-        of the new intensity.
 
         Parameters
         ----------
@@ -76,9 +78,11 @@ class LightController(Loggable):
             Intensity to set.
 
         """
-        s = self._lights[name].set(intensity)
+        light = self._lights[name]
+        s = light.set(intensity)
         try:
             s.wait(self._ctrl_info.timeout)
-        except Exception as e:
-            self.exception(f"Failed set intensity on {name}: {e}")
-        self.sigNewIntensity.emit(name, self._lights[name].read()[name])
+        except Exception:
+            self.exception(
+                f"Timeout when setting {name} at {intensity} {light.model_info.egu}"
+            )

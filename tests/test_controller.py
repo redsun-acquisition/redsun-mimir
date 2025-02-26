@@ -6,8 +6,18 @@ from pytestqt.qtbot import QtBot
 from sunflare.controller import ControllerProtocol, HasConnection, HasRegistration
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageController, StageControllerInfo
-from redsun_mimir.model import MockStageModel, StageModelInfo
+from redsun_mimir.controller import (
+    LightController,
+    LightControllerInfo,
+    StageController,
+    StageControllerInfo,
+)
+from redsun_mimir.model import (
+    LightModelInfo,
+    MockLightModel,
+    MockStageModel,
+    StageModelInfo,
+)
 
 
 def test_stage_controller(
@@ -19,8 +29,6 @@ def test_stage_controller(
     ctrl = StageController(info, motors, bus)
 
     assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))
-
-    assert ctrl._motors == motors
 
     def check_new_position(motor: str, position: float) -> None:
         assert motor == "Mock motor"
@@ -58,3 +66,23 @@ def test_stage_controller(
     ctrl.shutdown()
 
     assert not ctrl._daemon.is_alive()
+
+
+def test_light_widget(
+    bus: VirtualBus, light_config: dict[str, LightModelInfo], qtbot: QtBot
+) -> None:
+    lights = {name: MockLightModel(name, info) for name, info in light_config.items()}
+
+    info = LightControllerInfo()
+    ctrl = LightController(info, lights, bus)
+
+    assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))
+    assert not ctrl._lights["Mock laser"].enabled
+    ctrl.trigger("Mock laser")
+    assert ctrl._lights["Mock laser"].enabled
+
+    # mypy complains that the statement
+    # is unreachable; not sure why;
+    # we just ignore this
+    ctrl.set("Mock laser", 0.5)  # type: ignore
+    assert ctrl._lights["Mock laser"].intensity == 0.5

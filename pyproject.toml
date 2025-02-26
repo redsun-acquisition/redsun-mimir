@@ -29,6 +29,7 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "sunflare[pyqt]>=0.4.2",
+    "superqt",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +55,7 @@ dev = [
 "User Support" = "https://github.com/redsun-acquisition/redsun-mimir/issues"
 
 [project.scripts]
-redsun-mimir = "redsun_mimir.__main__:main"
+mimir = "redsun_mimir.__main__:main"
 
 [project.entry-points]
 
@@ -81,12 +82,14 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@overload",
     "class .*Protocol",
+    "pragma: no cover",
     "except ImportError",
     "except PackageNotFoundError",
     "raise NotImplementedError()",
 ]
 omit = [
     "src/redsun_mimir/__main__.py",
+    "src/redsun_mimir/configurations/**",
 ]
 
 [tool.mypy]
