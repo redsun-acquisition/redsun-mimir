@@ -61,14 +61,18 @@ mimir = "redsun_mimir.__main__:main"
 
 [project.entry-points."redsun.plugins.controllers.config"]
 stagecontroller_config = "redsun_mimir:StageControllerInfo"
+lightcontroller_config = "redsun_mimir:LightControllerInfo"
 [project.entry-points."redsun.plugins.widgets.config"]
 stagewidget_config = "redsun_mimir:StageWidgetInfo"
+lightwidget_config = "redsun_mimir:LightWidgetInfo"
 
 [project.entry-points."redsun.plugins.controllers"]
 stagecontroller = "redsun_mimir:StageController"
+lightcontroller = "redsun_mimir:LightController"
 
 [project.entry-points."redsun.plugins.widgets"]
 stagewidget = "redsun_mimir:StageWidget"
+lightwidget = "redsun_mimir:LightWidget"
 
 [tool.coverage.run]
 source = ["redsun_mimir"]
