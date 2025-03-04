@@ -18,7 +18,6 @@ def test_mock_motor_model_info(config_path: Path) -> None:
         for _, values in config_dict["models"].items():
             config = StageModelInfo(**values)
 
-    assert config.model_name == "MockStageModel"
     assert config.axis == ["X", "Y", "Z"]
     assert config.step_sizes == {"X": 100.0, "Y": 100.0, "Z": 100.0}
     assert config.egu == "um"
@@ -37,12 +36,10 @@ def test_mock_light_model_info(config_path: Path) -> None:
 
     laser, led = config
 
-    assert laser.model_name == "MockLightModel"
     assert laser.intensity_range == (0.0, 100.0)
     assert laser.egu == "mW"
     assert not laser.binary
 
-    assert led.model_name == "MockLightModel"
     assert led.intensity_range == (0.0, 0.0)
     assert led.egu == "mW"
     assert led.binary

@@ -3,8 +3,8 @@ import time
 from bluesky.protocols import Location
 from psygnal import emit_queued
 from pytestqt.qtbot import QtBot
-from sunflare.controller import ControllerProtocol, HasConnection, HasRegistration
-from sunflare.virtual import VirtualBus
+from sunflare.controller import ControllerProtocol
+from sunflare.virtual import HasConnection, HasRegistration, VirtualBus
 
 from redsun_mimir.controller import (
     LightController,
@@ -25,7 +25,7 @@ def test_stage_controller(
 ) -> None:
     motors = {name: MockStageModel(name, info) for name, info in motor_config.items()}
 
-    info = StageControllerInfo()
+    info = StageControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = StageController(info, motors, bus)
 
     assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))
@@ -73,7 +73,7 @@ def test_light_widget(
 ) -> None:
     lights = {name: MockLightModel(name, info) for name, info in light_config.items()}
 
-    info = LightControllerInfo()
+    info = LightControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = LightController(info, lights, bus)
 
     assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))

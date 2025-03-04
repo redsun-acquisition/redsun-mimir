@@ -3,7 +3,8 @@ frontend: pyqt
 engine: bluesky
 models:
   Mock motor:
-    model_name: MockStageModel
+    plugin_name: test
+    plugin_id: test
     axis:
       - X
       - Y
@@ -15,4 +16,6 @@ models:
     egu: "um"
 controllers:
   StageController:
+    plugin_name: test
+    plugin_id: test
     timeout: null

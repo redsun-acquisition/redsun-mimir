@@ -64,7 +64,7 @@ class StageWidget(BaseQtWidget):
 
         self._motors_info: dict[str, StageModelInfo] = {
             name: model_info
-            for name, model_info in self._config.models.items()
+            for name, model_info in self.config.models.items()
             if isinstance(model_info, StageModelInfo)
         }
 
@@ -130,7 +130,7 @@ class StageWidget(BaseQtWidget):
 
     def registration_phase(self) -> None:
         """Register your signals to the virtual bus."""
-        self._virtual_bus.register_signals(self)
+        self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
         """Connect your signals to the virtual bus.
@@ -139,7 +139,7 @@ class StageWidget(BaseQtWidget):
         We use it to directly build the GUI by retrieving a configuration of
         the currently allocated motors to create the proper widget layout.
         """
-        self._virtual_bus["StageController"]["sigNewPosition"].connect(
+        self.virtual_bus["StageController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
 

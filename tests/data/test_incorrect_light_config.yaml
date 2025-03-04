@@ -3,7 +3,8 @@ frontend: pyqt
 engine: bluesky
 models:
   Mock laser:
-    model_name: MockLightModel
+    plugin_name: test
+    plugin_id: test
     egu: "mW"
     intensity_range: [100, 0] # reversed
     wavelength: 650

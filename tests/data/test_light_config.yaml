@@ -3,13 +3,15 @@ frontend: pyqt
 engine: bluesky
 models:
   Mock laser:
-    model_name: MockLightModel
+    plugin_name: test
+    plugin_id: test
     egu: "mW"
     intensity_range:
       - 0
       - 100
     wavelength: 650
   Mock LED:
-    model_name: MockLightModel
+    plugin_name: test
+    plugin_id: test
     binary: true
     wavelength: 300

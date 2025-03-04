@@ -3,20 +3,26 @@ engine: bluesky
 frontend: pyqt
 models:
   Mock LED:
-    model_name: MockLightModel
+    plugin_name: test
+    plugin_id: test
     wavelength: 300
     binary: true
   Mock laser:
-    model_name: MockLightModel
+    plugin_name: test
+    plugin_id: test
     wavelength: 650
     egu: mW
     intensity_range: [0, 100]
     step_size: 1
 controllers:
   LightController:
+    plugin_name: test
+    plugin_id: test
     timeout: 5.0
 widgets:
   LightWidget:
+    plugin_name: test
+    plugin_id: test
     # doesn't have any effect;
     # used locally for testing
     position: center

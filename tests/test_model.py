@@ -71,8 +71,7 @@ def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) ->
         assert cfg == {
             "vendor": {"value": "N/A", "timestamp": 0},
             "serial_number": {"value": "N/A", "timestamp": 0},
-            "plugin_name": {"value": "N/A", "timestamp": 0},
-            "repository": {"value": "N/A", "timestamp": 0},
+            "family": {"value": "N/A", "timestamp": 0},
             "axis": {"value": info.axis, "timestamp": 0},
             "step_sizes": {"value": info.step_sizes, "timestamp": 0},
             "egu": {"value": info.egu, "timestamp": 0},
@@ -172,8 +171,7 @@ def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) ->
         assert cfg == {
             "vendor": {"value": "N/A", "timestamp": 0},
             "serial_number": {"value": "N/A", "timestamp": 0},
-            "plugin_name": {"value": "N/A", "timestamp": 0},
-            "repository": {"value": "N/A", "timestamp": 0},
+            "family": {"value": "N/A", "timestamp": 0},
             "intensity_range": {"value": info.intensity_range, "timestamp": 0},
             "egu": {"value": info.egu, "timestamp": 0},
             "wavelength": {"value": info.wavelength, "timestamp": 0},
