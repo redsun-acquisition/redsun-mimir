@@ -1,0 +1,9 @@
+models:
+controllers:
+  stage:
+    class: redsun_mimir.controller:StageController
+    info: redsun_mimir.controller:StageControllerInfo
+widgets:
+  stage:
+    class: redsun_mimir.widget:StageWidget
+    info: redsun_mimir.widget:StageWidgetInfo

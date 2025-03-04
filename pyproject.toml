@@ -28,7 +28,7 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "sunflare[pyqt]>=0.4.2",
+    "sunflare[pyqt]>=0.5.0",
 ]
 
 [project.optional-dependencies]
@@ -56,18 +56,8 @@ dev = [
 [project.scripts]
 redsun-mimir = "redsun_mimir.__main__:main"
 
-[project.entry-points]
-
-[project.entry-points."redsun.plugins.controllers.config"]
-stagecontroller_config = "redsun_mimir:StageControllerInfo"
-[project.entry-points."redsun.plugins.widgets.config"]
-stagewidget_config = "redsun_mimir:StageWidgetInfo"
-
-[project.entry-points."redsun.plugins.controllers"]
-stagecontroller = "redsun_mimir:StageController"
-
-[project.entry-points."redsun.plugins.widgets"]
-stagewidget = "redsun_mimir:StageWidget"
+[project.entry-points."redsun.plugins"]
+redsun-mimir = "redsun.yaml"
 
 [tool.coverage.run]
 source = ["redsun_mimir"]
