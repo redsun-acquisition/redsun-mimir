@@ -174,11 +174,11 @@ def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) ->
             "serial_number": {"value": "N/A", "timestamp": 0},
             "plugin_name": {"value": "N/A", "timestamp": 0},
             "repository": {"value": "N/A", "timestamp": 0},
-            "initial_intensity": {"value": info.initial_intensity, "timestamp": 0},
             "intensity_range": {"value": info.intensity_range, "timestamp": 0},
             "egu": {"value": info.egu, "timestamp": 0},
             "wavelength": {"value": info.wavelength, "timestamp": 0},
             "step_size": {"value": info.step_size, "timestamp": 0},
+            "binary": {"value": info.binary, "timestamp": 0},
         }
 
 
@@ -200,9 +200,10 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
     def setting_plan(lights: Tuple[LightProtocol, ...]) -> MsgGenerator[None]:
         """Move the motor of 100 steps and then of 200 steps."""
         for L in lights:
+            yield from bps.trigger(L)
             yield from bps.abs_set(L, 100)
             reading = yield from bps.read(L)
             assert reading == Reading(value=100.0, timestamp=0)
 
-    motors = tuple([MockLightModel(name, info) for name, info in light_config.items()])
-    RE(setting_plan(motors))
+    lights = tuple([MockLightModel(name, info) for name, info in light_config.items()])
+    RE(setting_plan(lights))

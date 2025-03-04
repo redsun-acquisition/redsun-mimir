@@ -19,5 +19,5 @@ controllers:
 widgets:
   StageWidget:
     # doesn't have any effect;
-    # used locally for testinng
+    # used locally for testing
     position: center

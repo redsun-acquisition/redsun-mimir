@@ -14,9 +14,11 @@ class MockLightModel:
     def __init__(self, name: str, model_info: LightModelInfo) -> None:
         self._name = name
         self._model_info = model_info
-        self.intensity = model_info.initial_intensity
+        self.enabled = False
+        self.intensity = 0.0
 
     def configure(self, *args: Any, **kwargs: Any) -> tuple[Reading[Any], Reading[Any]]:
+        """Configure the light source (DEPRECATED)."""
         raise DeprecationWarning(
             "Deprecated method. Will be removed from sunflare in future release."
         )
@@ -24,13 +26,9 @@ class MockLightModel:
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set the intensity of the light source.
 
-        Parameters
-        ----------
-        value : ``Any``
-            New intensity value.
-        **kwargs : ``Any``
-            Additional keyword arguments.
-            Not used in this method.
+        .. note::
+
+            **kwargs are ignored in this implementation.
 
         """
         if not isinstance(value, (int, float)):
@@ -41,17 +39,11 @@ class MockLightModel:
         return s
 
     def read(self) -> dict[str, Reading[float]]:
-        """Read the current intensity of the light source.
-
-        Returns
-        -------
-        ``dict[str, Reading[float]]``
-            Dictionary with the current intensity value.
-
-        """
+        """Read the current intensity of the light source."""
         return {"intensity": Reading(value=self.intensity, timestamp=0)}
 
     def describe(self) -> dict[str, DataKey]:
+        """Describe the data keys of ``read``."""
         model_name = self.model_info.model_name
         return OrderedDict(
             {self.name: DataKey(source=model_name, dtype="number", shape=[])}
@@ -64,6 +56,13 @@ class MockLightModel:
         return self.model_info.describe_configuration()
 
     def shutdown(self) -> None: ...
+
+    def trigger(self) -> Status:
+        """Toggle the activation status of the light source."""
+        self.enabled = not self.enabled
+        s = Status()
+        s.set_finished()
+        return s
 
     @property
     def name(self) -> str:
