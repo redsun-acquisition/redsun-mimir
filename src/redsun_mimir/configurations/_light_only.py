@@ -1,6 +1,4 @@
-import logging
 from pathlib import Path
-from pprint import pformat
 from typing import Any
 
 from psygnal.qt import start_emitting_from_queue
@@ -19,8 +17,6 @@ def light_widget() -> None:
     Launches a Qt ``LightWidget`` app
     with a mock device configuration.
     """
-    logger = logging.getLogger("redsun")
-
     app = QtWidgets.QApplication([])
 
     config_path = Path(__file__).parent / "mock_light_configuration.yaml"
@@ -60,8 +56,6 @@ def light_widget() -> None:
     widget.registration_phase()
     ctrl.connection_phase()
     widget.connection_phase()
-
-    logger.info("Registered signals: %s", pformat(bus._cache))
 
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(widget)

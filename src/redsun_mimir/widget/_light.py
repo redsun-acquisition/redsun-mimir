@@ -87,7 +87,7 @@ class LightWidget(BaseQtWidget, Loggable):
 
     def registration_phase(self) -> None:
         """Register the widget."""
-        self._virtual_bus.register_signals(self)
+        self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
         """Connect the widget."""
