@@ -1,13 +1,18 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
-from sunflare.config import RedSunSessionInfo
 from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
-from sunflare.virtual import Signal, VirtualBus
+from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider
 
 from redsun_mimir.model import LightModelInfo
+
+if TYPE_CHECKING:
+    from sunflare.config import RedSunSessionInfo
+    from sunflare.virtual import VirtualBus
 
 
 class LightWidget(BaseQtWidget, Loggable):

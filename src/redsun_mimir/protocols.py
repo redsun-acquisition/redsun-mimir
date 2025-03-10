@@ -9,8 +9,7 @@ from typing_extensions import Protocol, runtime_checkable
 if TYPE_CHECKING:
     from typing import Any, Union
 
-    from bluesky.protocols import Location, Reading
-    from event_model.documents.event_descriptor import DataKey
+    from bluesky.protocols import Descriptor, Location, Reading
     from sunflare.engine import Status
 
     from redsun_mimir.model import LightModelInfo, StageModelInfo
@@ -167,7 +166,7 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         ...
 
     @abstractmethod
-    def describe(self) -> dict[str, DataKey]:
+    def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
         The dictionary holds the metadata with relevant
@@ -180,10 +179,10 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         .. code-block:: python
 
             return {
-                "TIRF-channel": DataKey(
+                "TIRF-channel": Descriptor(
                     source="MyLaserClass", dtype="number", shape=[]
                 ),
-                "iSCAT-channel": DataKey(
+                "iSCAT-channel": Descriptor(
                     source="MyLaserClass", dtype="number", shape=[]
                 ),
             }
@@ -193,4 +192,89 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
     @property
     @abstractmethod
     def model_info(self) -> LightModelInfo:  # noqa: D102
+        ...
+
+@runtime_checkable
+class DetectorProtocol(ModelProtocol, Protocol):
+    """Protocol for detector models.
+
+    Attributes
+    ----------
+    enabled : ``bool``
+        Detector activation status.
+        - ``True``: detector is on
+        - ``False``: detector is off
+
+    """
+
+    enabled: bool
+
+    @abstractmethod
+    def read(self) -> dict[str, Reading[Union[float, int]]]:
+        """Take a reading from the detector.
+
+        Example return value:
+
+        .. code-block:: python
+
+            # requires `time` module
+            return {
+                "TIRF-channel": Reading(value=5, timestamp=time.time()),
+                "iSCAT-channel": Reading(value=16, timestamp=time.time()),
+            }
+
+        Returns
+        -------
+        ``dict[str, Reading[int | float]]``
+            Dictionary with the current detector intensity.
+
+        """
+        ...
+
+    @abstractmethod
+    def describe(self) -> dict[str, Descriptor]:
+        """Return a dictionary with the same keys as ``read``.
+
+        The dictionary holds the metadata with relevant
+        information about the detector channels.
+
+        The returned value can also be a ``collections.OrderedDict``.
+
+        Example return value:
+
+        .. code-block:: python
+
+            return {
+                "TIRF-channel": Descriptor(
+                    source="MyDetectorClass", dtype="number", shape=[]
+                ),
+                "iSCAT-channel": Descriptor(
+                    source="MyDetectorClass", dtype="number", shape=[]
+                ),
+            }
+        """
+        ...
+    
+    @abstractmethod
+    def stage(self) -> Status:
+        """Prepare the detector for acquisition.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
+
+        """
+        ...
+    
+    @abstractmethod
+    def unstage(self) -> Status:
+        """Stop the detector acquisition.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
+
+        """
         ...

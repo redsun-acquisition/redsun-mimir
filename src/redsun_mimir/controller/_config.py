@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from attrs import define, field, validators
 from sunflare.config import ControllerInfo
@@ -37,3 +37,11 @@ class LightControllerInfo(_CommonControllerInfo):
     """Configuration class for the light controller."""
 
     ...
+
+@define(kw_only=True)
+class AcquisitionControllerInfo(_CommonControllerInfo):
+    """Configuration class for the acquisition controller."""
+    
+    metadata: dict[str, Any] = field(
+        default={}, validator=validators.instance_of(dict)
+    )

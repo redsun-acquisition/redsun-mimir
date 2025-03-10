@@ -11,8 +11,7 @@ from redsun_mimir.model import StageModelInfo
 if TYPE_CHECKING:
     from typing import Any
 
-    from bluesky.protocols import Reading
-    from event_model.documents.event_descriptor import DataKey
+    from bluesky.protocols import Descriptor, Reading
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
 
@@ -53,7 +52,7 @@ class StageWidget(BaseQtWidget):
         **kwargs: Any,
     ) -> None:
         super().__init__(config, virtual_bus, *args, **kwargs)
-        self._description: dict[str, dict[str, DataKey]] = {}
+        self._description: dict[str, dict[str, Descriptor]] = {}
         self._configuration: dict[str, dict[str, Reading[Any]]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}

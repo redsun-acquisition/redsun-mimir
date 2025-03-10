@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-import numpy as np
 from attrs import define, field, setters, validators
 from sunflare.config import ModelInfo
 
@@ -127,53 +126,8 @@ class LightModelInfo(ModelInfo):
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
 
+@define(kw_only=True)
+class DetectorModelInfo(ModelInfo):
+    """Configuration of a detector model."""
 
-# this has to be tested at some point
-def wavelength_to_hex(wavelength: int) -> str:  # pragma: no cover
-    """Convert a wavelength in nanometers (nm) to an RGB hex string.
-
-    Parameters
-    ----------
-    wavelength: int
-        Wavelength in nanometers.
-
-    Returns
-    -------
-    ``str``
-        Hex string representation of the RGB color.
-
-    """
-    # Ensure the input is within the visible spectrum
-    wavelength = np.clip(wavelength, 380, 780)
-
-    r, g, b = 0.0, 0.0, 0.0
-
-    if 380 <= wavelength < 440:
-        r = -(wavelength - 440) / (440 - 380)
-        b = 1.0
-    elif 440 <= wavelength < 490:
-        g = (wavelength - 440) / (490 - 440)
-        b = 1.0
-    elif 490 <= wavelength < 510:
-        g = 1.0
-        b = -(wavelength - 510) / (510 - 490)
-    elif 510 <= wavelength < 580:
-        r = (wavelength - 510) / (580 - 510)
-        g = 1.0
-    elif 580 <= wavelength < 645:
-        r = 1.0
-        g = -(wavelength - 645) / (645 - 580)
-    elif 645 <= wavelength <= 780:
-        r = 1.0
-
-    if 380 <= wavelength < 420:
-        factor = 0.3 + 0.7 * (wavelength - 380) / (420 - 380)
-    elif 645 <= wavelength <= 780:
-        factor = 0.3 + 0.7 * (780 - wavelength) / (780 - 645)
-    else:
-        factor = 1.0
-
-    rgb = np.array([r, g, b]) * factor
-    rgb = (np.round(rgb * 255)).astype(int)
-
-    return "#{:02x}{:02x}{:02x}".format(rgb[0], rgb[1], rgb[2])
+    ...
