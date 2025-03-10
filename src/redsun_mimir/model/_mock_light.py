@@ -1,8 +1,7 @@
 from collections import OrderedDict
 from typing import Any
 
-from bluesky.protocols import Reading
-from event_model.documents.event_descriptor import DataKey
+from bluesky.protocols import Descriptor, Reading
 from sunflare.engine import Status
 
 from ._config import LightModelInfo
@@ -16,12 +15,6 @@ class MockLightModel:
         self._model_info = model_info
         self.enabled = False
         self.intensity = 0.0
-
-    def configure(self, *args: Any, **kwargs: Any) -> tuple[Reading[Any], Reading[Any]]:
-        """Configure the light source (DEPRECATED)."""
-        raise DeprecationWarning(
-            "Deprecated method. Will be removed from sunflare in future release."
-        )
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set the intensity of the light source.
@@ -42,17 +35,16 @@ class MockLightModel:
         """Read the current intensity of the light source."""
         return {"intensity": Reading(value=self.intensity, timestamp=0)}
 
-    def describe(self) -> dict[str, DataKey]:
+    def describe(self) -> dict[str, Descriptor]:
         """Describe the data keys of ``read``."""
-        model_name = self.model_info.model_name
         return OrderedDict(
-            {self.name: DataKey(source=model_name, dtype="number", shape=[])}
+            {self.name: Descriptor(source="intensity", dtype="number", shape=[])}
         )
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         return self.model_info.read_configuration()
 
-    def describe_configuration(self) -> dict[str, DataKey]:
+    def describe_configuration(self) -> dict[str, Descriptor]:
         return self.model_info.describe_configuration()
 
     def shutdown(self) -> None: ...

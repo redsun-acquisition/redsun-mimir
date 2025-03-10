@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QComboBox
+from qtpy.QtWidgets import QComboBox, QWidget
 
 if TYPE_CHECKING:
     from qtpy.QtGui import QStandardItemModel
@@ -22,7 +22,7 @@ class CheckableComboBox(QComboBox):
 
     """
 
-    def __init__(self, title: str, parent: Optional[QComboBox] = None) -> None:
+    def __init__(self, title: str, parent: Optional[QWidget] = None) -> None:
         super(CheckableComboBox, self).__init__(parent)
         self._model: QStandardItemModel = self.model()  # type: ignore
         assert self._model is not None

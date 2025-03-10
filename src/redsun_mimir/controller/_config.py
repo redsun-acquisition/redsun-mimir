@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from attrs import define, field, validators
 from sunflare.config import ControllerInfo
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["StageControllerInfo", "LightControllerInfo"]
 
@@ -38,10 +41,21 @@ class LightControllerInfo(_CommonControllerInfo):
 
     ...
 
+
 @define(kw_only=True)
 class AcquisitionControllerInfo(_CommonControllerInfo):
-    """Configuration class for the acquisition controller."""
-    
-    metadata: dict[str, Any] = field(
-        default={}, validator=validators.instance_of(dict)
-    )
+    """Configuration class for the acquisition controller.
+
+    Parameters
+    ----------
+    metadata : ``dict[str, Any]``, optional
+        Additional metadata for the controller's engine.
+        Default is an empty dictionary.
+
+    """
+
+    metadata: dict[str, Any] = field(default={}, validator=validators.instance_of(dict))
+
+    # private attribute;
+    # initialized from the controller
+    plans: dict[str, Callable[..., None]] = field(init=False)
