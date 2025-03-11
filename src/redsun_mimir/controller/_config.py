@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING
 
 from attrs import define, field, validators
 from sunflare.config import ControllerInfo
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from typing import Any, Optional
 
 __all__ = ["StageControllerInfo", "LightControllerInfo"]
 
@@ -58,4 +58,4 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
 
     # private attribute;
     # initialized from the controller
-    plans: dict[str, Callable[..., None]] = field(init=False)
+    plans: dict[str, Optional[str]] = field(init=False)

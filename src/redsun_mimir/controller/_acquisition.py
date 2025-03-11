@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 
 import bluesky.plans as bp
@@ -49,16 +50,16 @@ class AcquisitionController(Loggable, Publisher):
             except Exception as exc:
                 self.error("An exception occurred during the plan: %s", exc)
 
-        def live_count(toggle: bool, detectors: Sequence[str]) -> None:
+        def live_count(detectors: Sequence[str], toggle: bool) -> None:
             """Toggle a live acquisition.
 
             Parameters
             ----------
-            toggle : bool
-                Start or stop the live acquisition.
             detectors : ``Sequence[str]``
                 The detectors to use in the live acquisition.
                 Selected from the Acquisition widget combobox.
+            toggle : ``bool``
+                Toggle the live acquisition on or off.
 
             """
             if toggle:
@@ -78,12 +79,19 @@ class AcquisitionController(Loggable, Publisher):
 
         self.plans: dict[str, Callable[..., None]] = {"Live count": live_count}
 
-        self.ctrl_info.plans = self.plans
+        self.ctrl_info.plans = {
+            plan: inspect.getdoc(func) for plan, func in self.plans.items()
+        }
 
     def connection_phase(self) -> None:
-        self.virtual_bus["AcquisitionWidget"]["sigToggleAcquisitionRequest"].connect(
-            self.ctrl_info.plans["Live count"]
+        self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
+            self._run_plan
         )
 
-    def _run_plan(self, plan: str, *args: Any, **kwargs: Any) -> None:
-        self.plans[plan](*args, **kwargs)
+    def _run_plan(
+        self, plan: str, devices: Sequence[str], kwargs: dict[str, Any]
+    ) -> None:
+        try:
+            self.plans[plan](devices, **kwargs)
+        except TypeError as exc:
+            self.error(f'Incorrect parameters for "{plan}": {exc}')

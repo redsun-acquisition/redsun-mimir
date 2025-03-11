@@ -23,6 +23,7 @@ class LightWidgetInfo(WidgetInfo):
 
     ...
 
+
 @define
 class AcquisitionWidgetInfo(WidgetInfo):
     """Acquisition widget information.

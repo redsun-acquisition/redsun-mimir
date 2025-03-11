@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING
 
 from attrs import define, field, setters, validators
 from sunflare.config import ModelInfo
+
+if TYPE_CHECKING:
+    from typing import Any, Iterable, Optional, Union
 
 
 @define(kw_only=True)
@@ -126,8 +129,104 @@ class LightModelInfo(ModelInfo):
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
 
+
+@define
+class Specimen:
+    """Container for specimen information.
+
+    It is used in conjunction with
+    :class:``openwfs.simulation.StaticSource``
+    to generate a fake moving sample.
+
+    Parameters
+    ----------
+    resolution: ``tuple[int, int]``
+        Specimen resolution in pixels (height, width).
+    pixel_size: ``float``
+        Pixel size in nanometers.
+    magnification: ``int``
+        # Magnification from object plane to camera.
+    numerical_aperture: ``float``
+        Numerical aperture of the microscope objective.
+    wavelength: ``float``
+        Wavelength of the light source in nanometers.
+
+    """
+
+    resolution: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
+    pixel_size: float = field(
+        validator=validators.instance_of(float), on_setattr=setters.frozen
+    )
+    magnification: int = field(validator=validators.instance_of(int))
+    numerical_aperture: float = field(validator=validators.instance_of(float))
+    wavelength: float = field(validator=validators.instance_of(float))
+
+    @resolution.validator
+    def _validate_resolution(self, _: tuple[int, ...], value: tuple[int, ...]) -> None:
+        if not all(isinstance(val, int) for val in value):
+            raise ValueError("All values in the tuple must be integers.")
+        if len(value) != 2:
+            raise ValueError("The tuple must contain exactly two values.")
+
+
+def convert_specimen_obj(
+    x: Optional[Union[Specimen, dict[str, Any]]],
+) -> Optional[Specimen]:
+    """Convert a dictionary to a Specimen object.
+
+    If the input is already a Specimen object, return as is.
+
+    Parameters
+    ----------
+    x : ``Any``
+        Input to convert.
+
+    Returns
+    -------
+    ``Optional[Specimen]``
+        Specimen object.
+
+    """
+    if x is not None:
+        if isinstance(x, Specimen):
+            return x
+        else:
+            return Specimen(**x)
+    return None
+
+
 @define(kw_only=True)
 class DetectorModelInfo(ModelInfo):
-    """Configuration of a detector model."""
+    """Configuration of a detector model.
 
-    ...
+    specimen: ``Specimen``, optional
+        Information about the specimen.
+        Used by the OpenWFS simulator.
+    """
+
+    specimen: Optional[Specimen] = field(
+        default=None,
+        converter=convert_specimen_obj,
+    )
+    sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
+    pixel_size: tuple[float, float, float] = field(
+        converter=tuple, on_setattr=setters.frozen
+    )
+
+    @sensor_shape.validator
+    def _validate_sensor_shape(
+        self, _: tuple[int, ...], value: tuple[int, ...]
+    ) -> None:
+        if not all(isinstance(val, int) for val in value):
+            raise ValueError("All values in the tuple must be integers.")
+        if len(value) != 2:
+            raise ValueError("The tuple must contain exactly two values.")
+
+    @pixel_size.validator
+    def _validate_pixel_size(
+        self, _: tuple[float, ...], value: tuple[float, ...]
+    ) -> None:
+        if not all(isinstance(val, float) for val in value):
+            raise ValueError("All values in the tuple must be floats.")
+        if len(value) != 3:
+            raise ValueError("The tuple must contain exactly three values.")

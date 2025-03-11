@@ -9,7 +9,7 @@ from sunflare.virtual import Signal
 
 from redsun_mimir.controller import AcquisitionControllerInfo
 from redsun_mimir.model import DetectorModelInfo
-from redsun_mimir.utils.qt import CheckableComboBox
+from redsun_mimir.utils.qt import CheckableComboBox, InfoDialog
 
 if TYPE_CHECKING:
     from sunflare.config import RedSunSessionInfo
@@ -37,15 +37,15 @@ class AcquisitionWidget(BaseQtWidget):
 
     Attributes
     ----------
-    sigLaunchPlanRequest : ``Signal[str, object, object]``
+    sigLaunchPlanRequest : ``Signal[str, Sequence[str], dict[str, Any]]``
         Signal to launch a plan.
         - ``str``: The plan name.
-        - ``object``: positional arguments.
-        - ``object``: keyword arguments.
+        - ``Sequence[str]``: Sequence of device names involved in the plan.
+        - ``dict[str, Any]``: Additional plan-specific keyword arguments.
 
     """
 
-    sigLaunchPlanRequest = Signal(str, object, object)
+    sigLaunchPlanRequest = Signal(str, Sequence[str], dict[str, Any])
 
     def __init__(
         self,
@@ -69,6 +69,7 @@ class AcquisitionWidget(BaseQtWidget):
         self.plans_combobox.addItems(self.plans.keys())
         self.info_btn = QtWidgets.QPushButton(self)
         self.info_btn.setToolTip("Information about the selected plan")
+        self.info_btn.clicked.connect(self._on_info_clicked)
         pixmap = getattr(QtWidgets.QStyle, "SP_MessageBoxInformation")
         icon = self.style().standardIcon(pixmap)  # type: ignore
 
@@ -96,4 +97,12 @@ class AcquisitionWidget(BaseQtWidget):
     def _on_action_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
         detectors = self.detectors_combobox.checkedItems()
-        self.sigLaunchPlanRequest.emit(plan, detectors, None)
+        self.sigLaunchPlanRequest.emit(plan, detectors, {"toggle": toggled})
+        if toggled:
+            self.action_btn.setText("Stop")
+        else:
+            self.action_btn.setText("Start")
+
+    def _on_info_clicked(self) -> None:
+        info = self.plans[self.plans_combobox.currentText()]
+        InfoDialog.show_dialog("Plan information", info, parent=self)

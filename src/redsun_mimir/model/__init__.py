@@ -1,6 +1,5 @@
 from ._config import DetectorModelInfo, LightModelInfo, StageModelInfo
-from ._mock_light import MockLightModel
-from ._mock_stage import MockStageModel
+from ._mocks import MockLightModel, MockStageModel
 
 __all__ = [
     "MockStageModel",

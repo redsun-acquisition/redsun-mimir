@@ -194,6 +194,7 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
     def model_info(self) -> LightModelInfo:  # noqa: D102
         ...
 
+
 @runtime_checkable
 class DetectorProtocol(ModelProtocol, Protocol):
     """Protocol for detector models.
@@ -254,7 +255,7 @@ class DetectorProtocol(ModelProtocol, Protocol):
             }
         """
         ...
-    
+
     @abstractmethod
     def stage(self) -> Status:
         """Prepare the detector for acquisition.
@@ -266,7 +267,7 @@ class DetectorProtocol(ModelProtocol, Protocol):
 
         """
         ...
-    
+
     @abstractmethod
     def unstage(self) -> Status:
         """Stop the detector acquisition.

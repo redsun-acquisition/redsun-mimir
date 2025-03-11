@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Optional
 
+from qtpy import QtWidgets
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QComboBox, QWidget
 
 if TYPE_CHECKING:
     from qtpy.QtGui import QStandardItemModel
 
 
-class CheckableComboBox(QComboBox):
+class CheckableComboBox(QtWidgets.QComboBox):
     """A QComboBox with checkable items.
 
     The combo box adds an additional, unselectable
@@ -22,7 +22,7 @@ class CheckableComboBox(QComboBox):
 
     """
 
-    def __init__(self, title: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, title: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super(CheckableComboBox, self).__init__(parent)
         self._model: QStandardItemModel = self.model()  # type: ignore
         assert self._model is not None
@@ -79,3 +79,80 @@ class CheckableComboBox(QComboBox):
 
         """
         return [self.itemText(i) for i in range(self.count()) if self.itemChecked(i)]
+
+
+class InfoDialog(QtWidgets.QDialog):
+    """Dialog to provide information to the user.
+
+    Parameters
+    ----------
+    title : ``str``
+        The title of the dialog window, by default "Information"
+    text : ``str``, optional
+        The text to display in the text edit area.
+        If ``None``, a placeholder text will be displayed.
+    parent : ``QtWidgets.QWidget``, optional
+        The parent widget, by default None
+
+    """
+
+    def __init__(
+        self,
+        title: str,
+        text: Optional[str],
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+
+        # Set dialog properties
+        self.setWindowTitle(title)
+        self.resize(500, 300)
+
+        # Create layout
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Create text edit widget
+        self.text_edit = QtWidgets.QTextEdit()
+        self.text_edit.setReadOnly(True)  # Make it read-only
+        if text is None:
+            text = "No information available."
+        self.text_edit.setText(text)
+        layout.addWidget(self.text_edit)
+
+        # Create OK button
+        self.ok_button = QtWidgets.QPushButton("OK")
+        self.ok_button.setDefault(True)
+        self.ok_button.clicked.connect(self.accept)
+
+        # Add button to a horizontal layout for better positioning
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.ok_button)
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    @classmethod
+    def show_dialog(
+        cls, title: str, text: Optional[str], parent: Optional[QtWidgets.QWidget] = None
+    ) -> int:
+        """Create and show the dialog in one step.
+
+        Parameters
+        ----------
+        title : ``str``
+            The title of the dialog window.
+        text : ``str``, optional
+            The text to display in the text edit area.
+            If ``None``, a placeholder text will be displayed.
+        parent : ``QtWidgets.QWidget``, optional
+            The parent widget, by default None.
+
+        Returns
+        -------
+        ``int``
+            Dialog result code (``QDialog.Accepted``)
+
+        """
+        dialog = cls(title, text, parent)
+        return dialog.exec()
