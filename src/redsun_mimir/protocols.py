@@ -14,6 +14,12 @@ if TYPE_CHECKING:
 
     from redsun_mimir.model import LightModelInfo, StageModelInfo
 
+__all__ = [
+    "LightProtocol",
+    "MotorProtocol",
+    "DetectorProtocol",
+]
+
 
 @runtime_checkable
 class Settable(Protocol):
@@ -111,9 +117,8 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
         ...
 
 
-@runtime_checkable
-class LightProtocol(ModelProtocol, Settable, Protocol):
-    """Protocol for light models.
+class LightProtocol(ModelProtocol, Settable):
+    """Mixin for light models.
 
     Implements the ``Readable`` protocol.
 
@@ -143,51 +148,32 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def read(self) -> dict[str, Reading[Union[float, int]]]:
-        """Read current light intensity.
+        """Read the current status of the light source.
 
-        Example return value:
-
-        .. code-block:: python
-
-            # requires `time` module
-            return {
-                "TIRF-channel": Reading(value=5, timestamp=time.time()),
-                "iSCAT-channel": Reading(value=16, timestamp=time.time()),
-            }
+        Returns a dictionary with the values of ``intensity`` and ``enabled``.
 
         Returns
         -------
         ``dict[str, Reading[int | float]]``
-            Dictionary with the current light intensity.
+            Dictionary with the current light intensity and activation status
 
         """
-        ...
+        return {
+            "intensity": {"value": self.intensity, "timestamp": 0},
+            "enabled": {"value": self.enabled, "timestamp": 0},
+        }
 
-    @abstractmethod
     def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
         The dictionary holds the metadata with relevant
-        information about the light channels.
-
-        The returned can also be a ``collections.OrderedDict``
-
-        Example return value:
-
-        .. code-block:: python
-
-            return {
-                "TIRF-channel": Descriptor(
-                    source="MyLaserClass", dtype="number", shape=[]
-                ),
-                "iSCAT-channel": Descriptor(
-                    source="MyLaserClass", dtype="number", shape=[]
-                ),
-            }
+        information about the light source.
         """
-        ...
+        return {
+            "intensity": {"source": self.name, "dtype": "number", "shape": []},
+            "enabled": {"source": self.name, "dtype": "boolean", "shape": []},
+        }
 
     @property
     @abstractmethod

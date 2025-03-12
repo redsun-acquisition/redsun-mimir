@@ -189,7 +189,10 @@ def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
         s = light.set(100)
         s.wait()
         assert s.done and s.success
-        assert light.read() == {"intensity": Reading(value=100.0, timestamp=0)}
+        assert light.read() == {
+            "intensity": Reading(value=100.0, timestamp=0),
+            "enabled": Reading(value=False, timestamp=0),
+        }
         with pytest.raises(ValueError):
             light.set("test")
 

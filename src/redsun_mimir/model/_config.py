@@ -80,30 +80,32 @@ class LightModelInfo(ModelInfo):
 
     Parameters
     ----------
-    wavelength : ``int``
-        Wavelength in nm.
-    binary: ``bool``, optional
+    binary: ``bool``
         If the light source operates
         in binary mode (ON/OFF). Default is False.
-    egu : ``str``, optional
+    wavelength : ``int``
+        Wavelength in nm.
+        Default to 0 (wavelength not set).
+    egu : ``str``
         Engineering units. Default is "mW".
         Unused if binary is True.
-    intensity_range : ``tuple[float, float]``, optional
+    intensity_range : ``tuple[float, float]``
         Intensity range (min, max). Unused if binary is True.
-    step_size : ``int``, optional
+    step_size : ``int``
         Step size for the intensity. Default is 1.
         Unused if binary is True.
 
     """
 
-    wavelength: int = field(
-        validator=validators.instance_of(int),
-        metadata={"description": "Wavelength in nm."},
-    )
     binary: bool = field(
         default=False,
         validator=validators.instance_of(bool),
         metadata={"description": "Binary mode operation."},
+    )
+    wavelength: int = field(
+        default=0,
+        validator=validators.instance_of(int),
+        metadata={"description": "Wavelength in nm."},
     )
     egu: str = field(
         default="mW",
@@ -145,7 +147,7 @@ class Specimen:
     pixel_size: ``float``
         Pixel size in nanometers.
     magnification: ``int``
-        # Magnification from object plane to camera.
+        Magnification from object plane to camera.
     numerical_aperture: ``float``
         Numerical aperture of the microscope objective.
     wavelength: ``float``

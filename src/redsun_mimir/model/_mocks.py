@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import math
-from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from bluesky.protocols import Descriptor, Location, Reading
 from sunflare.engine import Status
+
+from ..protocols import LightProtocol
 
 if TYPE_CHECKING:
     from typing import Any
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from ._config import LightModelInfo, StageModelInfo
 
 
-class MockLightModel:
+class MockLightModel(LightProtocol):
     """Mock light source for simulation and testing purposes."""
 
     def __init__(self, name: str, model_info: LightModelInfo) -> None:
@@ -36,16 +37,6 @@ class MockLightModel:
         self.intensity = float(value)
         s.set_finished()
         return s
-
-    def read(self) -> dict[str, Reading[float]]:
-        """Read the current intensity of the light source."""
-        return {"intensity": Reading(value=self.intensity, timestamp=0)}
-
-    def describe(self) -> dict[str, Descriptor]:
-        """Describe the data keys of ``read``."""
-        return OrderedDict(
-            {self.name: Descriptor(source="intensity", dtype="number", shape=[])}
-        )
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         return self.model_info.read_configuration()
@@ -142,13 +133,6 @@ class MockStageModel:
     def locate(self) -> Location[float]:
         """Locate mock model."""
         return self._positions[self.axis]
-
-    def configure(self, *_: Any, **kwargs: Any) -> tuple[Reading[Any], Reading[Any]]:
-        """Configure mock model.
-
-        DEPRECATED: use `set` instead.
-        """
-        raise DeprecationWarning("Use `set` instead of `configure`.")
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
