@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,8 @@ def stage_widget() -> None:
     Launches a Qt ``StageWidget`` app
     with a mock device configuration.
     """
+    logger = logging.getLogger("redsun")
+    logger.setLevel(logging.DEBUG)
     app = QtWidgets.QApplication([])
 
     config_path = Path(__file__).parent / "mock_motor_configuration.yaml"

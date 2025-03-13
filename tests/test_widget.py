@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
@@ -56,10 +57,13 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
 
     widget.sigMotorMove.disconnect(assert_move_signal)
 
-    def assert_config_signal(name: str, axis: str, value: object) -> None:
+    def assert_config_signal(name: str, config: dict[str, Any]) -> None:
         nonlocal motor_id
         nonlocal expected_axis
         nonlocal expected_value
+        axis = list(config.keys())[0]
+        value = config[axis]
+
         assert name == motor_id
         assert axis == expected_axis
         assert isinstance(value, float)

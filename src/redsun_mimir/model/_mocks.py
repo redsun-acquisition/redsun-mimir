@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 
 from bluesky.protocols import Descriptor, Location, Reading
 from sunflare.engine import Status
+from sunflare.log import Loggable
 
-from ..protocols import LightProtocol
+from ..protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any
@@ -66,7 +67,7 @@ class MockLightModel(LightProtocol):
         return self._model_info
 
 
-class MockStageModel:
+class MockStageModel(MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
     def __init__(self, name: str, model_info: StageModelInfo) -> None:
@@ -112,10 +113,16 @@ class MockStageModel:
         """
         s = Status()
         propr = kwargs.get("prop", None)
-        if propr == "axis" and isinstance(value, str):
-            self.axis = value
-            s.set_finished()
-            return s
+        if propr is not None:
+            self.info("Setting property %s to %s.", propr, value)
+            if propr == "axis" and isinstance(value, str):
+                self.axis = value
+                s.set_finished()
+                return s
+            elif propr == "step_size" and isinstance(value, (int, float)):
+                self._step_sizes[self.axis] = value
+                s.set_finished()
+                return s
         else:
             if not isinstance(value, (int, float)):
                 s.set_exception(ValueError("Value must be a float or int."))

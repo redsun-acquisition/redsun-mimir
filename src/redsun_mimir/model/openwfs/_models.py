@@ -93,8 +93,12 @@ class OWFSStage(MotorProtocol):
             def callback_xy(fut: Future[XYStage]) -> None:
                 self._stage_ctrl = fut.result()
 
-            step_x = [ax for ax in model_info.axis if ax.lower() == "x"][0]
-            step_y = [ax for ax in model_info.axis if ax.lower() == "y"][0]
+            step_x = model_info.step_sizes[
+                next(ax for ax in model_info.axis if ax.lower() == "x")
+            ]
+            step_y = model_info.step_sizes[
+                next(ax for ax in model_info.axis if ax.lower() == "y")
+            ]
 
             kwargs = {
                 "step_x": step_x,
@@ -111,29 +115,60 @@ class OWFSStage(MotorProtocol):
         self.axis = model_info.axis[0]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
+        """Set something in the model.
+
+        Either set the motor position or update a configuration value.
+        When setting a configuration value, the keyword argument `prop`
+        must be provided.
+        Accepted updatable properties:
+
+        - ``axis``: motor axis.
+
+        i.e. `set(10)` will set the motor position to 10,
+        `set("Y", prop="axis")` will update the axis to "Y".
+
+        Parameters
+        ----------
+        value : ``Any``
+            New value to set.
+        **kwargs : ``Any``
+            Additional keyword arguments.
+
+        Returns
+        -------
+        ``Status``
+            The status object.
+            For this mock model, it will always be set to finished.
+            If ``value`` is not of type ``float``,
+            the status will set a ``ValueError`` exception.
+
+        """
         s = Status()
-        axis: Optional[str] = kwargs.get("axis", None)
-        if axis is None or axis not in self._model_info.axis:
-            s.set_exception(
-                ValueError("Incorrect axis specified (received {}).".format(axis))
-            )
-            return s
+        axis: Optional[str] = kwargs.get("prop", None)
+        if axis is not None:
+            axis = str(axis)
+            if axis not in self._model_info.axis:
+                s.set_exception(
+                    ValueError("Incorrect axis specified (received {}).".format(axis))
+                )
+                return s
+            else:
+                self.axis = axis
+                s.set_finished()
+                return s
         else:
             if not isinstance(value, (int, float)):
                 s.set_exception(ValueError("Value must be a number."))
                 return s
-        if axis.lower() == "z":
+        if self.axis.lower() == "z":
             assert isinstance(self._stage_ctrl, Stage)
             self._stage_ctrl.position = value
         else:
             assert isinstance(self._stage_ctrl, XYStage)
-            if axis.lower() == "x":
+            if self.axis.lower() == "x":
                 self._stage_ctrl.x = value
             else:
                 self._stage_ctrl.y = value
-
-        # set current active axis
-        self.axis = axis
         s.set_finished()
         return s
 

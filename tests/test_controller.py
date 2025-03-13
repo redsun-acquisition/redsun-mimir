@@ -34,10 +34,13 @@ def test_stage_controller(
         assert motor == "Mock motor"
         assert position == 100
 
-    def check_new_parameters(motor: str, name: str, axis: object) -> None:
+    def check_new_parameters(motor: str, success: dict[str, bool]) -> None:
+        name = list(success.keys())[0]
+        axis = success[name]
+
         assert motor == "Mock motor"
         assert name == "axis"
-        assert axis == "Y"
+        assert axis
 
     with qtbot.waitSignals([ctrl.sigNewPosition, ctrl.sigNewConfiguration]):
         ctrl._do_move(motors["Mock motor"], "X", 100)
@@ -46,7 +49,7 @@ def test_stage_controller(
         assert ctrl._motors["Mock motor"].locate() == Location(
             readback=100, setpoint=100
         )
-        ctrl.configure("Mock motor", "axis", "Y")
+        ctrl.configure("Mock motor", {"axis": "Y"})
 
     ctrl.sigNewConfiguration.disconnect(check_new_parameters)
     ctrl.sigNewPosition.disconnect(check_new_position)

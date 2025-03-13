@@ -10,9 +10,6 @@ from sunflare.virtual import Signal, VirtualBus
 from ..protocols import MotorProtocol
 
 if TYPE_CHECKING:
-    from functools import partial
-
-    from bluesky.utils import MsgGenerator
     from sunflare.model import ModelProtocol
 
     from redsun_mimir.controller import StageControllerInfo
@@ -50,11 +47,10 @@ class StageController(Loggable):
         - ``str``: motor name
         - ``str``: motor axis
         - ``float``: new position
-    sigNewConfiguration : ``Signal[str, str, object]``
+    sigNewConfiguration : ``Signal[str, dict[str, bool]]``
         Signal emitted when a configuration value is changed.
         - ``str``: motor name
-        - ``str``: configuration parameter name
-        - ``object``: new configuration value
+        - ``dict[str, bool]``: mapping of configuration parameters to success status
 
     Notes
     -----
@@ -79,7 +75,7 @@ class StageController(Loggable):
     """
 
     sigNewPosition = Signal(str, str, float)
-    sigNewConfiguration = Signal(str, str, object)
+    sigNewConfiguration = Signal(str, dict[str, bool])
 
     def __init__(
         self,
@@ -89,7 +85,6 @@ class StageController(Loggable):
     ) -> None:
         self._ctrl_info = ctrl_info
         self._virtual_bus = virtual_bus
-        self._plans: list[partial[MsgGenerator[Any]]] = []
         self._queue: Queue[Optional[tuple[str, str, float]]] = Queue()
 
         self._motors = {
@@ -110,26 +105,43 @@ class StageController(Loggable):
         """
         self._queue.put((motor, axis, position))
 
-    def configure(self, motor: str, config: str, value: Any) -> None:
+    def configure(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
         """Configure a motor.
 
-        Update the configuration value of a motor.
+        Update one or more configuration parameters of a motor.
+
+        Emits the ``sigNewConfiguration`` signal when the configuration
+        is completed, returning a mapping of configuration parameters
+        to success status.
 
         Parameters
         ----------
         motor : ``str``
             Motor name.
-        config : ``str``
-            Configuration parameter name.
-        value : ``Any``
-            New configuration value.
+        config : ``dict[str, Any]``
+            Mapping of configuration parameters to new values.
+
+        Returns
+        -------
+        ``dict[str, bool]``
+            Mapping of configuration parameters to success status.
 
         """
-        ret = self._update_axis(self._motors[motor], value)
-        if not ret:
-            return
-        else:
-            self.sigNewConfiguration.emit(motor, config, value)
+        success_map: dict[str, bool] = {}
+        for key, value in config.items():
+            self.debug(f"Configuring {key} of {motor} to {value}")
+            s = self._motors[motor].set(value, prop=key)
+            try:
+                s.wait(self._ctrl_info.timeout)
+            except Exception as e:
+                self.exception(f"Failed to configure {key} of {motor}: {e}")
+                s.set_exception(e)
+            finally:
+                if not s.success:
+                    self.error(f"Failed to configure {key} of {motor}: {s.exception()}")
+                success_map[key] = s.success
+        self.sigNewConfiguration.emit(motor, success_map)
+        return success_map
 
     def shutdown(self) -> None:
         """Shutdown the controller.
@@ -186,7 +198,7 @@ class StageController(Loggable):
 
         """
         if axis != motor.axis:
-            ret = self._update_axis(motor, axis)
+            ret = self.configure(motor.name, {"axis": axis})
             if not ret:
                 return
         s = motor.set(position)

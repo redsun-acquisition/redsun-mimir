@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from inspect import Parameter, Signature
 from typing import TYPE_CHECKING, Any, Sequence
 
 from qtpy import QtWidgets
@@ -14,15 +13,6 @@ from redsun_mimir.utils.qt import CheckableComboBox, InfoDialog
 if TYPE_CHECKING:
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
-
-PlanSignature = Signature(
-    parameters=[
-        Parameter("plan", Parameter.POSITIONAL_ONLY, annotation=str),
-        Parameter("devices", Parameter.POSITIONAL_ONLY, annotation=Sequence[str]),
-        Parameter("args", Parameter.VAR_POSITIONAL),
-        Parameter("kwargs", Parameter.VAR_KEYWORD),
-    ]
-)
 
 
 class AcquisitionWidget(BaseQtWidget):

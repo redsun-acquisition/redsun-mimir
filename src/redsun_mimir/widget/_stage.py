@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
@@ -9,8 +9,6 @@ from sunflare.virtual import Signal
 from redsun_mimir.model import StageModelInfo
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from bluesky.protocols import Descriptor, Reading
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
@@ -33,16 +31,15 @@ class StageWidget(BaseQtWidget):
         - ``str``: motor name
         - ``str``: motor axis
         - ``float``: stage new position
-    sigConfigChanged : ``Signal[str, str, object]``
+    sigConfigChanged : ``Signal[str, dict[str, Any]]``
         Signal emitted when a configuration value is changed.
         - ``str``: motor name
-        - ``str``: configuration name
-        - ``object``: new configuration value
+        - ``dict[str, Any]``: mapping of configuration parameters to new values
 
     """
 
     sigMotorMove = Signal(str, str, float)
-    sigConfigChanged = Signal(str, str, object)
+    sigConfigChanged = Signal(str, dict[str, Any])
 
     def __init__(
         self,
@@ -182,4 +179,4 @@ class StageWidget(BaseQtWidget):
 
         # only notify the virtual bus if the input is valid
         if state == QtGui.QRegularExpressionValidator.State.Acceptable:
-            self.sigConfigChanged.emit(name, axis, float(text))
+            self.sigConfigChanged.emit(name, {"axis": axis, "step": float(text)})
