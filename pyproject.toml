@@ -33,9 +33,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-openwfs = [
-    "openwfs>=1.0.0"
-]
 docs = [
     "sphinx",
     "pydata-sphinx-theme",
