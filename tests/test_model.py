@@ -12,32 +12,41 @@ from redsun_mimir.model import (
     MockStageModel,
     StageModelInfo,
 )
+from redsun_mimir.model.microscope import MicroscopeStageModel
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 
 def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in motor_config.items():
-        motor = MockStageModel(name, info)
+        motor = (
+            MockStageModel(name, info)
+            if info.plugin_id == "test"
+            else MicroscopeStageModel(name, info)
+        )
         assert isinstance(motor, MotorProtocol)
         assert motor.name == name
         assert motor.model_info.axis == info.axis
         assert motor.model_info.egu == info.egu
         assert motor.model_info.step_sizes == info.step_sizes
+        if isinstance(motor, MicroscopeStageModel):
+            assert motor.limits == info.limits
 
 
 def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) -> None:
     for name, info in motor_config.items():
         motor = MockStageModel(name, info)
         cfg = motor.read_configuration()
-        assert cfg == {
+        truth = {
             "vendor": {"value": "N/A", "timestamp": 0},
             "serial_number": {"value": "N/A", "timestamp": 0},
             "family": {"value": "N/A", "timestamp": 0},
             "axis": {"value": info.axis, "timestamp": 0},
             "step_sizes": {"value": info.step_sizes, "timestamp": 0},
             "egu": {"value": info.egu, "timestamp": 0},
+            "limits": {"value": info.limits, "timestamp": 0},
         }
+        assert cfg == truth
 
 
 def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:

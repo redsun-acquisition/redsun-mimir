@@ -9,40 +9,6 @@ if TYPE_CHECKING:
     from typing import Any, Iterable, Optional, Union
 
 
-@define(kw_only=True)
-class StageModelInfo(ModelInfo):
-    """Configuration of a stage model.
-
-    Parameters
-    ----------
-    egu : ``str``, optional
-        Engineering units. Default is "mm".
-    axis : ``list[str]``
-        Axis names. Reccomended to be capital single characters.
-        (i.e. ["X", "Y", "Z"])
-    step_sizes : ``dict[str, float]``
-        Step sizes for each axis.
-        (i.e. {"X": 0.1, "Y": 0.1, "Z": 0.1})
-
-    """
-
-    egu: str = field(
-        default="mm",
-        validator=validators.instance_of(str),
-        on_setattr=setters.frozen,
-        metadata={"description": "Engineering units."},
-    )
-    axis: list[str] = field(
-        validator=validators.instance_of(list),
-        on_setattr=setters.frozen,
-        metadata={"description": "Axis names."},
-    )
-    step_sizes: dict[str, float] = field(
-        validator=validators.instance_of(dict),
-        metadata={"description": "Step sizes for each axis."},
-    )
-
-
 def to_float_tuple(value: Optional[Iterable[float]]) -> tuple[float, ...]:
     """Convert a value to a tuple of floats.
 
@@ -66,6 +32,75 @@ def to_float_tuple(value: Optional[Iterable[float]]) -> tuple[float, ...]:
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise ValueError(f"Expected a list or tuple of length 2, got {value}")
     return tuple(float(v) for v in value)
+
+
+def convert_limits(
+    value: Optional[dict[str, list[float]]],
+) -> Optional[dict[str, tuple[float, ...]]]:
+    if value is None:
+        return None
+    return {
+        axis: tuple((float(val) for val in limits)) for axis, limits in value.items()
+    }
+
+
+@define(kw_only=True)
+class StageModelInfo(ModelInfo):
+    """Configuration of a stage model.
+
+    Parameters
+    ----------
+    egu : ``str``, optional
+        Engineering units. Default is "mm".
+    axis : ``list[str]``
+        Axis names. Reccomended to be capital single characters.
+        (i.e. ["X", "Y", "Z"])
+    step_sizes : ``dict[str, float]``
+        Step sizes for each axis.
+        (i.e. {"X": 0.1, "Y": 0.1, "Z": 0.1})
+    limits: ``dict[str, tuple[float, float]]``, optional
+        Limits for each axis.
+        (i.e. {"X": (0.0, 100.0), "Y": (0.0, 100.0), "Z": (0.0, 100.0)})
+        Default is ``None`` (no limits).
+
+    """
+
+    egu: str = field(
+        default="mm",
+        validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
+        metadata={"description": "Engineering units."},
+    )
+    axis: list[str] = field(
+        validator=validators.instance_of(list),
+        on_setattr=setters.frozen,
+        metadata={"description": "Axis names."},
+    )
+    step_sizes: dict[str, float] = field(
+        validator=validators.instance_of(dict),
+        metadata={"description": "Step sizes for each axis."},
+    )
+    limits: Optional[dict[str, tuple[float, float]]] = field(
+        default=None,
+        converter=convert_limits,
+        metadata={"description": "Limits for each axis."},
+    )
+
+    @limits.validator
+    def _check_limits(
+        self, _: str, value: Optional[dict[str, tuple[float, float]]]
+    ) -> None:
+        if value is None:
+            return
+        for axis, limits in value.items():
+            if len(limits) != 2:
+                raise AttributeError(
+                    f"Length of limits must be 2: {axis} has length {len(limits)}"
+                )
+            if limits[0] > limits[1]:
+                raise AttributeError(
+                    f"{axis} minimum limit is greater than the maximum limit: {limits}"
+                )
 
 
 @define(kw_only=True)

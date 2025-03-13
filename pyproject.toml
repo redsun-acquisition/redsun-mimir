@@ -33,6 +33,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+microscope = [
+    "microscope>=0.7.0"
+]
 docs = [
     "sphinx",
     "pydata-sphinx-theme",

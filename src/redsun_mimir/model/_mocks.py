@@ -91,6 +91,7 @@ class MockStageModel(MotorProtocol, Loggable):
         Accepted updatable properties:
 
         - ``axis``: motor axis.
+        - ``step_size``: step size for the motor current axis.
 
         i.e. `set(10)` will set the motor position to 10,
         `set("Y", prop="axis")` will update the axis to "Y".
@@ -122,6 +123,9 @@ class MockStageModel(MotorProtocol, Loggable):
             elif propr == "step_size" and isinstance(value, (int, float)):
                 self._step_sizes[self.axis] = value
                 s.set_finished()
+                return s
+            else:
+                s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
         else:
             if not isinstance(value, (int, float)):
