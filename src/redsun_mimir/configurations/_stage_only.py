@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 from psygnal.qt import start_emitting_from_queue
 from qtpy import QtWidgets
@@ -11,10 +11,11 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import StageController, StageControllerInfo
 from redsun_mimir.model import MockStageModel, StageModelInfo
+from redsun_mimir.model.openwfs import OWFSStage
 from redsun_mimir.widget import StageWidget, StageWidgetInfo
 
 
-def stage_widget() -> None:
+def stage_widget(use_openwfs: bool) -> None:
     """Run a local mock example.
 
     Launches a Qt ``StageWidget`` app
@@ -24,7 +25,13 @@ def stage_widget() -> None:
     logger.setLevel(logging.DEBUG)
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "mock_motor_configuration.yaml"
+    mock_config_path = (
+        "mock_motor_configuration.yaml"
+        if not use_openwfs
+        else "openwfs_configuration.yaml"
+    )
+
+    config_path = Path(__file__).parent / mock_config_path
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
     models_info: dict[str, StageModelInfo] = {
         name: StageModelInfo(**values) for name, values in config_dict["models"].items()
@@ -47,8 +54,10 @@ def stage_widget() -> None:
         widgets=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, MockStageModel] = {
+    mock_models: dict[str, Union[MockStageModel, OWFSStage]] = {
         name: MockStageModel(name, model_info)
+        if model_info.plugin_id == "test"
+        else OWFSStage(name, model_info)
         for name, model_info in models_info.items()
     }
 

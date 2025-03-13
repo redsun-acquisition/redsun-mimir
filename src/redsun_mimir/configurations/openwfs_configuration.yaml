@@ -1,0 +1,34 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  XYStage:
+    plugin_name: test
+    plugin_id: openwfs
+    axis:
+      - X
+      - Y
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+    egu: um
+  ZStage:
+    plugin_name: test
+    plugin_id: openwfs
+    axis:
+      - Z
+    step_sizes:
+      Z: 100.0
+    egu: um
+controllers:
+  StageController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+widgets:
+  StageWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center

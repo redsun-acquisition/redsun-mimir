@@ -56,7 +56,7 @@ class StageWidget(BaseQtWidget):
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
 
-        main_layout = QtWidgets.QHBoxLayout()
+        main_layout = QtWidgets.QVBoxLayout()
 
         self._motors_info: dict[str, StageModelInfo] = {
             name: model_info

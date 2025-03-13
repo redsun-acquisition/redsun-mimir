@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,9 @@ def light_widget() -> None:
     Launches a Qt ``LightWidget`` app
     with a mock device configuration.
     """
+    logger = logging.getLogger("redsun")
+    logger.setLevel(logging.DEBUG)
+
     app = QtWidgets.QApplication([])
 
     config_path = Path(__file__).parent / "mock_light_configuration.yaml"

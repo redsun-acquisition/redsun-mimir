@@ -1,0 +1,17 @@
+session: test
+frontend: pyqt
+engine: bluesky
+models:
+  Mock laser:
+    plugin_name: test
+    plugin_id: openwfs
+    egu: "mW"
+    intensity_range:
+      - 0
+      - 100
+    wavelength: 650
+  Mock LED:
+    plugin_name: test
+    plugin_id: openwfs
+    binary: true
+    wavelength: 300

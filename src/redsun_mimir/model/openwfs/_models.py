@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from astropy.units import Quantity
 from sunflare.engine import Status
+from sunflare.log import Loggable
 
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
@@ -10,7 +12,7 @@ from ._core import Factory, Stage, XYStage
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
-    from typing import Optional, Union
+    from typing import Union
 
     from bluesky.protocols import Descriptor, Location, Reading
 
@@ -61,7 +63,7 @@ class OWFSLight(LightProtocol):
         return None
 
 
-class OWFSStage(MotorProtocol):
+class OWFSStage(MotorProtocol, Loggable):
     def __init__(self, name: str, model_info: StageModelInfo) -> None:
         if len(model_info.axis) not in [1, 2]:
             raise ValueError("Only single and dual axis stages are supported.")
@@ -144,44 +146,54 @@ class OWFSStage(MotorProtocol):
 
         """
         s = Status()
-        axis: Optional[str] = kwargs.get("prop", None)
-        if axis is not None:
-            axis = str(axis)
-            if axis not in self._model_info.axis:
-                s.set_exception(
-                    ValueError("Incorrect axis specified (received {}).".format(axis))
-                )
+        propr = kwargs.get("prop", None)
+        if propr is not None:
+            self.info("Setting property %s to %s.", propr, value)
+            if propr == "axis" and isinstance(value, str):
+                self.axis = value
+                s.set_finished()
                 return s
-            else:
-                self.axis = axis
+            elif propr == "step_size" and isinstance(value, (int, float)):
+                if isinstance(self._stage_ctrl, Stage):
+                    self._stage_ctrl.step_size = Quantity(value, self._model_info.egu)
+                else:
+                    assert isinstance(self._stage_ctrl, XYStage)
+                    if self.axis.lower() == "x":
+                        self._stage_ctrl.step_size_x = Quantity(
+                            value, self._model_info.egu
+                        )
+                    else:
+                        self._stage_ctrl.step_size_y = Quantity(
+                            value, self._model_info.egu
+                        )
                 s.set_finished()
                 return s
         else:
             if not isinstance(value, (int, float)):
-                s.set_exception(ValueError("Value must be a number."))
+                s.set_exception(ValueError("Value must be a float or int."))
                 return s
         if self.axis.lower() == "z":
             assert isinstance(self._stage_ctrl, Stage)
-            self._stage_ctrl.position = value
+            self._stage_ctrl.position = Quantity(value, self._model_info.egu)
         else:
             assert isinstance(self._stage_ctrl, XYStage)
             if self.axis.lower() == "x":
-                self._stage_ctrl.x = value
+                self._stage_ctrl.x = Quantity(value, self._model_info.egu)
             else:
-                self._stage_ctrl.y = value
+                self._stage_ctrl.y = Quantity(value, self._model_info.egu)
         s.set_finished()
         return s
 
-    def locate(self) -> Location[Any]:
+    def locate(self) -> Location[float]:
         if isinstance(self._stage_ctrl, Stage):
             return {
-                "setpoint": self._stage_ctrl.position,
-                "readback": self._stage_ctrl.position,
+                "setpoint": self._stage_ctrl.position.value,
+                "readback": self._stage_ctrl.position.value,
             }
         else:
             setpoint = (
                 self._stage_ctrl.x if self.axis.lower() == "x" else self._stage_ctrl.y
-            )
+            ).value
             readback = setpoint
             return {"setpoint": setpoint, "readback": readback}
 

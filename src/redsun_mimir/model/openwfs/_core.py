@@ -86,6 +86,10 @@ class Stage(Actuator):  # type: ignore
         """The step size of the stage along the axis."""
         return self._step_size
 
+    @step_size.setter
+    def step_size(self, value: u.Quantity[u.um]) -> None:
+        self._step_size = value
+
     @property
     def position(self) -> u.Quantity[u.um]:
         """The current position of the stage along the axis."""

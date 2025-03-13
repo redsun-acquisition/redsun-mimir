@@ -1,34 +1,33 @@
 # ruff: noqa
 
-from typing import NamedTuple
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
+from typing import Any
 
 from .configurations import stage_widget, light_widget
 
 
-class Options(NamedTuple):
-    stage: bool
-    light: bool
+class Options(Namespace):
+    command: str = ""
+    openwfs: bool = False
 
 
 def main() -> None:
     """Main function to run the script."""
 
     parser = ArgumentParser(description="CLI for redsun-mimir examples")
-
-    # Create a mutually exclusive group
-    parser.add_argument(
-        "-s", "--stage", action="store_true", help="launch the StageWidget example"
+    subparsers = parser.add_subparsers(dest="command")
+    stage_parser = subparsers.add_parser(
+        "stage", help='Run the stage widget (type "stage --help" for more options)'
     )
-    parser.add_argument(
-        "-l", "--light", action="store_true", help="launch the LightWidget example"
+    stage_parser.add_argument(
+        "--openwfs", action="store_true", help="Use the OpenWFS stage model"
     )
+    subparsers.add_parser("light", help="Run the light widget")
 
-    args = Options(**vars(parser.parse_args()))
-
-    if args.stage:
-        stage_widget()
-    elif args.light:
+    options = parser.parse_args(namespace=Options())
+    if options.command == "stage":
+        stage_widget(options.openwfs)
+    elif options.command == "light":
         light_widget()
     else:
         parser.print_help()

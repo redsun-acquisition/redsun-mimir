@@ -66,6 +66,10 @@ class LightController(Loggable):
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
             self.exception(f"Failed toggle on {name}: {e}")
+        else:
+            self.debug(
+                f"Toggled source {name} {not self._lights[name].enabled} -> {self._lights[name].enabled}"
+            )
 
     def set(self, name: str, intensity: float) -> None:
         """Set the intensity of the light.
