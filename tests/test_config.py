@@ -34,7 +34,7 @@ def test_mock_light_model_info(config_path: Path) -> None:
 
     config = tuple(container)
 
-    laser, led = config
+    laser, led, microscope = config
 
     assert laser.intensity_range == (0.0, 100.0)
     assert laser.egu == "mW"
@@ -43,6 +43,10 @@ def test_mock_light_model_info(config_path: Path) -> None:
     assert led.intensity_range == (0.0, 0.0)
     assert led.egu == "mW"
     assert led.binary
+
+    assert microscope.intensity_range == (0.0, 100.0)
+    assert microscope.egu == "mW"
+    assert not microscope.binary
 
 
 def test_broken_light_model_info(config_path: Path) -> None:

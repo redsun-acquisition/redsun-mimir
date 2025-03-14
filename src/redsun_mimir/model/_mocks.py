@@ -32,9 +32,10 @@ class MockLightModel(LightProtocol):
             **kwargs are ignored in this implementation.
 
         """
-        if not isinstance(value, (int, float)):
-            raise ValueError("Value must be a number.")
         s = Status()
+        if not isinstance(value, (int, float)):
+            s.set_exception(ValueError("Value must be a number."))
+            return s
         self.intensity = float(value)
         s.set_finished()
         return s

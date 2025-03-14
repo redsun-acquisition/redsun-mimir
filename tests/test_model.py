@@ -12,7 +12,7 @@ from redsun_mimir.model import (
     MockStageModel,
     StageModelInfo,
 )
-from redsun_mimir.model.microscope import MicroscopeStageModel
+from redsun_mimir.model.microscope import SimulatedLightModel, SimulatedStageModel
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 
@@ -22,20 +22,24 @@ def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
         motor = (
             MockStageModel(name, info)
             if info.plugin_id == "test"
-            else MicroscopeStageModel(name, info)
+            else SimulatedStageModel(name, info)
         )
         assert isinstance(motor, MotorProtocol)
         assert motor.name == name
         assert motor.model_info.axis == info.axis
         assert motor.model_info.egu == info.egu
         assert motor.model_info.step_sizes == info.step_sizes
-        if isinstance(motor, MicroscopeStageModel):
+        if isinstance(motor, SimulatedStageModel):
             assert motor.limits == info.limits
 
 
 def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) -> None:
     for name, info in motor_config.items():
-        motor = MockStageModel(name, info)
+        motor = (
+            MockStageModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedStageModel(name, info)
+        )
         cfg = motor.read_configuration()
         truth = {
             "vendor": {"value": "N/A", "timestamp": 0},
@@ -58,7 +62,11 @@ def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
     returns the new position with the readback value set to the previous position.
     """
     for name, info in motor_config.items():
-        motor = MockStageModel(name, info)
+        motor = (
+            MockStageModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedStageModel(name, info)
+        )
         # attempting to move a motor along an axis
         # that does not exist should raise an error
 
@@ -97,7 +105,14 @@ def test_motor_plan_absolute(
             location = yield from bps.locate(m)  # type: ignore
             assert location == Location(setpoint=200.0, readback=200.0)
 
-    motors = tuple([MockStageModel(name, info) for name, info in motor_config.items()])
+    motors = tuple(
+        [
+            MockStageModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedStageModel(name, info)
+            for name, info in motor_config.items()
+        ]
+    )
     RE(moving_plan(motors, axis="X"))
 
 
@@ -121,23 +136,38 @@ def test_motor_plan_relative(
             location = yield from bps.locate(m)  # type: ignore
             assert location == Location(setpoint=300.0, readback=300.0)
 
-    motors = tuple([MockStageModel(name, info) for name, info in motor_config.items()])
+    motors = tuple(
+        [
+            MockStageModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedStageModel(name, info)
+            for name, info in motor_config.items()
+        ]
+    )
     RE(moving_plan(motors, axis="X"))
 
 
 def test_light_construction(light_config: dict[str, LightModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in light_config.items():
-        motor = MockLightModel(name, info)
-        assert isinstance(motor, LightProtocol)
-        assert motor.name == name
-        assert motor.model_info.intensity_range == info.intensity_range
-        assert motor.model_info.egu == info.egu
+        light = (
+            MockLightModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedLightModel(name, info)
+        )
+        assert isinstance(light, LightProtocol)
+        assert light.name == name
+        assert light.model_info.intensity_range == info.intensity_range
+        assert light.model_info.egu == info.egu
 
 
 def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) -> None:
     for name, info in light_config.items():
-        light = MockLightModel(name, info)
+        light = (
+            MockLightModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedLightModel(name, info)
+        )
         cfg = light.read_configuration()
         assert cfg == {
             "vendor": {"value": "N/A", "timestamp": 0},
@@ -153,7 +183,11 @@ def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) ->
 
 def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
     for name, info in light_config.items():
-        light = MockLightModel(name, info)
+        light = (
+            MockLightModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedLightModel(name, info)
+        )
         # attempting to move a motor along an axis
         # that does not exist should raise an error
 
@@ -164,8 +198,9 @@ def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
             "intensity": Reading(value=100.0, timestamp=0),
             "enabled": Reading(value=False, timestamp=0),
         }
+        s = light.set("test")
         with pytest.raises(ValueError):
-            light.set("test")
+            s.wait()
 
 
 def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> None:
@@ -177,5 +212,12 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
             reading = yield from bps.read(L)
             assert reading == Reading(value=100.0, timestamp=0)
 
-    lights = tuple([MockLightModel(name, info) for name, info in light_config.items()])
+    lights = tuple(
+        [
+            MockLightModel(name, info)
+            if info.plugin_id == "test"
+            else SimulatedLightModel(name, info)
+            for name, info in light_config.items()
+        ]
+    )
     RE(setting_plan(lights))

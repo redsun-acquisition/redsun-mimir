@@ -15,3 +15,8 @@ models:
     plugin_id: test
     binary: true
     wavelength: 300
+  Microscope light:
+    plugin_name: test
+    plugin_id: microscope
+    wavelength: 600
+    intensity_range: [0, 100]
