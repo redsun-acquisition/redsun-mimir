@@ -197,7 +197,7 @@ class DetectorProtocol(ModelProtocol, Protocol):
     enabled: bool
 
     @abstractmethod
-    def read(self) -> dict[str, Reading[Union[float, int]]]:
+    def read(self) -> dict[str, Reading[Any]]:
         """Take a reading from the detector.
 
         Example return value:
@@ -206,8 +206,8 @@ class DetectorProtocol(ModelProtocol, Protocol):
 
             # requires `time` module
             return {
-                "TIRF-channel": Reading(value=5, timestamp=time.time()),
-                "iSCAT-channel": Reading(value=16, timestamp=time.time()),
+                "data": Reading(value=5, timestamp=time.time()),
+                "other-data": Reading(value=16, timestamp=time.time()),
             }
 
         Returns
@@ -232,11 +232,9 @@ class DetectorProtocol(ModelProtocol, Protocol):
         .. code-block:: python
 
             return {
-                "TIRF-channel": Descriptor(
-                    source="MyDetectorClass", dtype="number", shape=[]
-                ),
+                "TIRF-channel": Descriptor(source="data", dtype="number", shape=[]),
                 "iSCAT-channel": Descriptor(
-                    source="MyDetectorClass", dtype="number", shape=[]
+                    source="other-data", dtype="number", shape=[]
                 ),
             }
         """
