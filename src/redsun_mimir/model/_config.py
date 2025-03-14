@@ -172,9 +172,7 @@ class DetectorModelInfo(ModelInfo):
     """Configuration of a detector model."""
 
     sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
-    pixel_size: tuple[float, float, float] = field(
-        converter=tuple, on_setattr=setters.frozen
-    )
+    pixel_size: tuple[float, ...] = field(converter=tuple, on_setattr=setters.frozen)
 
     @sensor_shape.validator
     def _validate_sensor_shape(
@@ -191,5 +189,5 @@ class DetectorModelInfo(ModelInfo):
     ) -> None:
         if not all(isinstance(val, float) for val in value):
             raise ValueError("All values in the tuple must be floats.")
-        if len(value) != 3:
-            raise ValueError("The tuple must contain exactly three values.")
+        if len(value) < 1 and len(value) > 3:
+            raise ValueError("The tuple must contain between 1 and 3 values.")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
@@ -306,15 +305,20 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         return descriptor
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        stamp = time.time()
-        reading = self.model_info.read_configuration(stamp)
+        reading = self.model_info.read_configuration()
         settings = self.get_all_settings()
         for name, setting in settings.items():
-            reading.update({name: {"value": setting, "timestamp": stamp}})
+            if name == "a_setting":
+                # pop this away
+                continue
+            if name == "roi":
+                # unpack the roi in a normal tuple
+                setting = tuple(s for s in setting)
+            reading.update({name: {"value": setting, "timestamp": 0}})
         reading.update(
             {
-                "exposure": {"value": self.get_exposure_time(), "timestamp": stamp},
-                "cycle_time": {"value": self.get_cycle_time(), "timestamp": stamp},
+                "exposure": {"value": self.get_exposure_time(), "timestamp": 0},
+                "cycle_time": {"value": self.get_cycle_time(), "timestamp": 0},
             }
         )
 

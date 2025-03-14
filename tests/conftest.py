@@ -6,7 +6,7 @@ import yaml
 from sunflare.engine import RunEngine
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import LightModelInfo, StageModelInfo
+from redsun_mimir.model import DetectorModelInfo, LightModelInfo, StageModelInfo
 
 
 @pytest.fixture
@@ -53,3 +53,18 @@ def light_config(config_path: Path) -> dict[str, LightModelInfo]:
             config = LightModelInfo(**values)
             lights[name] = config
     return lights
+
+
+@pytest.fixture
+def detector_config(config_path: Path) -> dict[str, DetectorModelInfo]:
+    """Return the detector configuration."""
+    detectors: dict[str, DetectorModelInfo] = {}
+
+    detector_config_path = str(config_path / "test_detector_config.yaml")
+
+    with open(detector_config_path, "r") as file:
+        config_dict: dict[str, Any] = yaml.safe_load(file)
+        for name, values in config_dict["models"].items():
+            config = DetectorModelInfo(**values)
+            detectors[name] = config
+    return detectors

@@ -7,13 +7,18 @@ from bluesky.utils import MsgGenerator
 from sunflare.engine import RunEngine
 
 from redsun_mimir.model import (
+    DetectorModelInfo,
     LightModelInfo,
     MockLightModel,
     MockStageModel,
     StageModelInfo,
 )
-from redsun_mimir.model.microscope import SimulatedLightModel, SimulatedStageModel
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.model.microscope import (
+    SimulatedCameraModel,
+    SimulatedLightModel,
+    SimulatedStageModel,
+)
+from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 
 def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
@@ -223,4 +228,35 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
     RE(setting_plan(lights))
 
 
-def test_detector_construction() -> None: ...
+def test_detector_construction(detector_config: dict[str, DetectorModelInfo]) -> None:
+    """Test the motor object construction."""
+    for name, info in detector_config.items():
+        det = SimulatedCameraModel(name, info)
+        assert isinstance(det, DetectorProtocol)
+        assert det.name == name
+        assert det.model_info.sensor_shape == info.sensor_shape
+        assert det.model_info.pixel_size == info.pixel_size
+
+
+def test_detector_configurable_protocol(
+    detector_config: dict[str, DetectorModelInfo],
+) -> None:
+    for name, info in detector_config.items():
+        det = SimulatedCameraModel(name, info)
+        cfg = det.read_configuration()
+        truth = {
+            "vendor": {"value": "N/A", "timestamp": 0},
+            "serial_number": {"value": "N/A", "timestamp": 0},
+            "family": {"value": "N/A", "timestamp": 0},
+            "sensor_shape": {"value": info.sensor_shape, "timestamp": 0},
+            "pixel_size": {"value": info.pixel_size, "timestamp": 0},
+            "roi": {"value": (0, 0, 1024, 1024), "timestamp": 0},
+            "image pattern": {"timestamp": 0, "value": 0},
+            "image data type": {"timestamp": 0, "value": 0},
+            "gain": {"timestamp": 0, "value": 0},
+            "exposure": {"timestamp": 0, "value": 0.1},
+            "display image number": {"timestamp": 0, "value": True},
+            "cycle_time": {"timestamp": 0, "value": 0.1},
+            "_error_percent": {"timestamp": 0, "value": 0.0},
+        }
+        assert cfg == truth
