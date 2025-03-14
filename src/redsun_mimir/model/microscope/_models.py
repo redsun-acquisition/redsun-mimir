@@ -230,6 +230,31 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
 
+    def set(self, value: Any, **kwargs: Any) -> Status:
+        """Set a configuration parameter.
+
+        Accepted keyword arguments:
+
+        - ``"exposure"``
+
+        i.e.
+
+        .. code-block:: python
+
+            status = camera.set(0.1, propr="exposure")
+        """
+        s = Status()
+        propr = kwargs.get("propr", None)
+        if propr not in ["exposure"]:
+            s.set_exception(ValueError(f"Invalid property: {propr}"))
+            return s
+        if not isinstance(value, (int, float)):
+            s.set_exception(ValueError("Value must be a float or int."))
+            return s
+        self.set_exposure_time(float(value))
+        s.set_finished()
+        return s
+
     def describe(self) -> dict[str, Descriptor]:
         return {
             self.name: {
@@ -255,14 +280,29 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
             name, content = setting
             descriptor.update(
                 {
-                    "source": name,
-                    "dtype": map_type_descriptor(content["type"]),
-                    "shape": len(content["values"])
-                    if content["values"] is not None
-                    else [],
+                    name: {
+                        "source": "settings",
+                        "dtype": map_type_descriptor(content["type"]),
+                        "shape": len(content["values"])
+                        if content["values"] is not None
+                        else [],
+                    }
                 }
             )
-
+        descriptor.update(
+            {
+                "exposure": {
+                    "source": "settings",
+                    "dtype": "number",
+                    "shape": [],
+                },
+                "cycle_time": {
+                    "source": "settings",
+                    "dtype": "number",
+                    "shape": [],
+                },
+            }
+        )
         return descriptor
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -271,6 +311,13 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         settings = self.get_all_settings()
         for name, setting in settings.items():
             reading.update({name: {"value": setting, "timestamp": stamp}})
+        reading.update(
+            {
+                "exposure": {"value": self.get_exposure_time(), "timestamp": stamp},
+                "cycle_time": {"value": self.get_cycle_time(), "timestamp": stamp},
+            }
+        )
+
         return reading
 
     def shutdown(self) -> None:

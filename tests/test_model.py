@@ -221,3 +221,6 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
         ]
     )
     RE(setting_plan(lights))
+
+
+def test_detector_construction() -> None: ...

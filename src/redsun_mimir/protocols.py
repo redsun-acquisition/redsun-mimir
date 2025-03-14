@@ -182,7 +182,7 @@ class LightProtocol(ModelProtocol, Settable):
 
 
 @runtime_checkable
-class DetectorProtocol(ModelProtocol, Protocol):
+class DetectorProtocol(ModelProtocol, Settable, Protocol):
     """Protocol for detector models.
 
     Attributes
