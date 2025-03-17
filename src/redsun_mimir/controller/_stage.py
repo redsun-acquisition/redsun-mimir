@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import TYPE_CHECKING
 
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
@@ -10,6 +10,8 @@ from sunflare.virtual import Signal, VirtualBus
 from ..protocols import MotorProtocol
 
 if TYPE_CHECKING:
+    from typing import Any, Mapping, Optional
+
     from sunflare.model import ModelProtocol
 
     from redsun_mimir.controller import StageControllerInfo

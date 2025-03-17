@@ -42,6 +42,12 @@ class LightControllerInfo(_CommonControllerInfo):
     ...
 
 
+class DetectorControllerInfo(_CommonControllerInfo):
+    """Configuration class for the detector controller."""
+
+    ...
+
+
 @define(kw_only=True)
 class AcquisitionControllerInfo(_CommonControllerInfo):
     """Configuration class for the acquisition controller.
