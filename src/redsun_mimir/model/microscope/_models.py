@@ -187,21 +187,6 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         return None
 
 
-def map_type_descriptor(t: str) -> str:
-    type_mapping = {
-        "int": "integer",
-        "float": "number",
-        "bool": "boolean",
-        "str": "string",
-        "enum": "array",
-        "tuple": "array",
-    }
-    result = type_mapping.get(t, "unknown")
-    if result == "unknown":
-        raise ValueError(f"Type {t} not recognized.")
-    return result
-
-
 class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
     def __init__(
         self,
@@ -225,6 +210,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         # self.future.add_done_callback(set_devices)
 
         SimulatedCamera.__init__(self, sensor_shape=model_info.sensor_shape)
+        self.set_setting("image pattern", "noise")
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
@@ -244,9 +230,24 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         """
         s = Status()
         propr = kwargs.get("propr", None)
-        if propr not in ["exposure"]:
-            s.set_exception(ValueError(f"Invalid property: {propr}"))
-            return s
+        if propr is not None:
+            if propr not in [
+                "exposure",
+                "image pattern",
+                "image data type",
+                "gain",
+                "display image number",
+            ]:
+                s.set_exception(ValueError(f"Invalid property: {propr}"))
+                return s
+            else:
+                if propr == "exposure":
+                    self.set_exposure_time(float(value))
+                else:
+                    self.set_setting(propr, value)
+                s.set_finished()
+                return s
+
         if not isinstance(value, (int, float)):
             s.set_exception(ValueError("Value must be a float or int."))
             return s
@@ -277,29 +278,60 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         settings = self.describe_settings()
         for setting in settings:
             name, content = setting
-            descriptor.update(
-                {
-                    name: {
-                        "source": "settings",
-                        "dtype": map_type_descriptor(content["type"]),
-                        "shape": len(content["values"])
-                        if content["values"] is not None
-                        else [],
+            if name in ["image pattern", "image data type"]:
+                descriptor.update(
+                    {
+                        name: {
+                            "source": "settings",
+                            "dtype": "string",
+                            "choices": [choice[1] for choice in content["values"]],
+                            "shape": len(content["values"]),
+                        }
                     }
-                }
-            )
+                )
+            if name == "display image number":
+                descriptor.update(
+                    {
+                        name: {
+                            "source": "settings",
+                            "dtype": "boolean",
+                            "choices": [True, False],
+                            "shape": [2],
+                        }
+                    }
+                )
+            if name == "gain":
+                descriptor.update(
+                    {
+                        name: {
+                            "source": "settings",
+                            "dtype": "number",
+                            "shape": [],
+                            "units": "dB",
+                            "limits": {
+                                "control": {
+                                    "low": content["values"][0],
+                                    "high": content["values"][1],
+                                }
+                            },
+                        }
+                    }
+                )
+
         descriptor.update(
             {
                 "exposure": {
-                    "source": "settings",
+                    "source": "timings",
                     "dtype": "number",
                     "shape": [],
-                },
-                "cycle_time": {
-                    "source": "settings",
-                    "dtype": "number",
-                    "shape": [],
-                },
+                    "units": "ms",
+                    "limits": {
+                        "control": {
+                            "low": 1,
+                            "high": 1000,
+                        }
+                    },
+                }
             }
         )
         return descriptor
@@ -308,17 +340,23 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         reading = self.model_info.read_configuration()
         settings = self.get_all_settings()
         for name, setting in settings.items():
-            if name == "a_setting":
-                # pop this away
-                continue
-            if name == "roi":
-                # unpack the roi in a normal tuple
-                setting = tuple(s for s in setting)
-            reading.update({name: {"value": setting, "timestamp": 0}})
+            if name in [
+                "image pattern",
+                "image data type",
+                "display image number",
+                "gain",
+            ]:
+                reading.update(
+                    {
+                        name: {
+                            "value": setting,
+                            "timestamp": 0,
+                        }
+                    }
+                )
         reading.update(
             {
                 "exposure": {"value": self.get_exposure_time(), "timestamp": 0},
-                "cycle_time": {"value": self.get_cycle_time(), "timestamp": 0},
             }
         )
 

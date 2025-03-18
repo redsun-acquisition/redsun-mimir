@@ -43,7 +43,9 @@ class DetectorController(Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect()
+        self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect(
+            self._provide_configuration
+        )
 
     def _provide_configuration(self) -> None:
         for name in self.detectors.keys():
