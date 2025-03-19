@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Optional
 
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
+
+from ._treeview import DescriptorModel
+
+__all__ = ["CheckableComboBox", "InfoDialog", "DescriptorModel"]
 
 if TYPE_CHECKING:
     from qtpy.QtGui import QStandardItemModel

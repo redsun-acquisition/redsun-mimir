@@ -1,0 +1,732 @@
+# mypy: disable-error-code="union-attr"
+from __future__ import annotations
+
+from enum import IntEnum
+from typing import TYPE_CHECKING
+
+from bluesky.protocols import Reading
+from qtpy.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt
+from sunflare.virtual import Signal
+
+if TYPE_CHECKING:
+    from typing import Any, Optional
+
+    from bluesky.protocols import Descriptor
+
+
+class Column(IntEnum):
+    """Enumeration of column indices in the tree model."""
+
+    DEVICE = 0
+    GROUP = 1
+    SETTING = 2
+    VALUE = 3
+
+
+class NodeType(IntEnum):
+    """Enumeration of node types in the tree model."""
+
+    ROOT = 0
+    DEVICE = 1
+    GROUP = 2
+    SETTING = 3
+
+
+#: Custom roles for internal use
+NodeTypeRole = Qt.ItemDataRole.UserRole + 1
+
+
+class TreeItem:
+    """Helper class to represent nodes in the tree.
+
+    Parameters
+    ----------
+    name : ``str | None``
+        Name of the item
+    parent : ``TreeItem | None``
+        Parent item
+    node_type : ``NodeType``
+        Type of node
+    data : ``dict | None``
+        Additional data for the item
+
+    """
+
+    def __init__(
+        self,
+        name: Optional[str],
+        parent: Optional[TreeItem],
+        node_type: NodeType,
+        data: Optional[Reading[Any]] = None,
+    ):
+        """Initialize a tree item.
+
+        Parameters
+        ----------
+        name : str or None
+            Name of the item
+        parent : TreeItem or None
+            Parent item
+        node_type : NodeType
+            Type of node
+        data : dict or None
+            Additional data for the item
+
+        """
+        self._name = name
+        self._parent = parent
+        self._children: list[TreeItem] = []
+        self._node_type = node_type
+        self._data = data
+
+    def appendChild(self, child: TreeItem) -> None:
+        """Add a child to this item.
+
+        Parameters
+        ----------
+        child : TreeItem
+            Child item to add
+
+        """
+        self._children.append(child)
+
+    def child(self, row: int) -> Optional[TreeItem]:
+        """Get the child at the specified row.
+
+        Parameters
+        ----------
+        row : ``int``
+            Row index
+
+        Returns
+        -------
+        ``TreeItem | None``
+            Child item at the specified row or None
+
+        """
+        if 0 <= row < len(self._children):
+            return self._children[row]
+        return None
+
+    def childCount(self) -> int:
+        """Get the number of children.
+
+        Returns
+        -------
+        ``int``
+            Number of children
+
+        """
+        return len(self._children)
+
+    def row(self) -> int:
+        """Get the row index of this item within its parent.
+
+        Returns
+        -------
+        ``int``
+            Row index
+
+        """
+        if self._parent:
+            return self._parent._children.index(self)
+        return 0
+
+    def parent(self) -> Optional[TreeItem]:
+        """Get the parent item.
+
+        Returns
+        -------
+        TreeItem or None
+            Parent item or None
+
+        """
+        return self._parent
+
+    @property
+    def name(self) -> str:
+        """Get the name of the item.
+
+        Returns
+        -------
+        str
+            Item name
+
+        """
+        return self._name if self._name is not None else ""
+
+    @property
+    def node_type(self) -> NodeType:
+        """Get the node type.
+
+        Returns
+        -------
+        NodeType
+            Node type
+
+        """
+        return self._node_type
+
+    @property
+    def data(self) -> Optional[Reading[Any]]:
+        """Get the additional data.
+
+        Returns
+        -------
+        dict or None
+            Additional data
+
+        """
+        return self._data
+
+
+class DescriptorModel(QAbstractItemModel):
+    """Tree model for displaying device settings in a hierarchical structure.
+
+    Parameters
+    ----------
+    parent : ``QObject``, optional
+        Parent object.
+
+
+    Attributes
+    ----------
+    sigStructureChanged : ``Signal``
+        Signal emitted when the model structure changes
+        (a new descriptor is added).
+
+    """
+
+    sigStructureChanged = Signal()
+
+    def __init__(self, parent: Optional[QObject] = None):
+        """Initialize the model with an empty structure.
+
+        Parameters
+        ----------
+        parent : object, optional
+            Parent object
+
+        """
+        super().__init__(parent)
+
+        self._descriptors: dict[str, dict[str, Descriptor]] = {}
+        self._readings: dict[str, dict[str, Reading[Any]]] = {}
+
+        # Build the initial empty tree structure
+        self._build_tree()
+
+    def _build_tree(self) -> None:
+        self._root_item = TreeItem(None, None, NodeType.ROOT)
+
+        # Add devices from existing metadata
+        for device_name, device_data in self._descriptors.items():
+            self._add_device_to_tree(device_name, device_data)
+
+    def _add_device_to_tree(
+        self, device_name: str, device_data: dict[str, dict[str, Any]]
+    ) -> TreeItem:
+        """Add a device to the tree structure.
+
+        Parameters
+        ----------
+        device_name : str
+            Name of the device
+        device_data : dict
+            Dictionary of device settings and their metadata
+
+        Returns
+        -------
+        TreeItem
+            The created device tree item
+
+        """
+        device_item = TreeItem(device_name, self._root_item, NodeType.DEVICE)
+        self._root_item.appendChild(device_item)
+
+        # Group settings by source
+        groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        for setting_name, setting_data in device_data.items():
+            group_name = setting_data.get("source", "unknown")
+            if group_name not in groups:
+                groups[group_name] = []
+            groups[group_name].append((setting_name, setting_data))
+
+        # Add groups and their settings
+        for group_name, settings in groups.items():
+            group_item = TreeItem(group_name, device_item, NodeType.GROUP)
+            device_item.appendChild(group_item)
+
+            for setting_name, setting_data in settings:
+                # TODO: fix this "type: ignore"
+                setting_item = TreeItem(
+                    setting_name,
+                    group_item,
+                    NodeType.SETTING,
+                    setting_data,  # type: ignore
+                )
+                group_item.appendChild(setting_item)
+
+        return device_item
+
+    def add_device(
+        self, device_name: str, device_data: dict[str, dict[str, Any]]
+    ) -> None:
+        """Add a new device to the model.
+
+        Parameters
+        ----------
+        device_name : str
+            Name of the device
+        device_data : dict
+            Dictionary of device settings and their metadata
+
+        """
+        self.beginResetModel()
+
+        # Add to metadata
+        self._descriptors[device_name] = device_data
+
+        # Add to tree
+        self._add_device_to_tree(device_name, device_data)
+
+        self.endResetModel()
+        self.sigStructureChanged.emit()
+
+    def update_structure(self, metadata: dict[str, dict[str, dict[str, Any]]]) -> None:
+        """Update the entire structure of the model.
+
+        Parameters
+        ----------
+        metadata : dict
+            Dictionary containing the new metadata structure
+
+        """
+        self.beginResetModel()
+
+        self._descriptors = metadata
+        self._build_tree()
+
+        self.endResetModel()
+        self.sigStructureChanged.emit()
+
+    def add_setting(
+        self, device_name: str, setting_name: str, setting_data: dict[str, Any]
+    ) -> None:
+        """Add a new setting to an existing device.
+
+        Parameters
+        ----------
+        device_name : str
+            Name of the device
+        setting_name : str
+            Name of the setting
+        setting_data : dict
+            Metadata for the setting
+
+        """
+        if device_name not in self._descriptors:
+            return
+
+        self.beginResetModel()
+
+        # Add to metadata
+        self._descriptors[device_name][setting_name] = setting_data
+
+        # Rebuild tree
+        self._build_tree()
+
+        self.endResetModel()
+        self.sigStructureChanged.emit()
+
+    def update_readings(self, values: dict[str, dict[str, Reading[Any]]]) -> None:
+        """Update the values in the model.
+
+        Parameters
+        ----------
+        values : dict
+            Dictionary containing the values to update
+
+        """
+        # Merge with existing values
+        for device_name, device_readings in values.items():
+            if device_name not in self._readings:
+                self._readings[device_name] = {}
+
+            for setting_name, setting_value in device_readings.items():
+                self._readings[device_name][setting_name] = setting_value["value"]
+
+        # Emit dataChanged for the entire model
+        self.dataChanged.emit(QModelIndex(), QModelIndex())
+
+    def update_setting_value(
+        self, device_name: str, setting_name: str, value_data: Reading[Any]
+    ) -> None:
+        """Update a specific setting value.
+
+        Parameters
+        ----------
+        device_name : str
+            Name of the device
+        setting_name : str
+            Name of the setting
+        value_data : dict
+            Value data to update
+
+        """
+        # Ensure structure exists
+        if device_name not in self._readings:
+            self._readings[device_name] = {}
+
+        self._readings[device_name][setting_name] = value_data["value"]
+
+        # Find the item in the tree to emit a specific dataChanged signal
+        device_item = self._find_device_item(device_name)
+        if device_item:
+            setting_item = self._find_setting_item(device_item, setting_name)
+            if setting_item:
+                row = setting_item.row()
+                parent_index = self.createIndex(
+                    setting_item.parent().row(), 0, setting_item.parent()
+                )
+                index = self.index(row, Column.VALUE, parent_index)
+                self.dataChanged.emit(index, index)
+
+    def _find_device_item(self, device_name: str) -> Optional[TreeItem]:
+        """Find a device item by name.
+
+        Parameters
+        ----------
+        device_name : str
+            Name of the device to find
+
+        Returns
+        -------
+        TreeItem or None
+            The device item if found, otherwise None
+
+        """
+        for i in range(self._root_item.childCount()):
+            child = self._root_item.child(i)
+            if child.name == device_name:
+                return child
+        return None
+
+    def _find_setting_item(
+        self, device_item: TreeItem, setting_name: str
+    ) -> Optional[TreeItem]:
+        """Find a setting item within a device by name.
+
+        Parameters
+        ----------
+        device_item : TreeItem
+            The device item to search in
+        setting_name : str
+            Name of the setting to find
+
+        Returns
+        -------
+        TreeItem | None
+            The setting item if found, otherwise None
+
+        """
+        # Check all groups
+        for group_idx in range(device_item.childCount()):
+            group_item = device_item.child(group_idx)
+            # Check all settings in this group
+            for setting_idx in range(group_item.childCount()):
+                setting_item = group_item.child(setting_idx)
+                if setting_item.name == setting_name:
+                    return setting_item
+        return None
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        """Return the number of rows under the given parent.
+
+        Parameters
+        ----------
+        parent : QModelIndex, optional
+            The parent index
+
+        Returns
+        -------
+        int
+            Number of rows
+
+        """
+        if parent.column() > 0:
+            return 0
+
+        if not parent.isValid():
+            parent_item = self._root_item
+        else:
+            parent_item = parent.internalPointer()
+
+        return parent_item.childCount()
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        """Return the number of columns in the model.
+
+        Parameters
+        ----------
+        parent : QModelIndex, optional
+            The parent index (not used).
+
+        Returns
+        -------
+        int
+            Number of columns
+
+        """
+        return len(Column)
+
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+        """Return the data stored under the given role for the item referenced by the index.
+
+        Parameters
+        ----------
+        index : QModelIndex
+            The index to query
+        role : int, optional
+            The role to query
+
+        Returns
+        -------
+        object
+            The requested data
+
+        """
+        if not index.isValid():
+            return None
+
+        item: TreeItem = index.internalPointer()
+        column = index.column()
+
+        if role == Qt.ItemDataRole.DisplayRole:
+            # Display data based on column and node type
+            node_type = item.node_type
+
+            if column == Column.DEVICE:
+                return item.name if node_type == NodeType.DEVICE else ""
+            elif column == Column.GROUP:
+                return item.name if node_type == NodeType.GROUP else ""
+            elif column == Column.SETTING:
+                return item.name if node_type == NodeType.SETTING else ""
+            elif column == Column.VALUE:
+                if node_type == NodeType.SETTING:
+                    device_name = item.parent().parent().name
+                    setting_name = item.name
+
+                    # Try to get the value from the values dictionary
+                    if (
+                        device_name in self._readings
+                        and setting_name in self._readings[device_name]
+                        and "value" in self._readings[device_name][setting_name]
+                    ):
+                        return str(self._readings[device_name][setting_name]["value"])
+                    return ""
+                return ""
+
+        elif role == NodeTypeRole:
+            return item.node_type
+
+        return None
+
+    def headerData(
+        self,
+        section: int,
+        orientation: Qt.Orientation,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> Any:
+        """Return the header data for the given role and section.
+
+        Parameters
+        ----------
+        section : int
+            Column or row number
+        orientation : Qt.Orientation
+            Header orientation
+        role : int, optional
+            Data role
+
+        Returns
+        -------
+        object
+            Header data
+
+        """
+        if (
+            orientation == Qt.Orientation.Horizontal
+            and role == Qt.ItemDataRole.DisplayRole
+        ):
+            headers = ["Device", "Group", "Setting", "Value"]
+            return headers[section]
+        return None
+
+    def index(
+        self, row: int, column: int, parent: QModelIndex = QModelIndex()
+    ) -> QModelIndex:
+        """Return the index of the item in the model specified by the given row, column and parent index.
+
+        Parameters
+        ----------
+        row : int
+            Row number
+        column : int
+            Column number
+        parent : QModelIndex, optional
+            Parent index
+
+        Returns
+        -------
+        QModelIndex
+            Model index for the specified item
+
+        """
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+
+        if not parent.isValid():
+            parent_item = self._root_item
+        else:
+            parent_item = parent.internalPointer()
+
+        child_item = parent_item.child(row)
+        if child_item:
+            return self.createIndex(row, column, child_item)
+        return QModelIndex()
+
+    def parent(self, child: QModelIndex) -> QModelIndex:  # type: ignore
+        """Return the parent of the model item with the given index.
+
+        Parameters
+        ----------
+        child : ``QModelIndex``
+            Index of the child item
+
+        Returns
+        -------
+        ``QModelIndex``
+            Index of the parent item
+
+        """
+        if not child.isValid():
+            return QModelIndex()
+
+        child_item: TreeItem = child.internalPointer()
+        parent_item = child_item.parent()
+
+        if parent_item == self._root_item or parent_item is None:
+            return QModelIndex()
+
+        # Create index for parent
+        return self.createIndex(parent_item.row(), 0, parent_item)
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        """Return the item flags for the given index.
+
+        Parameters
+        ----------
+        index : QModelIndex
+            Model index
+
+        Returns
+        -------
+        Qt.ItemFlag
+            Item flags
+
+        """
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+
+        # If it's a value cell, make it editable
+        item: TreeItem = index.internalPointer()
+        if index.column() == Column.VALUE and item.node_type == NodeType.SETTING:
+            flags |= Qt.ItemFlag.ItemIsEditable
+
+        return flags
+
+    def setData(
+        self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole
+    ) -> bool:
+        """Set the role data for the item at index to value.
+
+        Parameters
+        ----------
+        index : ``QModelIndex``
+            Model index.
+        value : ``Any``
+            New value.
+        role : ``int``, optional
+            Data role.
+            Default is ``Qt.ItemDataRole.EditRole``.
+
+        Returns
+        -------
+        bool
+            True if successful
+
+        """
+        if not index.isValid() or role != Qt.ItemDataRole.EditRole:
+            return False
+
+        item: TreeItem = index.internalPointer()
+
+        if index.column() == Column.VALUE and item.node_type == NodeType.SETTING:
+            device_name = item.parent().parent().name
+            setting_name = item.name
+
+            # Ensure the structure exists
+            if device_name not in self._readings:
+                self._readings[device_name] = {}
+            if setting_name not in self._readings[device_name]:
+                self._readings[device_name][setting_name] = Reading(
+                    value="N/A", timestamp=0
+                )
+
+            # Update the value
+            try:
+                # Try to convert to int if the dtype is integer
+                setting_data = item.data
+                if setting_data and setting_data.get("dtype") == "integer":
+                    self._readings[device_name][setting_name]["value"] = int(value)
+                else:
+                    self._readings[device_name][setting_name]["value"] = value
+
+                self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole])
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        return False
+
+    def get_devices(self) -> list[str]:
+        """Get a list of all device names in the model.
+
+        Returns
+        -------
+        ``list[str]``
+            list of device names
+
+        """
+        return list(self._descriptors.keys())
+
+    def get_settings(self, device_name: str) -> set[str]:
+        """Get a set of all setting names for a device.
+
+        Parameters
+        ----------
+        device_name : ``str``
+            Name of the device
+
+        Returns
+        -------
+        ``set[str]``
+            set of setting names
+
+        """
+        if device_name not in self._descriptors:
+            return set()
+        return set(self._descriptors[device_name].keys())
