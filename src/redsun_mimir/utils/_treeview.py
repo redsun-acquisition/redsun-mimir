@@ -1,17 +1,18 @@
 # mypy: disable-error-code="union-attr"
+"""Qt tree model for displaying device properties read from descriptor documents as a hierarchical structure."""
+
 from __future__ import annotations
 
 from enum import IntEnum
 from typing import TYPE_CHECKING
 
-from bluesky.protocols import Reading
 from qtpy.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt
 from sunflare.virtual import Signal
 
 if TYPE_CHECKING:
     from typing import Any, Optional
 
-    from bluesky.protocols import Descriptor
+    from bluesky.protocols import Descriptor, Reading
 
 
 class Column(IntEnum):
@@ -59,20 +60,6 @@ class TreeItem:
         node_type: NodeType,
         data: Optional[Reading[Any]] = None,
     ):
-        """Initialize a tree item.
-
-        Parameters
-        ----------
-        name : str or None
-            Name of the item
-        parent : TreeItem or None
-            Parent item
-        node_type : NodeType
-            Type of node
-        data : dict or None
-            Additional data for the item
-
-        """
         self._name = name
         self._parent = parent
         self._children: list[TreeItem] = []
@@ -84,7 +71,7 @@ class TreeItem:
 
         Parameters
         ----------
-        child : TreeItem
+        child : ``TreeItem``
             Child item to add
 
         """
@@ -137,46 +124,25 @@ class TreeItem:
 
         Returns
         -------
-        TreeItem or None
-            Parent item or None
+        ``TreeItem | None``
+            Parent item. None if it's the root item.
 
         """
         return self._parent
 
     @property
     def name(self) -> str:
-        """Get the name of the item.
-
-        Returns
-        -------
-        str
-            Item name
-
-        """
+        """The name of the item."""
         return self._name if self._name is not None else ""
 
     @property
     def node_type(self) -> NodeType:
-        """Get the node type.
-
-        Returns
-        -------
-        NodeType
-            Node type
-
-        """
+        """The node type."""
         return self._node_type
 
     @property
     def data(self) -> Optional[Reading[Any]]:
-        """Get the additional data.
-
-        Returns
-        -------
-        dict or None
-            Additional data
-
-        """
+        """The item data."""
         return self._data
 
 
@@ -682,9 +648,10 @@ class DescriptorModel(QAbstractItemModel):
             if device_name not in self._readings:
                 self._readings[device_name] = {}
             if setting_name not in self._readings[device_name]:
-                self._readings[device_name][setting_name] = Reading(
-                    value="N/A", timestamp=0
-                )
+                self._readings[device_name][setting_name] = {
+                    "value": None,
+                    "timestamp": 0,
+                }
 
             # Update the value
             try:
