@@ -25,6 +25,16 @@ class LightWidgetInfo(WidgetInfo):
 
 
 @define
+class DetectorWidgetInfo(WidgetInfo):
+    """Detector widget information.
+
+    Currently provides no additional information.
+    """
+
+    ...
+
+
+@define
 class AcquisitionWidgetInfo(WidgetInfo):
     """Acquisition widget information.
 

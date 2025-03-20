@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Optional
 from qtpy import QtWidgets
 from qtpy.QtCore import Qt
 
-from ._treeview import DescriptorModel
+from ._treeview import DescriptorTreeView
 
-__all__ = ["CheckableComboBox", "InfoDialog", "DescriptorModel"]
+__all__ = ["CheckableComboBox", "InfoDialog", "DescriptorTreeView"]
 
 if TYPE_CHECKING:
     from qtpy.QtGui import QStandardItemModel

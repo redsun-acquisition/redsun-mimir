@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Descriptor, Reading
 from bluesky.utils import maybe_await
 from sunflare.log import Loggable
 from sunflare.virtual import Signal
@@ -13,6 +12,7 @@ from ..protocols import DetectorProtocol
 if TYPE_CHECKING:
     from typing import Mapping
 
+    from bluesky.protocols import Descriptor, Reading
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus
 
@@ -20,9 +20,42 @@ if TYPE_CHECKING:
 
 
 class DetectorController(Loggable):
-    sigNewConfiguration = Signal(str, dict[str, bool])
-    sigDetectorConfigReading = Signal(str, dict[str, Reading[Any]])
-    sigDetectorConfigDescriptor = Signal(str, dict[str, Descriptor])
+    """Controller for detector configuration.
+
+    Parameters
+    ----------
+    ctrl_info : ``DetectorControllerInfo``
+        Controller information.
+    models : ``Mapping[str, ModelProtocol]``
+        Mapping of model names to model instances.
+    virtual_bus : ``VirtualBus``
+        Reference to the virtual bus.
+
+    Attributes
+    ----------
+    sigNewConfiguration : ``Signal[str, dict[str, object]]``
+        Signal for new configuration.
+
+        - ``str``: detector name.
+        - ``dict[str, object]``: new configuration.
+
+    sigDetectorConfigReading : ``Signal[str, dict[str, object]]``
+        Signal for detector configuration reading.
+
+        - ``str``: detector name.
+        - ``dict[str, object]``: configuration reading.
+
+    sigDetectorConfigDescriptor : ``Signal[str, dict[str, object]]``
+        Signal for detector configuration descriptor.
+
+        - ``str``: detector name.
+        - ``dict[str, object]``: configuration descriptor.
+
+    """
+
+    sigNewConfiguration = Signal(str, dict[str, object])
+    sigDetectorConfigReading = Signal(str, dict[str, object])
+    sigDetectorConfigDescriptor = Signal(str, dict[str, object])
 
     def __init__(
         self,
@@ -46,20 +79,20 @@ class DetectorController(Loggable):
         self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect(
             self._provide_configuration
         )
+        self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
 
     def _provide_configuration(self) -> None:
         for name in self.detectors.keys():
             self.describe_configuration(name)
             self.read_configuration(name)
 
-    def configure(self, detector: str, config: dict[str, Any]) -> dict[str, bool]:
+    def configure(self, detector: str, config: dict[str, Any]) -> None:
         """Configure a detector.
 
         Update one or more configuration parameters of a detector.
 
-        Emits the ``sigNewConfiguration`` signal when the configuration
-        is completed, returning a mapping of configuration parameters
-        to success status.
+        Emits ``sigNewConfiguration`` signal when successful,
+        with the detector name and the new configuration.
 
         Parameters
         ----------
@@ -68,13 +101,7 @@ class DetectorController(Loggable):
         config : ``dict[str, Any]``
             Mapping of configuration parameters to new values.
 
-        Returns
-        -------
-        ``dict[str, bool]``
-            Mapping of configuration parameters to success status.
-
         """
-        success_map: dict[str, bool] = {}
         for key, value in config.items():
             self.debug(f"Configuring {key} of {detector} to {value}")
             s = self.detectors[detector].set(value, prop=key)
@@ -88,9 +115,8 @@ class DetectorController(Loggable):
                     self.error(
                         f"Failed to configure {key} of {detector}: {s.exception()}"
                     )
-                success_map[key] = s.success
-        self.sigNewConfiguration.emit(detector, success_map)
-        return success_map
+                else:
+                    self.sigNewConfiguration.emit(detector, config)
 
     def read_configuration(self, detector: str) -> None:
         """Read the configuration of a detector.

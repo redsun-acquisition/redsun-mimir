@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from qtpy import QtWidgets
@@ -8,7 +7,7 @@ from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
 from redsun_mimir.model import DetectorModelInfo
-from redsun_mimir.utils.qt import DescriptorModel
+from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
     from typing import Any
@@ -17,17 +16,35 @@ if TYPE_CHECKING:
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
 
-DESCRIPTOR_MAP = {
-    "string": "str",
-    "number": "float",
-    "array": "list",
-    "boolean": "bool",
-    "integer": "int",
-}
-
 
 class DetectorWidget(BaseQtWidget):
+    """Widget for displaying and editing detector configuration.
+
+    Parameters
+    ----------
+    config : ``RedSunSessionInfo``
+        Reference to the session configuration.
+    virtual_bus : ``VirtualBus``
+        Reference to the virtual bus.
+    *args : Any
+        Positional arguments.
+    **kwargs : Any
+        Keyword arguments.
+
+    Attributes
+    ----------
+    sigConfigRequest : ``Signal``
+        Signal for requesting configuration.
+    sigPropertyChanged : ``Signal[str, dict[str, object]]``
+        Signal for property changed.
+
+        - ``str``: detector name.
+        - ``dict[str, object]``: key-value pair of property and value.
+
+    """
+
     sigConfigRequest = Signal()
+    sigPropertyChanged = Signal(str, dict[str, object])
 
     def __init__(
         self,
@@ -42,19 +59,12 @@ class DetectorWidget(BaseQtWidget):
             for name, model_info in self.config.models.items()
             if isinstance(model_info, DetectorModelInfo)
         }
-        self.tree_model = DescriptorModel()
-        self.tree_view = QtWidgets.QTreeView()
-        self.tree_view.setModel(self.tree_model)
-
-        qss_path = Path(__file__).parent / "_static" / "style.qss"
-        with qss_path.open() as f:
-            self.tree_view.setStyleSheet(f.read())
-        self.tree_view.setAlternatingRowColors(True)
-
-        self.tree_model.sigStructureChanged.connect(self._on_structure_changed)
+        self.tree = DescriptorTreeView(self)
+        self.tree.model().sigStructureChanged.connect(self._on_structure_changed)
+        self.tree.model().sigPropertyChanged.connect(self.sigPropertyChanged)
 
         layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.tree_view)
+        layout.addWidget(self.tree)
         self.setLayout(layout)
 
     def registration_phase(self) -> None:
@@ -71,14 +81,14 @@ class DetectorWidget(BaseQtWidget):
     def _update_parameter_layout(
         self, detector: str, descriptor: dict[str, Descriptor]
     ) -> None:
-        self.tree_model.add_device(detector, descriptor)
+        self.tree.model().add_device(detector, descriptor)
 
     def _update_parameter(
         self, detector: str, reading: dict[str, Reading[Any]]
     ) -> None:
-        self.tree_model.update_readings(detector, reading)
+        self.tree.model().update_readings(detector, reading)
 
     def _on_structure_changed(self) -> None:
-        self.tree_view.expandAll()
-        for i in range(self.tree_model.columnCount()):
-            self.tree_view.resizeColumnToContents(i)
+        self.tree.expandAll()
+        for i in range(self.tree.model().columnCount()):
+            self.tree.resizeColumnToContents(i)

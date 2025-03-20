@@ -61,7 +61,7 @@ class AcquisitionWidget(BaseQtWidget):
         self.info_btn.setToolTip("Information about the selected plan")
         self.info_btn.clicked.connect(self._on_info_clicked)
         pixmap = getattr(QtWidgets.QStyle, "SP_MessageBoxInformation")
-        icon = self.style().standardIcon(pixmap)  # type: ignore
+        icon = self.style().standardIcon(pixmap)
 
         self.detectors_combobox = CheckableComboBox("Detectors", self)
         self.info_btn.setIcon(icon)
