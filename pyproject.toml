@@ -29,7 +29,6 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "sunflare[pyqt]>=0.5.0",
-    "pyqtgraph",
     "superqt",
 ]
 
