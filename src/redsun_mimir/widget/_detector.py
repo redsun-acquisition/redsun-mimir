@@ -77,6 +77,7 @@ class DetectorWidget(BaseQtWidget):
         self.virtual_bus["DetectorController"]["sigDetectorConfigReading"].connect(
             self._update_parameter
         )
+        self.sigConfigRequest.emit()
 
     def _update_parameter_layout(
         self, detector: str, descriptor: dict[str, Descriptor]

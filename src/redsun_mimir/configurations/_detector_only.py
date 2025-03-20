@@ -9,15 +9,16 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import LightController, LightControllerInfo
-from redsun_mimir.model import LightModelInfo, MockLightModel
-from redsun_mimir.widget import LightWidget, LightWidgetInfo
+from redsun_mimir.controller import DetectorController, DetectorControllerInfo
+from redsun_mimir.model import DetectorModelInfo
+from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.widget import DetectorWidget, DetectorWidgetInfo
 
 
-def light_widget() -> None:
+def detector_widget() -> None:
     """Run a local mock example.
 
-    Launches a Qt ``LightWidget`` app
+    Launches a Qt ``DetectorWidget`` app
     with a mock device configuration.
     """
     logger = logging.getLogger("redsun")
@@ -25,17 +26,18 @@ def light_widget() -> None:
 
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "mock_light_configuration.yaml"
+    config_path = Path(__file__).parent / "mock_detector_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, LightModelInfo] = {
-        name: LightModelInfo(**values) for name, values in config_dict["models"].items()
+    models_info: dict[str, DetectorModelInfo] = {
+        name: DetectorModelInfo(**values)
+        for name, values in config_dict["models"].items()
     }
-    ctrl_info: dict[str, LightControllerInfo] = {
-        name: LightControllerInfo(**values)
+    ctrl_info: dict[str, DetectorControllerInfo] = {
+        name: DetectorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
-    widget_info: dict[str, LightWidgetInfo] = {
-        name: LightWidgetInfo(**values)
+    widget_info: dict[str, DetectorWidgetInfo] = {
+        name: DetectorWidgetInfo(**values)
         for name, values in config_dict["widgets"].items()
     }
 
@@ -48,15 +50,19 @@ def light_widget() -> None:
         widgets=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, MockLightModel] = {
-        name: MockLightModel(name, model_info)
+    mock_models: dict[str, SimulatedCameraModel] = {
+        name: SimulatedCameraModel(name, model_info)
         for name, model_info in models_info.items()
     }
 
     bus = VirtualBus()
 
-    ctrl = LightController(config.controllers["LightController"], mock_models, bus)  # type: ignore
-    widget = LightWidget(config, bus)
+    ctrl = DetectorController(
+        config.controllers["DetectorController"],
+        mock_models,
+        bus,  # type: ignore
+    )
+    widget = DetectorWidget(config, bus)
 
     ctrl.registration_phase()
     widget.registration_phase()
@@ -65,6 +71,7 @@ def light_widget() -> None:
 
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(widget)
+    window.setWindowTitle("Detector Widget")
     window.show()
 
     start_emitting_from_queue()

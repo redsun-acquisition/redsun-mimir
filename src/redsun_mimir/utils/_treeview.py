@@ -377,7 +377,8 @@ class DescriptorModel(QAbstractItemModel):
         groups: dict[str, list[tuple[str, Descriptor]]] = {}
         for setting_name, setting_data in device_descriptor.items():
             group_name = setting_data["source"]
-            groups.update({group_name: []})
+            if group_name not in groups:
+                groups.update({group_name: []})
             groups[group_name].append((setting_name, setting_data))
 
         # Add groups and their settings
@@ -892,7 +893,7 @@ class DescriptorTreeView(QTreeView):
         self._delegate = DescriptorDelegate(self)
         self.setModel(self._model)
         self.setItemDelegate(self._delegate)
-        qss_path = Path(__file__).parent / "_static" / "style.qss"
+        qss_path = Path(__file__).parent.parent / "_static" / "style.qss"
         with qss_path.open() as f:
             self.setStyleSheet(f.read())
         self.setAlternatingRowColors(True)

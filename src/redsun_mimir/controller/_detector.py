@@ -84,6 +84,7 @@ class DetectorController(Loggable):
     def _provide_configuration(self) -> None:
         for name in self.detectors.keys():
             self.describe_configuration(name)
+        for name in self.detectors.keys():
             self.read_configuration(name)
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:

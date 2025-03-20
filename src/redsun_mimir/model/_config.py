@@ -167,12 +167,29 @@ class LightModelInfo(ModelInfo):
             raise AttributeError(f"Min value is greater than max value: {value}")
 
 
+def convert_to_float(value: Iterable[float]) -> tuple[float, ...]:
+    """Convert a value to a tuple of floats.
+
+    Parameters
+    ----------
+    value : ``Any``
+        Value to convert.
+
+    Returns
+    -------
+    ``tuple[float, ...]``
+        Tuple of floats.
+
+    """
+    return tuple(float(val) for val in value)
+
+
 @define(kw_only=True)
 class DetectorModelInfo(ModelInfo):
     """Configuration of a detector model."""
 
     sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
-    pixel_size: tuple[float, ...] = field(converter=tuple)
+    pixel_size: tuple[float, ...] = field(converter=convert_to_float)
 
     @sensor_shape.validator
     def _validate_sensor_shape(
