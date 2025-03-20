@@ -654,10 +654,9 @@ class DescriptorModel(QAbstractItemModel):
                     if (
                         device_name in self._readings
                         and setting_name in self._readings[device_name]
-                        and "value" in self._readings[device_name][setting_name]
                     ):
                         # Get the value and format it with units if available
-                        value = self._readings[device_name][setting_name]["value"]
+                        value = self._readings[device_name][setting_name]
 
                         # Get units from the item's metadata
                         units = ""
