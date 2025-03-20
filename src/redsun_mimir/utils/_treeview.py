@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from enum import IntEnum
 from typing import TYPE_CHECKING
 
@@ -175,7 +176,7 @@ class DescriptorModel(QAbstractItemModel):
 
         """
         super().__init__(parent)
-
+        self._logger = logging.getLogger("redsun")
         self._descriptors: dict[str, dict[str, Descriptor]] = {}
         self._readings: dict[str, dict[str, Reading[Any]]] = {}
 
@@ -186,24 +187,24 @@ class DescriptorModel(QAbstractItemModel):
         self._root_item = TreeItem(None, None, NodeType.ROOT)
 
         # Add devices from existing metadata
-        for device_name, device_data in self._descriptors.items():
-            self._add_device_to_tree(device_name, device_data)
+        for device_name, device_descriptor in self._descriptors.items():
+            self._add_device_to_tree(device_name, device_descriptor)
 
     def _add_device_to_tree(
-        self, device_name: str, device_data: dict[str, dict[str, Any]]
+        self, device_name: str, device_descriptor: dict[str, Descriptor]
     ) -> TreeItem:
         """Add a device to the tree structure.
 
         Parameters
         ----------
-        device_name : str
+        device_name : ``str``
             Name of the device
-        device_data : dict
+        device_descriptor : ``dict[str, Descriptor]``
             Dictionary of device settings and their metadata
 
         Returns
         -------
-        TreeItem
+        ``TreeItem``
             The created device tree item
 
         """
@@ -211,11 +212,11 @@ class DescriptorModel(QAbstractItemModel):
         self._root_item.appendChild(device_item)
 
         # Group settings by source
-        groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-        for setting_name, setting_data in device_data.items():
-            group_name = setting_data.get("source", "unknown")
-            if group_name not in groups:
-                groups[group_name] = []
+        # {source: [(setting_name, setting_data), ...]}
+        groups: dict[str, list[tuple[str, Descriptor]]] = {}
+        for setting_name, setting_data in device_descriptor.items():
+            group_name = setting_data["source"]
+            groups.update({group_name: []})
             groups[group_name].append((setting_name, setting_data))
 
         # Add groups and their settings
@@ -224,42 +225,44 @@ class DescriptorModel(QAbstractItemModel):
             device_item.appendChild(group_item)
 
             for setting_name, setting_data in settings:
-                # TODO: fix this "type: ignore"
                 setting_item = TreeItem(
                     setting_name,
                     group_item,
                     NodeType.SETTING,
-                    setting_data,  # type: ignore
+                    setting_data,
                 )
                 group_item.appendChild(setting_item)
 
         return device_item
 
     def add_device(
-        self, device_name: str, device_data: dict[str, dict[str, Any]]
+        self, device_name: str, device_descriptor: dict[str, Descriptor]
     ) -> None:
         """Add a new device to the model.
 
         Parameters
         ----------
-        device_name : str
+        device_name : ``str``
             Name of the device
-        device_data : dict
+        device_descriptor : ``dict[str, Descriptor]``
             Dictionary of device settings and their metadata
 
         """
+        if device_name in self._descriptors.keys():
+            return
+
         self.beginResetModel()
 
         # Add to metadata
-        self._descriptors[device_name] = device_data
+        self._descriptors[device_name] = device_descriptor
 
         # Add to tree
-        self._add_device_to_tree(device_name, device_data)
+        self._add_device_to_tree(device_name, device_descriptor)
 
         self.endResetModel()
         self.sigStructureChanged.emit()
 
-    def update_structure(self, metadata: dict[str, dict[str, dict[str, Any]]]) -> None:
+    def update_structure(self, metadata: dict[str, dict[str, Descriptor]]) -> None:
         """Update the entire structure of the model.
 
         Parameters
@@ -277,18 +280,18 @@ class DescriptorModel(QAbstractItemModel):
         self.sigStructureChanged.emit()
 
     def add_setting(
-        self, device_name: str, setting_name: str, setting_data: dict[str, Any]
+        self, device_name: str, setting_name: str, setting_data: Descriptor
     ) -> None:
         """Add a new setting to an existing device.
 
         Parameters
         ----------
-        device_name : str
-            Name of the device
-        setting_name : str
-            Name of the setting
-        setting_data : dict
-            Metadata for the setting
+        device_name : ``str``
+            Name of the device.
+        setting_name : ``str``
+            Name of the setting.
+        setting_data : ``Descriptor``
+            Metadata for the setting.
 
         """
         if device_name not in self._descriptors:
@@ -305,22 +308,24 @@ class DescriptorModel(QAbstractItemModel):
         self.endResetModel()
         self.sigStructureChanged.emit()
 
-    def update_readings(self, values: dict[str, dict[str, Reading[Any]]]) -> None:
+    def update_readings(self, device: str, values: dict[str, Reading[Any]]) -> None:
         """Update the values in the model.
 
         Parameters
         ----------
-        values : dict
-            Dictionary containing the values to update
+        device: ``str``
+            Name of the device.
+
+        values : ``dict[str, Reading[Any]]``
+            Dictionary containing the values to update.
 
         """
         # Merge with existing values
-        for device_name, device_readings in values.items():
-            if device_name not in self._readings:
-                self._readings[device_name] = {}
+        if device not in self._readings:
+            self._readings[device] = {}
 
-            for setting_name, setting_value in device_readings.items():
-                self._readings[device_name][setting_name] = setting_value["value"]
+        for setting_name, setting_value in values.items():
+            self._readings[device][setting_name] = setting_value["value"]
 
         # Emit dataChanged for the entire model
         self.dataChanged.emit(QModelIndex(), QModelIndex())
@@ -363,12 +368,12 @@ class DescriptorModel(QAbstractItemModel):
 
         Parameters
         ----------
-        device_name : str
+        device_name : ``str``
             Name of the device to find
 
         Returns
         -------
-        TreeItem or None
+        ``TreeItem | None``
             The device item if found, otherwise None
 
         """
@@ -385,14 +390,14 @@ class DescriptorModel(QAbstractItemModel):
 
         Parameters
         ----------
-        device_item : TreeItem
+        device_item : ``TreeItem``
             The device item to search in
-        setting_name : str
+        setting_name : ``str``
             Name of the setting to find
 
         Returns
         -------
-        TreeItem | None
+        ``TreeItem | None``
             The setting item if found, otherwise None
 
         """
@@ -411,12 +416,12 @@ class DescriptorModel(QAbstractItemModel):
 
         Parameters
         ----------
-        parent : QModelIndex, optional
+        parent : ``QModelIndex``, optional
             The parent index
 
         Returns
         -------
-        int
+        ``int``
             Number of rows
 
         """
@@ -435,12 +440,12 @@ class DescriptorModel(QAbstractItemModel):
 
         Parameters
         ----------
-        parent : QModelIndex, optional
+        parent : ``QModelIndex``, optional
             The parent index (not used).
 
         Returns
         -------
-        int
+        ``int``
             Number of columns
 
         """
@@ -451,14 +456,14 @@ class DescriptorModel(QAbstractItemModel):
 
         Parameters
         ----------
-        index : QModelIndex
+        index : ``QModelIndex``
             The index to query
-        role : int, optional
+        role : ``int``, optional
             The role to query
 
         Returns
         -------
-        object
+        ``Any``
             The requested data
 
         """
@@ -615,7 +620,10 @@ class DescriptorModel(QAbstractItemModel):
         return flags
 
     def setData(
-        self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole
+        self,
+        index: QModelIndex,
+        value: Reading[Any],
+        role: int = Qt.ItemDataRole.EditRole,
     ) -> bool:
         """Set the role data for the item at index to value.
 
@@ -623,7 +631,7 @@ class DescriptorModel(QAbstractItemModel):
         ----------
         index : ``QModelIndex``
             Model index.
-        value : ``Any``
+        value : ``Reading[Any]``
             New value.
         role : ``int``, optional
             Data role.
@@ -631,7 +639,7 @@ class DescriptorModel(QAbstractItemModel):
 
         Returns
         -------
-        bool
+        ``bool``
             True if successful
 
         """
@@ -644,27 +652,32 @@ class DescriptorModel(QAbstractItemModel):
             device_name = item.parent().parent().name
             setting_name = item.name
 
+            # the assumption is that the settings is pre-emptively
+            # provided by a descriptor document; hence, if
+            # the device name or setting name is not found in the
+            # metadata, the setting is not valid and an error is raised
             # Ensure the structure exists
             if device_name not in self._readings:
-                self._readings[device_name] = {}
+                self._logger.error(f"Device '{device_name}' not found in the model.")
+                return False
             if setting_name not in self._readings[device_name]:
-                self._readings[device_name][setting_name] = {
-                    "value": None,
-                    "timestamp": 0,
-                }
+                self._logger.error(
+                    f"Setting '{setting_name}' not found in device '{device_name}'."
+                )
+                return False
 
             # Update the value
             try:
-                # Try to convert to int if the dtype is integer
                 setting_data = item.data
-                if setting_data and setting_data.get("dtype") == "integer":
-                    self._readings[device_name][setting_name]["value"] = int(value)
-                else:
-                    self._readings[device_name][setting_name]["value"] = value
-
+                if setting_data is None:
+                    raise ValueError(
+                        f"Setting '{setting_name}' not found in device '{device_name}'."
+                    )
+                self._readings[device_name][setting_name]["value"] = value["value"]
                 self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole])
                 return True
-            except (ValueError, TypeError):
+            except Exception as e:
+                self._logger.exception(f"Error updating setting value: {e}")
                 return False
 
         return False

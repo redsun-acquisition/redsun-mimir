@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from qtpy import QtWidgets
@@ -44,6 +45,10 @@ class DetectorWidget(BaseQtWidget):
         self.tree_model = DescriptorModel()
         self.tree_view = QtWidgets.QTreeView()
         self.tree_view.setModel(self.tree_model)
+
+        qss_path = Path(__file__).parent / "_static" / "style.qss"
+        with qss_path.open() as f:
+            self.tree_view.setStyleSheet(f.read())
         self.tree_view.setAlternatingRowColors(True)
 
         self.tree_model.sigStructureChanged.connect(self._on_structure_changed)
@@ -65,11 +70,13 @@ class DetectorWidget(BaseQtWidget):
 
     def _update_parameter_layout(
         self, detector: str, descriptor: dict[str, Descriptor]
-    ) -> None: ...
+    ) -> None:
+        self.tree_model.add_device(detector, descriptor)
 
     def _update_parameter(
         self, detector: str, reading: dict[str, Reading[Any]]
-    ) -> None: ...
+    ) -> None:
+        self.tree_model.update_readings(detector, reading)
 
     def _on_structure_changed(self) -> None:
         self.tree_view.expandAll()
