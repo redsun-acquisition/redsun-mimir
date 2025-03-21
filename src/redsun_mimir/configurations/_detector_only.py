@@ -58,9 +58,9 @@ def detector_widget() -> None:
     bus = VirtualBus()
 
     ctrl = DetectorController(
-        config.controllers["DetectorController"],
+        config.controllers["DetectorController"],  # type: ignore
         mock_models,
-        bus,  # type: ignore
+        bus,
     )
     widget = DetectorWidget(config, bus)
 
@@ -72,6 +72,7 @@ def detector_widget() -> None:
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(widget)
     window.setWindowTitle("Detector Widget")
+    window.resize(800, 600)
     window.show()
 
     start_emitting_from_queue()

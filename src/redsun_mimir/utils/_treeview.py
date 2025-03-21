@@ -26,6 +26,12 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
 
 
+class BooleanComboBox(QComboBox):
+    """ComboBox for boolean values."""
+
+    ...
+
+
 class Column(IntEnum):
     """Enumeration of column indices in the tree model."""
 
@@ -248,6 +254,11 @@ class DescriptorDelegate(QStyledItemDelegate):
                 return editor
             else:
                 return super().createEditor(parent, option, index)
+        if descriptor["dtype"] == "boolean":
+            editor = BooleanComboBox(parent)
+            editor.addItem("True", True)
+            editor.addItem("False", False)
+            return editor
 
         return super().createEditor(parent, option, index)
 
@@ -267,6 +278,11 @@ class DescriptorDelegate(QStyledItemDelegate):
             value = index.model().data(index, Qt.ItemDataRole.EditRole)
             if value:
                 editor.setValue(value)
+                return
+        elif isinstance(editor, BooleanComboBox):
+            value = index.model().data(index, Qt.ItemDataRole.EditRole)
+            if value is not None:
+                editor.setCurrentIndex(editor.findData(value))
                 return
         elif isinstance(editor, QComboBox):
             value = index.model().data(index, Qt.ItemDataRole.EditRole)
@@ -292,9 +308,10 @@ class DescriptorDelegate(QStyledItemDelegate):
             Model index
 
         """
-        # Handle spin boxes
         if isinstance(editor, (QSpinBox, QDoubleSpinBox)):
             model.setData(index, editor.value(), Qt.ItemDataRole.EditRole)
+        elif isinstance(editor, BooleanComboBox):
+            model.setData(index, editor.currentData(), Qt.ItemDataRole.EditRole)
         elif isinstance(editor, QComboBox):
             model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
         else:
@@ -792,7 +809,7 @@ class DescriptorModel(QAbstractItemModel):
     def setData(
         self,
         index: QModelIndex,
-        value: Reading[Any],
+        value: Any,
         role: int = Qt.ItemDataRole.EditRole,
     ) -> bool:
         """Set the role data for the item at index to value.
@@ -801,7 +818,7 @@ class DescriptorModel(QAbstractItemModel):
         ----------
         index : ``QModelIndex``
             Model index.
-        value : ``Reading[Any]``
+        value : ``Any``
             New value.
         role : ``int``, optional
             Data role.
@@ -838,16 +855,9 @@ class DescriptorModel(QAbstractItemModel):
 
             # Update the value
             try:
-                setting_data = item.data
-                if setting_data is None:
-                    raise ValueError(
-                        f"Setting '{setting_name}' not found in device '{device_name}'."
-                    )
-                self._readings[device_name][setting_name]["value"] = value["value"]
+                self._readings[device_name][setting_name] = value
                 self.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole])
-                self.sigPropertyChanged.emit(
-                    device_name, {setting_name: value["value"]}
-                )
+                self.sigPropertyChanged.emit(device_name, {setting_name: value})
                 return True
             except Exception as e:
                 self._logger.exception(f"Error updating setting value: {e}")

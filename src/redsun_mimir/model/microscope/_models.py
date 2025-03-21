@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
@@ -187,7 +188,7 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         return None
 
 
-class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
+class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[misc]
     def __init__(
         self,
         name: str,
@@ -214,6 +215,11 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
+        self._logger = logging.getLogger("redsun")
+        self._log_extras = {
+            "clsname": self.__class__.__name__,
+            "uid": self._name,
+        }
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a configuration parameter.
@@ -245,6 +251,16 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                     self.set_exposure_time(float(value))
                 else:
                     self.set_setting(propr, value)
+                    if self.get_setting(propr) != value:
+                        s.set_exception(
+                            ValueError(
+                                f"Failed to set {propr} to {value}. Current value: {self.get_setting(propr)}"
+                            )
+                        )
+                        return s
+                self._logger.debug(
+                    "Set %s to %s.", propr, value, extra=self._log_extras
+                )
                 s.set_finished()
                 return s
 
