@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, cast
 
 from qtpy import QtWidgets
 from sunflare.view.qt import BaseQtWidget
@@ -11,6 +11,8 @@ from redsun_mimir.model import DetectorModelInfo
 from redsun_mimir.utils.qt import CheckableComboBox, InfoDialog
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
 
@@ -35,7 +37,7 @@ class AcquisitionWidget(BaseQtWidget):
 
     """
 
-    sigLaunchPlanRequest = Signal(str, Sequence[str], dict[str, Any])
+    sigLaunchPlanRequest = Signal(str, object, object)
 
     def __init__(
         self,
@@ -61,7 +63,7 @@ class AcquisitionWidget(BaseQtWidget):
         self.info_btn.setToolTip("Information about the selected plan")
         self.info_btn.clicked.connect(self._on_info_clicked)
         pixmap = getattr(QtWidgets.QStyle, "SP_MessageBoxInformation")
-        icon = self.style().standardIcon(pixmap)
+        icon = cast("QtWidgets.QStyle", self.style()).standardIcon(pixmap)
 
         self.detectors_combobox = CheckableComboBox("Detectors", self)
         self.info_btn.setIcon(icon)

@@ -224,10 +224,6 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a configuration parameter.
 
-        Accepted keyword arguments:
-
-        - ``"exposure"``
-
         i.e.
 
         .. code-block:: python
@@ -290,7 +286,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        descriptor = self.model_info.describe_configuration()
+        descriptor = self.model_info.describe_configuration("model_info/readonly")
+        descriptor["pixel_size"]["source"] = "model_info"
         settings = self.describe_settings()
         for setting in settings:
             name, content = setting
@@ -300,7 +297,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
                         name: {
                             "source": "settings",
                             "dtype": "string",
-                            "choices": [choice[1] for choice in content["values"]],
+                            "choices": [choice[-1] for choice in content["values"]],
                             "shape": len(content["values"]),
                         }
                     }
