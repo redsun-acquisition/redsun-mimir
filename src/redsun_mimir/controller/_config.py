@@ -65,3 +65,9 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
     # private attribute;
     # initialized from the controller
     plans: dict[str, Optional[str]] = field(init=False)
+
+
+class ImageControllerInfo(_CommonControllerInfo):
+    """Configuration class for the image visualization controller."""
+
+    ...
