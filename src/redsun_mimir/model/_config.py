@@ -189,7 +189,9 @@ class DetectorModelInfo(ModelInfo):
     """Configuration of a detector model."""
 
     sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
-    pixel_size: tuple[float, ...] = field(converter=convert_to_float)
+    pixel_size: tuple[float, ...] = field(
+        converter=convert_to_float, on_setattr=setters.frozen
+    )
 
     @sensor_shape.validator
     def _validate_sensor_shape(

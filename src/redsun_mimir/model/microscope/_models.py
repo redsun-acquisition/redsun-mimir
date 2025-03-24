@@ -287,7 +287,6 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptor = self.model_info.describe_configuration("model_info/readonly")
-        descriptor["pixel_size"]["source"] = "model_info"
         settings = self.describe_settings()
         for setting in settings:
             name, content = setting
