@@ -89,6 +89,6 @@ class LightController(Loggable):
         try:
             s.wait(self._ctrl_info.timeout)
         except Exception:
-            self.exception(
+            self.logger.exception(
                 f"Timeout when setting {name} at {intensity} {light.model_info.egu}"
             )
