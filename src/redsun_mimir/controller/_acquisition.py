@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import inspect
-import logging
 from typing import TYPE_CHECKING
 
 import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
 from sunflare.engine import RunEngine
+from sunflare.log import Loggable
 from sunflare.virtual import Publisher
 
 from ..protocols import DetectorProtocol
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ._config import AcquisitionControllerInfo
 
 
-class AcquisitionController(Publisher):
+class AcquisitionController(Publisher, Loggable):
     def __init__(
         self,
         ctrl_info: AcquisitionControllerInfo,
@@ -42,21 +42,15 @@ class AcquisitionController(Publisher):
 
         self.fut: Future[Union[RunEngineResult, tuple[str, ...]]]
 
-        self._logger = logging.getLogger("redsun")
-        self._log_extras = {
-            "clsname": self.__class__.__name__,
-        }
-
         def _log_exception(
             fut: Future[Union[RunEngineResult, tuple[str, ...]]],
         ) -> None:
             try:
                 fut.result()
             except Exception as exc:
-                self._logger.error(
+                self.logger.error(
                     "An exception occurred during the plan: %s",
                     exc,
-                    extra=self._log_extras,
                 )
 
         def live_count(detectors: Sequence[str], toggle: bool) -> None:
@@ -72,9 +66,7 @@ class AcquisitionController(Publisher):
 
             """
             if toggle:
-                self._logger.debug(
-                    "Starting live acquisition: %s", detectors, extra=self._log_extras
-                )
+                self.logger.debug("Starting live acquisition: %s", detectors)
                 dets = [self.detectors[name] for name in detectors]
                 self.fut = self.engine(bp.count(dets, num=None))
                 self.fut.add_done_callback(_log_exception)
@@ -86,9 +78,7 @@ class AcquisitionController(Publisher):
                 except RunEngineInterrupted:
                     pass
                 finally:
-                    self._logger.debug(
-                        "Live ac quisition stopped.", extra=self._log_extras
-                    )
+                    self.logger.debug("Live acquisition stopped.")
 
         self.plans: dict[str, Callable[..., None]] = {"Live count": live_count}
 
@@ -107,6 +97,4 @@ class AcquisitionController(Publisher):
         try:
             self.plans[plan](devices, **kwargs)
         except TypeError as exc:
-            self._logger.error(
-                f'Incorrect parameters for "{plan}": {exc}', extra=self._log_extras
-            )
+            self.logger.error(f'Incorrect parameters for "{plan}": {exc}')

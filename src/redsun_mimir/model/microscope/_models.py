@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
@@ -62,7 +61,7 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
         self._name = name
         self._model_info = model_info
         if model_info.limits is None:
-            raise ValueError(f"{self.__clsname__} requires limits to be set.")
+            raise ValueError(f"{self.__class__.__name__} requires limits to be set.")
         limits = {
             axis: AxisLimits(
                 lower=limit[0],
@@ -130,11 +129,11 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
     def __init__(self, name: str, model_info: LightModelInfo) -> None:
         if model_info.binary:
             raise AttributeError(
-                f"{self.__clsname__} does not support binary light sources."
+                f"{self.__class__.__name__} does not support binary light sources."
             )
         if model_info.intensity_range == (0, 0):
             raise AttributeError(
-                f"{self.__clsname__} requires intensity range to be set."
+                f"{self.__class__.__name__} requires intensity range to be set."
             )
         self._name = name
         self._model_info = model_info
@@ -158,8 +157,8 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         s = Status()
         propr = kwargs.get("prop", None)
         if propr is not None:
-            err_msg = f"{self.__clsname__} does not support property setting."
-            self.error(err_msg)
+            err_msg = f"{self.__class__.__name__} does not support property setting."
+            self.logger.error(err_msg)
             s.set_exception(RuntimeError(err_msg))
             return s
         else:
@@ -188,7 +187,7 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         return None
 
 
-class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[misc]
+class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
     def __init__(
         self,
         name: str,
@@ -215,11 +214,6 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
-        self._logger = logging.getLogger("redsun")
-        self._log_extras = {
-            "clsname": self.__class__.__name__,
-            "uid": self._name,
-        }
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a configuration parameter.
@@ -254,9 +248,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera):  # type: ignore[m
                             )
                         )
                         return s
-                self._logger.debug(
-                    "Set %s to %s.", propr, value, extra=self._log_extras
-                )
+                self.logger.debug("Set %s to %s.", propr, value)
                 s.set_finished()
                 return s
 

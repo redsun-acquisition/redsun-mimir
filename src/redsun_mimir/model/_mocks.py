@@ -116,7 +116,7 @@ class MockStageModel(MotorProtocol, Loggable):
         s = Status()
         propr = kwargs.get("prop", None)
         if propr is not None:
-            self.info("Setting property %s to %s.", propr, value)
+            self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):
                 self.axis = value
                 s.set_finished()

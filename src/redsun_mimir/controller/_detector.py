@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Any
 
 from bluesky.utils import maybe_await
+from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
 from ..protocols import DetectorProtocol
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ._config import DetectorControllerInfo
 
 
-class DetectorController:
+class DetectorController(Loggable):
     """Controller for detector configuration.
 
     Parameters
@@ -72,11 +72,6 @@ class DetectorController:
             if isinstance(model, DetectorProtocol)
         }
 
-        self._logger = logging.getLogger("redsun")
-        self._log_extras = {
-            "clsname": self.__class__.__name__,
-        }
-
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
@@ -109,17 +104,14 @@ class DetectorController:
 
         """
         for key, value in config.items():
-            self._logger.debug(
-                f"Configuring '{key}' of {detector} to {value}", extra=self._log_extras
-            )
+            self.logger.debug(f"Configuring '{key}' of {detector} to {value}")
             s = self.detectors[detector].set(value, propr=key)
             try:
                 s.wait(self.ctrl_info.timeout)
             finally:
                 if not s.success:
-                    self._logger.error(
-                        f"Failed to configure '{key}' of {detector}: {s.exception()}",
-                        extra=self._log_extras,
+                    self.logger.error(
+                        f"Failed to configure '{key}' of {detector}: {s.exception()}"
                     )
                 else:
                     self.sigNewConfiguration.emit(detector, config)

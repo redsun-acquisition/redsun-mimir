@@ -98,7 +98,7 @@ class StageController(Loggable):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self.info("Stage controller initialized")
+        self.logger.info("Stage controller initialized")
 
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
@@ -131,16 +131,18 @@ class StageController(Loggable):
         """
         success_map: dict[str, bool] = {}
         for key, value in config.items():
-            self.debug(f"Configuring {key} of {motor} to {value}")
+            self.logger.debug(f"Configuring {key} of {motor} to {value}")
             s = self._motors[motor].set(value, prop=key)
             try:
                 s.wait(self._ctrl_info.timeout)
             except Exception as e:
-                self.exception(f"Failed to configure {key} of {motor}: {e}")
+                self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
                 s.set_exception(e)
             finally:
                 if not s.success:
-                    self.error(f"Failed to configure {key} of {motor}: {s.exception()}")
+                    self.logger.error(
+                        f"Failed to configure {key} of {motor}: {s.exception()}"
+                    )
                 success_map[key] = s.success
         self.sigNewConfiguration.emit(motor, success_map)
         return success_map
@@ -169,7 +171,7 @@ class StageController(Loggable):
             task = self._queue.get()
             if task is not None:
                 motor, axis, position = task
-                self.debug(f"Moving {motor} to {position} on {axis}")
+                self.logger.debug(f"Moving {motor} to {position} on {axis}")
                 self._do_move(self._motors[motor], axis, position)
                 self._queue.task_done()
             else:
@@ -207,7 +209,7 @@ class StageController(Loggable):
         try:
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
-            self.exception(f"Failed to move {motor.name} to {position}: {e}")
+            self.logger.exception(f"Failed to move {motor.name} to {position}: {e}")
         else:
             self.sigNewPosition.emit(motor.name, axis, position)
 
@@ -232,7 +234,7 @@ class StageController(Loggable):
         try:
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
-            self.exception(f"Failed set axis on {motor.name}: {e}")
+            self.logger.exception(f"Failed set axis on {motor.name}: {e}")
             s.set_exception(e)
         finally:
             return s.success

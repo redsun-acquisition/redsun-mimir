@@ -52,7 +52,7 @@ class LightController(Loggable):
         """Connect the controller."""
         self._virtual_bus["LightWidget"]["sigToggleLightRequest"].connect(self.trigger)
         self._virtual_bus["LightWidget"]["sigIntensityRequest"].connect(self.set)
-        self.debug("Connected to LightWidget")
+        self.logger.debug("Connected to LightWidget")
 
     def trigger(self, name: str) -> None:
         """Toggle the light.
@@ -67,9 +67,9 @@ class LightController(Loggable):
         try:
             s.wait(self._ctrl_info.timeout)
         except Exception as e:
-            self.exception(f"Failed toggle on {name}: {e}")
+            self.logger.error(f"Failed toggle on {name}: {e}")
         else:
-            self.debug(
+            self.logger.debug(
                 f"Toggled source {name} {not self._lights[name].enabled} -> {self._lights[name].enabled}"
             )
 

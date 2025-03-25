@@ -108,5 +108,5 @@ class LightWidget(BaseQtWidget, Loggable):
 
     def _on_slider_changed(self, value: float, name: str) -> None:
         """Change the intensity of the light source."""
-        self.debug(f"Change intensity of light source {name} to {value:.2f}")
+        self.logger.debug(f"Change intensity of light source {name} to {value:.2f}")
         self.sigIntensityRequest.emit(name, value)
