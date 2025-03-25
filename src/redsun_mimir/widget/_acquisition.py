@@ -34,10 +34,13 @@ class AcquisitionWidget(BaseQtWidget):
         - ``str``: The plan name.
         - ``Sequence[str]``: Sequence of device names involved in the plan.
         - ``dict[str, Any]``: Additional plan-specific keyword arguments.
+    sigRequestPlansManifest : ``Signal``
+        Signal to request the available plans from the underlying controller.
 
     """
 
     sigLaunchPlanRequest = Signal(str, object, object)
+    sigRequestPlansManifest = Signal()
 
     def __init__(
         self,
@@ -55,7 +58,7 @@ class AcquisitionWidget(BaseQtWidget):
         }
         ctrl_info = config.controllers["AcquisitionController"]
         assert isinstance(ctrl_info, AcquisitionControllerInfo)
-        self.plans = ctrl_info.plans
+        self.plans: dict[str, str] = {}
 
         self.plans_combobox = QtWidgets.QComboBox(self)
         self.plans_combobox.addItems(self.plans.keys())
@@ -84,7 +87,11 @@ class AcquisitionWidget(BaseQtWidget):
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None: ...
+    def connection_phase(self) -> None:
+        self.virtual_bus["AcquisitionController"]["sigPlansManifest"].connect(
+            self._on_plans_manifest
+        )
+        self.sigRequestPlansManifest.emit()
 
     def _on_action_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
@@ -94,6 +101,8 @@ class AcquisitionWidget(BaseQtWidget):
             self.action_btn.setText("Stop")
         else:
             self.action_btn.setText("Start")
+
+    def _on_plans_manifest(self, plans: dict[str, str]) -> None: ...
 
     def _on_info_clicked(self) -> None:
         info = self.plans[self.plans_combobox.currentText()]

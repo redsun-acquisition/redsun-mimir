@@ -7,7 +7,7 @@ import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
-from sunflare.virtual import Publisher
+from sunflare.virtual import Publisher, Signal
 
 from ..protocols import DetectorProtocol
 
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 
 class AcquisitionController(Publisher, Loggable):
+    sigPlansManifest = Signal(object)
+
     def __init__(
         self,
         ctrl_info: AcquisitionControllerInfo,
@@ -82,14 +84,22 @@ class AcquisitionController(Publisher, Loggable):
 
         self.plans: dict[str, Callable[..., None]] = {"Live count": live_count}
 
-        self.ctrl_info.plans = {
-            plan: inspect.getdoc(func) for plan, func in self.plans.items()
-        }
-
     def connection_phase(self) -> None:
         self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self._run_plan
         )
+        self.virtual_bus["AcquisitionWidget"]["sigRequestPlansManifest"].connect(
+            self._send_plans_manifest
+        )
+
+    def _send_plans_manifest(self) -> None:
+        manifest: dict[str, str] = {
+            name: docstr
+            if (docstr := inspect.getdoc(plan))
+            else "No information available"
+            for name, plan in self.plans.items()
+        }
+        self.sigPlansManifest.emit(manifest)
 
     def _run_plan(
         self, plan: str, devices: Sequence[str], kwargs: dict[str, Any]
