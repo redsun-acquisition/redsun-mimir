@@ -110,27 +110,22 @@ class InfoDialog(QtWidgets.QDialog):
     ) -> None:
         super().__init__(parent)
 
-        # Set dialog properties
         self.setWindowTitle(title)
         self.resize(500, 300)
 
-        # Create layout
         layout = QtWidgets.QVBoxLayout(self)
 
-        # Create text edit widget
         self.text_edit = QtWidgets.QTextEdit()
-        self.text_edit.setReadOnly(True)  # Make it read-only
+        self.text_edit.setReadOnly(True)
         if text is None:
             text = "No information available."
         self.text_edit.setText(text)
         layout.addWidget(self.text_edit)
 
-        # Create OK button
         self.ok_button = QtWidgets.QPushButton("OK")
         self.ok_button.setDefault(True)
         self.ok_button.clicked.connect(self.accept)
 
-        # Add button to a horizontal layout for better positioning
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addStretch()
         button_layout.addWidget(self.ok_button)
