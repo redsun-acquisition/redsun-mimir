@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, get_type_hints
 
 import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
@@ -9,7 +9,7 @@ from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.virtual import Publisher, Signal
 
-from ..protocols import DetectorProtocol
+from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from sunflare.engine import RunEngineResult
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus
+
+    from redsun_mimir.protocols import PlanManifest
 
     from ._config import AcquisitionControllerInfo
 
@@ -55,7 +57,12 @@ class AcquisitionController(Publisher, Loggable):
                     exc,
                 )
 
-        def live_count(detectors: Sequence[str], toggle: bool) -> None:
+        def live_count(
+            detectors: Annotated[
+                Sequence[str], {"default": list(self.detectors.keys())}
+            ],
+            toggle: bool,
+        ) -> None:
             """Toggle a live acquisition.
 
             Parameters
@@ -93,12 +100,15 @@ class AcquisitionController(Publisher, Loggable):
         )
 
     def _send_plans_manifest(self) -> None:
-        manifest: dict[str, str] = {
-            name: docstr
-            if (docstr := inspect.getdoc(plan))
-            else "No information available"
-            for name, plan in self.plans.items()
-        }
+        for name, plan in self.plans.items():
+            docstr = inspect.getdoc(plan)
+            annotations = get_type_hints(plan, include_extras=True)
+            manifest: dict[str, PlanManifest] = {
+                name: {
+                    "docstring": docstr or "No docstring available",
+                    "annotations": annotations,
+                }
+            }
         self.sigPlansManifest.emit(manifest)
 
     def _run_plan(

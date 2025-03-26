@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 from sunflare.model import ModelProtocol
-from typing_extensions import Protocol, runtime_checkable
+from typing_extensions import Protocol, TypedDict, runtime_checkable
 
 if TYPE_CHECKING:
     from typing import Any, Union
@@ -19,6 +19,21 @@ __all__ = [
     "MotorProtocol",
     "DetectorProtocol",
 ]
+
+
+class PlanManifest(TypedDict):
+    """Manifest of plan metadata.
+
+    Parameters
+    ----------
+    docstring: ``str``
+        Plan docstring. Accessible via ``inspect.getdoc(plan_func)``.
+    annotations: ``dict[str, Any]``
+        Plan type annotations. Accessible via ``inspect.get_annotations(plan_func)``.
+    """
+
+    docstring: str
+    annotations: dict[str, Any]
 
 
 @runtime_checkable

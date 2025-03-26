@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from qtpy import QtWidgets
-from qtpy.QtCore import Qt
+from qtpy import QtGui, QtWidgets
+from qtpy.QtCore import QEvent, Qt
+from qtpy.QtGui import QStandardItemModel
 
 from ._treeview import DescriptorTreeView
 
-__all__ = ["CheckableComboBox", "InfoDialog", "DescriptorTreeView"]
-
 if TYPE_CHECKING:
-    from qtpy.QtGui import QStandardItemModel
+    from typing import Iterable, Optional
+
+__all__ = ["CheckableComboBox", "InfoDialog", "DescriptorTreeView"]
 
 
 class CheckableComboBox(QtWidgets.QComboBox):
@@ -28,13 +29,24 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
     """
 
-    def __init__(self, title: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super(CheckableComboBox, self).__init__(parent)
-        self._model: QStandardItemModel = self.model()  # type: ignore
-        assert self._model is not None
-        self._addTitleItem(title)
+        self._model = QStandardItemModel(0, 1)
+        self._model.dataChanged.connect(lambda: self.repaint())
+        self.setModel(self._model)
 
-    def addCheckableItem(self, item: str) -> None:
+    def model(self) -> QStandardItemModel:
+        """Get the combobox model.
+
+        Returns
+        -------
+        ``QStandardItemModel``
+            The combobox model.
+
+        """
+        return self._model
+
+    def addItem(self, item: Optional[str]) -> None:  # type: ignore[override]
         """Add a checkable item to the combobox.
 
         Parameters
@@ -44,18 +56,21 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
         """
         super().addItem(item)
-        item_obj = self._model.item(self.count() - 1, 0)
+        item_obj = self._model.item(self.count(), 0)
         assert item_obj is not None
         item_obj.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
         item_obj.setCheckState(Qt.CheckState.Unchecked)
 
-    def _addTitleItem(self, item: str) -> None:
-        super().addItem(item)
-        # should be the first index in the combobox and not checkable or selectable
-        item_obj = self._model.item(0, 0)
-        assert item_obj is not None
-        item_obj.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        item_obj.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+    def addItems(self, items: Iterable[Optional[str]]) -> None:
+        """Add multiple checkable items to the combobox.
+
+        Parameters
+        ----------
+        items : ``Iterable[str]``
+            The items to add.
+        """
+        for item in items:
+            self.addItem(item)
 
     def itemChecked(self, index: int) -> bool:
         """Check if an item is checked.
@@ -85,6 +100,27 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
         """
         return [self.itemText(i) for i in range(self.count()) if self.itemChecked(i)]
+
+    def paintEvent(self, event: Optional[QEvent]) -> None:
+        """Repaint the combobox.
+
+        Parameters
+        ----------
+        event : ``QEvent``, optional
+            The event to handle (unused).
+
+        """
+        num_checked = len(self.checkedItems())
+        item_alias = "item" if num_checked == 1 else "items"
+
+        opt = QtWidgets.QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        opt.currentText = f"{num_checked} {item_alias} selected"
+
+        painter = QtWidgets.QStylePainter(self)
+        painter.setPen(self.palette().color(QtGui.QPalette.ColorRole.Text))
+        painter.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ComboBox, opt)
+        painter.drawControl(QtWidgets.QStyle.ControlElement.CE_ComboBoxLabel, opt)
 
 
 class InfoDialog(QtWidgets.QDialog):

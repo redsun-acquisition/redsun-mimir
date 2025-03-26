@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Iterable, Sequence, cast, get_origin
 
 from qtpy import QtWidgets
 from sunflare.view.qt import BaseQtWidget
@@ -11,6 +11,7 @@ from redsun_mimir.model import DetectorModelInfo
 from redsun_mimir.utils.qt import CheckableComboBox, InfoDialog
 
 if TYPE_CHECKING:
+    import inspect
     from typing import Any
 
     from sunflare.config import RedSunSessionInfo
@@ -58,20 +59,22 @@ class AcquisitionWidget(BaseQtWidget):
         }
         ctrl_info = config.controllers["AcquisitionController"]
         assert isinstance(ctrl_info, AcquisitionControllerInfo)
-        self.plans: dict[str, str] = {}
+        self.plans_info: dict[str, str] = {}
+
+        self.plans_groupboxes: dict[str, QtWidgets.QGroupBox] = {}
 
         self.plans_combobox = QtWidgets.QComboBox(self)
-        self.plans_combobox.addItems(self.plans.keys())
+        self.plans_combobox.setToolTip("Select a plan to run")
         self.info_btn = QtWidgets.QPushButton(self)
         self.info_btn.setToolTip("Information about the selected plan")
         self.info_btn.clicked.connect(self._on_info_clicked)
         pixmap = getattr(QtWidgets.QStyle, "SP_MessageBoxInformation")
         icon = cast("QtWidgets.QStyle", self.style()).standardIcon(pixmap)
 
-        self.detectors_combobox = CheckableComboBox("Detectors", self)
+        self.detectors_combobox = CheckableComboBox(self)
         self.info_btn.setIcon(icon)
         for name in detectors:
-            self.detectors_combobox.addCheckableItem(name)
+            self.detectors_combobox.addItem(name)
 
         self.action_btn = QtWidgets.QPushButton("Start", self)
         self.action_btn.setCheckable(True)
@@ -102,8 +105,15 @@ class AcquisitionWidget(BaseQtWidget):
         else:
             self.action_btn.setText("Start")
 
-    def _on_plans_manifest(self, plans: dict[str, str]) -> None: ...
+    def _on_plans_manifest(self, manifests: dict[str, dict[str, Any]]) -> None:
+        for name, manifest in manifests.items():
+            self.plans_info[name] = manifest["docstring"]
+            signature: inspect.Signature = manifest["signature"]
+            self.plans_groupboxes[name] = QtWidgets.QGroupBox(self)
+            for pid, pvalue in signature.parameters.items():
+                if get_origin(pvalue.annotation) in (Sequence, Iterable):
+                    ...
 
     def _on_info_clicked(self) -> None:
-        info = self.plans[self.plans_combobox.currentText()]
+        info = self.plans_info[self.plans_combobox.currentText()]
         InfoDialog.show_dialog("Plan information", info, parent=self)
