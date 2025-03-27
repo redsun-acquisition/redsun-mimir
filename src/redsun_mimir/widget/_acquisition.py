@@ -8,14 +8,37 @@ from sunflare.virtual import Signal
 
 from redsun_mimir.controller import AcquisitionControllerInfo
 from redsun_mimir.model import DetectorModelInfo
-from redsun_mimir.utils.qt import CheckableComboBox, InfoDialog
+from redsun_mimir.utils.qt import CheckableComboBox, ConfigurationGroupBox, InfoDialog
 
 if TYPE_CHECKING:
-    import inspect
     from typing import Any
 
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
+
+    from redsun_mimir.protocols import PlanManifest
+
+
+# TODO: these functions
+# could be replaced by
+# magicgui (and they should)
+def create_combobox(
+    parent: QtWidgets.QWidget,
+    layout: QtWidgets.QFormLayout,
+    name: str,
+    default: list[str],
+) -> None:
+    cbox = CheckableComboBox(parent)
+    cbox.addItems(default)
+    layout.addRow(name, cbox)
+
+
+def create_checkbox(
+    parent: QtWidgets.QWidget, layout: QtWidgets.QFormLayout, name: str, default: bool
+) -> None:
+    widget = QtWidgets.QCheckBox(parent)
+    widget.setChecked(default)
+    layout.addRow(name, widget)
 
 
 class AcquisitionWidget(BaseQtWidget):
@@ -33,14 +56,13 @@ class AcquisitionWidget(BaseQtWidget):
     sigLaunchPlanRequest : ``Signal[str, Sequence[str], dict[str, Any]]``
         Signal to launch a plan.
         - ``str``: The plan name.
-        - ``Sequence[str]``: Sequence of device names involved in the plan.
         - ``dict[str, Any]``: Additional plan-specific keyword arguments.
     sigRequestPlansManifest : ``Signal``
         Signal to request the available plans from the underlying controller.
 
     """
 
-    sigLaunchPlanRequest = Signal(str, object, object)
+    sigLaunchPlanRequest = Signal(str, object)
     sigRequestPlansManifest = Signal()
 
     def __init__(
@@ -61,7 +83,8 @@ class AcquisitionWidget(BaseQtWidget):
         assert isinstance(ctrl_info, AcquisitionControllerInfo)
         self.plans_info: dict[str, str] = {}
 
-        self.plans_groupboxes: dict[str, QtWidgets.QGroupBox] = {}
+        self.plans_groupboxes: dict[str, ConfigurationGroupBox] = {}
+        self.run_buttons: dict[str, QtWidgets.QPushButton] = {}
 
         self.plans_combobox = QtWidgets.QComboBox(self)
         self.plans_combobox.setToolTip("Select a plan to run")
@@ -98,21 +121,42 @@ class AcquisitionWidget(BaseQtWidget):
 
     def _on_action_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
-        detectors = self.detectors_combobox.checkedItems()
-        self.sigLaunchPlanRequest.emit(plan, detectors, {"toggle": toggled})
+        configuration = self.plans_groupboxes[plan].configuration()
+        configuration.update({"toggle": toggled})
+        self.plans_combobox.setEnabled(not toggled)
+        self.plans_groupboxes[plan].setEnabled(not toggled)
         if toggled:
             self.action_btn.setText("Stop")
         else:
             self.action_btn.setText("Start")
+        self.sigLaunchPlanRequest.emit(plan, configuration)
 
-    def _on_plans_manifest(self, manifests: dict[str, dict[str, Any]]) -> None:
+    def _on_plans_manifest(self, manifests: dict[str, PlanManifest]) -> None:
         for name, manifest in manifests.items():
             self.plans_info[name] = manifest["docstring"]
-            signature: inspect.Signature = manifest["signature"]
-            self.plans_groupboxes[name] = QtWidgets.QGroupBox(self)
-            for pid, pvalue in signature.parameters.items():
-                if get_origin(pvalue.annotation) in (Sequence, Iterable):
-                    ...
+            self.plans_groupboxes[name] = ConfigurationGroupBox(self)
+            layout = QtWidgets.QFormLayout(self.plans_groupboxes[name])
+            annotations = manifest["annotations"]
+            for key, value in annotations.items():
+                if key == "toggle":
+                    # skip the toggle argument;
+                    # let the user use the button
+                    continue
+                if get_origin(value) in (Sequence, Iterable):
+                    create_combobox(
+                        self, layout, key, getattr(value, "__metadata__", [])
+                    )
+                elif get_origin(value) is bool:
+                    create_checkbox(self, layout, key, False)
+
+            self.run_buttons[name] = QtWidgets.QPushButton(
+                "Start", self.plans_groupboxes[name]
+            )
+            self.run_buttons[name].setCheckable(True)
+            self.run_buttons[name].toggled.connect(self._on_action_toggled)
+
+            layout.addRow(self.run_buttons[name])
+            self.plans_groupboxes[name].setLayout(layout)
 
     def _on_info_clicked(self) -> None:
         info = self.plans_info[self.plans_combobox.currentText()]

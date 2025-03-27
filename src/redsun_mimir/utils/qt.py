@@ -1,3 +1,4 @@
+# mypy: disable-error-code="union-attr"
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,7 +10,7 @@ from qtpy.QtGui import QStandardItemModel
 from ._treeview import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from typing import Iterable, Optional
+    from typing import Any, Iterable, Optional
 
 __all__ = ["CheckableComboBox", "InfoDialog", "DescriptorTreeView"]
 
@@ -121,6 +122,47 @@ class CheckableComboBox(QtWidgets.QComboBox):
         painter.setPen(self.palette().color(QtGui.QPalette.ColorRole.Text))
         painter.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ComboBox, opt)
         painter.drawControl(QtWidgets.QStyle.ControlElement.CE_ComboBoxLabel, opt)
+
+
+class ConfigurationGroupBox(QtWidgets.QGroupBox):
+    _layout: QtWidgets.QFormLayout
+
+    def layout(self) -> QtWidgets.QFormLayout:
+        return self._layout
+
+    def configuration(self) -> dict[str, Any]:
+        """Return the current configuration content of the group box.
+
+        Returns
+        -------
+        ``dict[str, Any]``
+            The configuration content.
+
+        """
+        configs: dict[str, Any] = {}
+        for i in range(self.layout().rowCount()):
+            label = (
+                self.layout()
+                .itemAt(i, QtWidgets.QFormLayout.ItemRole.LabelRole)
+                .widget()
+            )
+            value = (
+                self.layout()
+                .itemAt(i, QtWidgets.QFormLayout.ItemRole.FieldRole)
+                .widget()
+            )
+            assert isinstance(label, QtWidgets.QLabel)
+            key = label.text()
+            if isinstance(value, QtWidgets.QCheckBox):
+                value = value.isChecked()
+            elif isinstance(value, CheckableComboBox):
+                value = value.checkedItems()
+            elif isinstance(value, QtWidgets.QLineEdit):
+                value = value.text()
+            else:
+                raise NotImplementedError("Unsupported widget type")
+            configs.update({key: value})
+        return configs
 
 
 class InfoDialog(QtWidgets.QDialog):

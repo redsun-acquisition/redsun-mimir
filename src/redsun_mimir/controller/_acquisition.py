@@ -58,9 +58,7 @@ class AcquisitionController(Publisher, Loggable):
                 )
 
         def live_count(
-            detectors: Annotated[
-                Sequence[str], {"default": list(self.detectors.keys())}
-            ],
+            detectors: Annotated[Sequence[str], list(self.detectors.keys())],
             toggle: bool,
         ) -> None:
             """Toggle a live acquisition.
