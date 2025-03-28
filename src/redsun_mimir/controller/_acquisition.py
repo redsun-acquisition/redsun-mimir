@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 class AcquisitionController(Publisher, Loggable):
     sigPlansManifest = Signal(object)
+    sigPlanDone = Signal()
 
     def __init__(
         self,
@@ -57,6 +58,17 @@ class AcquisitionController(Publisher, Loggable):
                     exc,
                 )
 
+        def _plan_done(
+            fut: Future[Union[RunEngineResult, tuple[str, ...]]],
+        ) -> None:
+            try:
+                fut.result()
+            except Exception:
+                # exception handled by _log_exception
+                pass
+            finally:
+                self.sigPlanDone.emit()
+
         def live_count(
             detectors: Annotated[Sequence[str], list(self.detectors.keys())],
             toggle: bool,
@@ -67,7 +79,6 @@ class AcquisitionController(Publisher, Loggable):
             ----------
             detectors : ``Sequence[str]``
                 The detectors to use in the live acquisition.
-                Selected from the Acquisition widget combobox.
             toggle : ``bool``
                 Toggle the live acquisition on or off.
 
@@ -87,7 +98,29 @@ class AcquisitionController(Publisher, Loggable):
                 finally:
                     self.logger.debug("Live acquisition stopped.")
 
-        self.plans: dict[str, Callable[..., None]] = {"Live count": live_count}
+        def snapshot(
+            detectors: Annotated[Sequence[str], list(self.detectors.keys())],
+            frames: int,
+        ) -> None:
+            """Take one (or more) snapshots from each detector.
+
+            Parameters
+            ----------
+            detectors: ``Sequence[str]``
+                The detectors to take a snapshot from.
+            frames: ``int``
+                The number of snapshots to take for each detector.
+            """
+            self.logger.debug("Taking snapshots: %s", detectors)
+            dets = [self.detectors[name] for name in detectors]
+            self.fut = self.engine(bp.count(dets, num=frames))
+            self.fut.add_done_callback(_log_exception)
+            self.fut.add_done_callback(_plan_done)
+
+        self.plans: dict[str, Callable[..., None]] = {
+            "Live count": live_count,
+            "Snapshot": snapshot,
+        }
 
     def connection_phase(self) -> None:
         self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
@@ -109,10 +142,8 @@ class AcquisitionController(Publisher, Loggable):
             }
         self.sigPlansManifest.emit(manifest)
 
-    def _run_plan(
-        self, plan: str, devices: Sequence[str], kwargs: dict[str, Any]
-    ) -> None:
+    def _run_plan(self, plan: str, kwargs: dict[str, Any]) -> None:
         try:
-            self.plans[plan](devices, **kwargs)
+            self.plans[plan](**kwargs)
         except TypeError as exc:
             self.logger.error(f'Incorrect parameters for "{plan}": {exc}')

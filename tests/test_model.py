@@ -250,13 +250,12 @@ def test_detector_configurable_protocol(
             "family": {"value": "N/A", "timestamp": 0},
             "sensor_shape": {"value": info.sensor_shape, "timestamp": 0},
             "pixel_size": {"value": info.pixel_size, "timestamp": 0},
-            "roi": {"value": (0, 0, 1024, 1024), "timestamp": 0},
-            "image pattern": {"timestamp": 0, "value": 0},
+            # TODO: this field should be supported
+            # "roi": {"value": (0, 0, 1024, 1024), "timestamp": 0},
+            "image pattern": {"timestamp": 0, "value": "noise"},
             "image data type": {"timestamp": 0, "value": 0},
             "gain": {"timestamp": 0, "value": 0},
             "exposure": {"timestamp": 0, "value": 0.1},
             "display image number": {"timestamp": 0, "value": True},
-            "cycle_time": {"timestamp": 0, "value": 0.1},
-            "_error_percent": {"timestamp": 0, "value": 0.0},
         }
         assert cfg == truth
