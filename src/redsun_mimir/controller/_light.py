@@ -7,7 +7,7 @@ from sunflare.log import Loggable
 from ..protocols import LightProtocol
 
 if TYPE_CHECKING:
-    from typing import Mapping
+    from collections.abc import Mapping
 
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus

@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import bluesky.plan_stubs as bps
 import pytest
 from bluesky.protocols import Location, Reading
@@ -101,7 +99,7 @@ def test_motor_plan_absolute(
     - then move to position 200.
     """
 
-    def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
+    def moving_plan(motors: tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor to position 100 and then to position 200."""
         for m in motors:
             yield from bps.abs_set(m, axis, prop="axis")
@@ -132,7 +130,7 @@ def test_motor_plan_relative(
     - then move of 200.
     """
 
-    def moving_plan(motors: Tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
+    def moving_plan(motors: tuple[MotorProtocol, ...], axis: str) -> MsgGenerator[None]:
         """Move the motor of 100 steps and then of 200 steps."""
         for m in motors:
             yield from bps.abs_set(m, axis, prop="axis")
@@ -209,7 +207,7 @@ def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
 
 
 def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> None:
-    def setting_plan(lights: Tuple[LightProtocol, ...]) -> MsgGenerator[None]:
+    def setting_plan(lights: tuple[LightProtocol, ...]) -> MsgGenerator[None]:
         """Move the motor of 100 steps and then of 200 steps."""
         for L in lights:
             yield from bps.trigger(L)

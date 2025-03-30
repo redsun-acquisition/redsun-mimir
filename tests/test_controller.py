@@ -28,7 +28,7 @@ def test_stage_controller(
     info = StageControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = StageController(info, motors, bus)
 
-    assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))
+    assert isinstance(ctrl, ControllerProtocol | HasRegistration | HasConnection)
 
     def check_new_position(motor: str, position: float) -> None:
         assert motor == "Mock motor"
@@ -79,7 +79,7 @@ def test_light_widget(
     info = LightControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = LightController(info, lights, bus)
 
-    assert isinstance(ctrl, (ControllerProtocol, HasRegistration, HasConnection))
+    assert isinstance(ctrl, ControllerProtocol | HasRegistration | HasConnection)
     assert not ctrl._lights["Mock laser"].enabled
     ctrl.trigger("Mock laser")
     assert ctrl._lights["Mock laser"].enabled

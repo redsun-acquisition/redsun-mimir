@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, Annotated, get_type_hints
+from typing import TYPE_CHECKING, Annotated
 
 import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
@@ -12,8 +12,9 @@ from sunflare.virtual import Publisher, Signal
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
     from concurrent.futures import Future
-    from typing import Any, Callable, Mapping, Sequence, Union
+    from typing import Any
 
     from sunflare.engine import RunEngineResult
     from sunflare.model import ModelProtocol
@@ -45,10 +46,10 @@ class AcquisitionController(Publisher, Loggable):
 
         self.engine = RunEngine(socket_prefix="ACQ", socket=self.pub_socket)
 
-        self.fut: Future[Union[RunEngineResult, tuple[str, ...]]]
+        self.fut: Future[RunEngineResult | tuple[str, ...]]
 
         def _log_exception(
-            fut: Future[Union[RunEngineResult, tuple[str, ...]]],
+            fut: Future[RunEngineResult | tuple[str, ...]],
         ) -> None:
             try:
                 fut.result()
@@ -59,7 +60,7 @@ class AcquisitionController(Publisher, Loggable):
                 )
 
         def _plan_done(
-            fut: Future[Union[RunEngineResult, tuple[str, ...]]],
+            fut: Future[RunEngineResult | tuple[str, ...]],
         ) -> None:
             try:
                 fut.result()
@@ -70,7 +71,9 @@ class AcquisitionController(Publisher, Loggable):
                 self.sigPlanDone.emit()
 
         def live_count(
-            detectors: Annotated[Sequence[str], list(self.detectors.keys())],
+            detectors: Annotated[
+                Sequence[str], [det_name for det_name in self.detectors.keys()]
+            ],
             toggle: bool,
         ) -> None:
             """Toggle a live acquisition.
@@ -99,7 +102,9 @@ class AcquisitionController(Publisher, Loggable):
                     self.logger.debug("Live acquisition stopped.")
 
         def snapshot(
-            detectors: Annotated[Sequence[str], list(self.detectors.keys())],
+            detectors: Annotated[
+                Sequence[str], [det_name for det_name in self.detectors.keys()]
+            ],
             frames: int,
         ) -> None:
             """Take one (or more) snapshots from each detector.
@@ -122,6 +127,9 @@ class AcquisitionController(Publisher, Loggable):
             "Snapshot": snapshot,
         }
 
+    def registration_phase(self) -> None:
+        self.virtual_bus.register_signals(self)
+
     def connection_phase(self) -> None:
         self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self._run_plan
@@ -133,7 +141,7 @@ class AcquisitionController(Publisher, Loggable):
     def _send_plans_manifest(self) -> None:
         for name, plan in self.plans.items():
             docstr = inspect.getdoc(plan)
-            annotations = get_type_hints(plan, include_extras=True)
+            annotations = plan.__annotations__
             manifest: dict[str, PlanManifest] = {
                 name: {
                     "docstring": docstr or "No docstring available",

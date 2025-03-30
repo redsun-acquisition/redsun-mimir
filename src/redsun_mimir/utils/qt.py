@@ -10,7 +10,8 @@ from qtpy.QtGui import QStandardItemModel
 from ._treeview import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from typing import Any, Iterable, Optional
+    from collections.abc import Iterable
+    from typing import Any
 
 __all__ = ["CheckableComboBox", "InfoDialog", "DescriptorTreeView"]
 
@@ -30,8 +31,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
     """
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super(CheckableComboBox, self).__init__(parent)
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
         self._model = QStandardItemModel(0, 1)
         self._model.dataChanged.connect(lambda: self.repaint())
         self.setModel(self._model)
@@ -47,7 +48,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """
         return self._model
 
-    def addItem(self, item: Optional[str]) -> None:  # type: ignore[override]
+    def addItem(self, item: str | None) -> None:  # type: ignore[override]
         """Add a checkable item to the combobox.
 
         Parameters
@@ -62,7 +63,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         item_obj.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
         item_obj.setCheckState(Qt.CheckState.Unchecked)
 
-    def addItems(self, items: Iterable[Optional[str]]) -> None:
+    def addItems(self, items: Iterable[str | None]) -> None:
         """Add multiple checkable items to the combobox.
 
         Parameters
@@ -102,7 +103,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """
         return [self.itemText(i) for i in range(self.count()) if self.itemChecked(i)]
 
-    def paintEvent(self, event: Optional[QEvent]) -> None:
+    def paintEvent(self, event: QEvent | None) -> None:
         """Repaint the combobox.
 
         Parameters
@@ -183,8 +184,8 @@ class InfoDialog(QtWidgets.QDialog):
     def __init__(
         self,
         title: str,
-        text: Optional[str],
-        parent: Optional[QtWidgets.QWidget] = None,
+        text: str | None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -213,7 +214,7 @@ class InfoDialog(QtWidgets.QDialog):
 
     @classmethod
     def show_dialog(
-        cls, title: str, text: Optional[str], parent: Optional[QtWidgets.QWidget] = None
+        cls, title: str, text: str | None, parent: QtWidgets.QWidget | None = None
     ) -> int:
         """Create and show the dialog in one step.
 

@@ -7,7 +7,7 @@ from sunflare.model import ModelProtocol
 from typing_extensions import Protocol, TypedDict, runtime_checkable
 
 if TYPE_CHECKING:
-    from typing import Any, Union
+    from typing import Any
 
     from bluesky.protocols import Descriptor, Location, Reading
     from sunflare.engine import Status
@@ -148,7 +148,7 @@ class LightProtocol(ModelProtocol, Settable):
 
     """
 
-    intensity: Union[float, int]
+    intensity: float | int
     enabled: bool
 
     @abstractmethod
@@ -163,7 +163,7 @@ class LightProtocol(ModelProtocol, Settable):
         """
         ...
 
-    def read(self) -> dict[str, Reading[Union[float, int]]]:
+    def read(self) -> dict[str, Reading[float | int]]:
         """Read the current status of the light source.
 
         Returns a dictionary with the values of ``intensity`` and ``enabled``.

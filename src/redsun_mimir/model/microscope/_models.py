@@ -16,7 +16,7 @@ from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtoco
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
-    from typing import Any, ClassVar, Optional
+    from typing import Any, ClassVar
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Location, Reading
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 
 class Factory:
-    stage: ClassVar[Optional[SimulatedStageModel]]
-    light: ClassVar[Optional[SimulatedLightModel]]
+    stage: ClassVar[SimulatedStageModel | None]
+    light: ClassVar[SimulatedLightModel | None]
     pool: ClassVar[ThreadPoolExecutor]
     stage_ready: ClassVar[Event] = Event()
     light_ready: ClassVar[Event] = Event()
@@ -89,7 +89,7 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
                 self.axis = value
                 s.set_finished()
                 return s
-            elif propr == "step_size" and isinstance(value, (int, float)):
+            elif propr == "step_size" and isinstance(value, int | float):
                 self.model_info.step_sizes[self.axis] = value
                 s.set_finished()
                 return s
@@ -97,7 +97,7 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
         else:
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
         step_size = self.model_info.step_sizes[self.axis]
@@ -162,7 +162,7 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
             s.set_exception(RuntimeError(err_msg))
             return s
         else:
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
         self.intensity = value
@@ -252,7 +252,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 s.set_finished()
                 return s
 
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, int | float):
             s.set_exception(ValueError("Value must be a float or int."))
             return s
         self.set_exposure_time(float(value))

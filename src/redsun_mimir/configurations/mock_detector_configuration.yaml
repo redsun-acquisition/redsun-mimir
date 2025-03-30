@@ -12,8 +12,18 @@ controllers:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
+  AcquisitionController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
 widgets:
   DetectorWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center
+  AcquisitionWidget:
     plugin_name: test
     plugin_id: test
     # doesn't have any effect;

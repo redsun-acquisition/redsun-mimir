@@ -33,7 +33,7 @@ class MockLightModel(LightProtocol):
 
         """
         s = Status()
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, int | float):
             s.set_exception(ValueError("Value must be a number."))
             return s
         self.intensity = float(value)
@@ -121,7 +121,7 @@ class MockStageModel(MotorProtocol, Loggable):
                 self.axis = value
                 s.set_finished()
                 return s
-            elif propr == "step_size" and isinstance(value, (int, float)):
+            elif propr == "step_size" and isinstance(value, int | float):
                 self._step_sizes[self.axis] = value
                 s.set_finished()
                 return s
@@ -129,7 +129,7 @@ class MockStageModel(MotorProtocol, Loggable):
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
         else:
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
         steps = math.floor(

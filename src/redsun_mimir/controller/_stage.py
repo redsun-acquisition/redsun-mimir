@@ -10,7 +10,8 @@ from sunflare.virtual import Signal, VirtualBus
 from ..protocols import MotorProtocol
 
 if TYPE_CHECKING:
-    from typing import Any, Mapping, Optional
+    from collections.abc import Mapping
+    from typing import Any
 
     from sunflare.model import ModelProtocol
 
@@ -87,7 +88,7 @@ class StageController(Loggable):
     ) -> None:
         self._ctrl_info = ctrl_info
         self._virtual_bus = virtual_bus
-        self._queue: Queue[Optional[tuple[str, str, float]]] = Queue()
+        self._queue: Queue[tuple[str, str, float] | None] = Queue()
 
         self._motors = {
             name: model

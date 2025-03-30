@@ -6,7 +6,7 @@ from attrs import define, field, validators
 from sunflare.config import ControllerInfo
 
 if TYPE_CHECKING:
-    from typing import Any, Optional
+    from typing import Any
 
 __all__ = ["StageControllerInfo", "LightControllerInfo"]
 
@@ -25,7 +25,7 @@ class _CommonControllerInfo(ControllerInfo):
 
     """
 
-    timeout: Optional[float] = field(
+    timeout: float | None = field(
         default=None, validator=validators.optional(validators.instance_of(float))
     )
 

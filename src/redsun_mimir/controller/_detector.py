@@ -10,7 +10,7 @@ from sunflare.virtual import Signal
 from ..protocols import DetectorProtocol
 
 if TYPE_CHECKING:
-    from typing import Mapping
+    from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
     from sunflare.model import ModelProtocol

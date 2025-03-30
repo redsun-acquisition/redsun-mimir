@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 from sunflare.virtual import Signal
 
 if TYPE_CHECKING:
-    from typing import Any, Optional, Union
+    from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
     from qtpy.QtGui import QPainter
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 class CenteredComboBoxDelegate(QItemDelegate):
     def paint(
         self,
-        painter: Optional[QPainter],
+        painter: QPainter | None,
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> None:
@@ -44,7 +44,7 @@ class CenteredComboBoxDelegate(QItemDelegate):
 
 
 class CenteredComboBox(QComboBox):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         # Set the delegate for the dropdown items
@@ -53,7 +53,7 @@ class CenteredComboBox(QComboBox):
         # Style the view (dropdown list) to center text
         self.view().setStyleSheet("text-align: center;")
 
-    def paintEvent(self, event: Optional[QPaintEvent]) -> None:
+    def paintEvent(self, event: QPaintEvent | None) -> None:
         """Override paint event to ensure the selected text is always centered."""
         painter = QStylePainter(self)
         painter.setPen(self.palette().color(QPalette.ColorRole.Text))
@@ -131,12 +131,12 @@ class TreeNode:
 
     def __init__(
         self,
-        name: Optional[str],
-        parent: Optional[TreeNode],
+        name: str | None,
+        parent: TreeNode | None,
         node_type: NodeType,
         *,
-        data: Optional[Reading[Any]] = None,
-        descriptor: Optional[Descriptor] = None,
+        data: Reading[Any] | None = None,
+        descriptor: Descriptor | None = None,
         readonly: bool = False,
     ):
         self._name = name
@@ -158,7 +158,7 @@ class TreeNode:
         """
         self._children.append(child)
 
-    def child(self, row: int) -> Optional[TreeNode]:
+    def child(self, row: int) -> TreeNode | None:
         """Get the child at the specified row.
 
         Parameters
@@ -200,7 +200,7 @@ class TreeNode:
             return self._parent._children.index(self)
         return 0
 
-    def parent(self) -> Optional[TreeNode]:
+    def parent(self) -> TreeNode | None:
         """Get the parent item.
 
         Returns
@@ -222,12 +222,12 @@ class TreeNode:
         return self._node_type
 
     @property
-    def data(self) -> Optional[Reading[Any]]:
+    def data(self) -> Reading[Any] | None:
         """The item reading."""
         return self._data
 
     @property
-    def descriptor(self) -> Optional[Descriptor]:
+    def descriptor(self) -> Descriptor | None:
         """The item descriptor."""
         return self._descriptor
 
@@ -247,12 +247,12 @@ class DescriptorDelegate(QStyledItemDelegate):
 
     """
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
     def paint(
         self,
-        painter: Optional[QPainter],
+        painter: QPainter | None,
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> None:
@@ -278,7 +278,7 @@ class DescriptorDelegate(QStyledItemDelegate):
 
     def createEditor(
         self,
-        parent: Optional[QWidget],
+        parent: QWidget | None,
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> QWidget:
@@ -321,7 +321,7 @@ class DescriptorDelegate(QStyledItemDelegate):
         low = limits.get("low", None)
         high = limits.get("high", None)
 
-        editor: Union[QSpinBox, QDoubleSpinBox, CenteredComboBox]
+        editor: QSpinBox | QDoubleSpinBox | CenteredComboBox
 
         if descriptor["dtype"] in ["integer", "number"]:
             # Create a spin box with the appropriate range
@@ -361,7 +361,7 @@ class DescriptorDelegate(QStyledItemDelegate):
 
         return cast("QWidget", super().createEditor(parent, option, index))
 
-    def setEditorData(self, editor: Optional[QWidget], index: QModelIndex) -> None:
+    def setEditorData(self, editor: QWidget | None, index: QModelIndex) -> None:
         """Set the data to be edited in the editor.
 
         Parameters
@@ -373,7 +373,7 @@ class DescriptorDelegate(QStyledItemDelegate):
 
         """
         # Handle spin boxes
-        if isinstance(editor, (QSpinBox, QDoubleSpinBox)):
+        if isinstance(editor, QSpinBox | QDoubleSpinBox):
             value = index.model().data(index, Qt.ItemDataRole.EditRole)
             if value:
                 editor.setValue(value)
@@ -394,8 +394,8 @@ class DescriptorDelegate(QStyledItemDelegate):
 
     def editorEvent(
         self,
-        event: Optional[QEvent],
-        model: Optional[QAbstractItemModel],
+        event: QEvent | None,
+        model: QAbstractItemModel | None,
         option: QStyleOptionViewItem,
         index: QModelIndex,
     ) -> bool:
@@ -432,8 +432,8 @@ class DescriptorDelegate(QStyledItemDelegate):
 
     def setModelData(
         self,
-        editor: Optional[QWidget],
-        model: Optional[QAbstractItemModel],
+        editor: QWidget | None,
+        model: QAbstractItemModel | None,
         index: QModelIndex,
     ) -> None:
         """Set the data from the editor back to the model.
@@ -448,7 +448,7 @@ class DescriptorDelegate(QStyledItemDelegate):
             Model index
 
         """
-        if isinstance(editor, (QSpinBox, QDoubleSpinBox)):
+        if isinstance(editor, QSpinBox | QDoubleSpinBox):
             model.setData(index, editor.value(), Qt.ItemDataRole.EditRole)
         elif isinstance(editor, BooleanComboBox):
             model.setData(index, editor.currentData(), Qt.ItemDataRole.EditRole)
@@ -484,7 +484,7 @@ class DescriptorModel(QAbstractItemModel):
     sigStructureChanged = Signal()
     sigPropertyChanged = Signal(str, object)
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent: QObject | None = None):
         """Initialize the model with an empty structure.
 
         Parameters
@@ -692,7 +692,7 @@ class DescriptorModel(QAbstractItemModel):
                 index = self.index(row, Column.VALUE, parent_index)
                 self.dataChanged.emit(index, index)
 
-    def _find_device_item(self, device_name: str) -> Optional[TreeNode]:
+    def _find_device_item(self, device_name: str) -> TreeNode | None:
         """Find a device item by name.
 
         Parameters
@@ -714,7 +714,7 @@ class DescriptorModel(QAbstractItemModel):
 
     def _find_setting_item(
         self, device_item: TreeNode, setting_name: str
-    ) -> Optional[TreeNode]:
+    ) -> TreeNode | None:
         """Find a setting item within a device by name.
 
         Parameters

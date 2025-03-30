@@ -1,5 +1,6 @@
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import pytest
 import yaml
@@ -32,7 +33,7 @@ def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
 
     motor_config_path = str(config_path / "test_motor_config.yaml")
 
-    with open(motor_config_path, "r") as file:
+    with open(motor_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
         for name, values in config_dict["models"].items():
             config = StageModelInfo(**values)
@@ -47,7 +48,7 @@ def light_config(config_path: Path) -> dict[str, LightModelInfo]:
 
     light_config_path = str(config_path / "test_light_config.yaml")
 
-    with open(light_config_path, "r") as file:
+    with open(light_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
         for name, values in config_dict["models"].items():
             config = LightModelInfo(**values)
@@ -62,7 +63,7 @@ def detector_config(config_path: Path) -> dict[str, DetectorModelInfo]:
 
     detector_config_path = str(config_path / "test_detector_config.yaml")
 
-    with open(detector_config_path, "r") as file:
+    with open(detector_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
         for name, values in config_dict["models"].items():
             config = DetectorModelInfo(**values)

@@ -6,10 +6,10 @@ from attrs import define, field, setters, validators
 from sunflare.config import ModelInfo
 
 if TYPE_CHECKING:
-    from typing import Iterable, Optional
+    from collections.abc import Iterable
 
 
-def to_float_tuple(value: Optional[Iterable[float]]) -> tuple[float, ...]:
+def to_float_tuple(value: Iterable[float] | None) -> tuple[float, ...]:
     """Convert a value to a tuple of floats.
 
     If the value is ``None``, return a tuple of two zeros.
@@ -29,18 +29,18 @@ def to_float_tuple(value: Optional[Iterable[float]]) -> tuple[float, ...]:
     """
     if value is None:
         return (0.0, 0.0)
-    if not isinstance(value, (list, tuple)) or len(value) != 2:
+    if not isinstance(value, list | tuple) or len(value) != 2:
         raise ValueError(f"Expected a list or tuple of length 2, got {value}")
     return tuple(float(v) for v in value)
 
 
 def convert_limits(
-    value: Optional[dict[str, list[float]]],
-) -> Optional[dict[str, tuple[float, ...]]]:
+    value: dict[str, list[float]] | None,
+) -> dict[str, tuple[float, ...]] | None:
     if value is None:
         return None
     return {
-        axis: tuple((float(val) for val in limits)) for axis, limits in value.items()
+        axis: tuple(float(val) for val in limits) for axis, limits in value.items()
     }
 
 
@@ -80,7 +80,7 @@ class StageModelInfo(ModelInfo):
         validator=validators.instance_of(dict),
         metadata={"description": "Step sizes for each axis."},
     )
-    limits: Optional[dict[str, tuple[float, float]]] = field(
+    limits: dict[str, tuple[float, float]] | None = field(
         default=None,
         converter=convert_limits,
         metadata={"description": "Limits for each axis."},
@@ -88,7 +88,7 @@ class StageModelInfo(ModelInfo):
 
     @limits.validator
     def _check_limits(
-        self, _: str, value: Optional[dict[str, tuple[float, float]]]
+        self, _: str, value: dict[str, tuple[float, float]] | None
     ) -> None:
         if value is None:
             return

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Sequence, get_origin
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, cast, get_args, get_origin
 
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
@@ -87,16 +88,30 @@ class AcquisitionWidget(BaseQtWidget):
         self.plans_combobox = QtWidgets.QComboBox(self)
         self.plans_combobox.setToolTip("Select a plan to run")
         self.info_btn = QtWidgets.QPushButton(self)
+        self.info_btn.setIcon(
+            
+                cast("QtWidgets.QStyle", self.style()).standardIcon(
+                    QtWidgets.QStyle.StandardPixmap.SP_DialogHelpButton
+                )
+            
+        )
         self.info_btn.setToolTip("Information about the selected plan")
+        button_size = QtCore.QSize(24, 24)
+        self.info_btn.setMinimumSize(button_size)
+        self.info_btn.setMaximumSize(button_size)
+        self.info_btn.setIconSize(QtCore.QSize(16, 16))
+        self.info_btn.setFlat(True)
         self.info_btn.clicked.connect(self._on_info_clicked)
-        # pixmap = getattr(QtWidgets.QStyle, "SP_MessageBoxInformation")
-        # icon = cast("QtWidgets.QStyle", self.style()).standardIcon(pixmap)
 
-        layout = QtWidgets.QVBoxLayout(self)
+        top_layout = QtWidgets.QHBoxLayout()
+        top_layout.addWidget(self.plans_combobox, 1)
+        top_layout.addWidget(self.info_btn, 0)
 
         self.groups_container = QtWidgets.QWidget()
         self.groups_layout = QtWidgets.QVBoxLayout(self.groups_container)
 
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(top_layout)
         layout.addWidget(self.groups_container)
 
         self.plans_combobox.currentTextChanged.connect(self._on_plan_changed)
@@ -147,7 +162,7 @@ class AcquisitionWidget(BaseQtWidget):
             is_togglable = False
             self.plans_info[name] = manifest["docstring"]
             groupbox = ConfigurationGroupBox(self)
-            layout = QtWidgets.QFormLayout(self.plans_groupboxes[name])
+            layout = QtWidgets.QFormLayout(groupbox)
             annotations = manifest["annotations"]
             for key, value in annotations.items():
                 if key == "toggle":
@@ -157,6 +172,7 @@ class AcquisitionWidget(BaseQtWidget):
                     is_togglable = True
                     continue
                 value_type = get_origin(value)
+                get_args(value)
                 if value_type in (Sequence, Iterable):
                     create_combobox(
                         self, layout, key, getattr(value, "__metadata__", [])

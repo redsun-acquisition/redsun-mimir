@@ -9,35 +9,38 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageController, StageControllerInfo
-from redsun_mimir.model import MockStageModel, StageModelInfo
-from redsun_mimir.widget import StageWidget, StageWidgetInfo
+from redsun_mimir.controller import AcquisitionController, AcquisitionControllerInfo
+from redsun_mimir.model import DetectorModelInfo
+from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.widget import AcquisitionWidget, AcquisitionWidgetInfo
 
 
-def stage_widget() -> None:
+def acquisition_widget() -> None:
     """Run a local mock example.
 
-    Launches a Qt ``StageWidget`` app
+    Launches a Qt ``AcquisitionWidget`` app
     with a mock device configuration.
     """
     logger = logging.getLogger("redsun")
     logger.setLevel(logging.DEBUG)
+
     app = QtWidgets.QApplication([])
 
-    mock_config_path = "mock_motor_configuration.yaml"
-
-    config_path = Path(__file__).parent / mock_config_path
+    config_path = Path(__file__).parent / "mock_detector_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, StageModelInfo] = {
-        name: StageModelInfo(**values) for name, values in config_dict["models"].items()
+    models_info: dict[str, DetectorModelInfo] = {
+        name: DetectorModelInfo(**values)
+        for name, values in config_dict["models"].items()
     }
-    ctrl_info: dict[str, StageControllerInfo] = {
-        name: StageControllerInfo(**values)
+    ctrl_info: dict[str, AcquisitionControllerInfo] = {
+        name: AcquisitionControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
+        if name == "AcquisitionController"
     }
-    widget_info: dict[str, StageWidgetInfo] = {
-        name: StageWidgetInfo(**values)
+    widget_info: dict[str, AcquisitionWidgetInfo] = {
+        name: AcquisitionWidgetInfo(**values)
         for name, values in config_dict["widgets"].items()
+        if name == "AcquisitionWidget"
     }
 
     config = RedSunSessionInfo(
@@ -49,15 +52,19 @@ def stage_widget() -> None:
         widgets=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, MockStageModel] = {
-        name: MockStageModel(name, model_info)
+    mock_models: dict[str, SimulatedCameraModel] = {
+        name: SimulatedCameraModel(name, model_info)
         for name, model_info in models_info.items()
     }
 
     bus = VirtualBus()
 
-    ctrl = StageController(config.controllers["StageController"], mock_models, bus)  # type: ignore
-    widget = StageWidget(config, bus)
+    ctrl = AcquisitionController(
+        config.controllers["AcquisitionController"],  # type: ignore
+        mock_models,
+        bus,
+    )
+    widget = AcquisitionWidget(config, bus)
 
     ctrl.registration_phase()
     widget.registration_phase()
@@ -66,6 +73,8 @@ def stage_widget() -> None:
 
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(widget)
+    window.setWindowTitle("Detector Widget")
+    window.resize(800, 600)
     window.show()
 
     start_emitting_from_queue()
