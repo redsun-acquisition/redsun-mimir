@@ -57,11 +57,10 @@ class CheckableComboBox(QtWidgets.QComboBox):
             The item to add.
 
         """
-        super().addItem(item)
-        item_obj = self._model.item(self.count(), 0)
-        assert item_obj is not None
+        item_obj = QtGui.QStandardItem(item)
         item_obj.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
         item_obj.setCheckState(Qt.CheckState.Unchecked)
+        self.model().appendRow(item_obj)
 
     def addItems(self, items: Iterable[str | None]) -> None:
         """Add multiple checkable items to the combobox.
@@ -127,6 +126,12 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
 class ConfigurationGroupBox(QtWidgets.QGroupBox):
     _layout: QtWidgets.QFormLayout
+
+    def __init__(
+        self, layout: QtWidgets.QFormLayout, parent: QtWidgets.QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._layout = layout
 
     def layout(self) -> QtWidgets.QFormLayout:
         return self._layout

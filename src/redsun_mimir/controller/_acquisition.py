@@ -1,28 +1,23 @@
-from __future__ import annotations
-
 import inspect
-from typing import TYPE_CHECKING, Annotated
+from collections.abc import Mapping, Sequence
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Annotated, Any
 
 import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
-from sunflare.engine import RunEngine
+from sunflare.engine import RunEngine, RunEngineResult
 from sunflare.log import Loggable
-from sunflare.virtual import Publisher, Signal
+from sunflare.model import ModelProtocol
+from sunflare.virtual import Publisher, Signal, VirtualBus
 
 from redsun_mimir.protocols import DetectorProtocol
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
-    from concurrent.futures import Future
-    from typing import Any
+from ._config import AcquisitionControllerInfo
 
-    from sunflare.engine import RunEngineResult
-    from sunflare.model import ModelProtocol
-    from sunflare.virtual import VirtualBus
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
     from redsun_mimir.protocols import PlanManifest
-
-    from ._config import AcquisitionControllerInfo
 
 
 class AcquisitionController(Publisher, Loggable):
@@ -139,15 +134,18 @@ class AcquisitionController(Publisher, Loggable):
         )
 
     def _send_plans_manifest(self) -> None:
+        manifest: dict[str, PlanManifest] = {}
         for name, plan in self.plans.items():
             docstr = inspect.getdoc(plan)
-            annotations = plan.__annotations__
-            manifest: dict[str, PlanManifest] = {
-                name: {
-                    "docstring": docstr or "No docstring available",
-                    "annotations": annotations,
+            annotations = inspect.get_annotations(plan)
+            manifest.update(
+                {
+                    name: {
+                        "docstring": docstr or "No docstring available",
+                        "annotations": annotations,
+                    }
                 }
-            }
+            )
         self.sigPlansManifest.emit(manifest)
 
     def _run_plan(self, plan: str, kwargs: dict[str, Any]) -> None:

@@ -39,9 +39,7 @@ def convert_limits(
 ) -> dict[str, tuple[float, ...]] | None:
     if value is None:
         return None
-    return {
-        axis: tuple(float(val) for val in limits) for axis, limits in value.items()
-    }
+    return {axis: tuple(float(val) for val in limits) for axis, limits in value.items()}
 
 
 @define(kw_only=True)

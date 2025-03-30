@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Annotated, cast, get_args, get_origin
 
 from qtpy import QtCore, QtWidgets
 from sunflare.view.qt import BaseQtWidget
@@ -89,11 +89,9 @@ class AcquisitionWidget(BaseQtWidget):
         self.plans_combobox.setToolTip("Select a plan to run")
         self.info_btn = QtWidgets.QPushButton(self)
         self.info_btn.setIcon(
-            
-                cast("QtWidgets.QStyle", self.style()).standardIcon(
-                    QtWidgets.QStyle.StandardPixmap.SP_DialogHelpButton
-                )
-            
+            cast("QtWidgets.QStyle", self.style()).standardIcon(
+                QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView
+            )
         )
         self.info_btn.setToolTip("Information about the selected plan")
         button_size = QtCore.QSize(24, 24)
@@ -161,8 +159,8 @@ class AcquisitionWidget(BaseQtWidget):
         for name, manifest in manifests.items():
             is_togglable = False
             self.plans_info[name] = manifest["docstring"]
-            groupbox = ConfigurationGroupBox(self)
-            layout = QtWidgets.QFormLayout(groupbox)
+            layout = QtWidgets.QFormLayout(self)
+            groupbox = ConfigurationGroupBox(layout, self)
             annotations = manifest["annotations"]
             for key, value in annotations.items():
                 if key == "toggle":
@@ -171,22 +169,20 @@ class AcquisitionWidget(BaseQtWidget):
                     # and continue
                     is_togglable = True
                     continue
-                value_type = get_origin(value)
-                get_args(value)
-                if value_type in (Sequence, Iterable):
-                    create_combobox(
-                        self, layout, key, getattr(value, "__metadata__", [])
-                    )
-                elif value_type is bool:
-                    create_checkbox(self, layout, key, False)
-                elif value_type is int:
-                    create_spinbox(self, layout, key, 0)
-                else:
-                    raise TypeError(f"Unsupported type: {value_type}")
+                if get_origin(value) is Annotated:
+                    args = get_args(value)
+                    type_hint = args[0]
+                    metadata = args[1:]
+                    if get_origin(type_hint) in (Sequence, Iterable):
+                        create_combobox(self, layout, key, metadata[-1])
+                    elif type_hint is bool:
+                        create_checkbox(self, layout, key, False)
+                    elif type_hint is int:
+                        create_spinbox(self, layout, key, 0)
+                    else:
+                        raise TypeError(f"Unsupported type: {type_hint}")
 
-            self.run_buttons[name] = QtWidgets.QPushButton(
-                "Run", self.plans_groupboxes[name]
-            )
+            self.run_buttons[name] = QtWidgets.QPushButton("Run", groupbox)
             if is_togglable:
                 self.run_buttons[name].setCheckable(True)
                 self.run_buttons[name].toggled.connect(self._on_action_toggled)
@@ -197,7 +193,7 @@ class AcquisitionWidget(BaseQtWidget):
             if name == self.plans_combobox.currentText():
                 groupbox.show()
             layout.addRow(self.run_buttons[name])
-            self.plans_groupboxes[name].setLayout(layout)
+            groupbox.setLayout(layout)
             self.groups_layout.addWidget(groupbox)
             self.plans_groupboxes[name] = groupbox
 
