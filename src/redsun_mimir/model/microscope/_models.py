@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
@@ -188,6 +189,15 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
 
 
 class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
+    _pattern_map = {
+        "noise": 0,
+        "gradient": 1,
+        "sawtooth": 2,
+        "one_gaussian": 3,
+        "black": 4,
+        "white": 5,
+    }
+
     def __init__(
         self,
         name: str,
@@ -214,6 +224,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
+        self._image_generator._method_index = self._pattern_map["noise"]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a configuration parameter.
@@ -248,6 +259,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                             )
                         )
                         return s
+                    if propr == "image pattern":
+                        self._image_generator._method_index = self._pattern_map[value]
                 self.logger.debug("Set %s to %s.", propr, value)
                 s.set_finished()
                 return s
@@ -261,15 +274,20 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
     def describe(self) -> dict[str, Descriptor]:
         return {
-            self.name: {
-                "source": "queue",
+            "queue": {
+                "source": self.name,
                 "dtype": "array",
-                "shape": [list(self.model_info.sensor_shape)],
+                "shape": list(self.model_info.sensor_shape),
             }
         }
 
     def read(self) -> dict[str, Reading[npt.ArrayLike]]:
-        value, timestamp = self._queue.get()
+        content = self._queue.get()
+        try:
+            value, timestamp = content
+        except Exception:
+            value = content[0]
+            timestamp = time.time()
         return {
             "queue": {
                 "value": value,
@@ -289,7 +307,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                             "source": "settings",
                             "dtype": "string",
                             "choices": [choice[-1] for choice in content["values"]],
-                            "shape": len(content["values"]),
+                            "shape": [len(content["values"])],
                         }
                     }
                 )
@@ -299,8 +317,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                         name: {
                             "source": "settings",
                             "dtype": "boolean",
-                            "choices": [True, False],
-                            "shape": [2],
+                            "shape": [],
                         }
                     }
                 )
@@ -368,6 +385,12 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
     def shutdown(self) -> None:
         SimulatedCamera.shutdown(self)
+
+    def trigger(self) -> Status:
+        SimulatedCamera.trigger(self)
+        s = Status()
+        s.set_finished()
+        return s
 
     def stage(self) -> Status:
         s = Status()

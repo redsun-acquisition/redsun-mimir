@@ -81,6 +81,9 @@ class AcquisitionController(Publisher, Loggable):
                 Toggle the live acquisition on or off.
 
             """
+            if len(detectors) == 0:
+                self.logger.warning("No detectors selected for live acquisition.")
+                self.sigPlanDone.emit()
             if toggle:
                 self.logger.debug("Starting live acquisition: %s", detectors)
                 dets = [self.detectors[name] for name in detectors]
@@ -111,6 +114,9 @@ class AcquisitionController(Publisher, Loggable):
             frames: ``int``
                 The number of snapshots to take for each detector.
             """
+            if len(detectors) == 0:
+                self.logger.warning("No detectors selected for live acquisition.")
+                return
             self.logger.debug("Taking snapshots: %s", detectors)
             dets = [self.detectors[name] for name in detectors]
             self.fut = self.engine(bp.count(dets, num=frames))

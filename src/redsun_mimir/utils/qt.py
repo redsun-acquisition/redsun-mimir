@@ -1,7 +1,7 @@
 # mypy: disable-error-code="union-attr"
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from qtpy import QtGui, QtWidgets
 from qtpy.QtCore import QEvent, Qt
@@ -59,7 +59,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """
         item_obj = QtGui.QStandardItem(item)
         item_obj.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        item_obj.setCheckState(Qt.CheckState.Unchecked)
+        item_obj.setCheckState(Qt.CheckState.Checked)
         self.model().appendRow(item_obj)
 
     def addItems(self, items: Iterable[str | None]) -> None:
@@ -125,16 +125,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
 
 class ConfigurationGroupBox(QtWidgets.QGroupBox):
-    _layout: QtWidgets.QFormLayout
-
-    def __init__(
-        self, layout: QtWidgets.QFormLayout, parent: QtWidgets.QWidget | None = None
-    ) -> None:
-        super().__init__(parent)
-        self._layout = layout
-
     def layout(self) -> QtWidgets.QFormLayout:
-        return self._layout
+        return cast(QtWidgets.QFormLayout, super().layout())
 
     def configuration(self) -> dict[str, Any]:
         """Return the current configuration content of the group box.
@@ -147,24 +139,29 @@ class ConfigurationGroupBox(QtWidgets.QGroupBox):
         """
         configs: dict[str, Any] = {}
         for i in range(self.layout().rowCount()):
-            label = (
-                self.layout()
-                .itemAt(i, QtWidgets.QFormLayout.ItemRole.LabelRole)
-                .widget()
-            )
-            value = (
-                self.layout()
-                .itemAt(i, QtWidgets.QFormLayout.ItemRole.FieldRole)
-                .widget()
-            )
+            label = cast(
+                QtWidgets.QLayoutItem,
+                self.layout().itemAt(i, QtWidgets.QFormLayout.ItemRole.LabelRole),
+            ).widget()
+            widget = cast(
+                QtWidgets.QLayoutItem,
+                self.layout().itemAt(i, QtWidgets.QFormLayout.ItemRole.FieldRole),
+            ).widget()
             assert isinstance(label, QtWidgets.QLabel)
             key = label.text()
-            if isinstance(value, QtWidgets.QCheckBox):
-                value = value.isChecked()
-            elif isinstance(value, CheckableComboBox):
-                value = value.checkedItems()
-            elif isinstance(value, QtWidgets.QLineEdit):
-                value = value.text()
+            value: bool | str | list[str]
+            if isinstance(widget, QtWidgets.QCheckBox):
+                value = widget.isChecked()
+            elif isinstance(widget, CheckableComboBox):
+                value = widget.checkedItems()
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                value = widget.text()
+            elif isinstance(widget, QtWidgets.QPushButton):
+                if widget.isCheckable():
+                    value = widget.isChecked()
+                else:
+                    # skip the pushbutton if it is not checkable
+                    continue
             else:
                 raise NotImplementedError("Unsupported widget type")
             configs.update({key: value})

@@ -163,6 +163,7 @@ class LightProtocol(ModelProtocol, Settable):
         """
         ...
 
+    @abstractmethod
     def read(self) -> dict[str, Reading[float | int]]:
         """Read the current status of the light source.
 
@@ -179,6 +180,7 @@ class LightProtocol(ModelProtocol, Settable):
             "enabled": {"value": self.enabled, "timestamp": 0},
         }
 
+    @abstractmethod
     def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
@@ -276,5 +278,16 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         ``Status``
             Status object of the operation.
 
+        """
+        ...
+
+    @abstractmethod
+    def trigger(self) -> Status:
+        """Trigger a reading from the detector.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
         """
         ...

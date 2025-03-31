@@ -113,6 +113,7 @@ class AcquisitionWidget(BaseQtWidget):
         layout.addWidget(self.groups_container)
 
         self.plans_combobox.currentTextChanged.connect(self._on_plan_changed)
+        self.setLayout(layout)
 
     def _on_plan_changed(self, text: str) -> None:
         for name, groupbox in self.plans_groupboxes.items():
@@ -138,7 +139,10 @@ class AcquisitionWidget(BaseQtWidget):
         configuration = self.plans_groupboxes[plan].configuration()
         configuration.update({"toggle": toggled})
         self.plans_combobox.setEnabled(not toggled)
+        # TODO: enabling the button again it's wrong;
+        # maybe the button has to be moved outside the groupbox
         self.plans_groupboxes[plan].setEnabled(not toggled)
+        self.run_buttons[plan].setEnabled(True)
         self.sigLaunchPlanRequest.emit(plan, configuration)
         if toggled:
             self.run_buttons[plan].setText("Stop")
@@ -159,8 +163,8 @@ class AcquisitionWidget(BaseQtWidget):
         for name, manifest in manifests.items():
             is_togglable = False
             self.plans_info[name] = manifest["docstring"]
-            layout = QtWidgets.QFormLayout(self)
-            groupbox = ConfigurationGroupBox(layout, self)
+            layout = QtWidgets.QFormLayout()
+            groupbox = ConfigurationGroupBox()
             annotations = manifest["annotations"]
             for key, value in annotations.items():
                 if key == "toggle":
@@ -182,6 +186,8 @@ class AcquisitionWidget(BaseQtWidget):
                     else:
                         raise TypeError(f"Unsupported type: {type_hint}")
 
+            button_label = QtWidgets.QLabel("toggle")
+            button_label.setVisible(False)
             self.run_buttons[name] = QtWidgets.QPushButton("Run", groupbox)
             if is_togglable:
                 self.run_buttons[name].setCheckable(True)
@@ -192,7 +198,7 @@ class AcquisitionWidget(BaseQtWidget):
             groupbox.hide()
             if name == self.plans_combobox.currentText():
                 groupbox.show()
-            layout.addRow(self.run_buttons[name])
+            layout.addRow(button_label, self.run_buttons[name])
             groupbox.setLayout(layout)
             self.groups_layout.addWidget(groupbox)
             self.plans_groupboxes[name] = groupbox
