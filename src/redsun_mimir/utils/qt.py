@@ -126,7 +126,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
 
 class ConfigurationGroupBox(QtWidgets.QGroupBox):
     def layout(self) -> QtWidgets.QFormLayout:
-        return cast(QtWidgets.QFormLayout, super().layout())
+        return cast("QtWidgets.QFormLayout", super().layout())
 
     def configuration(self) -> dict[str, Any]:
         """Return the current configuration content of the group box.
@@ -140,28 +140,24 @@ class ConfigurationGroupBox(QtWidgets.QGroupBox):
         configs: dict[str, Any] = {}
         for i in range(self.layout().rowCount()):
             label = cast(
-                QtWidgets.QLayoutItem,
+                "QtWidgets.QLayoutItem",
                 self.layout().itemAt(i, QtWidgets.QFormLayout.ItemRole.LabelRole),
             ).widget()
             widget = cast(
-                QtWidgets.QLayoutItem,
+                "QtWidgets.QLayoutItem",
                 self.layout().itemAt(i, QtWidgets.QFormLayout.ItemRole.FieldRole),
             ).widget()
             assert isinstance(label, QtWidgets.QLabel)
             key = label.text()
-            value: bool | str | list[str]
+            value: bool | str | list[str] | int
             if isinstance(widget, QtWidgets.QCheckBox):
                 value = widget.isChecked()
             elif isinstance(widget, CheckableComboBox):
                 value = widget.checkedItems()
             elif isinstance(widget, QtWidgets.QLineEdit):
                 value = widget.text()
-            elif isinstance(widget, QtWidgets.QPushButton):
-                if widget.isCheckable():
-                    value = widget.isChecked()
-                else:
-                    # skip the pushbutton if it is not checkable
-                    continue
+            elif isinstance(widget, QtWidgets.QSpinBox):
+                value = widget.value()
             else:
                 raise NotImplementedError("Unsupported widget type")
             configs.update({key: value})

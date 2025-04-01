@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import TYPE_CHECKING
 
 from bluesky.protocols import Descriptor, Location, Reading
@@ -39,6 +40,18 @@ class MockLightModel(LightProtocol):
         self.intensity = float(value)
         s.set_finished()
         return s
+
+    def describe(self) -> dict[str, Descriptor]:
+        return {
+            "intensity": {
+                "source": self.name,
+                "dtype": "number",
+                "shape": [],
+            }
+        }
+
+    def read(self) -> dict[str, Reading[Any]]:
+        return {"intensity": {"value": self.intensity, "timestamp": time.time()}}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         return self.model_info.read_configuration()

@@ -74,7 +74,7 @@ def acquisition_widget() -> None:
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(widget)
     window.setWindowTitle("Detector Widget")
-    window.resize(800, 600)
+    window.adjustSize()
     window.show()
 
     start_emitting_from_queue()
