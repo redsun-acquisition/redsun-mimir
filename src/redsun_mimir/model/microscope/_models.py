@@ -141,6 +141,30 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         SimulatedLightSource.__init__(self)
         Factory.set_light(self)
 
+    def describe(self) -> dict[str, Descriptor]:
+        return {
+            "intensity": {
+                "source": self.name,
+                "dtype": "number",
+                "shape": [],
+                "units": self.model_info.egu,
+                "limits": {
+                    "control": {
+                        "low": self.model_info.intensity_range[0],
+                        "high": self.model_info.intensity_range[1],
+                    }
+                },
+            }
+        }
+
+    def read(self) -> dict[str, Reading[Any]]:
+        return {
+            "intensity": {
+                "value": self.intensity,
+                "timestamp": time.time(),
+            }
+        }
+
     def describe_configuration(self) -> dict[str, Descriptor]:
         return self.model_info.describe_configuration()
 
@@ -150,7 +174,9 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
     def trigger(self) -> Status:
         s = Status()
         self.enable() if not self.get_is_on() else self.disable()
-        self.debug(f"Toggled light source {not self.get_is_on()} -> {self.get_is_on()}")
+        self.logger.debug(
+            f"Toggled light source {not self.get_is_on()} -> {self.get_is_on()}"
+        )
         s.set_finished()
         return s
 

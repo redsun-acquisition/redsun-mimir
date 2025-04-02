@@ -47,11 +47,19 @@ class MockLightModel(LightProtocol):
                 "source": self.name,
                 "dtype": "number",
                 "shape": [],
-            }
+            },
+            "enabled": {
+                "source": self.name,
+                "dtype": "boolean",
+                "shape": [],
+            },
         }
 
     def read(self) -> dict[str, Reading[Any]]:
-        return {"intensity": {"value": self.intensity, "timestamp": time.time()}}
+        return {
+            "intensity": {"value": self.intensity, "timestamp": time.time()},
+            "enabled": {"value": self.enabled, "timestamp": time.time()},
+        }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         return self.model_info.read_configuration()
