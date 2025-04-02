@@ -30,10 +30,13 @@ class PlanManifest(TypedDict):
         Plan docstring. Accessible via ``inspect.getdoc(plan_func)``.
     annotations: ``dict[str, Any]``
         Plan type annotations. Accessible via ``inspect.get_annotations(plan_func)``.
+    togglable: ``bool``
+        Whether the plan is togglable or not (usually marked via the ``togglable`` decorator).
     """
 
     docstring: str
     annotations: dict[str, Any]
+    togglable: bool
 
 
 @runtime_checkable

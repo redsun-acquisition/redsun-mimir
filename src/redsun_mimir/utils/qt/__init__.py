@@ -149,13 +149,11 @@ class ConfigurationGroupBox(QtWidgets.QGroupBox):
             ).widget()
             assert isinstance(label, QtWidgets.QLabel)
             key = label.text()
-            value: bool | str | list[str] | int
+            value: bool | list[str] | int
             if isinstance(widget, QtWidgets.QCheckBox):
                 value = widget.isChecked()
             elif isinstance(widget, CheckableComboBox):
                 value = widget.checkedItems()
-            elif isinstance(widget, QtWidgets.QLineEdit):
-                value = widget.text()
             elif isinstance(widget, QtWidgets.QSpinBox):
                 value = widget.value()
             else:

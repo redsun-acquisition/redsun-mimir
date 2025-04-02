@@ -11,6 +11,7 @@ from sunflare.model import ModelProtocol
 from sunflare.virtual import Publisher, Signal, VirtualBus
 
 from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.utils import togglable
 
 from ._config import AcquisitionControllerInfo
 
@@ -40,8 +41,7 @@ class AcquisitionController(Publisher, Loggable):
         }
 
         self.engine = RunEngine(socket_prefix="ACQ", socket=self.pub_socket)
-
-        self.fut: Future[RunEngineResult | tuple[str, ...]]
+        self.futures: list[Future[RunEngineResult | tuple[str, ...]]] = []
 
         def _log_exception(
             fut: Future[RunEngineResult | tuple[str, ...]],
@@ -65,46 +65,39 @@ class AcquisitionController(Publisher, Loggable):
             finally:
                 self.sigPlanDone.emit()
 
+        @togglable
         def live_count(
             detectors: Annotated[
                 Sequence[str], [det_name for det_name in self.detectors.keys()]
             ],
-            toggle: bool,
-        ) -> None:
-            """Toggle a live acquisition.
+        ) -> Future[RunEngineResult | tuple[str, ...]] | str:
+            """Start a live acquisition with the selected detectors.
 
             Parameters
             ----------
             detectors : ``Sequence[str]``
                 The detectors to use in the live acquisition.
-            toggle : ``bool``
-                Toggle the live acquisition on or off.
 
+            Returns
+            -------
+            ``Future | str``
+                The future object for the live acquisition.
+                If no detectors are selected, a string error message is returned.
             """
             if len(detectors) == 0:
-                self.logger.warning("No detectors selected for live acquisition.")
-                self.sigPlanDone.emit()
-            if toggle:
-                self.logger.debug("Starting live acquisition: %s", detectors)
-                dets = [self.detectors[name] for name in detectors]
-                self.fut = self.engine(bp.count(dets, num=None))
-                self.fut.add_done_callback(_log_exception)
-            else:
-                try:
-                    # stop raises an exception;
-                    # we simply catch it
-                    self.engine.stop()
-                except RunEngineInterrupted:
-                    pass
-                finally:
-                    self.logger.debug("Live acquisition stopped.")
+                error_msg = "No detectors selected for live count."
+                return error_msg
+            self.logger.debug("Starting live acquisition: %s", detectors)
+            dets = [self.detectors[name] for name in detectors]
+            future = self.engine(bp.count(dets, num=None))
+            return future
 
         def snapshot(
             detectors: Annotated[
                 Sequence[str], [det_name for det_name in self.detectors.keys()]
             ],
             frames: int,
-        ) -> None:
+        ) -> Future[RunEngineResult | tuple[str, ...]] | str:
             """Take one (or more) snapshots from each detector.
 
             Parameters
@@ -113,17 +106,25 @@ class AcquisitionController(Publisher, Loggable):
                 The detectors to take a snapshot from.
             frames: ``int``
                 The number of snapshots to take for each detector.
+
+            Returns
+            -------
+            ``Future | str``
+                The future object for the snapshot.
+                If no detectors are selected, a string error message is returned.
             """
             if len(detectors) == 0:
-                self.logger.warning("No detectors selected for live acquisition.")
-                return
+                error_msg = "No detectors selected for snapshot."
+                return error_msg
             self.logger.debug("Taking snapshots: %s", detectors)
             dets = [self.detectors[name] for name in detectors]
-            self.fut = self.engine(bp.count(dets, num=frames))
-            self.fut.add_done_callback(_log_exception)
-            self.fut.add_done_callback(_plan_done)
+            future = self.engine(bp.count(dets, num=frames))
+            future.add_done_callback(_plan_done)
+            return future
 
-        self.plans: dict[str, Callable[..., None]] = {
+        self.plans: dict[
+            str, Callable[..., Future[RunEngineResult | tuple[str, ...]] | str]
+        ] = {
             "Live count": live_count,
             "Snapshot": snapshot,
         }
@@ -134,6 +135,9 @@ class AcquisitionController(Publisher, Loggable):
     def connection_phase(self) -> None:
         self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self._run_plan
+        )
+        self.virtual_bus["AcquisitionWidget"]["sigStopPlanRequest"].connect(
+            self._stop_plan
         )
         self.virtual_bus["AcquisitionWidget"]["sigRequestPlansManifest"].connect(
             self._send_plans_manifest
@@ -149,13 +153,23 @@ class AcquisitionController(Publisher, Loggable):
                     name: {
                         "docstring": docstr or "No docstring available",
                         "annotations": annotations,
+                        "togglable": getattr(plan, "__togglable__", False),
                     }
                 }
             )
         self.sigPlansManifest.emit(manifest)
 
     def _run_plan(self, plan: str, kwargs: dict[str, Any]) -> None:
-        try:
-            self.plans[plan](**kwargs)
-        except TypeError as exc:
-            self.logger.error(f'Incorrect parameters for "{plan}": {exc}')
+        ret = self.plans[plan](**kwargs)
+        if isinstance(ret, str):
+            self.logger.error(ret)
+            return
+        self.futures.append(ret)
+
+    def _stop_plan(self) -> None:
+        if self.engine.state == "running":
+            try:
+                self.engine.stop()
+            except RunEngineInterrupted:
+                # silently ignore the exception
+                pass

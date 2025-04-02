@@ -83,12 +83,16 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         Signal to launch a plan.
         - ``str``: The plan name.
         - ``dict[str, Any]``: Additional plan-specific keyword arguments.
+    sigStopPlanRequest : ``Signal[str]``
+        Signal to stop a running plan.
+        - ``str``: The plan name.
     sigRequestPlansManifest : ``Signal``
         Signal to request the available plans from the underlying controller.
 
     """
 
     sigLaunchPlanRequest = Signal(str, object)
+    sigStopPlanRequest = Signal(str)
     sigRequestPlansManifest = Signal()
 
     def __init__(
@@ -150,7 +154,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             self._on_plans_manifest
         )
         self.virtual_bus["AcquisitionController"]["sigPlanDone"].connect(
-            self._on_plan_done, thread="main"
+            self._on_plan_done
         )
         self.sigRequestPlansManifest.emit()
 
@@ -160,10 +164,10 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plan_widgets[plan].group.setEnabled(not toggled)
         if toggled:
             configuration = self.plan_widgets[plan].group.configuration()
-            configuration.update({"toggle": toggled})
             self.sigLaunchPlanRequest.emit(plan, configuration)
             self.plan_widgets[plan].run.setText("Stop")
         else:
+            self.sigStopPlanRequest.emit(plan)
             self.plan_widgets[plan].run.setText("Run")
 
     def _on_action_requested(self) -> None:
@@ -177,7 +181,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plans_combobox.addItems(names)
         self.plans_combobox.setCurrentText(names[0])
         for name, manifest in manifests.items():
-            is_togglable = False
+            is_togglable = manifest["togglable"]
             self.plans_info[name] = manifest["docstring"]
             layout = QtW.QFormLayout()
             groupbox = ConfigurationGroupBox()
@@ -186,19 +190,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                 if key == "return":
                     # skip the return argument
                     continue
-                if key == "toggle":
-                    # skip the toggle argument;
-                    # mark the plan as togglable
-                    # and continue
-                    is_togglable = True
-                    continue
                 if get_origin(annotation) is Annotated:
                     # annotated type
                     args = get_args(annotation)
                     type_hint = args[0]
                     metadata = args[1:]
-                    # TODO: how to treat metadata for non-sequence
-                    # types?
+                    # TODO: how to treat metadata
+                    # for non-sequence types?
                     if get_origin(type_hint) in (Sequence, Iterable):
                         create_combobox(self, layout, key, metadata[-1])
                     elif type_hint is bool:
