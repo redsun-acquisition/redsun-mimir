@@ -154,7 +154,12 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
                         "high": self.model_info.intensity_range[1],
                     }
                 },
-            }
+            },
+            "enabled": {
+                "source": self.name,
+                "dtype": "boolean",
+                "shape": [],
+            },
         }
 
     def read(self) -> dict[str, Reading[Any]]:
@@ -162,7 +167,11 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
             "intensity": {
                 "value": self.intensity,
                 "timestamp": time.time(),
-            }
+            },
+            "enabled": {
+                "value": self.get_is_on(),
+                "timestamp": time.time(),
+            },
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
@@ -247,6 +256,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
         SimulatedCamera.__init__(self, sensor_shape=model_info.sensor_shape)
         self.set_setting("image pattern", "noise")
+        self.set_setting("image data type", "uint8")
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)

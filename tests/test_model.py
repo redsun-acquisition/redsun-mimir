@@ -1,6 +1,8 @@
+from typing import Any
+
 import bluesky.plan_stubs as bps
 import pytest
-from bluesky.protocols import Location, Reading
+from bluesky.protocols import Descriptor, Location, Reading
 from bluesky.utils import MsgGenerator
 from sunflare.engine import RunEngine
 
@@ -17,6 +19,16 @@ from redsun_mimir.model.microscope import (
     SimulatedStageModel,
 )
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
+
+
+def get_descriptor_values(cfg: dict[str, Descriptor]) -> dict[str, Any]:
+    """Extract the values from the configuration dictionary."""
+    return {key: {"value": value["value"]} for key, value in cfg.items()}
+
+
+def get_reading_values(reading: dict[str, Reading[Any]]) -> dict[str, Any]:
+    """Extract the values from the reading dictionary."""
+    return {key: {"value": value["value"]} for key, value in reading.items()}
 
 
 def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
@@ -43,15 +55,29 @@ def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) ->
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
         )
-        cfg = motor.read_configuration()
+        cfg = get_descriptor_values(motor.read_configuration())
         truth = {
-            "vendor": {"value": "N/A", "timestamp": 0},
-            "serial_number": {"value": "N/A", "timestamp": 0},
-            "family": {"value": "N/A", "timestamp": 0},
-            "axis": {"value": info.axis, "timestamp": 0},
-            "step_sizes": {"value": info.step_sizes, "timestamp": 0},
-            "egu": {"value": info.egu, "timestamp": 0},
-            "limits": {"value": info.limits, "timestamp": 0},
+            "vendor": {
+                "value": "N/A",
+            },
+            "serial_number": {
+                "value": "N/A",
+            },
+            "family": {
+                "value": "N/A",
+            },
+            "axis": {
+                "value": info.axis,
+            },
+            "step_sizes": {
+                "value": info.step_sizes,
+            },
+            "egu": {
+                "value": info.egu,
+            },
+            "limits": {
+                "value": info.limits,
+            },
         }
         assert cfg == truth
 
@@ -171,16 +197,28 @@ def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) ->
             if info.plugin_id == "test"
             else SimulatedLightModel(name, info)
         )
-        cfg = light.read_configuration()
+        cfg = get_descriptor_values(light.read_configuration())
         assert cfg == {
-            "vendor": {"value": "N/A", "timestamp": 0},
-            "serial_number": {"value": "N/A", "timestamp": 0},
-            "family": {"value": "N/A", "timestamp": 0},
-            "intensity_range": {"value": info.intensity_range, "timestamp": 0},
-            "egu": {"value": info.egu, "timestamp": 0},
-            "wavelength": {"value": info.wavelength, "timestamp": 0},
-            "step_size": {"value": info.step_size, "timestamp": 0},
-            "binary": {"value": info.binary, "timestamp": 0},
+            "vendor": {"value": "N/A"},
+            "serial_number": {"value": "N/A"},
+            "family": {
+                "value": "N/A",
+            },
+            "intensity_range": {
+                "value": info.intensity_range,
+            },
+            "egu": {
+                "value": info.egu,
+            },
+            "wavelength": {
+                "value": info.wavelength,
+            },
+            "step_size": {
+                "value": info.step_size,
+            },
+            "binary": {
+                "value": info.binary,
+            },
         }
 
 
@@ -197,9 +235,9 @@ def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
         s = light.set(100)
         s.wait()
         assert s.done and s.success
-        assert light.read() == {
-            "intensity": Reading(value=100.0, timestamp=0),
-            "enabled": Reading(value=False, timestamp=0),
+        assert get_reading_values(light.read()) == {
+            "intensity": {"value": 100},
+            "enabled": {"value": False},
         }
         s = light.set("test")
         with pytest.raises(ValueError):
@@ -213,7 +251,10 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
             yield from bps.trigger(L)
             yield from bps.abs_set(L, 100)
             reading = yield from bps.read(L)
-            assert reading == Reading(value=100.0, timestamp=0)
+            assert get_reading_values(reading) == {
+                "intensity": {"value": 100},
+                "enabled": {"value": True},
+            }
 
     lights = tuple(
         [
@@ -241,19 +282,21 @@ def test_detector_configurable_protocol(
 ) -> None:
     for name, info in detector_config.items():
         det = SimulatedCameraModel(name, info)
-        cfg = det.read_configuration()
+        cfg = get_descriptor_values(det.read_configuration())
         truth = {
-            "vendor": {"value": "N/A", "timestamp": 0},
-            "serial_number": {"value": "N/A", "timestamp": 0},
-            "family": {"value": "N/A", "timestamp": 0},
-            "sensor_shape": {"value": info.sensor_shape, "timestamp": 0},
-            "pixel_size": {"value": info.pixel_size, "timestamp": 0},
+            "vendor": {"value": "N/A"},
+            "serial_number": {"value": "N/A"},
+            "family": {
+                "value": "N/A",
+            },
+            "sensor_shape": {"value": info.sensor_shape},
+            "pixel_size": {"value": info.pixel_size},
             # TODO: this field should be supported
-            # "roi": {"value": (0, 0, 1024, 1024), "timestamp": 0},
-            "image pattern": {"timestamp": 0, "value": "noise"},
-            "image data type": {"timestamp": 0, "value": 0},
-            "gain": {"timestamp": 0, "value": 0},
-            "exposure": {"timestamp": 0, "value": 0.1},
-            "display image number": {"timestamp": 0, "value": True},
+            # "roi": {"value": (0, 0, 1024, 1024) },
+            "image pattern": {"value": "noise"},
+            "image data type": {"value": "uint8"},
+            "gain": {"value": 0},
+            "exposure": {"value": 0.1},
+            "display image number": {"value": True},
         }
         assert cfg == truth
