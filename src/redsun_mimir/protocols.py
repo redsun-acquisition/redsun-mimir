@@ -203,18 +203,7 @@ class LightProtocol(ModelProtocol, Settable):
 
 @runtime_checkable
 class DetectorProtocol(ModelProtocol, Settable, Protocol):
-    """Protocol for detector models.
-
-    Attributes
-    ----------
-    enabled : ``bool``
-        Detector activation status.
-        - ``True``: detector is on
-        - ``False``: detector is off
-
-    """
-
-    enabled: bool
+    """Protocol for detector models."""
 
     @abstractmethod
     def read(self) -> dict[str, Reading[Any]]:
