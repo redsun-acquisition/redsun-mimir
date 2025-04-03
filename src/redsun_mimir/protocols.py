@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from sunflare.model import ModelProtocol
 from typing_extensions import Protocol, TypedDict, runtime_checkable
@@ -37,6 +37,28 @@ class PlanManifest(TypedDict):
     docstring: str
     annotations: dict[str, Any]
     togglable: bool
+
+
+class ROI(NamedTuple):
+    """Region of Interest (ROI) information.
+
+    Parameters
+    ----------
+    x : ``int``
+        X coordinate of the ROI.
+    y : ``int``
+        Y coordinate of the ROI.
+    width : ``int``
+        Width of the ROI.
+    height : ``int``
+        Height of the ROI.
+
+    """
+
+    x: int
+    y: int
+    width: int
+    height: int
 
 
 @runtime_checkable
@@ -135,8 +157,8 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
         ...
 
 
-class LightProtocol(ModelProtocol, Settable):
-    """Mixin for light models.
+class LightProtocol(ModelProtocol, Settable, Protocol):
+    """Protocol for light models.
 
     Implements the ``Readable`` protocol.
 
@@ -167,21 +189,18 @@ class LightProtocol(ModelProtocol, Settable):
         ...
 
     @abstractmethod
-    def read(self) -> dict[str, Reading[float | int]]:
+    def read(self) -> dict[str, Reading[float | int | bool]]:
         """Read the current status of the light source.
 
         Returns a dictionary with the values of ``intensity`` and ``enabled``.
 
         Returns
         -------
-        ``dict[str, Reading[int | float]]``
-            Dictionary with the current light intensity and activation status
+        ``dict[str, Reading[int | float | bool]]``
+            Dictionary with the current light intensity and activation status.
 
         """
-        return {
-            "intensity": {"value": self.intensity, "timestamp": 0},
-            "enabled": {"value": self.enabled, "timestamp": 0},
-        }
+        ...
 
     @abstractmethod
     def describe(self) -> dict[str, Descriptor]:
@@ -190,10 +209,7 @@ class LightProtocol(ModelProtocol, Settable):
         The dictionary holds the metadata with relevant
         information about the light source.
         """
-        return {
-            "intensity": {"source": self.name, "dtype": "number", "shape": []},
-            "enabled": {"source": self.name, "dtype": "boolean", "shape": []},
-        }
+        ...
 
     @property
     @abstractmethod
@@ -281,5 +297,33 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         -------
         ``Status``
             Status object of the operation.
+        """
+        ...
+
+
+@runtime_checkable
+class ResizableProtocol(Protocol):
+    """Protocol for devices supporting cropping operations over the acquired data.
+
+    Note
+    ----
+    This is a **custom** protocol, **not** part of the Bluesky framework.
+    The protocol is not implemented by the ``DetectorProtocol``.
+    """
+
+    @abstractmethod
+    def resize(self, roi: ROI) -> Status:
+        """Resize the device to the specified region of interest (ROI).
+
+        Parameters
+        ----------
+        roi : ``ROI``
+            Region of interest.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
+
         """
         ...

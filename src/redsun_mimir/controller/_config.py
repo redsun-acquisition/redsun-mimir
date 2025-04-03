@@ -63,7 +63,8 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
     metadata: dict[str, Any] = field(default={}, validator=validators.instance_of(dict))
 
 
-class ImageControllerInfo(_CommonControllerInfo):
+@define(kw_only=True)
+class ImageControllerInfo(ControllerInfo):
     """Configuration class for the image visualization controller."""
 
     ...
