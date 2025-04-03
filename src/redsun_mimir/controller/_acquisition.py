@@ -1,11 +1,10 @@
 import inspect
 from collections.abc import Mapping, Sequence
-from concurrent.futures import Future
 from typing import TYPE_CHECKING, Annotated, Any
 
 import bluesky.plans as bp
 from bluesky.utils import RunEngineInterrupted
-from sunflare.engine import RunEngine, RunEngineResult
+from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.model import ModelProtocol
 from sunflare.virtual import Publisher, Signal, VirtualBus
@@ -41,36 +40,13 @@ class AcquisitionController(Publisher, Loggable):
         }
 
         self.engine = RunEngine(socket_prefix="ACQ", socket=self.pub_socket)
-        self.futures: list[Future[RunEngineResult | tuple[str, ...]]] = []
-
-        def _log_exception(
-            fut: Future[RunEngineResult | tuple[str, ...]],
-        ) -> None:
-            try:
-                fut.result()
-            except Exception as exc:
-                self.logger.error(
-                    "An exception occurred during the plan: %s",
-                    exc,
-                )
-
-        def _plan_done(
-            fut: Future[RunEngineResult | tuple[str, ...]],
-        ) -> None:
-            try:
-                fut.result()
-            except Exception:
-                # exception handled by _log_exception
-                pass
-            finally:
-                self.sigPlanDone.emit()
 
         @togglable
         def live_count(
             detectors: Annotated[
                 Sequence[str], [det_name for det_name in self.detectors.keys()]
             ],
-        ) -> Future[RunEngineResult | tuple[str, ...]] | str:
+        ) -> str | None:
             """Start a live acquisition with the selected detectors.
 
             Parameters
@@ -89,15 +65,15 @@ class AcquisitionController(Publisher, Loggable):
                 return error_msg
             self.logger.debug("Starting live acquisition: %s", detectors)
             dets = [self.detectors[name] for name in detectors]
-            future = self.engine(bp.count(dets, num=None))
-            return future
+            self.engine(bp.count(dets, num=None))
+            return None
 
         def snapshot(
             detectors: Annotated[
                 Sequence[str], [det_name for det_name in self.detectors.keys()]
             ],
             frames: int,
-        ) -> Future[RunEngineResult | tuple[str, ...]] | str:
+        ) -> str | None:
             """Take one (or more) snapshots from each detector.
 
             Parameters
@@ -118,13 +94,10 @@ class AcquisitionController(Publisher, Loggable):
                 return error_msg
             self.logger.debug("Taking snapshots: %s", detectors)
             dets = [self.detectors[name] for name in detectors]
-            future = self.engine(bp.count(dets, num=frames))
-            future.add_done_callback(_plan_done)
-            return future
+            self.engine(bp.count(dets, num=frames))
+            return None
 
-        self.plans: dict[
-            str, Callable[..., Future[RunEngineResult | tuple[str, ...]] | str]
-        ] = {
+        self.plans: dict[str, Callable[..., str | None]] = {
             "Live count": live_count,
             "Snapshot": snapshot,
         }
@@ -161,10 +134,8 @@ class AcquisitionController(Publisher, Loggable):
 
     def _run_plan(self, plan: str, kwargs: dict[str, Any]) -> None:
         ret = self.plans[plan](**kwargs)
-        if isinstance(ret, str):
+        if ret:
             self.logger.error(ret)
-            return
-        self.futures.append(ret)
 
     def _stop_plan(self) -> None:
         if self.engine.state == "running":
