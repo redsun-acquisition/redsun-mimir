@@ -233,6 +233,12 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         "white": 5,
     }
 
+    _dtype_map = {
+        "uint8": 0,
+        "uint16": 1,
+        "float": 2,
+    }
+
     def __init__(
         self,
         name: str,
@@ -256,7 +262,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
         SimulatedCamera.__init__(self, sensor_shape=model_info.sensor_shape)
         self.set_setting("image pattern", self._pattern_map["noise"])
-        self.set_setting("image data type", "uint8")
+        self.set_setting("image data type", self._dtype_map["uint8"])
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
@@ -290,6 +296,10 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                     if propr == "image pattern":
                         self.set_setting(propr, self._pattern_map[value])
                         if self.get_setting(propr) != self._pattern_map[value]:
+                            raise_exception = True
+                    elif propr == "image data type":
+                        self.set_setting(propr, self._dtype_map[value])
+                        if self.get_setting(propr) != self._dtype_map[value]:
                             raise_exception = True
                     else:
                         self.set_setting(propr, value)
@@ -397,6 +407,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
     def read_configuration(self) -> dict[str, Reading[Any]]:
         reading = self.model_info.read_configuration()
         settings = self.get_all_settings()
+        timestamp = time.time()
         for name, setting in settings.items():
             if name in [
                 "image pattern",
@@ -407,17 +418,20 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 if name == "image pattern":
                     # extract the pattern name from the current setting value
                     setting = list(self._pattern_map.keys())[setting]
+                if name == "image data type":
+                    # extract the data type from the current setting value
+                    setting = list(self._dtype_map.keys())[setting]
                 reading.update(
                     {
                         name: {
                             "value": setting,
-                            "timestamp": 0,
+                            "timestamp": timestamp,
                         }
                     }
                 )
         reading.update(
             {
-                "exposure": {"value": self.get_exposure_time(), "timestamp": 0},
+                "exposure": {"value": self.get_exposure_time(), "timestamp": timestamp},
             }
         )
 
