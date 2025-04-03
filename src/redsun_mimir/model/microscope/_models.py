@@ -255,12 +255,11 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         # self.future.add_done_callback(set_devices)
 
         SimulatedCamera.__init__(self, sensor_shape=model_info.sensor_shape)
-        self.set_setting("image pattern", "noise")
+        self.set_setting("image pattern", self._pattern_map["noise"])
         self.set_setting("image data type", "uint8")
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
         self.set_client(self._queue)
-        self._image_generator._method_index = self._pattern_map["noise"]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a configuration parameter.
@@ -284,19 +283,21 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
             else:
+                raise_exception = False
                 if propr == "exposure":
                     self.set_exposure_time(float(value))
                 else:
-                    self.set_setting(propr, value)
-                    if self.get_setting(propr) != value:
-                        s.set_exception(
-                            ValueError(
-                                f"Failed to set {propr} to {value}. Current value: {self.get_setting(propr)}"
-                            )
-                        )
-                        return s
                     if propr == "image pattern":
-                        self._image_generator._method_index = self._pattern_map[value]
+                        self.set_setting(propr, self._pattern_map[value])
+                        if self.get_setting(propr) != self._pattern_map[value]:
+                            raise_exception = True
+                    else:
+                        self.set_setting(propr, value)
+                        if self.get_setting(propr) != value:
+                            raise_exception = True
+                    if raise_exception:
+                        s.set_exception(ValueError())
+                        return s
                 self.logger.debug("Set %s to %s.", propr, value)
                 s.set_finished()
                 return s
@@ -403,6 +404,9 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 "display image number",
                 "gain",
             ]:
+                if name == "image pattern":
+                    # extract the pattern name from the current setting value
+                    setting = list(self._pattern_map.keys())[setting]
                 reading.update(
                     {
                         name: {
