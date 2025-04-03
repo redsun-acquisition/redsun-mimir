@@ -28,7 +28,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "sunflare>=0.5.0",
-    "ndv[vispy]",
+    "ndv[pygfx]",
     "superqt",
 ]
 
