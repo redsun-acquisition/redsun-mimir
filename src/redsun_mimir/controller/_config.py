@@ -64,7 +64,7 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
 
 
 @define(kw_only=True)
-class ImageControllerInfo(ControllerInfo):
+class ImageControllerInfo(_CommonControllerInfo):
     """Configuration class for the image visualization controller."""
 
     ...

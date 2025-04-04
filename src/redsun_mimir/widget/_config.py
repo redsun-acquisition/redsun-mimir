@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from attrs import define
-from sunflare.config import WidgetInfo
+from attrs import define, field, setters
+from sunflare.config import WidgetInfo, WidgetPositionTypes
 
 
 @define
@@ -42,3 +42,17 @@ class AcquisitionWidgetInfo(WidgetInfo):
     """
 
     ...
+
+
+@define
+class ImageWidgetInfo(WidgetInfo):
+    """Image widget information.
+
+    Overrides the default position to ensure it is
+    always put as the center widget in the main window.
+    """
+
+    position: WidgetPositionTypes = field(
+        default=WidgetPositionTypes.CENTER,
+        on_setattr=setters.frozen,
+    )
