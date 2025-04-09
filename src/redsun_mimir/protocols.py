@@ -157,6 +157,7 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
         ...
 
 
+@runtime_checkable
 class LightProtocol(ModelProtocol, Settable, Protocol):
     """Protocol for light models.
 
