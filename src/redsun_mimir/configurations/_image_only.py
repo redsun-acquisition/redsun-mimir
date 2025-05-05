@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
@@ -36,6 +37,10 @@ def image_widget() -> None:
     widget = ImageWidget(config, bus)
     widget.registration_phase()
     widget.connection_phase()
+
+    widget.add_image(np.random.randint(0, 255, size=(1024, 1024), dtype=np.uint8))
+
+    widget.add_image(np.random.randint(0, 255, size=(512, 512), dtype=np.uint8))
 
     widget.show()
 
