@@ -3,17 +3,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from napari._qt.widgets.qt_mode_buttons import QtModePushButton
+from napari._vispy.utils.visual import overlay_to_visual
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
 from sunflare.view.qt import BaseQtWidget
+
+from redsun_mimir.utils.napari import ROIInteractionBoxOverlay, VispyROIBoxOverlay
 
 if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
     from napari._qt.layer_controls.qt_image_controls import QtImageControls
-    from napari.components.overlays import SelectionBoxOverlay
     from napari.layers import Image, Layer
     from napari.utils.events import EventedList
     from sunflare.config import RedSunSessionInfo
@@ -48,6 +50,8 @@ class ImageWidget(BaseQtWidget):
             *args,
             **kwargs,
         )
+
+        overlay_to_visual.update({ROIInteractionBoxOverlay: VispyROIBoxOverlay})
 
         self._model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
@@ -107,9 +111,9 @@ class ImageWidget(BaseQtWidget):
         setattr(layer, "protected", protected)
 
         if protected:
-            roi: SelectionBoxOverlay = layer._overlays["selection_box"]
-            roi.handles = True
-            roi.bounds = (0, 0), (data.shape[1], data.shape[0])
+            layer._overlays["roi_box"] = ROIInteractionBoxOverlay(
+                bounds=((0, 0), (data.shape[1], data.shape[0]))
+            )
 
             layer_ctrl: QtImageControls = self._layer_controls.widgets[layer]
             bbox_button = QtModePushButton(
@@ -166,5 +170,5 @@ class ImageWidget(BaseQtWidget):
             If ``True``, the selection overlay will be shown; otherwise, it will be hidden.
 
         """
-        roi: SelectionBoxOverlay = layer._overlays["selection_box"]
-        roi.visible = checked
+        layer._overlays["selection_box"].visible = checked
+        layer._overlays["roi_box"].visible = checked

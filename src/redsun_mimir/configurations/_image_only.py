@@ -40,8 +40,6 @@ def image_widget() -> None:
 
     widget.add_image(np.random.randint(0, 255, size=(1024, 1024), dtype=np.uint8))
 
-    widget.add_image(np.random.randint(0, 255, size=(512, 512), dtype=np.uint8))
-
     widget.show()
 
     app.exec()
