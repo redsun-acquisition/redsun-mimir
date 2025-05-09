@@ -74,8 +74,6 @@ def generate_roi_box_vertices(
     np.ndarray
         Coordinates of the vertices and handles of the interaction box.
     """
-    print("Called")
-
     x0, y0 = top_left
     x1, y1 = bot_right
     vertices = np.array(
@@ -95,16 +93,16 @@ def generate_roi_box_vertices(
 
 
 def get_nearby_roi_handle(
-    position: np.ndarray, handle_coordinates: np.ndarray
+    position: npt.NDArray[Any], handle_coordinates: npt.NDArray[Any]
 ) -> ROIInteractionBoxHandle | None:
     """
     Get the ROIInteractionBoxHandle close to the given position, within tolerance.
 
     Parameters
     ----------
-    position : np.ndarray
+    position : npt.NDArray[Any]
         Position to query for.
-    handle_coordinates : np.ndarray
+    handle_coordinates : npt.NDArray[Any]
         Coordinates of all the handles (except INSIDE).
 
     Returns
@@ -112,7 +110,7 @@ def get_nearby_roi_handle(
     Optional[ROIInteractionBoxHandle]
         The nearby handle if any.
     """
-    dist = np.linalg.norm(position - handle_coordinates, axis=1)
+    dist: npt.NDArray[Any] = np.linalg.norm(position - handle_coordinates, axis=1)
     tolerance = dist.max() / 100
     close_to_vertex = np.isclose(dist, 0, atol=tolerance)
     if np.any(close_to_vertex):
@@ -135,8 +133,6 @@ class ROIInteractionBoxHandle(IntEnum):
     Note that y is actually upside down in the canvas in vispy coordinates.
     """
 
-    _ignore_ = ["opposites"]
-
     TOP_LEFT = 0
     TOP_CENTER = 4
     TOP_RIGHT = 2
@@ -146,22 +142,22 @@ class ROIInteractionBoxHandle(IntEnum):
     BOTTOM_CENTER = 7
     BOTTOM_RIGHT = 3
 
-    opposites: dict[ROIInteractionBoxHandle, ROIInteractionBoxHandle] = {
-        TOP_LEFT: BOTTOM_RIGHT,
-        TOP_CENTER: BOTTOM_CENTER,
-        TOP_RIGHT: BOTTOM_LEFT,
-        CENTER_LEFT: CENTER_RIGHT,
-        BOTTOM_LEFT: TOP_RIGHT,
-        BOTTOM_CENTER: TOP_CENTER,
-        BOTTOM_RIGHT: TOP_LEFT,
-        CENTER_RIGHT: CENTER_LEFT,
-    }
-
     @classmethod
     def opposite_handle(
         cls, handle: ROIInteractionBoxHandle
     ) -> ROIInteractionBoxHandle:
-        if (opposite := cls.opposites.get(handle)) is None:
+        opposites = {
+            cls.TOP_LEFT: cls.BOTTOM_RIGHT,
+            cls.TOP_CENTER: cls.BOTTOM_CENTER,
+            cls.TOP_RIGHT: cls.BOTTOM_LEFT,
+            cls.CENTER_LEFT: cls.CENTER_RIGHT,
+            cls.BOTTOM_LEFT: cls.TOP_RIGHT,
+            cls.BOTTOM_CENTER: cls.TOP_CENTER,
+            cls.BOTTOM_RIGHT: cls.TOP_LEFT,
+            cls.CENTER_RIGHT: cls.CENTER_LEFT,
+        }
+
+        if (opposite := opposites.get(handle)) is None:
             raise ValueError(f"{handle} has no opposite handle.")
         return opposite
 
@@ -182,7 +178,7 @@ class ROIInteractionBoxHandle(IntEnum):
         )
 
 
-class ROIInteractionBoxOverlay(SceneOverlay):
+class ROIInteractionBoxOverlay(SceneOverlay):  # type: ignore[misc]
     """A box to select a region of interest in an image.
 
     Attributes
@@ -200,12 +196,12 @@ class ROIInteractionBoxOverlay(SceneOverlay):
     bounds: tuple[tuple[float, float], tuple[float, float]] = ((0, 0), (0, 0))
     selected_handle: ROIInteractionBoxHandle | None = None
 
-    def update_from_points(self, points):
+    def update_from_points(self, points: npt.NDArray[Any]) -> None:
         """Create as a bounding box of the given points."""
         self.bounds = calculate_bounds_from_contained_points(points)
 
 
-class ROIBoxNode(Compound):
+class ROIBoxNode(Compound):  # type: ignore[misc]
     # vertices are generated according to the following scheme:
     # (y is actually upside down in the canvas)
     #  0---4---2    1 = position
@@ -247,7 +243,7 @@ class ROIBoxNode(Compound):
         top_left: tuple[float, float],
         bot_right: tuple[float, float],
         selected: int | None = None,
-    ):
+    ) -> None:
         vertices = generate_roi_box_vertices(top_left, bot_right)
 
         self.line.set_data(pos=vertices, connect=self._edges)
@@ -266,17 +262,17 @@ class ROIBoxNode(Compound):
         )
 
 
-class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):
+class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[misc]
     node: ROIBoxNode
     overlay: ROIInteractionBoxOverlay
     layer: Image
 
-    def __init__(self, *, layer: Image, overlay: ROIBoxNode, parent=None) -> None:
+    def __init__(self, *, layer: Image, overlay: ROIBoxNode, parent=None) -> None:  # type: ignore[no-untyped-def]
         super().__init__(node=ROIBoxNode(), layer=layer, overlay=overlay, parent=parent)
         self.layer.events.set_data.connect(self._on_visible_change)
         self.overlay.events.selected_handle.connect(self._on_bounds_change)
 
-    def _on_bounds_change(self):
+    def _on_bounds_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
             bounds = self.layer._display_bounding_box_augmented_data_level(
                 self.layer._slice_input.displayed
@@ -289,12 +285,12 @@ class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):
                 top_left, bot_right, selected=self.overlay.selected_handle
             )
 
-    def _on_visible_change(self):
+    def _on_visible_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
             super()._on_visible_change()
         else:
             self.node.visible = False
 
-    def reset(self):
+    def reset(self) -> None:
         super().reset()
         self._on_bounds_change()

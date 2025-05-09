@@ -45,8 +45,8 @@ class ImageWidget(BaseQtWidget):
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            config=config,
-            virtual_bus=virtual_bus,
+            config,
+            virtual_bus,
             *args,
             **kwargs,
         )

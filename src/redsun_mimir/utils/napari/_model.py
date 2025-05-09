@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from napari._vispy.mouse_event import NapariMouseEvent
 
 
-class ROIMode(StringEnum):
+class ROIMode(StringEnum):  # type: ignore[misc]
     """Mode enum for ROI interaction."""
 
     NONE = auto()
@@ -164,7 +164,7 @@ def highlight_roi_box_handles(layer: DetectorLayer, event: NapariMouseEvent) -> 
     layer.roi.selected_handle = nearby_handle
 
 
-class DetectorLayer(NapariImage):
+class DetectorLayer(NapariImage):  # type: ignore[misc]
     """Layer for displaying data from a 2D detector (i.e. a camera)."""
 
     _move_modes = NapariImage._move_modes.update(
@@ -191,7 +191,7 @@ class DetectorLayer(NapariImage):
     @property
     def roi(self) -> ROIInteractionBoxOverlay:
         """Returns the ROI box overlay."""
-        return self._overlays["roi_box"]
+        return self._overlays["roi_box"]  # type: ignore[no-any-return]
 
     @property
     def protected(self) -> bool:
@@ -199,7 +199,7 @@ class DetectorLayer(NapariImage):
         return True
 
 
-class ViewerModel(NapariViewerModel):
+class ViewerModel(NapariViewerModel):  # type: ignore[misc]
     """Subclass of napari.components.ViewerModel to add custom functionality."""
 
     def add_detector(self, data: npt.NDArray[Any], **kwargs: Any) -> None:
