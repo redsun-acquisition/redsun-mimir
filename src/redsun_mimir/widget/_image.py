@@ -2,21 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from napari._qt.widgets.qt_mode_buttons import QtModePushButton
-from napari._vispy.utils.visual import overlay_to_visual
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
 from sunflare.view.qt import BaseQtWidget
 
-from redsun_mimir.utils.napari import ROIInteractionBoxOverlay, VispyROIBoxOverlay
+from redsun_mimir.utils.napari import DetectorLayer
 
 if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
-    from napari._qt.layer_controls.qt_image_controls import QtImageControls
-    from napari.layers import Image, Layer
+    from napari.layers import Layer
     from napari.utils.events import EventedList
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
@@ -51,8 +48,6 @@ class ImageWidget(BaseQtWidget):
             **kwargs,
         )
 
-        overlay_to_visual.update({ROIInteractionBoxOverlay: VispyROIBoxOverlay})
-
         self._model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
         )
@@ -79,8 +74,9 @@ class ImageWidget(BaseQtWidget):
         ) -> list[tuple[EventedList[Layer], int]]:
             """Populate the indices of the layers to be deleted.
 
-            If a layer is protected, it will not be deleted.
-            This is a workaround to prevent the deletion of protected layers.
+            This method is a monkey patch for the ``_delitem_indices`` method of the
+            ``napari.components._model.Layers`` class. It prevents the deletion of
+            detector layers by removing them from the list of indices to be deleted.
 
             Parameters
             ----------
@@ -90,85 +86,26 @@ class ImageWidget(BaseQtWidget):
             indices: list[tuple[EventedList[Layer], int]] = delimit_indeces(key)
             for index in indices[:]:
                 layer = index[0][index[1]]
-                if getattr(layer, "protected", False):
+                if isinstance(layer, DetectorLayer):
+                    # if the layer is a detector layer, do not delete it
                     indices.remove(index)
             return indices
 
         # monkey patch the _delitem_indices method to prevent deletion of protected layers
         self._model.layers._delitem_indices = _delimit_unprotected_indeces
 
-    def add_image(self, data: npt.NDArray[Any], protected: bool = True) -> None:
-        """Add an image to the viewer.
+    def add_detector(self, data: npt.NDArray[Any]) -> None:
+        """Add a detector layer to the viewer.
 
         Parameters
         ----------
         data : ``npt.NDArray[Any]``
-            The image data to be added.
-        protected : ``bool``, optional
-            If ``True``, the layer will be protected from deletion.
+            The image data to be added as a detector layer.
         """
-        layer: Image = self._model.add_image(data)
-        setattr(layer, "protected", protected)
-
-        if protected:
-            layer._overlays["roi_box"] = ROIInteractionBoxOverlay(
-                bounds=((0, 0), (data.shape[1], data.shape[0]))
-            )
-
-            layer_ctrl: QtImageControls = self._layer_controls.widgets[layer]
-            bbox_button = QtModePushButton(
-                layer=layer,
-                button_name="bbox_button",
-                tooltip="Toggle the layer bounding box",
-            )
-            bbox_button.setCheckable(True)
-            bbox_button.setChecked(False)
-            bbox_button.toggled[bool].connect(
-                lambda checked: self._toggle_bounding_box(layer, checked)
-            )
-            roi_button = QtModePushButton(
-                layer=layer,
-                button_name="roi_button",
-                tooltip="Toggle the layer ROI box",
-            )
-            roi_button.setCheckable(True)
-            roi_button.setChecked(False)
-            roi_button.toggled[bool].connect(
-                lambda checked: self._toggle_selection_overlay(layer, checked)
-            )
-
-            # add button before pan/zoom (0, 6) and transform (0, 7);
-            layer_ctrl.button_grid.addWidget(bbox_button, 0, 5)
-            layer_ctrl.button_grid.addWidget(roi_button, 0, 4)
+        layer = DetectorLayer(data)
+        self._model.layers.append(layer)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None: ...
-
-    def _toggle_bounding_box(self, layer: Image, checked: bool) -> None:
-        """Toggle the bounding box of the layer.
-
-        Parameters
-        ----------
-        layer : ``Image``
-            The image layer to toggle the bounding box for.
-        checked : ``bool``
-            If ``True``, the bounding box will be shown; otherwise, it will be hidden.
-
-        """
-        layer.bounding_box.visible = checked
-
-    def _toggle_selection_overlay(self, layer: Image, checked: bool) -> None:
-        """Toggle the selection overlay of the layer.
-
-        Parameters
-        ----------
-        layer : ``Image``
-            The image layer to toggle the selection overlay for.
-        checked : ``bool``
-            If ``True``, the selection overlay will be shown; otherwise, it will be hidden.
-
-        """
-        layer._overlays["selection_box"].visible = checked
-        layer._overlays["roi_box"].visible = checked

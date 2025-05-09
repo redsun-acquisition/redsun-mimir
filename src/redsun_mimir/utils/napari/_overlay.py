@@ -33,6 +33,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
     from napari.layers import Image
 
 
+@lru_cache
 def generate_roi_box_vertices(
     top_left: tuple[float, float],
     bot_right: tuple[float, float],
@@ -270,6 +272,7 @@ class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[
     def __init__(self, *, layer: Image, overlay: ROIBoxNode, parent=None) -> None:  # type: ignore[no-untyped-def]
         super().__init__(node=ROIBoxNode(), layer=layer, overlay=overlay, parent=parent)
         self.layer.events.set_data.connect(self._on_visible_change)
+        self.overlay.events.bounds.connect(self._on_bounds_change)
         self.overlay.events.selected_handle.connect(self._on_bounds_change)
 
     def _on_bounds_change(self) -> None:

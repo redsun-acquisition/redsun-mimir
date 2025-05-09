@@ -38,7 +38,7 @@ def image_widget() -> None:
     widget.registration_phase()
     widget.connection_phase()
 
-    widget.add_image(np.random.randint(0, 255, size=(1024, 1024), dtype=np.uint8))
+    widget.add_detector(np.random.randint(0, 255, size=(1024, 1024), dtype=np.uint8))
 
     widget.show()
 
