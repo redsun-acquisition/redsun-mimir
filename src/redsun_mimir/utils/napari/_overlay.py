@@ -217,15 +217,16 @@ class ROIBoxNode(Compound):  # type: ignore[misc]
         [
             [0, 1],
             [1, 3],
-            [1, 3],
+            [3, 2],
             [2, 0],
-            [4, 8],
         ]
     )
 
     def __init__(self) -> None:
         self._marker_color = (1, 1, 1, 1)
         self._marker_size = 10
+        self._line_color = (1, 1, 1, 1)
+        self._line_width = 2
         self._highlight_width = 2
 
         # squares for corners and midpoints
@@ -250,7 +251,9 @@ class ROIBoxNode(Compound):  # type: ignore[misc]
     ) -> None:
         vertices = generate_roi_box_vertices(top_left, bot_right)
 
-        self.line.set_data(pos=vertices, connect=self._edges)
+        self.line.set_data(
+            pos=vertices, connect=self._edges, width=2, color=self._line_color
+        )
 
         marker_edges = np.zeros(len(vertices))
         if selected is not None:
@@ -279,13 +282,7 @@ class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[
 
     def _on_bounds_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
-            bounds = self.layer._display_bounding_box_augmented_data_level(
-                self.layer._slice_input.displayed
-            )
-
-            # invert axes for vispy
-            print(bounds)
-            top_left, bot_right = (tuple(point) for point in bounds.T[:, ::-1])
+            top_left, bot_right = (tuple(point) for point in self.overlay.bounds)
 
             self.node.set_data(
                 top_left, bot_right, selected=self.overlay.selected_handle

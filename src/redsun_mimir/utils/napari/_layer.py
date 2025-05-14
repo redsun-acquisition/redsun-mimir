@@ -33,6 +33,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 from typing import TYPE_CHECKING, Callable, ClassVar, Generator, NamedTuple
 
 import numpy as np
@@ -121,8 +122,6 @@ def resize_roi_box(
     None
         This is a generator function that handles mouse dragging.
     """
-    new_bounds: tuple[tuple[int, int], tuple[int, int]]
-
     if len(event.dims_displayed) != 2:
         return
 
@@ -130,6 +129,7 @@ def resize_roi_box(
     selected_handle = layer.roi.selected_handle
     if selected_handle is None:
         return
+    current_bounds = deepcopy(layer.roi.bounds)
 
     yield
 
@@ -146,41 +146,50 @@ def resize_roi_box(
         match selected_handle:
             case ROIInteractionBoxHandle.CENTER_LEFT:
                 if mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1:
-                    new_bounds = (
+                    current_bounds = (
                         (mouse_pos.x, layer.roi.bounds[0][1]),
-                        (layer.roi.bounds[1][0], layer.roi.bounds[1][1]),
+                        layer.roi.bounds[1],
                     )
             case ROIInteractionBoxHandle.CENTER_RIGHT:
                 if mouse_pos.x >= 1 and mouse_pos.x <= layer.width:
-                    print("CENTER_RIGHT", mouse_pos)
+                    current_bounds = (
+                        layer.roi.bounds[0],
+                        (mouse_pos.x, layer.roi.bounds[1][1]),
+                    )
             case ROIInteractionBoxHandle.TOP_LEFT:
                 if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
                     mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
                 ):
-                    print("TOP_LEFT", mouse_pos)
+                    print("top left not implemented", mouse_pos)
             case ROIInteractionBoxHandle.TOP_RIGHT:
                 if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
                     mouse_pos.x >= 1 and mouse_pos.x <= layer.width
                 ):
-                    print("TOP_RIGHT", mouse_pos)
+                    print("top right not implemented", mouse_pos)
             case ROIInteractionBoxHandle.TOP_CENTER:
                 if mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1:
-                    print("TOP_CENTER", mouse_pos)
+                    current_bounds = (
+                        (layer.roi.bounds[0][0], mouse_pos.y),
+                        layer.roi.bounds[1],
+                    )
             case ROIInteractionBoxHandle.BOTTOM_CENTER:
                 if mouse_pos.y >= 1 and mouse_pos.y <= layer.height:
-                    print("BOTTOM_CENTER", mouse_pos)
+                    current_bounds = (
+                        (layer.roi.bounds[0][0], mouse_pos.y),
+                        layer.roi.bounds[1],
+                    )
             case ROIInteractionBoxHandle.BOTTOM_LEFT:
                 if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
                     mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
                 ):
-                    print("BOTTOM_LEFT", mouse_pos)
+                    print("bottom left not implemented", mouse_pos)
             case ROIInteractionBoxHandle.BOTTOM_RIGHT:
                 if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
                     mouse_pos.x >= 1 and mouse_pos.x <= layer.width
                 ):
-                    print("BOTTOM_RIGHT", mouse_pos)
+                    print("bottom right not implemented", mouse_pos)
 
-        layer.roi.bounds = new_bounds
+        layer.roi.bounds = deepcopy(current_bounds)
         yield
 
 
