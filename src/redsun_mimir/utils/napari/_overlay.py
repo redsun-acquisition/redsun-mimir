@@ -185,17 +185,19 @@ class ROIInteractionBoxOverlay(SceneOverlay):  # type: ignore[misc]
 
     Attributes
     ----------
-    selected_handle : Optional[ROIInteractionBoxHandle]
-        The currently selected handle.
     visible : bool
         If the overlay is visible or not.
     opacity : float
         The opacity of the overlay. 0 is fully transparent.
-    order : int
-        The rendering order of the overlay: lower numbers get rendered first.
+    bounds : tuple[Tuple[float, float], Tuple[float, float]]
+        The bounds of the overlay, formatted as ((x0, y0), (x1, y1)).
+        During initialization, they coincide with the bounds of the
+        associated layer.
+    selected_handle : Optional[ROIInteractionBoxHandle]
+        The currently selected handle.
     """
 
-    bounds: tuple[tuple[float, float], tuple[float, float]] = ((0, 0), (0, 0))
+    bounds: tuple[tuple[float, float], tuple[float, float]]
     selected_handle: ROIInteractionBoxHandle | None = None
 
     def update_from_points(self, points: npt.NDArray[Any]) -> None:
@@ -282,6 +284,7 @@ class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[
             )
 
             # invert axes for vispy
+            print(bounds)
             top_left, bot_right = (tuple(point) for point in bounds.T[:, ::-1])
 
             self.node.set_data(

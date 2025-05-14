@@ -33,7 +33,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, ClassVar, Generator
+from typing import TYPE_CHECKING, Callable, ClassVar, Generator, NamedTuple
 
 import numpy as np
 from napari.layers import Image as NapariImage
@@ -58,6 +58,25 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from napari._vispy.mouse_event import NapariMouseEvent
+
+
+class MousePosition(NamedTuple):
+    """Mouse position in data coordinates.
+
+    Parameters
+    ----------
+    y : int
+        Y coordinate of the mouse position.
+    x : int
+        X coordinate of the mouse position.
+    """
+
+    y: int
+    x: int
+
+    def __repr__(self) -> str:
+        """Return a string representation of the mouse position."""
+        return f"(y={self.y}, x={self.x})"
 
 
 def generate_roi_box_from_layer(
@@ -102,6 +121,8 @@ def resize_roi_box(
     None
         This is a generator function that handles mouse dragging.
     """
+    new_bounds: tuple[tuple[int, int], tuple[int, int]]
+
     if len(event.dims_displayed) != 2:
         return
 
@@ -110,155 +131,57 @@ def resize_roi_box(
     if selected_handle is None:
         return
 
-    # Get the coordinates in data space
-    world_to_data = (
-        layer._transforms[1:].set_slice(layer._slice_input.displayed).inverse
-    )
-
-    # Start position in data coordinates
-    start_position = np.array(world_to_data(event.position))[event.dims_displayed]
-    last_position = start_position.copy()
-
-    # Get the current bounds of the ROI box
-    current_bounds = layer.roi.bounds
-    top_left = np.array(current_bounds[0])
-    bot_right = np.array(current_bounds[1])
-
-    # Layer bounds for clipping
-    layer_bounds = np.array([(0, 0), layer.full_size])
-    min_bounds = layer_bounds[0]
-    max_bounds = layer_bounds[1]
-
-    # Track if we've hit the 1-pixel threshold
-    threshold_hit = {"left": False, "right": False, "top": False, "bottom": False}
-
-    # The minimum distance from border to consider "at threshold"
-    pixel_threshold = 1.0
-
-    # Determine which bound coordinates this handle affects
-    affects_left = selected_handle in (
-        ROIInteractionBoxHandle.TOP_LEFT,
-        ROIInteractionBoxHandle.CENTER_LEFT,
-        ROIInteractionBoxHandle.BOTTOM_LEFT,
-    )
-    affects_right = selected_handle in (
-        ROIInteractionBoxHandle.TOP_RIGHT,
-        ROIInteractionBoxHandle.CENTER_RIGHT,
-        ROIInteractionBoxHandle.BOTTOM_RIGHT,
-    )
-    affects_top = selected_handle in (
-        ROIInteractionBoxHandle.TOP_LEFT,
-        ROIInteractionBoxHandle.TOP_CENTER,
-        ROIInteractionBoxHandle.TOP_RIGHT,
-    )
-    affects_bottom = selected_handle in (
-        ROIInteractionBoxHandle.BOTTOM_LEFT,
-        ROIInteractionBoxHandle.BOTTOM_CENTER,
-        ROIInteractionBoxHandle.BOTTOM_RIGHT,
-    )
-
     yield
 
     # Main event loop for handling drag events
     while event.type == "mouse_move":
-        current_position = np.array(world_to_data(event.position))[event.dims_displayed]
-        print(current_position)
+        mouse_pos = MousePosition(
+            *tuple(
+                layer.world_to_data(event.position)[event.dims_displayed].astype(
+                    np.uint32
+                )
+            )
+        )
 
-        # Calculate how much the mouse has moved since last position
-        delta = current_position - last_position
+        match selected_handle:
+            case ROIInteractionBoxHandle.CENTER_LEFT:
+                if mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1:
+                    new_bounds = (
+                        (mouse_pos.x, layer.roi.bounds[0][1]),
+                        (layer.roi.bounds[1][0], layer.roi.bounds[1][1]),
+                    )
+            case ROIInteractionBoxHandle.CENTER_RIGHT:
+                if mouse_pos.x >= 1 and mouse_pos.x <= layer.width:
+                    print("CENTER_RIGHT", mouse_pos)
+            case ROIInteractionBoxHandle.TOP_LEFT:
+                if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
+                    mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
+                ):
+                    print("TOP_LEFT", mouse_pos)
+            case ROIInteractionBoxHandle.TOP_RIGHT:
+                if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
+                    mouse_pos.x >= 1 and mouse_pos.x <= layer.width
+                ):
+                    print("TOP_RIGHT", mouse_pos)
+            case ROIInteractionBoxHandle.TOP_CENTER:
+                if mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1:
+                    print("TOP_CENTER", mouse_pos)
+            case ROIInteractionBoxHandle.BOTTOM_CENTER:
+                if mouse_pos.y >= 1 and mouse_pos.y <= layer.height:
+                    print("BOTTOM_CENTER", mouse_pos)
+            case ROIInteractionBoxHandle.BOTTOM_LEFT:
+                if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
+                    mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
+                ):
+                    print("BOTTOM_LEFT", mouse_pos)
+            case ROIInteractionBoxHandle.BOTTOM_RIGHT:
+                if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
+                    mouse_pos.x >= 1 and mouse_pos.x <= layer.width
+                ):
+                    print("BOTTOM_RIGHT", mouse_pos)
 
-        # Update bounds based on handle movement
-        new_top_left = top_left.copy()
-        new_bot_right = bot_right.copy()
-
-        # Update X coordinates (left/right)
-        if affects_left:
-            new_top_left[0] += delta[0]
-
-            # Handle 1-pixel threshold for left edge
-            if abs(new_top_left[0] - min_bounds[0]) <= pixel_threshold:
-                if delta[0] < 0 or threshold_hit["left"]:
-                    new_top_left[0] = min_bounds[0]
-                    threshold_hit["left"] = True
-
-            # If moving away from threshold
-            elif threshold_hit["left"] and delta[0] > 0:
-                threshold_hit["left"] = False
-
-        if affects_right:
-            new_bot_right[0] += delta[0]
-
-            # Handle 1-pixel threshold for right edge
-            if abs(new_bot_right[0] - max_bounds[0]) <= pixel_threshold:
-                if delta[0] > 0 or threshold_hit["right"]:
-                    new_bot_right[0] = max_bounds[0]
-                    threshold_hit["right"] = True
-
-            # If moving away from threshold
-            elif threshold_hit["right"] and delta[0] < 0:
-                threshold_hit["right"] = False
-
-        # Update Y coordinates (top/bottom)
-        if affects_top:
-            new_top_left[1] += delta[1]
-
-            # Handle 1-pixel threshold for top edge
-            if abs(new_top_left[1] - min_bounds[1]) <= pixel_threshold:
-                if delta[1] < 0 or threshold_hit["top"]:
-                    new_top_left[1] = min_bounds[1]
-                    threshold_hit["top"] = True
-
-            # If moving away from threshold
-            elif threshold_hit["top"] and delta[1] > 0:
-                threshold_hit["top"] = False
-
-        if affects_bottom:
-            new_bot_right[1] += delta[1]
-
-            # Handle 1-pixel threshold for bottom edge
-            if abs(new_bot_right[1] - max_bounds[1]) <= pixel_threshold:
-                if delta[1] > 0 or threshold_hit["bottom"]:
-                    new_bot_right[1] = max_bounds[1]
-                    threshold_hit["bottom"] = True
-
-            # If moving away from threshold
-            elif threshold_hit["bottom"] and delta[1] < 0:
-                threshold_hit["bottom"] = False
-
-        # Ensure box doesn't flip (left is always left of right, top always above bottom)
-        if new_top_left[0] > new_bot_right[0]:
-            if affects_left:
-                new_top_left[0] = new_bot_right[0]
-            else:
-                new_bot_right[0] = new_top_left[0]
-
-        if new_top_left[1] > new_bot_right[1]:
-            if affects_top:
-                new_top_left[1] = new_bot_right[1]
-            else:
-                new_bot_right[1] = new_top_left[1]
-
-        # Clip to layer bounds
-        new_top_left = np.clip(new_top_left, min_bounds, max_bounds)
-        new_bot_right = np.clip(new_bot_right, min_bounds, max_bounds)
-
-        # Update the ROI box bounds
-        layer.roi.bounds = (tuple(new_top_left), tuple(new_bot_right))
-
-        # Remember the current position for next delta calculation
-        last_position = current_position
-
+        layer.roi.bounds = new_bounds
         yield
-
-    # Final update - ensure we're still within layer bounds
-    top_left, bot_right = layer.roi.bounds
-    top_left_arr = np.array(top_left)
-    bot_right_arr = np.array(bot_right)
-
-    top_left_arr = np.clip(top_left_arr, min_bounds, max_bounds)
-    bot_right_arr = np.clip(bot_right_arr, min_bounds, max_bounds)
-
-    layer.roi.bounds = (tuple(top_left_arr), tuple(bot_right_arr))
 
 
 def highlight_roi_box_handles(layer: DetectorLayer, event: NapariMouseEvent) -> None:
@@ -402,6 +325,11 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
         return self._overlays["roi_box"]  # type: ignore[no-any-return]
 
     @property
-    def full_size(self) -> tuple[int, int]:
-        """Returns the full size of the layer in width and height."""
-        return self._full_size
+    def width(self) -> int:
+        """Returns the width of the layer."""
+        return self._full_size[0]
+
+    @property
+    def height(self) -> int:
+        """Returns the height of the layer."""
+        return self._full_size[1]
