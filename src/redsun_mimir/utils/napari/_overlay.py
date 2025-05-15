@@ -33,7 +33,6 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -42,6 +41,7 @@ from napari._vispy.visuals.markers import Markers
 from napari.components.overlays.base import SceneOverlay
 from napari.layers.utils.interaction_box import (
     calculate_bounds_from_contained_points,
+    generate_interaction_box_vertices,
 )
 from vispy.scene.visuals import Compound, Line
 
@@ -49,49 +49,9 @@ if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
-    from napari.layers import Image
+    from vispy.scene.node import Node
 
-
-@lru_cache
-def generate_roi_box_vertices(
-    top_left: tuple[float, float],
-    bot_right: tuple[float, float],
-) -> npt.NDArray[Any]:
-    """
-    Generate coordinates for all the handles in ROIInteractionBoxHandle.
-
-    Coordinates are assumed to follow vispy "y down" convention.
-
-    Parameters
-    ----------
-    top_left : Tuple[float, float]
-        Top-left corner of the box
-    bot_right : Tuple[float, float]
-        Bottom-right corner of the box
-    handles : bool
-        Whether to also return indices for the transformation handles.
-
-    Returns
-    -------
-    np.ndarray
-        Coordinates of the vertices and handles of the interaction box.
-    """
-    x0, y0 = top_left
-    x1, y1 = bot_right
-    vertices = np.array(
-        [
-            [x0, y0],
-            [x0, y1],
-            [x1, y0],
-            [x1, y1],
-        ]
-    )
-
-    # add handles at the midpoint of each side
-    middle_vertices = np.mean([vertices, vertices[[2, 0, 3, 1]]], axis=0)
-    vertices = np.concatenate([vertices, middle_vertices])
-
-    return vertices
+    from ._layer import DetectorLayer
 
 
 def get_nearby_roi_handle(
@@ -249,7 +209,9 @@ class ROIBoxNode(Compound):  # type: ignore[misc]
         bot_right: tuple[float, float],
         selected: int | None = None,
     ) -> None:
-        vertices = generate_roi_box_vertices(top_left, bot_right)
+        vertices = generate_interaction_box_vertices(top_left, bot_right, handles=True)[
+            :8
+        ]
 
         self.line.set_data(
             pos=vertices, connect=self._edges, width=2, color=self._line_color
@@ -272,9 +234,11 @@ class ROIBoxNode(Compound):  # type: ignore[misc]
 class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[misc]
     node: ROIBoxNode
     overlay: ROIInteractionBoxOverlay
-    layer: Image
+    layer: DetectorLayer
 
-    def __init__(self, *, layer: Image, overlay: ROIBoxNode, parent=None) -> None:  # type: ignore[no-untyped-def]
+    def __init__(
+        self, *, layer: DetectorLayer, overlay: ROIBoxNode, parent: Node | None = None
+    ) -> None:
         super().__init__(node=ROIBoxNode(), layer=layer, overlay=overlay, parent=parent)
         self.layer.events.set_data.connect(self._on_visible_change)
         self.overlay.events.bounds.connect(self._on_bounds_change)
@@ -282,10 +246,8 @@ class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[
 
     def _on_bounds_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
-            top_left, bot_right = (tuple(point) for point in self.overlay.bounds)
-
             self.node.set_data(
-                top_left, bot_right, selected=self.overlay.selected_handle
+                *self.overlay.bounds, selected=self.overlay.selected_handle
             )
 
     def _on_visible_change(self) -> None:
