@@ -37,7 +37,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Callable, ClassVar, Generator, NamedTuple
 
 import numpy as np
-from napari.layers import Image as NapariImage
+from napari.layers import Image as ImageLayer
 from napari.layers import Layer
 from napari.layers.base import no_op
 from napari.layers.base._base_mouse_bindings import (
@@ -81,7 +81,7 @@ class MousePosition(NamedTuple):
 
 
 def generate_roi_box_from_layer(
-    layer: NapariImage, dims_displayed: tuple[int, int]
+    layer: ImageLayer, dims_displayed: tuple[int, int]
 ) -> npt.NDArray[Any]:
     """
     Generate coordinates for the handles of a layer's transform box.
@@ -212,7 +212,7 @@ def highlight_roi_box_handles(layer: DetectorLayer, event: NapariMouseEvent) -> 
     layer.roi.selected_handle = nearby_handle
 
 
-class DetectorLayer(NapariImage):  # type: ignore[misc]
+class DetectorLayer(ImageLayer):  # type: ignore[misc]
     """Layer for displaying data from a 2D detector (i.e. a camera)."""
 
     ModeCallable = Callable[[Layer, Event], None] | Generator[None, None, None]
