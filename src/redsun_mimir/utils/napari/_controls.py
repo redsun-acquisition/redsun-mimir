@@ -7,7 +7,7 @@ from napari._qt.widgets.qt_mode_buttons import QtModeRadioButton
 from napari.utils.translations import trans
 from qtpy.QtWidgets import QButtonGroup, QFormLayout, QGridLayout
 
-from ._common import ExtendedMode
+from ._common import Mode
 
 if TYPE_CHECKING:
     from ._layer import DetectorLayer
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class DetectorLayerControls(QtImageControls):  # type: ignore[misc]
     """Custom controls for the DetectorLayer."""
 
-    MODE: ClassVar[type[ExtendedMode]] = ExtendedMode
+    MODE: ClassVar[type[Mode]] = Mode
     RESIZE_ACTION_NAME: ClassVar[str] = "activate_image_resize_mode"
     layer: DetectorLayer
 

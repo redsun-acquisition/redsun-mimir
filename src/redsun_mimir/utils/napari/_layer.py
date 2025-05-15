@@ -46,7 +46,7 @@ from napari.layers.base._base_mouse_bindings import (
 )
 from napari.utils.events import Event
 
-from ._common import ExtendedMode
+from ._common import Mode
 from ._overlay import (
     ROIInteractionBoxHandle,
     ROIInteractionBoxOverlay,
@@ -217,25 +217,25 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
 
     ModeCallable = Callable[[Layer, Event], None] | Generator[None, None, None]
 
-    _modeclass: ClassVar[type[ExtendedMode]] = ExtendedMode
-    _mode: ExtendedMode
+    _modeclass: ClassVar[type[Mode]] = Mode
+    _mode: Mode
 
-    _drag_modes: ClassVar[dict[ExtendedMode, ModeCallable]] = {
-        ExtendedMode.PAN_ZOOM: no_op,  # type: ignore[dict-item]
-        ExtendedMode.TRANSFORM: transform_with_box,  # type: ignore[dict-item]
-        ExtendedMode.RESIZE: resize_roi_box,  # type: ignore[dict-item]
+    _drag_modes: ClassVar[dict[Mode, ModeCallable]] = {
+        Mode.PAN_ZOOM: no_op,  # type: ignore[dict-item]
+        Mode.TRANSFORM: transform_with_box,  # type: ignore[dict-item]
+        Mode.RESIZE: resize_roi_box,  # type: ignore[dict-item]
     }
 
-    _move_modes: ClassVar[dict[ExtendedMode, ModeCallable]] = {
-        ExtendedMode.PAN_ZOOM: no_op,  # type: ignore[dict-item]
-        ExtendedMode.TRANSFORM: highlight_box_handles,  # type: ignore[dict-item]
-        ExtendedMode.RESIZE: highlight_roi_box_handles,  # type: ignore[dict-item]
+    _move_modes: ClassVar[dict[Mode, ModeCallable]] = {
+        Mode.PAN_ZOOM: no_op,  # type: ignore[dict-item]
+        Mode.TRANSFORM: highlight_box_handles,  # type: ignore[dict-item]
+        Mode.RESIZE: highlight_roi_box_handles,  # type: ignore[dict-item]
     }
 
-    _cursor_modes: ClassVar[dict[ExtendedMode, str]] = {
-        ExtendedMode.PAN_ZOOM: "standard",  # type: ignore[dict-item]
-        ExtendedMode.TRANSFORM: "standard",  # type: ignore[dict-item]
-        ExtendedMode.RESIZE: "standard",  # type: ignore[dict-item]
+    _cursor_modes: ClassVar[dict[Mode, str]] = {
+        Mode.PAN_ZOOM: "standard",  # type: ignore[dict-item]
+        Mode.TRANSFORM: "standard",  # type: ignore[dict-item]
+        Mode.RESIZE: "standard",  # type: ignore[dict-item]
     }
 
     def _post_init(self) -> None:
@@ -246,7 +246,7 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
         )
         self._overlays.update({"roi_box": overlay})
 
-    def _mode_setter_helper(self, mode_in: ExtendedMode | str) -> ExtendedMode:
+    def _mode_setter_helper(self, mode_in: Mode | str) -> Mode:
         """Manage mode setting callbacks in multiple layers.
 
         This will return a valid mode for the current layer, to for example
@@ -257,19 +257,19 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
 
         Parameters
         ----------
-        mode : ExtendedMode | str
+        mode : Mode | str
             New mode for the current layer.
 
         Returns
         -------
-        mode : ExtendedMode
+        mode : Mode
             New mode for the current layer.
 
         """
         mode = self._modeclass(mode_in)
         if not self.editable or not self.visible:
             # if the layer is not editable or not visible, set the mode to PAN_ZOOM
-            mode = ExtendedMode.PAN_ZOOM  # type: ignore[assignment]
+            mode = Mode.PAN_ZOOM  # type: ignore[assignment]
         if mode == self._mode:
             return mode
         if mode not in self._modeclass:  # type: ignore[attr-defined]
@@ -288,14 +288,14 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
             callback_list.append(mode_dict[mode])
         self.cursor = self._cursor_modes[mode]
 
-        self.mouse_pan = mode == ExtendedMode.PAN_ZOOM
-        self._overlays["transform_box"].visible = mode == ExtendedMode.TRANSFORM
+        self.mouse_pan = mode == Mode.PAN_ZOOM
+        self._overlays["transform_box"].visible = mode == Mode.TRANSFORM
 
-        if mode == ExtendedMode.TRANSFORM:
+        if mode == Mode.TRANSFORM:
             self.help = "hold <space> to move camera, hold <shift> to preserve aspect ratio and rotate in 45° increments"
-        elif mode == ExtendedMode.RESIZE:
+        elif mode == Mode.RESIZE:
             self.help = "move the handles to resize the current layer visible region"
-        elif mode == ExtendedMode.PAN_ZOOM:
+        elif mode == Mode.PAN_ZOOM:
             self.help = ""
 
         return mode
@@ -303,7 +303,7 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
     def update_transform_box_visibility(self, visible: bool) -> None:
         if "transform_box" in self._overlays:
             self._overlays["transform_box"].visible = (
-                self.mode == ExtendedMode.TRANSFORM and visible
+                self.mode == Mode.TRANSFORM and visible
             )
 
     @property
@@ -320,7 +320,7 @@ class DetectorLayer(NapariImage):  # type: ignore[misc]
         return str(self._mode)
 
     @mode.setter
-    def mode(self, mode: ExtendedMode | str) -> None:
+    def mode(self, mode: Mode | str) -> None:
         mode_enum = self._mode_setter_helper(mode)
         if mode_enum == self._mode:
             return
