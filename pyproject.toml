@@ -50,6 +50,9 @@ docs = [
     "sphinx-design",
     "myst-parser"
 ]
+uc2 = [
+    "pyserial"
+]
 dev = [
     "ruff",
     "mypy",
