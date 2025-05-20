@@ -36,17 +36,15 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Generator, NamedTuple
 
 import numpy as np
-from napari.layers import Image as ImageLayer
-from napari.layers.utils.interaction_box import generate_interaction_box_vertices
-
-from ._overlay import (
-    ROIInteractionBoxHandle,
-    ROIInteractionBoxOverlay,
-    get_nearby_roi_handle,
+from napari.components.overlays.interaction_box import InteractionBoxHandle
+from napari.layers.utils.interaction_box import (
+    generate_interaction_box_vertices,
+    get_nearby_handle,
 )
 
 if TYPE_CHECKING:
     from napari._vispy.mouse_event import NapariMouseEvent
+    from napari.layers import Image
 
 
 class MousePosition(NamedTuple):
@@ -69,7 +67,7 @@ class MousePosition(NamedTuple):
 
 
 def resize_roi_box(
-    layer: DetectorLayer, event: NapariMouseEvent
+    layer: Image, event: NapariMouseEvent
 ) -> Generator[None, None, None]:
     """Resize the ROI box based on mouse movement.
 
@@ -89,17 +87,27 @@ def resize_roi_box(
         return
 
     # Get the selected handle
-    selected_handle = layer.roi.selected_handle
-    if selected_handle is None:
+    selected_handle = layer._overlays["roi_box"].selected_handle
+    if selected_handle is None or selected_handle in [
+        InteractionBoxHandle.INSIDE,
+        InteractionBoxHandle.ROTATION,
+    ]:
+        # If no handle is selected or the selected handle is INSIDE or ROTATION, do nothing
         return
 
-    current_bounds = deepcopy(layer.roi.bounds)
+    current_bounds = deepcopy(layer._overlays["roi_box"].bounds)
 
+    width, height = layer.data.shape[0], layer.data.shape[1]
+    # this event.handled assignment should not be necessary;
+    # it is kept to show the problem
     event.handled = True
     yield
 
     # Main event loop for handling drag events
     while event.type == "mouse_move":
+        # this event.handled assignment should prevent propagation
+        # to the pan-zoom event handler, but it does not and the
+        # pan-zoom event handler is called anyway
         event.handled = True
         mouse_pos = MousePosition(
             *tuple(
@@ -110,57 +118,68 @@ def resize_roi_box(
         )
 
         match selected_handle:
-            case ROIInteractionBoxHandle.CENTER_LEFT:
-                if mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1:
+            case InteractionBoxHandle.CENTER_LEFT:
+                if mouse_pos.x >= 0 and mouse_pos.x <= width - 1:
                     current_bounds = (
-                        (mouse_pos.x, layer.roi.bounds[0][1]),
-                        layer.roi.bounds[1],
+                        (mouse_pos.x, layer._overlays["roi_box"].bounds[0][1]),
+                        layer._overlays["roi_box"].bounds[1],
                     )
-            case ROIInteractionBoxHandle.CENTER_RIGHT:
-                if mouse_pos.x >= 1 and mouse_pos.x <= layer.width:
+            case InteractionBoxHandle.CENTER_RIGHT:
+                if mouse_pos.x >= 1 and mouse_pos.x <= width:
                     current_bounds = (
-                        layer.roi.bounds[0],
-                        (mouse_pos.x, layer.roi.bounds[1][1]),
+                        layer._overlays["roi_box"].bounds[0],
+                        (mouse_pos.x, layer._overlays["roi_box"].bounds[1][1]),
                     )
-            case ROIInteractionBoxHandle.TOP_LEFT:
-                if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
-                    mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
+            case InteractionBoxHandle.TOP_LEFT:
+                if (mouse_pos.y >= 0 and mouse_pos.y <= height - 1) and (
+                    mouse_pos.x >= 0 and mouse_pos.x <= width - 1
                 ):
                     print("top left not implemented", mouse_pos)
-            case ROIInteractionBoxHandle.TOP_RIGHT:
-                if (mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1) and (
-                    mouse_pos.x >= 1 and mouse_pos.x <= layer.width
+            case InteractionBoxHandle.TOP_RIGHT:
+                if (mouse_pos.y >= 0 and mouse_pos.y <= height - 1) and (
+                    mouse_pos.x >= 1 and mouse_pos.x <= width
                 ):
                     print("top right not implemented", mouse_pos)
-            case ROIInteractionBoxHandle.TOP_CENTER:
-                if mouse_pos.y >= 0 and mouse_pos.y <= layer.height - 1:
+            case InteractionBoxHandle.TOP_CENTER:
+                if mouse_pos.y >= 0 and mouse_pos.y <= height - 1:
                     current_bounds = (
-                        (layer.roi.bounds[0][0], mouse_pos.y),
-                        layer.roi.bounds[1],
+                        (layer._overlays["roi_box"].bounds[0][0], mouse_pos.y),
+                        layer._overlays["roi_box"].bounds[1],
                     )
-            case ROIInteractionBoxHandle.BOTTOM_CENTER:
-                if mouse_pos.y >= 1 and mouse_pos.y <= layer.height:
+            case InteractionBoxHandle.BOTTOM_CENTER:
+                if mouse_pos.y >= 1 and mouse_pos.y <= height:
                     current_bounds = (
-                        (layer.roi.bounds[0][0], mouse_pos.y),
-                        layer.roi.bounds[1],
+                        (layer._overlays["roi_box"].bounds[0][0], mouse_pos.y),
+                        layer._overlays["roi_box"].bounds[1],
                     )
-            case ROIInteractionBoxHandle.BOTTOM_LEFT:
-                if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
-                    mouse_pos.x >= 0 and mouse_pos.x <= layer.width - 1
+            case InteractionBoxHandle.BOTTOM_LEFT:
+                if (mouse_pos.y >= 1 and mouse_pos.y <= height) and (
+                    mouse_pos.x >= 0 and mouse_pos.x <= width - 1
                 ):
                     print("bottom left not implemented", mouse_pos)
-            case ROIInteractionBoxHandle.BOTTOM_RIGHT:
-                if (mouse_pos.y >= 1 and mouse_pos.y <= layer.height) and (
-                    mouse_pos.x >= 1 and mouse_pos.x <= layer.width
+            case InteractionBoxHandle.BOTTOM_RIGHT:
+                if (mouse_pos.y >= 1 and mouse_pos.y <= height) and (
+                    mouse_pos.x >= 1 and mouse_pos.x <= width
                 ):
                     print("bottom right not implemented", mouse_pos)
 
-        layer.roi.bounds = deepcopy(current_bounds)
+            case _:  # fallback on other handles, do nothing
+                current_bounds = deepcopy(layer._overlays["roi_box"].bounds)
+
+        layer._overlays["roi_box"].bounds = deepcopy(current_bounds)
         yield
 
 
-def highlight_roi_box_handles(layer: DetectorLayer, event: NapariMouseEvent) -> None:
-    """Highlight the hovered handle of a ROI."""
+def highlight_roi_box_handles(layer: Image, event: NapariMouseEvent) -> None:
+    """Highlight the hovered handle of a ROI.
+
+    Parameters
+    ----------
+    layer : Image
+        The layer to highlight the ROI box for.
+    event : NapariMouseEvent
+        The event triggered by mouse movement.
+    """
     if len(event.dims_displayed) != 2:
         return
 
@@ -171,38 +190,12 @@ def highlight_roi_box_handles(layer: DetectorLayer, event: NapariMouseEvent) -> 
     )
     pos = np.array(world_to_data(event.position))[event.dims_displayed]
 
-    handle_coords = generate_interaction_box_vertices(*layer.roi.bounds, handles=True)[
-        :, ::-1
-    ]
-    nearby_handle = get_nearby_roi_handle(pos, handle_coords)
+    handle_coords = generate_interaction_box_vertices(
+        *layer._overlays["roi_box"].bounds, handles=True
+    )[:, ::-1]
+    nearby_handle = get_nearby_handle(pos, handle_coords)
+    if nearby_handle in [InteractionBoxHandle.INSIDE, InteractionBoxHandle.ROTATION]:
+        return
 
     # set the selected vertex of the box to the nearby_handle (can also be INSIDE or None)
-    layer.roi.selected_handle = nearby_handle
-
-
-class DetectorLayer(ImageLayer):  # type: ignore[misc]
-    """Layer for displaying data from a 2D detector (i.e. a camera)."""
-
-    def _post_init(self) -> None:
-        """Add a ROI box overlay to the layer after initialization."""
-        overlay = ROIInteractionBoxOverlay(
-            bounds=((0, 0), (self.data.shape[1], self.data.shape[0])),
-        )
-        self._overlays.update({"roi_box": overlay})
-        self.mouse_move_callbacks.insert(0, highlight_roi_box_handles)
-        self.mouse_drag_callbacks.insert(0, resize_roi_box)
-
-    @property
-    def roi(self) -> ROIInteractionBoxOverlay:
-        """Returns the ROI box overlay."""
-        return self._overlays["roi_box"]  # type: ignore[no-any-return]
-
-    @property
-    def width(self) -> int:
-        """Returns the width of the layer."""
-        return self.data.shape[0]  # type: ignore[no-any-return]
-
-    @property
-    def height(self) -> int:
-        """Returns the height of the layer."""
-        return self.data.shape[1]  # type: ignore[no-any-return]
+    layer._overlays["roi_box"].selected_handle = nearby_handle

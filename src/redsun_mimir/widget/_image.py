@@ -2,19 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from napari._qt.widgets.qt_mode_buttons import QtModePushButton
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
 from sunflare.view.qt import BaseQtWidget
 
-from redsun_mimir.utils.napari import DetectorLayer
+from redsun_mimir.utils.napari import (
+    ROIInteractionBoxOverlay,
+    highlight_roi_box_handles,
+    resize_roi_box,
+)
 
 if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
-    from napari.layers import Layer
-    from napari.utils.events import EventedList
+    from napari._qt.layer_controls.qt_image_controls import QtImageControls
+    from napari.layers import Image
     from sunflare.config import RedSunSessionInfo
     from sunflare.virtual import VirtualBus
 
@@ -67,33 +72,6 @@ class ImageWidget(BaseQtWidget):
         self._layer_list = self._window._qt_viewer.layers
         self._layer_controls = self._window._qt_viewer.controls
 
-        delimit_indeces = self._model.layers._delitem_indices
-
-        def _delimit_unprotected_indeces(
-            key: int | slice,
-        ) -> list[tuple[EventedList[Layer], int]]:
-            """Populate the indices of the layers to be deleted.
-
-            This method is a monkey patch for the ``_delitem_indices`` method of the
-            ``napari.components._model.Layers`` class. It prevents the deletion of
-            detector layers by removing them from the list of indices to be deleted.
-
-            Parameters
-            ----------
-            key : ``int | slice``
-                The key to be used for deletion.
-            """
-            indices: list[tuple[EventedList[Layer], int]] = delimit_indeces(key)
-            for index in indices[:]:
-                layer = index[0][index[1]]
-                if isinstance(layer, DetectorLayer):
-                    # if the layer is a detector layer, do not delete it
-                    indices.remove(index)
-            return indices
-
-        # monkey patch the _delitem_indices method to prevent deletion of protected layers
-        self._model.layers._delitem_indices = _delimit_unprotected_indeces
-
     def add_detector(self, data: npt.NDArray[Any]) -> None:
         """Add a detector layer to the viewer.
 
@@ -102,10 +80,36 @@ class ImageWidget(BaseQtWidget):
         data : ``npt.NDArray[Any]``
             The image data to be added as a detector layer.
         """
-        layer = DetectorLayer(data)
-        self._model.layers.append(layer)
+        layer = self._model.add_image(
+            data,
+            name="My Detector",
+        )
+        layer._overlays.update(
+            {"roi_box": ROIInteractionBoxOverlay(bounds=((0, 0), layer.data.shape))}
+        )
+        layer.mouse_drag_callbacks.append(resize_roi_box)
+        layer.mouse_move_callbacks.append(highlight_roi_box_handles)
+        controls: QtImageControls = self._layer_controls.widgets[layer]
+
+        resize_button = QtModePushButton(
+            layer=layer,
+            button_name="resize",
+            tooltip="Set the current portion of layer to visualize",
+        )
+        resize_button.setCheckable(True)
+        resize_button.setChecked(False)
+        resize_button.toggled[bool].connect(
+            lambda checked: self._on_resize_button_toggled(layer, checked)
+        )
+        # add the new button to the layer controls, before the
+        # mode buttons
+        controls.button_grid.addWidget(resize_button, 0, 5)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None: ...
+
+    def _on_resize_button_toggled(self, layer: Image, checked: bool) -> None:
+        layer.bounding_box.visible = checked
+        layer._overlays["roi_box"].visible = checked

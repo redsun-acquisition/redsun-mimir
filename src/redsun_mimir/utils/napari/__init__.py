@@ -1,13 +1,12 @@
-from napari._qt.layer_controls.qt_layer_controls_container import layer_to_controls
 from napari._vispy.utils.visual import overlay_to_visual
 
-from ._controls import DetectorLayerControls
-from ._layer import DetectorLayer
+from ._layer import highlight_roi_box_handles, resize_roi_box
 from ._overlay import ROIInteractionBoxOverlay, VispyROIBoxOverlay
 
 overlay_to_visual.update({ROIInteractionBoxOverlay: VispyROIBoxOverlay})
-layer_to_controls.update({DetectorLayer: DetectorLayerControls})
 
 __all__ = [
-    "DetectorLayer",
+    "ROIInteractionBoxOverlay",
+    "resize_roi_box",
+    "highlight_roi_box_handles",
 ]
