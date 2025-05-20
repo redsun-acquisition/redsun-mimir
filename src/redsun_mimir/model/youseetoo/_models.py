@@ -9,20 +9,22 @@ from sunflare.model import Model
 
 from redsun_mimir.protocols import LightProtocol
 
-from ._config import LaserAction, SerialInfo
+from ._config import LaserAction, LaserActionResponse, SerialInfo
 
 if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar
 
     from ._config import MimirLaserInfo
 
+DecodingType = LaserActionResponse
+
 
 class SerialFactory:
     serial: ClassVar[Serial | None] = None
     encoder: ClassVar[Encoder] = Encoder()
-    decoder: ClassVar[Decoder[LaserAction]] = Decoder(LaserAction)
+    decoder: ClassVar[Decoder[DecodingType]] = Decoder(DecodingType)
     callbacks: ClassVar[
-        list[Callable[[Serial, Encoder, Decoder[LaserAction]], None]]
+        list[Callable[[Serial, Encoder, Decoder[DecodingType]], None]]
     ] = []
 
     @classmethod
@@ -43,7 +45,7 @@ class SerialFactory:
 
     @classmethod
     def get(
-        cls, callback: Callable[[Serial, Encoder, Decoder[LaserAction]], None]
+        cls, callback: Callable[[Serial, Encoder, Decoder[DecodingType]], None]
     ) -> None:
         """Get the serial object.
 
@@ -123,14 +125,18 @@ class MimirLaserModel(LightProtocol):
 
         self._serial: Serial
         self._encoder: Encoder
-        self._decoder: Decoder[LaserAction]
+        self._decoder: Decoder[DecodingType]
+        self._expected_response: LaserActionResponse
+        self._response_length: int
 
         def _get_serial(
-            serial: Serial, encoder: Encoder, decoder: Decoder[LaserAction]
+            serial: Serial, encoder: Encoder, decoder: Decoder[DecodingType]
         ) -> None:
             self._serial = serial
             self._encoder = encoder
             self._decoder = decoder
+            self._expected_response = LaserActionResponse(self.model_info.qid)
+            self._response_length = len(self._encoder.encode(self._expected_response))
 
         SerialFactory.get(_get_serial)
 
@@ -203,6 +209,14 @@ class MimirLaserModel(LightProtocol):
             if written is None or written != len(action):
                 s.set_exception(ValueError("Failed to write to serial port."))
                 return s
+
+        # check the response from the laser
+        response = LaserActionResponse(
+            self._decoder.decode(self._serial.read(self._response_length))
+        )
+        if response != self._expected_response:
+            s.set_exception(ValueError("Invalid response from laser."))
+            return s
         s.set_finished()
         return s
 

@@ -112,30 +112,14 @@ class LaserAction(Action):
         Encoded name will be `LASERval`.
     qid: `int`, optional
         UC2 queue ID for tracking the command.
-    despeckle: `int`, optional
-        Despeckle value for the command.
-        Encoded name will be `LASERdespeckle`.
-    dp_period: `int`, optional
-        Despeckle period for the command.
-        Encoded name will be `LASERdespecklePeriod`.
-    freq: `int`, optional
-        PWM frequency to use (Hz)
-        Encoded name will be `LASERfreq`.
-    res: `int`, optional
-        PWM resolution to use (bits).
-        Encoded name will be `LASERres`.
     """
 
     id: int = sfield(name="LASERid")
     value: int = sfield(name="LASERval")
     qid: int | UnsetType = sfield(default=UNSET)
-    despeckle: int | UnsetType = sfield(default=UNSET, name="LASERdespeckle")
-    dp_period: int | UnsetType = sfield(default=UNSET, name="LASERdespecklePeriod")
-    freq: int | UnsetType = sfield(default=UNSET, name="LASERfreq")
-    res: int | UnsetType = sfield(default=UNSET, name="LASERres")
 
 
-class LightActionResponse(Struct):
+class LaserActionResponse(Struct):
     """Mimir light response message.
 
     Attributes
@@ -162,9 +146,17 @@ class MimirLaserInfo(LightModelInfo):
     ----------
     id: `int`
         ID of the laser (ranging from 0 to 3).
+    qid: `int`, optional
+        UC2 queue ID for tracking the actions.
+        The value is set to 0 by default.
     """
 
     id: int = field(on_setattr=setters.frozen)
+    qid: int = field(
+        default=0,
+        on_setattr=setters.frozen,
+        validator=validators.instance_of(int),
+    )
 
     @id.validator
     def _check_id(self, _: str, value: int) -> None:
