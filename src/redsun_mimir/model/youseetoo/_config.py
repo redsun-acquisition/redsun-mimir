@@ -38,6 +38,9 @@ class SerialInfo(ModelInfo):
         Serial port to use for communication.
     baude_rate: `int`
         Baud rate for serial communication.
+    timeout: `float`
+        Timeout for serial communication in seconds.
+        Default is 0.3 s.
     """
 
     port: str = field(
@@ -46,6 +49,11 @@ class SerialInfo(ModelInfo):
     )
     baude_rate: int = field(
         on_setattr=setters.frozen,
+    )
+    timeout: float = field(
+        default=0.3,
+        on_setattr=setters.frozen,
+        validator=validators.instance_of(float),
     )
 
     @baude_rate.validator

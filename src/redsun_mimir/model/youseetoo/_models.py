@@ -39,6 +39,7 @@ class SerialFactory:
         cls.serial = Serial(
             port=info.port,
             baudrate=info.baude_rate,
+            timeout=info.timeout,
         )
         for callback in cls.callbacks:
             callback(cls.serial, cls.encoder, cls.decoder)
