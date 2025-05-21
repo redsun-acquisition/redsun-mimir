@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-def to_float_tuple(value: Iterable[float] | None) -> tuple[float, ...]:
+def convert_to_tuple(value: Iterable[float | int] | None) -> tuple[int | float, ...]:
     """Convert a value to a tuple of floats.
 
     If the value is ``None``, return a tuple of two zeros.
@@ -29,9 +29,7 @@ def to_float_tuple(value: Iterable[float] | None) -> tuple[float, ...]:
     """
     if value is None:
         return (0.0, 0.0)
-    if not isinstance(value, list | tuple) or len(value) != 2:
-        raise ValueError(f"Expected a list or tuple of length 2, got {value}")
-    return tuple(float(v) for v in value)
+    return tuple(v for v in value)
 
 
 def convert_limits(
@@ -146,9 +144,9 @@ class LightModelInfo(ModelInfo):
         on_setattr=setters.frozen,
         metadata={"description": "Engineering units."},
     )
-    intensity_range: tuple[float, float] = field(
+    intensity_range: tuple[int | float, ...] = field(
         default=None,
-        converter=to_float_tuple,
+        converter=convert_to_tuple,
         metadata={"description": "Intensity range (min, max)."},
     )
     step_size: int = field(
@@ -158,9 +156,17 @@ class LightModelInfo(ModelInfo):
     )
 
     @intensity_range.validator
-    def _check_range(self, _: str, value: tuple[float, float]) -> None:
+    def _check_range(self, _: str, value: tuple[int | float, ...]) -> None:
         if self.binary and value == (0.0, 0.0):
             return
+        if len(value) != 2:
+            raise AttributeError(
+                f"Length of intensity range must be 2: {value} has length {len(value)}"
+            )
+        if not all(isinstance(val, (float, int)) for val in value):
+            raise AttributeError(
+                f"All values in the intensity range must be floats or ints: {value}"
+            )
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
 
