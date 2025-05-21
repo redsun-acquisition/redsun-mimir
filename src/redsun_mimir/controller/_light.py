@@ -73,7 +73,7 @@ class LightController(Loggable):
                 f"Toggled source {name} {not self._lights[name].enabled} -> {self._lights[name].enabled}"
             )
 
-    def set(self, name: str, intensity: float) -> None:
+    def set(self, name: str, intensity: int | float) -> None:
         """Set the intensity of the light.
 
         Parameters

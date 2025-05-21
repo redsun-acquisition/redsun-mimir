@@ -31,9 +31,7 @@ def light_widget_uc2() -> None:
     app = QtWidgets.QApplication([])
 
     config_path = Path(__file__).parent / "uc2_light_configuration.yaml"
-    config_dict: dict[str, dict[str, Any]] = RedSunSessionInfo.load_yaml(
-        str(config_path)
-    )
+    config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
 
     models_info: dict[str, MimirLaserInfo | MimirSerialInfo] = {}
 
@@ -64,9 +62,9 @@ def light_widget_uc2() -> None:
     models: dict[str, MimirLaserModel | MimirSerialModel] = {}
     for name, model_info in models_info.items():
         if name == "Serial":
-            models[name] = MimirSerialModel(name, model_info)
+            models[name] = MimirSerialModel(name, model_info)  # type: ignore
         elif name == "Laser 1":
-            models[name] = MimirLaserModel(name, model_info)
+            models[name] = MimirLaserModel(name, model_info)  # type: ignore
 
     bus = VirtualBus()
 

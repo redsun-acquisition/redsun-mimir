@@ -260,6 +260,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         resp_str = (
             str(self._serial.read_until(expected=b"}"))
             .replace("+", "")
+            .replace("-", "")
             .replace("\\r", "")
             .replace("\\t", "")
             .replace("\\n", "")

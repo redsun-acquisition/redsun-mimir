@@ -6,7 +6,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
-from superqt import QLabeledDoubleSlider
+from superqt import QLabeledDoubleSlider, QLabeledSlider
 
 from redsun_mimir.model import LightModelInfo
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class LightWidget(BaseQtWidget, Loggable):
     sigToggleLightRequest = Signal(str)
-    sigIntensityRequest = Signal(str, float)
+    sigIntensityRequest = Signal(str, object)  # name, intensity
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class LightWidget(BaseQtWidget, Loggable):
 
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
-        self._sliders: dict[str, QLabeledDoubleSlider] = {}
+        self._sliders: dict[str, QLabeledDoubleSlider | QLabeledSlider] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
 
         # Regular expression for a valid floating-point number
@@ -64,7 +64,17 @@ class LightWidget(BaseQtWidget, Loggable):
             )
 
             if not model_info.binary:
-                self._sliders[f"power:{name}"] = QLabeledDoubleSlider()
+                slider: QLabeledDoubleSlider | QLabeledSlider
+                if all(isinstance(i, int) for i in model_info.intensity_range):
+                    slider = QLabeledSlider()
+                elif all(isinstance(i, float) for i in model_info.intensity_range):
+                    slider = QLabeledDoubleSlider()
+                else:
+                    # should never happen...
+                    raise TypeError(
+                        "Intensity range must be either all integers or all floats."
+                    )
+                self._sliders[f"power:{name}"] = slider
                 self._sliders[f"power:{name}"].setOrientation(
                     QtCore.Qt.Orientation.Horizontal
                 )
@@ -77,13 +87,11 @@ class LightWidget(BaseQtWidget, Loggable):
                     QtCore.Qt.AlignmentFlag.AlignHCenter
                 )
                 self._labels[f"egu:{name}"] = QtWidgets.QLabel(model_info.egu)
-
-            if model_info.binary:
-                layout.addWidget(self._buttons[f"on:{name}"], 0, 0, 1, 4)
-            else:
                 layout.addWidget(self._buttons[f"on:{name}"], 0, 0)
                 layout.addWidget(self._sliders[f"power:{name}"], 0, 1, 1, 3)
                 layout.addWidget(self._labels[f"egu:{name}"], 0, 4)
+            else:
+                layout.addWidget(self._buttons[f"on:{name}"], 0, 0, 1, 4)
 
             self._groups[name].setLayout(layout)
             main_layout.addWidget(self._groups[name])
@@ -106,7 +114,7 @@ class LightWidget(BaseQtWidget, Loggable):
         else:
             self._buttons[f"on:{name}"].setText("ON")
 
-    def _on_slider_changed(self, value: float, name: str) -> None:
+    def _on_slider_changed(self, value: int | float, name: str) -> None:
         """Change the intensity of the light source."""
         self.logger.debug(f"Change intensity of light source {name} to {value:.2f}")
         self.sigIntensityRequest.emit(name, value)
