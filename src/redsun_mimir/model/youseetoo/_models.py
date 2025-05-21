@@ -262,10 +262,8 @@ class MimirLaserModel(LightProtocol, Loggable):
             .replace("+", "")
             .replace("-", "")
             .replace("\\r", "")
-            .replace("\\t", "")
             .replace("\\n", "")
             .replace("b'", "")
-            .replace("\\", "")
             .replace("'", "")
         )
         if not resp_str:
