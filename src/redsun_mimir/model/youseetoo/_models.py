@@ -244,8 +244,18 @@ class MimirLaserModel(LightProtocol):
             status.set_exception(ValueError("Failed to write to serial port."))
             return
         # check the response from the laser
-        response = self._decoder.decode(self._serial.read(self._response_length))
+        resp_bytes = self._serial.read(self._response_length)
+        if resp_bytes is None or len(resp_bytes) != self._response_length:
+            status.set_exception(
+                ValueError(
+                    f"Failed to read from serial port. Received: {resp_bytes.decode()}"
+                )
+            )
+            return
+        response = self._decoder.decode(resp_bytes)
         if response != self._expected_response:
-            status.set_exception(ValueError("Invalid response from laser."))
+            status.set_exception(
+                ValueError(f"Invalid response from laser. Received: {response}")
+            )
             return
         status.set_finished()
