@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from msgspec.json import Decoder, Encoder
@@ -13,6 +14,8 @@ from ._config import LaserAction, LaserActionResponse, SerialInfo
 
 if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar
+
+    from bluesky.protocols import Descriptor, Reading
 
     from ._config import MimirLaserInfo
 
@@ -110,16 +113,16 @@ class MimirLaserModel(LightProtocol):
         Name of the model.
     model_info: `MimirLaserInfo`
         Model information for the laser source.
-
-    Attributes
-    ----------
-    enabled: `bool`
-        Activation status of the light source.
-    intensity: `int`
-        Intensity of the light source.
     """
 
     def __init__(self, name: str, model_info: MimirLaserInfo) -> None:
+        if model_info.binary:
+            raise ValueError("Mimir laser does not support binary mode.")
+        if model_info.intensity_range is None:
+            raise ValueError("Mimir laser requires an intensity range.")
+        if model_info.intensity_range[0] < 0 or model_info.intensity_range[1] > 1023:
+            raise ValueError("Mimir laser intensity range must be between 0 and 1023.")
+
         self._name = name
         self._model_info = model_info
         self.enabled = False
@@ -228,6 +231,14 @@ class MimirLaserModel(LightProtocol):
         """The name of the laser source."""
         return self._name
 
+    @property
+    def parent(self) -> None:
+        """The parent of the laser source.
+
+        For Bluesky compatibility only.
+        """
+        return None
+
     def _send_command(self, command: LaserAction, status: Status) -> None:
         """Send a command to the laser source.
 
@@ -259,3 +270,50 @@ class MimirLaserModel(LightProtocol):
             )
             return
         status.set_finished()
+
+    def shutdown(self) -> None:
+        """Shutdown the laser source.
+
+        This method is called when the application is closed.
+        """
+        # TODO: what to do here?
+        ...
+
+    def read(self) -> dict[str, Reading[Any]]:
+        """Read the current state of the laser source.
+
+        Returns
+        -------
+        `dict[str, Any]`
+            Dictionary with the current state of the laser source.
+        """
+        return {
+            "enabled": self.enabled,
+            "intensity": self.intensity,
+        }
+
+    def describe(self) -> dict[str, Descriptor]:
+        return {
+            "intensity": {"value": self.intensity, "timestamp": time.time()},
+            "enabled": {"value": self.enabled, "timestamp": time.time()},
+        }
+
+    def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Read the configuration of the laser source.
+
+        Returns
+        -------
+        `dict[str, Any]`
+            Dictionary with the configuration of the laser source.
+        """
+        return self.model_info.read_configuration()
+
+    def describe_configuration(self) -> dict[str, Descriptor]:
+        """Describe the configuration of the laser source.
+
+        Returns
+        -------
+        `dict[str, Any]`
+            Dictionary with the configuration of the laser source.
+        """
+        return self.model_info.describe_configuration()
