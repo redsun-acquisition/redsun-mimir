@@ -24,6 +24,24 @@ DecodingType = LaserActionResponse
 
 
 class SerialFactory:
+    """Factory class to create the serial object.
+
+    Provides Mimir device components with a reference
+    to the serial port to which the device is connected,
+    and the encoder/decoder to use for serial communication.
+
+    Attributes
+    ----------
+    serial: `Serial`
+        Serial object to use for communication with the Mimir device.
+    encoder: `msgspec.json.Encoder`
+        Encoder to use for serial communication with the Mimir device.
+    decoder: `msgspec.json.Decoder`
+        Decoder to use for serial communication with the Mimir device.
+    callbacks: `list[Callable[[Serial, Encoder, Decoder], None]]`
+        List of callbacks to be called when the serial object is created.
+    """
+
     serial: ClassVar[Serial | None] = None
     encoder: ClassVar[Encoder] = Encoder()
     decoder: ClassVar[Decoder[DecodingType]] = Decoder(DecodingType)
@@ -90,6 +108,12 @@ class MimirSerialModel(Model[MimirSerialInfo]):
     communication with a Mimir device. It does not provide
     direct interaction with the device, but rather opens the
     serial port and provides it to other models.
+
+    .. warning::
+
+        Currently it is not exposed to the user.
+        In the future an appropriate serial stack
+        (widget and controller) should be provided.
 
     Parameters
     ----------
