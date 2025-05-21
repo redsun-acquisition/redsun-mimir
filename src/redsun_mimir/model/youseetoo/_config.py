@@ -17,46 +17,47 @@ class BaudeRate(IntEnum):
     the configuration file.
     """
 
-    BAUD_4800 = 4800
-    BAUD_9600 = 9600
-    BAUD_19200 = 19200
-    BAUD_38400 = 38400
-    BAUD_57600 = 57600
-    BAUD_115200 = 115200
-    BAUD_230400 = 230400
-    BAUD_460800 = 460800
-    BAUD_921600 = 921600
+    BR4800 = 4800
+    BR9600 = 9600
+    BR19200 = 19200
+    BR38400 = 38400
+    BR57600 = 57600
+    BR115200 = 115200
+    BR230400 = 230400
+    BR460800 = 460800
+    BR921600 = 921600
 
 
 @define(kw_only=True)
-class SerialInfo(ModelInfo):
-    """Model information for serial communication.
+class MimirSerialInfo(ModelInfo):
+    """Model information for Mimir device serial communication.
 
     Attributes
     ----------
     port: `str`
         Serial port to use for communication.
-    baude_rate: `int`
+    bauderate: `int`
         Baud rate for serial communication.
     timeout: `float`
         Timeout for serial communication in seconds.
-        Default is 0.3 s.
+        Default is 0.5 s.
     """
 
     port: str = field(
         on_setattr=setters.frozen,
         validator=validators.instance_of(str),
     )
-    baude_rate: int = field(
+    bauderate: int = field(
+        default=BaudeRate.BR115200.value,
         on_setattr=setters.frozen,
     )
     timeout: float = field(
-        default=0.3,
+        default=0.5,
         on_setattr=setters.frozen,
         validator=validators.instance_of(float),
     )
 
-    @baude_rate.validator
+    @bauderate.validator
     def _check_baud_rate(self, _: str, value: int) -> None:
         """Check if the baud rate is valid.
 
@@ -91,7 +92,12 @@ def tag_action(class_name: str) -> str:
         class LaserAction(Action):
             pass
 
-        tag_action(LaserAction.__name__) -> "/laser_act"
+
+        tag_name = tag_action(LaserAction.__name__)
+        # tag_name will be "/laser_act"
+
+    The `tag` field is automatically generated
+    when subclassing the `Action` struct.
 
     Parameters
     ----------
@@ -103,7 +109,7 @@ def tag_action(class_name: str) -> str:
     `str`
         Converted command name.
     """
-    return "".join(["/", class_name.lower().replace("command", "_act")])
+    return "".join(["/", class_name.lower().replace("action", "_act")])
 
 
 class Action(Struct, tag_field="task", tag=tag_action): ...
@@ -134,18 +140,16 @@ class LaserActionResponse(Struct):
 
     Attributes
     ----------
+    qid: `int`
+        UC2 queue ID of the requested action.
     success: `int`
         The success status of the action.
-        The returned value coincides with the `qid` value
-        of the action sent to the device. If the action
-        did not provide a `qid` value, the response will
-        generate a `qid` value which depends on the internal
-        device state.
-        For better tracking, the `qid` value should be
-        provided in the action.
+        1: success, 0: failure.
+        Defaults to 1 (assuming success).
     """
 
-    success: int
+    qid: int
+    success: int = sfield(default=1)
 
 
 @define(kw_only=True)
@@ -158,14 +162,14 @@ class MimirLaserInfo(LightModelInfo):
         ID of the laser (ranging from 0 to 3).
     qid: `int`, optional
         UC2 queue ID for tracking the actions.
-        The value is set to 0 by default.
+        Must be a positive integer, with 0 allowed.
+        Defaults to 0.
     """
 
     id: int = field(on_setattr=setters.frozen)
     qid: int = field(
-        default=0,
+        default=1,
         on_setattr=setters.frozen,
-        validator=validators.instance_of(int),
     )
 
     @id.validator
@@ -183,3 +187,21 @@ class MimirLaserInfo(LightModelInfo):
         """
         if value < 0 or value > 3:
             raise ValueError("Laser ID must be between 0 and 3.")
+
+    @qid.validator
+    def _check_qid(self, _: str, value: int) -> None:
+        """Check if the QID is valid.
+
+        Valid values are positive integers.
+
+        Parameters
+        ----------
+        attribute: `str`
+            Attribute name (unused).
+        value: `int`
+            Value to check.
+        """
+        if not isinstance(value, int):
+            raise TypeError("Laser QID must be an integer.")
+        if value < 0:
+            raise ValueError("Laser QID must be a positive integer.")

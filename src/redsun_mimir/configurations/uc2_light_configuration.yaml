@@ -1,0 +1,28 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  Serial:
+    plugin_name: test-uc2
+    plugin_id: test-uc2-serial
+    port: COM3
+  Laser 1:
+    plugin_name: test-uc2
+    plugin_id: test-uc2-laser
+    wavelength: 650
+    egu: mW
+    intensity_range: [0, 1023]
+    step_size: 1
+    id: 1
+controllers:
+  LightController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+widgets:
+  LightWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center

@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING
 from msgspec.json import Decoder, Encoder
 from serial import Serial
 from sunflare.engine import Status
+from sunflare.log import Loggable
 from sunflare.model import Model
 
 from redsun_mimir.protocols import LightProtocol
 
-from ._config import LaserAction, LaserActionResponse, SerialInfo
+from ._config import LaserAction, LaserActionResponse, MimirSerialInfo
 
 if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar
@@ -31,17 +32,17 @@ class SerialFactory:
     ] = []
 
     @classmethod
-    def setup(cls, info: SerialInfo) -> None:
+    def setup(cls, info: MimirSerialInfo) -> None:
         """Create the serial object.
 
         Parameters
         ----------
-        info: `SerialInfo`
+        info: `MimirSerialInfo`
             Serial information to setup the serial object.
         """
         cls.serial = Serial(
             port=info.port,
-            baudrate=info.baude_rate,
+            baudrate=info.bauderate,
             timeout=info.timeout,
         )
         for callback in cls.callbacks:
@@ -82,7 +83,7 @@ class SerialFactory:
         callback(cls.serial, cls.encoder, cls.decoder)
 
 
-class MimirSerialModel(Model[SerialInfo]):
+class MimirSerialModel(Model[MimirSerialInfo]):
     """Mimir interface for serial communication.
 
     This model is in charge of setting up the serial
@@ -98,13 +99,12 @@ class MimirSerialModel(Model[SerialInfo]):
 
     """
 
-    def __init__(self, name: str, model_info: SerialInfo) -> None:
-        self._name = name
-        self._model_info = model_info
+    def __init__(self, name: str, model_info: MimirSerialInfo) -> None:
+        super().__init__(name, model_info)
         SerialFactory.setup(model_info)
 
 
-class MimirLaserModel(LightProtocol):
+class MimirLaserModel(LightProtocol, Loggable):
     """Mimir interface for a laser source.
 
     Parameters
@@ -141,7 +141,6 @@ class MimirLaserModel(LightProtocol):
             self._encoder = encoder
             self._decoder = decoder
             self._expected_response = LaserActionResponse(self.model_info.qid)
-            self._response_length = len(self._encoder.encode(self._expected_response))
 
         SerialFactory.get(_get_serial)
 
@@ -251,19 +250,29 @@ class MimirLaserModel(LightProtocol):
         """
         action = self._encoder.encode(command)
         written = self._serial.write(action)
+        self.logger.debug(f"Sent command: {action.decode()}")
         if written is None or written != len(action):
             status.set_exception(ValueError("Failed to write to serial port."))
             return
-        # check the response from the laser
-        resp_bytes = self._serial.read(self._response_length)
-        if resp_bytes is None or len(resp_bytes) != self._response_length:
-            status.set_exception(
-                ValueError(
-                    f"Failed to read from serial port. Received: {resp_bytes.decode()}"
-                )
-            )
+        # wait for the response
+        # and clean it up
+        # to remove unwanted characters
+        resp_str = (
+            str(self._serial.read_until(expected=b"}"))
+            .replace("+", "")
+            .replace("\\r", "")
+            .replace("\\t", "")
+            .replace("\\n", "")
+            .replace("b'", "")
+            .replace("\\", "")
+            .replace("'", "")
+        )
+        if not resp_str:
+            status.set_exception(ValueError("Failed to read from serial port."))
             return
-        response = self._decoder.decode(resp_bytes)
+
+        self.logger.debug(f"Received response: {resp_str}")
+        response = self._decoder.decode(resp_str)
         if response != self._expected_response:
             status.set_exception(
                 ValueError(f"Invalid response from laser. Received: {response}")
@@ -276,7 +285,9 @@ class MimirLaserModel(LightProtocol):
 
         This method is called when the application is closed.
         """
-        # TODO: what to do here?
+        # shutdown should be delegated
+        # to the serial model, which will
+        # which will close the serial port
         ...
 
     def read(self) -> dict[str, Reading[Any]]:
@@ -288,14 +299,22 @@ class MimirLaserModel(LightProtocol):
             Dictionary with the current state of the laser source.
         """
         return {
-            "enabled": self.enabled,
-            "intensity": self.intensity,
+            "intensity": {"value": self.intensity, "timestamp": time.time()},
+            "enabled": {"value": self.enabled, "timestamp": time.time()},
         }
 
     def describe(self) -> dict[str, Descriptor]:
         return {
-            "intensity": {"value": self.intensity, "timestamp": time.time()},
-            "enabled": {"value": self.enabled, "timestamp": time.time()},
+            "intensity": {
+                "source": self.name,
+                "dtype": "number",
+                "shape": [],
+            },
+            "enabled": {
+                "source": self.name,
+                "dtype": "boolean",
+                "shape": [],
+            },
         }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
