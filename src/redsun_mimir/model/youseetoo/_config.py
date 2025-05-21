@@ -36,6 +36,8 @@ class SerialInfo(ModelInfo):
     ----------
     port: `str`
         Serial port to use for communication.
+    baude_rate: `int`
+        Baud rate for serial communication.
     """
 
     port: str = field(

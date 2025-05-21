@@ -42,6 +42,7 @@ class SerialFactory:
         )
         for callback in cls.callbacks:
             callback(cls.serial, cls.encoder, cls.decoder)
+        cls.callbacks.clear()
 
     @classmethod
     def get(
@@ -49,7 +50,7 @@ class SerialFactory:
     ) -> None:
         """Get the serial object.
 
-        Uses a callback system to provide the callers with the
+        Registers callbacks to provide the callers with
         references to:
         - the serial object;
         - the `msgspec` encoder;
@@ -167,8 +168,26 @@ class MimirLaserModel(LightProtocol):
                 ValueError("Value must be an integer number between 0 and 1023.")
             )
             return s
+
+        # keep the new value stored;
+        # if the laser is enabled, set
+        # the new intensity immediately;
+        # otherwise it will be set when
+        # `trigger` is called to enable the laser
         self.intensity = value
-        s.set_finished()
+        if self.enabled:
+            self._send_command(
+                LaserAction(
+                    id=self._model_info.id,
+                    qid=self._model_info.qid,
+                    value=self.intensity,
+                ),
+                s,
+            )
+        else:
+            # the laser is not enabled yet;
+            # return the status as finished
+            s.set_finished()
         return s
 
     def trigger(self) -> Status:
@@ -179,45 +198,23 @@ class MimirLaserModel(LightProtocol):
         `Status`
             Status of the command.
         """
-        action: bytes
-        written: int | None
+        action: LaserAction
 
         s = Status()
         self.enabled = not self.enabled
         if self.enabled:
-            # if the light is enabled, set the laser intensity
-            # to the current value set in self.intensity
-            action = self._encoder.encode(
-                LaserAction(
-                    id=self._model_info.id,
-                    value=self.intensity,
-                )
+            action = LaserAction(
+                id=self._model_info.id,
+                qid=self._model_info.qid,
+                value=self.intensity,
             )
-            written = self._serial.write(action)
-            if written is None or written != len(action):
-                s.set_exception(ValueError("Failed to write to serial port."))
-                return s
         else:
-            # if the light is disabled, set the laser intensity to 0
-            action = self._encoder.encode(
-                LaserAction(
-                    id=self._model_info.id,
-                    value=0,
-                )
+            action = LaserAction(
+                id=self._model_info.id,
+                qid=self._model_info.qid,
+                value=0,
             )
-            written = self._serial.write(action)
-            if written is None or written != len(action):
-                s.set_exception(ValueError("Failed to write to serial port."))
-                return s
-
-        # check the response from the laser
-        response = LaserActionResponse(
-            self._decoder.decode(self._serial.read(self._response_length))
-        )
-        if response != self._expected_response:
-            s.set_exception(ValueError("Invalid response from laser."))
-            return s
-        s.set_finished()
+        self._send_command(action, s)
         return s
 
     @property
@@ -229,3 +226,25 @@ class MimirLaserModel(LightProtocol):
     def name(self) -> str:
         """The name of the laser source."""
         return self._name
+
+    def _send_command(self, command: LaserAction, status: Status) -> None:
+        """Send a command to the laser source.
+
+        Parameters
+        ----------
+        command: `LaserAction`
+            Command to send to the laser source.
+        status: `Status`
+            Status object associated to the command.
+        """
+        action = self._encoder.encode(command)
+        written = self._serial.write(action)
+        if written is None or written != len(action):
+            status.set_exception(ValueError("Failed to write to serial port."))
+            return
+        # check the response from the laser
+        response = self._decoder.decode(self._serial.read(self._response_length))
+        if response != self._expected_response:
+            status.set_exception(ValueError("Invalid response from laser."))
+            return
+        status.set_finished()
