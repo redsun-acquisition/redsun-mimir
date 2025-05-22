@@ -4,7 +4,6 @@ import math
 import time
 from typing import TYPE_CHECKING
 
-from bluesky.protocols import Descriptor, Location, Reading
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
@@ -12,6 +11,8 @@ from ..protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any
+
+    from bluesky.protocols import Descriptor, Location, Reading
 
     from ._config import LightModelInfo, StageModelInfo
 
@@ -96,7 +97,7 @@ class MockStageModel(MotorProtocol, Loggable):
         self._name = name
         self._model_info = model_info
         self._positions: dict[str, Location[float]] = {
-            axis: Location(setpoint=0.0, readback=0.0) for axis in model_info.axis
+            axis: {"setpoint": 0.0, "readback": 0.0} for axis in model_info.axis
         }
 
         # set the current axis to the first axis
