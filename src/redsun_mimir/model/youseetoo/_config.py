@@ -7,7 +7,7 @@ from msgspec import UNSET, Struct, UnsetType
 from msgspec import field as sfield
 from sunflare.config import ModelInfo
 
-from .._config import LightModelInfo
+from .._config import LightModelInfo, StageModelInfo
 
 
 class BaudeRate(IntEnum):
@@ -205,3 +205,20 @@ class MimirLaserInfo(LightModelInfo):
             raise TypeError("Laser QID must be an integer.")
         if value < 0:
             raise ValueError("Laser QID must be a positive integer.")
+
+
+@define(kw_only=True)
+class MimirStageInfo(StageModelInfo):
+    """Configuration of a Mimir stage.
+
+    Attributes
+    ----------
+    id: `int`
+        ID of the stage (ranging from 0 to 3).
+    qid: `int`, optional
+        UC2 queue ID for tracking the actions.
+        Must be a positive integer, with 0 allowed.
+        Defaults to 0.
+    """
+
+    ...

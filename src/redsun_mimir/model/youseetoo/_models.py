@@ -9,16 +9,16 @@ from sunflare.engine import Status
 from sunflare.log import Loggable
 from sunflare.model import Model
 
-from redsun_mimir.protocols import LightProtocol
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 from ._config import LaserAction, LaserActionResponse, MimirSerialInfo
 
 if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar
 
-    from bluesky.protocols import Descriptor, Reading
+    from bluesky.protocols import Descriptor, Location, Reading
 
-    from ._config import MimirLaserInfo
+    from ._config import MimirLaserInfo, MimirStageInfo
 
 DecodingType = LaserActionResponse
 
@@ -359,3 +359,80 @@ class MimirLaserModel(LightProtocol, Loggable):
             Dictionary with the configuration of the laser source.
         """
         return self.model_info.describe_configuration()
+
+
+class MimirMotorModel(MotorProtocol, Loggable):
+    def __init__(self, name: str, model_info: MimirStageInfo) -> None:
+        self._name = name
+        self._model_info = model_info
+        self._serial: Serial
+        self._encoder: Encoder
+        self._decoder: Decoder[DecodingType]
+
+        self._positions: dict[str, Location[float]] = {
+            axis: {"setpoint": 0.0, "readback": 0.0} for axis in model_info.axis
+        }
+
+        # set the current axis to the first axis
+        self.axis = self._model_info.axis[0]
+
+        self._step_sizes = self._model_info.step_sizes
+
+        def _get_serial(
+            serial: Serial, encoder: Encoder, decoder: Decoder[DecodingType]
+        ) -> None:
+            self._serial = serial
+            self._encoder = encoder
+            self._decoder = decoder
+
+        SerialFactory.get(_get_serial)
+
+    def set(self, value: Any, **kwargs: Any) -> Status:
+        s = Status()
+        propr = kwargs.get("prop", None)
+        if propr is not None:
+            self.logger.info("Setting property %s to %s.", propr, value)
+            if propr == "axis" and isinstance(value, str):
+                self.axis = value
+                s.set_finished()
+                return s
+            elif propr == "step_size" and isinstance(value, int | float):
+                self._step_sizes[self.axis] = value
+                s.set_finished()
+                return s
+            else:
+                s.set_exception(ValueError(f"Invalid property: {propr}"))
+                return s
+        else:
+            if not isinstance(value, int | float):
+                s.set_exception(ValueError("Value must be a float or int."))
+                return s
+
+        # TODO: implement
+        return s
+
+    def locate(self) -> Location[float]:
+        """Locate mock model."""
+        return self._positions[self.axis]
+
+    def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Read mock configuration."""
+        return self.model_info.read_configuration()
+
+    def describe_configuration(self) -> dict[str, Descriptor]:
+        """Describe mock configuration."""
+        return self.model_info.describe_configuration()
+
+    @property
+    def parent(self) -> None:
+        return None
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return self._name
+
+    @property
+    def model_info(self) -> MimirStageInfo:  # noqa: D102
+        return self._model_info
+
+    def shutdown(self) -> None: ...
