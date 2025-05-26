@@ -142,9 +142,10 @@ class LaserActionResponse(Struct):
     ----------
     qid: `int`
         UC2 queue ID of the requested action.
+        Must match the `qid` in the request.
     success: `int`
         The success status of the action.
-        1: success, 0: failure.
+        1: success, -1: failure.
         Defaults to 1 (assuming success).
     """
 
@@ -162,8 +163,8 @@ class MimirLaserInfo(LightModelInfo):
         ID of the laser (ranging from 0 to 3).
     qid: `int`, optional
         UC2 queue ID for tracking the actions.
-        Must be a positive integer, with 0 allowed.
-        Defaults to 0.
+        Must be a non-zero positive integer.
+        Defaults to 1.
     """
 
     id: int = field(on_setattr=setters.frozen)
@@ -185,6 +186,8 @@ class MimirLaserInfo(LightModelInfo):
         value: `int`
             Value to check.
         """
+        if not isinstance(value, int):
+            raise TypeError("Laser ID must be an integer.")
         if value < 0 or value > 3:
             raise ValueError("Laser ID must be between 0 and 3.")
 
@@ -203,8 +206,8 @@ class MimirLaserInfo(LightModelInfo):
         """
         if not isinstance(value, int):
             raise TypeError("Laser QID must be an integer.")
-        if value < 0:
-            raise ValueError("Laser QID must be a positive integer.")
+        if value < 1:
+            raise ValueError("Laser QID must be a positive, non-zero integer.")
 
 
 @define(kw_only=True)
@@ -217,8 +220,48 @@ class MimirStageInfo(StageModelInfo):
         ID of the stage (ranging from 0 to 3).
     qid: `int`, optional
         UC2 queue ID for tracking the actions.
-        Must be a positive integer, with 0 allowed.
-        Defaults to 0.
+        Must be a non-zero positive integer.
+        Defaults to 1.
     """
 
-    ...
+    id: int = field(on_setattr=setters.frozen)
+    qid: int = field(
+        default=1,
+        on_setattr=setters.frozen,
+    )
+
+    @id.validator
+    def _check_id(self, _: str, value: int) -> None:
+        """Check if the ID is valid.
+
+        Valid values are between 0 and 3.
+
+        Parameters
+        ----------
+        attribute: `str`
+            Attribute name (unused).
+        value: `int`
+            Value to check.
+        """
+        if not isinstance(value, int):
+            raise TypeError("Laser ID must be an integer.")
+        if value < 0 or value > 3:
+            raise ValueError("Laser ID must be between 0 and 3.")
+
+    @qid.validator
+    def _check_qid(self, _: str, value: int) -> None:
+        """Check if the QID is valid.
+
+        Valid values are positive integers.
+
+        Parameters
+        ----------
+        attribute: `str`
+            Attribute name (unused).
+        value: `int`
+            Value to check.
+        """
+        if not isinstance(value, int):
+            raise TypeError("Laser QID must be an integer.")
+        if value < 1:
+            raise ValueError("Laser QID must be a positive, non-zero integer.")
