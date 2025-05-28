@@ -3,8 +3,6 @@ from __future__ import annotations
 from enum import IntEnum
 
 from attrs import define, field, setters, validators
-from msgspec import UNSET, Struct, UnsetType
-from msgspec import field as sfield
 from sunflare.config import ModelInfo
 
 from .._config import LightModelInfo, StageModelInfo
@@ -73,84 +71,6 @@ class MimirSerialInfo(ModelInfo):
                 f"Invalid baud rate {value}. "
                 f"Valid values are: {list(BaudeRate.__members__.values())}"
             )
-
-
-def tag_action(class_name: str) -> str:
-    """Create a tag field for the specific action.
-
-    The function output depends on the class name which
-    subclasses the `Action` struct.
-    The final tag field will be formatted as
-    `/<action-name>_act`, where `<action-name>` is the
-    lowercase version of the class name, with the
-    `Action` suffix removed and replaced with `_act`.
-
-    i.e.
-
-    .. code-block:: python
-
-        class LaserAction(Action):
-            pass
-
-
-        tag_name = tag_action(LaserAction.__name__)
-        # tag_name will be "/laser_act"
-
-    The `tag` field is automatically generated
-    when subclassing the `Action` struct.
-
-    Parameters
-    ----------
-    class_name: `str`
-        Class name to convert.
-
-    Returns
-    -------
-    `str`
-        Converted command name.
-    """
-    return "".join(["/", class_name.lower().replace("action", "_act")])
-
-
-class Action(Struct, tag_field="task", tag=tag_action): ...
-
-
-class LaserAction(Action):
-    """Mimir light action message.
-
-    Attributes
-    ----------
-    id: `int`
-        ID of the laser command (ranging from 0 to 3).
-        Encoded name will be `LASERid`.
-    value: int
-        Value of the command.
-        Encoded name will be `LASERval`.
-    qid: `int`, optional
-        UC2 queue ID for tracking the command.
-    """
-
-    id: int = sfield(name="LASERid")
-    value: int = sfield(name="LASERval")
-    qid: int | UnsetType = sfield(default=UNSET)
-
-
-class LaserActionResponse(Struct):
-    """Mimir light response message.
-
-    Attributes
-    ----------
-    qid: `int`
-        UC2 queue ID of the requested action.
-        Must match the `qid` in the request.
-    success: `int`
-        The success status of the action.
-        1: success, -1: failure.
-        Defaults to 1 (assuming success).
-    """
-
-    qid: int
-    success: int = sfield(default=1)
 
 
 @define(kw_only=True)
@@ -244,9 +164,9 @@ class MimirStageInfo(StageModelInfo):
             Value to check.
         """
         if not isinstance(value, int):
-            raise TypeError("Laser ID must be an integer.")
+            raise TypeError("Motor ID must be an integer.")
         if value < 0 or value > 3:
-            raise ValueError("Laser ID must be between 0 and 3.")
+            raise ValueError("Motor ID must be between 0 and 3.")
 
     @qid.validator
     def _check_qid(self, _: str, value: int) -> None:
@@ -262,6 +182,6 @@ class MimirStageInfo(StageModelInfo):
             Value to check.
         """
         if not isinstance(value, int):
-            raise TypeError("Laser QID must be an integer.")
+            raise TypeError("Motor QID must be an integer.")
         if value < 1:
-            raise ValueError("Laser QID must be a positive, non-zero integer.")
+            raise ValueError("Motor QID must be a positive, non-zero integer.")

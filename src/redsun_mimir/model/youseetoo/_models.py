@@ -11,19 +11,20 @@ from sunflare.model import Model
 
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
-from ._config import LaserAction, LaserActionResponse, MimirSerialInfo
+from ._actions import ActionResponse, LaserAction, MotorAction
+from ._config import MimirSerialInfo
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, ClassVar
+    from typing import Any, Callable, ClassVar, Final
 
     from bluesky.protocols import Descriptor, Location, Reading
 
     from ._config import MimirLaserInfo, MimirStageInfo
 
-DecodingType = LaserActionResponse
+DecodingType = ActionResponse
 
 
-class SerialFactory:
+class _SerialFactory:
     """Factory class to create the serial object.
 
     Provides Mimir device components with a reference
@@ -125,7 +126,7 @@ class MimirSerialModel(Model[MimirSerialInfo]):
 
     def __init__(self, name: str, model_info: MimirSerialInfo) -> None:
         super().__init__(name, model_info)
-        SerialFactory.setup(model_info)
+        _SerialFactory.setup(model_info)
 
 
 class MimirLaserModel(LightProtocol, Loggable):
@@ -155,7 +156,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         self._serial: Serial
         self._encoder: Encoder
         self._decoder: Decoder[DecodingType]
-        self._expected_response: LaserActionResponse
+        self._expected_response: ActionResponse
         self._response_length: int
 
         def _get_serial(
@@ -164,9 +165,9 @@ class MimirLaserModel(LightProtocol, Loggable):
             self._serial = serial
             self._encoder = encoder
             self._decoder = decoder
-            self._expected_response = LaserActionResponse(self.model_info.qid)
+            self._expected_response = ActionResponse(self.model_info.qid)
 
-        SerialFactory.get(_get_serial)
+        _SerialFactory.get(_get_serial)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set the intensity of the laser source.
@@ -272,10 +273,10 @@ class MimirLaserModel(LightProtocol, Loggable):
         status: `Status`
             Status object associated to the command.
         """
-        action = self._encoder.encode(command)
-        written = self._serial.write(action)
-        self.logger.debug(f"Sent command: {action.decode()}")
-        if written is None or written != len(action):
+        packet = self._encoder.encode(command)
+        written = self._serial.write(packet)
+        self.logger.debug(f"Sent command: {packet.decode()}")
+        if written is None or written != len(packet):
             status.set_exception(ValueError("Failed to write to serial port."))
             return
         # wait for the response
@@ -301,6 +302,7 @@ class MimirLaserModel(LightProtocol, Loggable):
                 ValueError(f"Invalid response from laser. Received: {response}")
             )
             return
+        self._serial.reset_input_buffer()
         status.set_finished()
 
     def shutdown(self) -> None:
@@ -361,10 +363,64 @@ class MimirLaserModel(LightProtocol, Loggable):
         return self.model_info.describe_configuration()
 
 
+NM_TO_NM: Final[int] = 1
+UM_TO_NM: Final[int] = 1_000
+MM_TO_NM: Final[int] = 1_000_000
+
+
 class MimirMotorModel(MotorProtocol, Loggable):
+    """Mimir interface for a motor stage.
+
+    Parameters
+    ----------
+    name: `str`
+        Name of the model.
+    model_info: `MimirStageInfo`
+        Model information for the motor stage.
+
+    Attributes
+    ----------
+    motor_step: `int`, frozen
+        Step size of the motor in nanometers.
+        This is a constant value internal to the motor movement
+        operations, and is not configurable by the user.
+        Set to 320 nm by default.
+    """
+
+    motor_step: Final[int] = 320
+
+    # conversion factor for the engineering units
+    # used by the Mimir stage; the final steps the motor
+    # executes is computed as follows:
+    #   steps = value * self._map[model_info.egu] // self.motor_step
+    # where
+    # - `value` is the input value the engineering unit
+    # - `self._conversion_map[model_info.egu]` is the conversion factor
+
+    _conversion_map: Final[dict[str, int]] = {
+        "nm": NM_TO_NM,
+        "um": UM_TO_NM,
+        "μm": UM_TO_NM,
+        "mm": MM_TO_NM,
+    }
+
     def __init__(self, name: str, model_info: MimirStageInfo) -> None:
+        if model_info.egu not in ["nm", "mm", "um", "μm"]:
+            err_msg = (
+                f"Invalid engineering unit for Mimir motor: {model_info.egu}. "
+                "Supported units are 'nm', 'mm', 'um', 'μm'."
+            )
+            self.logger.exception(err_msg)
+            raise ValueError(err_msg)
+
         self._name = name
         self._model_info = model_info
+
+        # set the conversion factor from egu to steps;
+        # it will be used to convert the input value
+        # to the number of steps the motor should execute
+        self._factor: Final[int] = self._conversion_map[model_info.egu]
+
         self._serial: Serial
         self._encoder: Encoder
         self._decoder: Decoder[DecodingType]
@@ -385,7 +441,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
             self._encoder = encoder
             self._decoder = decoder
 
-        SerialFactory.get(_get_serial)
+        _SerialFactory.get(_get_serial)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -407,8 +463,14 @@ class MimirMotorModel(MotorProtocol, Loggable):
             if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
-
-        # TODO: implement
+        steps = int(value * self._factor) // self.motor_step
+        action = MotorAction(
+            movement=MotorAction.generate_movement(
+                id=self.model_info.id, position=steps
+            ),
+            qid=self.model_info.qid,
+        )
+        self._send_command(action, s)
         return s
 
     def locate(self) -> Location[float]:
@@ -436,3 +498,45 @@ class MimirMotorModel(MotorProtocol, Loggable):
         return self._model_info
 
     def shutdown(self) -> None: ...
+
+    def _send_command(self, command: MotorAction, status: Status) -> None:
+        """Send a command to the motor stage.
+
+        Parameters
+        ----------
+        command: `MotorAction`
+            Command to send to the motor stage.
+        status: `Status`
+            Status object associated to the command.
+        """
+        packet = self._encoder.encode(command)
+        written = self._serial.write(packet)
+        self.logger.debug(f"Sent command: {packet.decode()}")
+        if written is None or written != len(packet):
+            status.set_exception(ValueError("Failed to write to serial port."))
+            return
+        # wait for the response
+        # and clean it up
+        # to remove unwanted characters
+        resp_str = (
+            str(self._serial.read_until(expected=b"}"))
+            .replace("+", "")
+            .replace("-", "")
+            .replace("\\r", "")
+            .replace("\\n", "")
+            .replace("b'", "")
+            .replace("'", "")
+        )
+        if not resp_str:
+            status.set_exception(ValueError("Failed to read from serial port."))
+            return
+
+        self.logger.debug(f"Received response: {resp_str}")
+        response = self._decoder.decode(resp_str)
+        if response != ActionResponse(command.qid):
+            status.set_exception(
+                ValueError(f"Invalid response from motor. Received: {response}")
+            )
+            return
+        self._serial.reset_input_buffer()
+        status.set_finished()
