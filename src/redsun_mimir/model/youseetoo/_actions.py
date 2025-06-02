@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from msgspec import UNSET, Struct, UnsetType, field
 
 
@@ -7,17 +9,17 @@ def _tag_action(class_name: str) -> str:
     """Create a tag field for the specific action.
 
     The function output depends on the class name which
-    subclasses the `Action` struct.
+    subclasses the `_Action` struct.
     The final tag field will be formatted as
     `/<action-name>_act`, where `<action-name>` is the
     lowercase version of the class name, with the
-    `Action` suffix removed and replaced with `_act`.
+    `_Action` suffix removed and replaced with `_act`.
 
     i.e.
 
     .. code-block:: python
 
-        class LaserAction(Action):
+        class LaserAction(_Action):
             pass
 
 
@@ -25,7 +27,7 @@ def _tag_action(class_name: str) -> str:
         # tag_name will be "/laser_act"
 
     The `tag` field is automatically generated
-    when subclassing the `Action` struct.
+    when subclassing the `_Action` struct.
 
     Parameters
     ----------
@@ -40,7 +42,39 @@ def _tag_action(class_name: str) -> str:
     return "".join(["/", class_name.lower().replace("action", "_act")])
 
 
-class Action(Struct, tag_field="task", tag=_tag_action):
+def tag_response(class_name: str) -> str:
+    """Convert a camel case class name to a snake case tag.
+
+    Any additional underscores in the class name
+    are removed, and the class name is converted to
+    snake case.
+
+
+    Parameters
+    ----------
+    name: `str`
+        Camel case class name to convert.
+
+    Returns
+    -------
+    `str`
+        Snake case class name.
+
+    Examples
+    --------
+    >>> camel_to_snake("_ActionResponse")
+    'action_response'
+    >>> camel_to_snake("_MotorActionResponse")
+    'motor_action_response'
+    """
+    # Find all capital letters, and add an underscore before them
+    # The lookahead (?=[A-Z]) ensures we don't add underscore after the last match
+    intermediate = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", class_name)
+    # Handle consecutive capital letters (like "API")
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", intermediate).lower()
+
+
+class _Action(Struct, tag_field="task", tag=_tag_action):
     """Base struct for Mimir actions.
 
     Automatically generates a `task` tag field
@@ -48,11 +82,14 @@ class Action(Struct, tag_field="task", tag=_tag_action):
     """
 
 
-class ActionResponse(Struct):
+class Acknowledge(Struct):
     """Mimir response message.
 
     Common response structure for Mimir actions,
     regardless of the specific action type.
+
+    Provides a way to acknowledge the action
+    and its success status.
 
     Attributes
     ----------
@@ -65,11 +102,11 @@ class ActionResponse(Struct):
         Defaults to 1 (assuming success).
     """
 
-    qid: int
+    qid: int | UnsetType
     success: int = field(default=1)
 
 
-class LaserAction(Action):
+class LaserAction(_Action):
     """Mimir light action message.
 
     Attributes
@@ -101,6 +138,7 @@ class MovementInfo(Struct):
         Target position of the stepper motor.
     speed: `int`
         Speed of the stepper motor (steps/s).
+        Defaults to 3000 (3,000 steps/s).
     accel: `int`
         Acceleration of the stepper motor (steps/s²).
         Defaults to 10000 (10,000 steps/s²).
@@ -117,7 +155,7 @@ class MovementInfo(Struct):
 
     id: int = field(name="stepperid")
     position: int
-    speed: int
+    speed: int = field(default=3000)
     accel: int = field(default=10000)
     isabs: int = field(default=0)
     isaccel: int = field(default=1)
@@ -155,7 +193,7 @@ class Movement(Struct):
         return cls(steppers=[MovementInfo(id=id, position=position)])
 
 
-class MotorAction(Action):
+class MotorAction(_Action):
     """Mimir stage action message.
 
     Attributes
@@ -194,3 +232,45 @@ class MotorAction(Action):
             id=id,
             position=position,
         )
+
+
+class MovementResponseInfo(Struct):
+    """Information about a movement response.
+
+    Attributes
+    ----------
+    id: `int`
+        ID of the stepper motor.
+        Encoded name will be `stepperid`.
+    position: `int`
+        Current position of the stepper motor.
+    done: `int`
+        Flag indicating if the movement is done.
+        Currently, the API will always return 0.
+        Requires clarification from UC2 team.
+    """
+
+    id: int = field(name="stepperid")
+    position: int
+    done: int = field(name="isDone")
+
+
+class MotorResponse(Struct):
+    """Response for a motor action.
+
+    This response is followed after the confirmation that
+    `Acknowledge` has been received; it details the
+    success of the motor movement.
+
+    Attributes
+    ----------
+    steppers: `list[MovementResponseInfo]`
+        List of movement responses for each stepper motor.
+        Each response is described by the `MovementResponseInfo` struct.
+    qid: `int`
+        UC2 queue ID of the requested action.
+        Must match the `qid` in the `MotorAction` request.
+    """
+
+    steppers: list[MovementResponseInfo]
+    qid: int

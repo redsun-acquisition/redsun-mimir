@@ -1,0 +1,32 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  Serial:
+    plugin_name: test-uc2
+    plugin_id: test-uc2-serial
+    port: COM3
+  Stage:
+    plugin_name: test-uc2
+    plugin_id: test-uc2-stage
+    axis:
+      - X
+      - Y
+      - Z
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
+controllers:
+  StageController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+widgets:
+  StageWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center

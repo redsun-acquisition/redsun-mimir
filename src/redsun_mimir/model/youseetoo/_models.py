@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from msgspec.json import Decoder, Encoder
+import msgspec
 from serial import Serial
 from sunflare.engine import Status
 from sunflare.log import Loggable
@@ -11,7 +11,7 @@ from sunflare.model import Model
 
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
-from ._actions import ActionResponse, LaserAction, MotorAction
+from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
 from ._config import MimirSerialInfo
 
 if TYPE_CHECKING:
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from ._config import MimirLaserInfo, MimirStageInfo
+    from redsun_mimir.model import StageModelInfo
 
-DecodingType = ActionResponse
+    from ._config import MimirLaserInfo
 
 
 class _SerialFactory:
@@ -44,11 +44,7 @@ class _SerialFactory:
     """
 
     serial: ClassVar[Serial | None] = None
-    encoder: ClassVar[Encoder] = Encoder()
-    decoder: ClassVar[Decoder[DecodingType]] = Decoder(DecodingType)
-    callbacks: ClassVar[
-        list[Callable[[Serial, Encoder, Decoder[DecodingType]], None]]
-    ] = []
+    callbacks: ClassVar[list[Callable[[Serial], None]]] = []
 
     @classmethod
     def setup(cls, info: MimirSerialInfo) -> None:
@@ -65,13 +61,11 @@ class _SerialFactory:
             timeout=info.timeout,
         )
         for callback in cls.callbacks:
-            callback(cls.serial, cls.encoder, cls.decoder)
+            callback(cls.serial)
         cls.callbacks.clear()
 
     @classmethod
-    def get(
-        cls, callback: Callable[[Serial, Encoder, Decoder[DecodingType]], None]
-    ) -> None:
+    def get(cls, callback: Callable[[Serial], None]) -> None:
         """Get the serial object.
 
         Registers callbacks to provide the callers with
@@ -99,7 +93,7 @@ class _SerialFactory:
         if cls.serial is None:
             cls.callbacks.append(callback)
             return
-        callback(cls.serial, cls.encoder, cls.decoder)
+        callback(cls.serial)
 
 
 class MimirSerialModel(Model[MimirSerialInfo]):
@@ -154,18 +148,12 @@ class MimirLaserModel(LightProtocol, Loggable):
         self.intensity = 0
 
         self._serial: Serial
-        self._encoder: Encoder
-        self._decoder: Decoder[DecodingType]
-        self._expected_response: ActionResponse
+        self._expected_response: Acknowledge
         self._response_length: int
 
-        def _get_serial(
-            serial: Serial, encoder: Encoder, decoder: Decoder[DecodingType]
-        ) -> None:
+        def _get_serial(serial: Serial) -> None:
             self._serial = serial
-            self._encoder = encoder
-            self._decoder = decoder
-            self._expected_response = ActionResponse(self.model_info.qid)
+            self._expected_response = Acknowledge(self.model_info.qid)
 
         _SerialFactory.get(_get_serial)
 
@@ -273,7 +261,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         status: `Status`
             Status object associated to the command.
         """
-        packet = self._encoder.encode(command)
+        packet = msgspec.json.encode(command)
         written = self._serial.write(packet)
         self.logger.debug(f"Sent command: {packet.decode()}")
         if written is None or written != len(packet):
@@ -296,12 +284,13 @@ class MimirLaserModel(LightProtocol, Loggable):
             return
 
         self.logger.debug(f"Received response: {resp_str}")
-        response = self._decoder.decode(resp_str)
-        if response != self._expected_response:
+        response = msgspec.json.decode(resp_str, type=Acknowledge)
+        if response.qid != command.qid:
             status.set_exception(
                 ValueError(f"Invalid response from laser. Received: {response}")
             )
             return
+
         self._serial.reset_input_buffer()
         status.set_finished()
 
@@ -404,11 +393,25 @@ class MimirMotorModel(MotorProtocol, Loggable):
         "mm": MM_TO_NM,
     }
 
-    def __init__(self, name: str, model_info: MimirStageInfo) -> None:
+    _axis_id_map: Final[dict[str, int]] = {
+        "X": 1,
+        "Y": 2,
+        "Z": 3,
+    }
+
+    def __init__(self, name: str, model_info: StageModelInfo) -> None:
         if model_info.egu not in ["nm", "mm", "um", "μm"]:
             err_msg = (
                 f"Invalid engineering unit for Mimir motor: {model_info.egu}. "
                 "Supported units are 'nm', 'mm', 'um', 'μm'."
+            )
+            self.logger.exception(err_msg)
+            raise ValueError(err_msg)
+
+        if not all(axis in self._axis_id_map for axis in model_info.axis):
+            err_msg = (
+                f"Invalid axis names in model info: {model_info.axis}. "
+                f"Supported axes are: {list(self._axis_id_map.keys())}."
             )
             self.logger.exception(err_msg)
             raise ValueError(err_msg)
@@ -422,24 +425,16 @@ class MimirMotorModel(MotorProtocol, Loggable):
         self._factor: Final[int] = self._conversion_map[model_info.egu]
 
         self._serial: Serial
-        self._encoder: Encoder
-        self._decoder: Decoder[DecodingType]
 
         self._positions: dict[str, Location[float]] = {
             axis: {"setpoint": 0.0, "readback": 0.0} for axis in model_info.axis
         }
 
         # set the current axis to the first axis
-        self.axis = self._model_info.axis[0]
+        self.axis = self.model_info.axis[0]
 
-        self._step_sizes = self._model_info.step_sizes
-
-        def _get_serial(
-            serial: Serial, encoder: Encoder, decoder: Decoder[DecodingType]
-        ) -> None:
+        def _get_serial(serial: Serial) -> None:
             self._serial = serial
-            self._encoder = encoder
-            self._decoder = decoder
 
         _SerialFactory.get(_get_serial)
 
@@ -453,7 +448,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 s.set_finished()
                 return s
             elif propr == "step_size" and isinstance(value, int | float):
-                self._step_sizes[self.axis] = value
+                self.model_info.step_sizes[self.axis] = value
                 s.set_finished()
                 return s
             else:
@@ -463,12 +458,17 @@ class MimirMotorModel(MotorProtocol, Loggable):
             if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
+
+        # convert the value to steps;
+        # the value is in engineering units,
+        # and the motor step is in nanometers;
+        # the conversion factor is stored in self._factor
         steps = int(value * self._factor) // self.motor_step
         action = MotorAction(
             movement=MotorAction.generate_movement(
-                id=self.model_info.id, position=steps
+                id=self._axis_id_map[self.axis], position=steps
             ),
-            qid=self.model_info.qid,
+            qid=self._axis_id_map[self.axis],
         )
         self._send_command(action, s)
         return s
@@ -494,7 +494,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         return self._name
 
     @property
-    def model_info(self) -> MimirStageInfo:  # noqa: D102
+    def model_info(self) -> StageModelInfo:  # noqa: D102
         return self._model_info
 
     def shutdown(self) -> None: ...
@@ -509,7 +509,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         status: `Status`
             Status object associated to the command.
         """
-        packet = self._encoder.encode(command)
+        packet = msgspec.json.encode(command)
         written = self._serial.write(packet)
         self.logger.debug(f"Sent command: {packet.decode()}")
         if written is None or written != len(packet):
@@ -519,7 +519,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         # and clean it up
         # to remove unwanted characters
         resp_str = (
-            str(self._serial.read_until(expected=b"}"))
+            str(self._serial.read_until(expected=b"--"))
             .replace("+", "")
             .replace("-", "")
             .replace("\\r", "")
@@ -532,10 +532,34 @@ class MimirMotorModel(MotorProtocol, Loggable):
             return
 
         self.logger.debug(f"Received response: {resp_str}")
-        response = self._decoder.decode(resp_str)
-        if response != ActionResponse(command.qid):
+        response = msgspec.json.decode(resp_str, type=Acknowledge)
+        if response.qid != command.qid:
             status.set_exception(
                 ValueError(f"Invalid response from motor. Received: {response}")
+            )
+            return
+        motor_resp_str = (
+            str(self._serial.read_until(expected=b"--"))
+            .replace("+", "")
+            .replace("-", "")
+            .replace("\\r", "")
+            .replace("\\n", "")
+            .replace("b'", "")
+            .replace("'", "")
+        )
+        self.logger.debug(f"Received motor response: {motor_resp_str}")
+        if not motor_resp_str:
+            status.set_exception(
+                ValueError("Failed to read motor response from serial port.")
+            )
+            return
+        motor_response = msgspec.json.decode(motor_resp_str, type=MotorResponse)
+        if motor_response.qid != command.qid:
+            status.set_exception(
+                ValueError(
+                    f"Invalid response from motor. Expected qid {command.qid}, "
+                    f"but received {motor_response.qid}."
+                )
             )
             return
         self._serial.reset_input_buffer()

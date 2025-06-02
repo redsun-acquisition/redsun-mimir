@@ -9,44 +9,43 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import LightController, LightControllerInfo
+from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.model import StageModelInfo
 from redsun_mimir.model.youseetoo import (
-    MimirLaserInfo,
-    MimirLaserModel,
+    MimirMotorModel,
     MimirSerialInfo,
     MimirSerialModel,
 )
-from redsun_mimir.widget import LightWidget, LightWidgetInfo
+from redsun_mimir.widget import StageWidget, StageWidgetInfo
 
 
-def light_widget_uc2() -> None:
+def stage_widget_uc2() -> None:
     """Run a local UC2 example.
 
-    Launches a Qt ``LightWidget`` app
+    Launches a Qt ``StageWidget`` app
     with a UC2 device configuration.
     """
     logger = logging.getLogger("redsun")
     logger.setLevel(logging.DEBUG)
-
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "uc2_light_configuration.yaml"
+    config_path = Path(__file__).parent / "uc2_motor_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
 
-    models_info: dict[str, MimirLaserInfo | MimirSerialInfo] = {}
+    models_info: dict[str, MimirSerialInfo | StageModelInfo] = {}
 
     for name, values in config_dict["models"].items():
         if name == "Serial":
             models_info[name] = MimirSerialInfo(**values)
-        elif name == "Laser 1":
-            models_info[name] = MimirLaserInfo(**values)
+        elif name == "Stage":
+            models_info[name] = StageModelInfo(**values)
 
-    ctrl_info: dict[str, LightControllerInfo] = {
-        name: LightControllerInfo(**values)
+    ctrl_info: dict[str, StageControllerInfo] = {
+        name: StageControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
-    widget_info: dict[str, LightWidgetInfo] = {
-        name: LightWidgetInfo(**values)
+    widget_info: dict[str, StageWidgetInfo] = {
+        name: StageWidgetInfo(**values)
         for name, values in config_dict["widgets"].items()
     }
 
@@ -59,17 +58,17 @@ def light_widget_uc2() -> None:
         widgets=widget_info,  # type: ignore
     )
 
-    models: dict[str, MimirLaserModel | MimirSerialModel] = {
+    models: dict[str, MimirSerialModel | MimirMotorModel] = {
         name: MimirSerialModel(name, model_info)
         if isinstance(model_info, MimirSerialInfo)
-        else MimirLaserModel(name, model_info)
+        else MimirMotorModel(name, model_info)
         for name, model_info in models_info.items()
     }
 
     bus = VirtualBus()
 
-    ctrl = LightController(config.controllers["LightController"], models, bus)  # type: ignore
-    widget = LightWidget(config, bus)
+    ctrl = StageController(config.controllers["StageController"], models, bus)  # type: ignore
+    widget = StageWidget(config, bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

@@ -5,7 +5,7 @@ from enum import IntEnum
 from attrs import define, field, setters, validators
 from sunflare.config import ModelInfo
 
-from .._config import LightModelInfo, StageModelInfo
+from .._config import LightModelInfo
 
 
 class BaudeRate(IntEnum):
@@ -128,60 +128,3 @@ class MimirLaserInfo(LightModelInfo):
             raise TypeError("Laser QID must be an integer.")
         if value < 1:
             raise ValueError("Laser QID must be a positive, non-zero integer.")
-
-
-@define(kw_only=True)
-class MimirStageInfo(StageModelInfo):
-    """Configuration of a Mimir stage.
-
-    Attributes
-    ----------
-    id: `int`
-        ID of the stage (ranging from 0 to 3).
-    qid: `int`, optional
-        UC2 queue ID for tracking the actions.
-        Must be a non-zero positive integer.
-        Defaults to 1.
-    """
-
-    id: int = field(on_setattr=setters.frozen)
-    qid: int = field(
-        default=1,
-        on_setattr=setters.frozen,
-    )
-
-    @id.validator
-    def _check_id(self, _: str, value: int) -> None:
-        """Check if the ID is valid.
-
-        Valid values are between 0 and 3.
-
-        Parameters
-        ----------
-        attribute: `str`
-            Attribute name (unused).
-        value: `int`
-            Value to check.
-        """
-        if not isinstance(value, int):
-            raise TypeError("Motor ID must be an integer.")
-        if value < 0 or value > 3:
-            raise ValueError("Motor ID must be between 0 and 3.")
-
-    @qid.validator
-    def _check_qid(self, _: str, value: int) -> None:
-        """Check if the QID is valid.
-
-        Valid values are positive integers.
-
-        Parameters
-        ----------
-        attribute: `str`
-            Attribute name (unused).
-        value: `int`
-            Value to check.
-        """
-        if not isinstance(value, int):
-            raise TypeError("Motor QID must be an integer.")
-        if value < 1:
-            raise ValueError("Motor QID must be a positive, non-zero integer.")

@@ -7,6 +7,7 @@ from redsun_mimir.configurations import (
     light_widget,
     light_widget_uc2,
     stage_widget,
+    stage_widget_uc2,
 )
 
 
@@ -21,6 +22,7 @@ def main() -> None:
     parser = ArgumentParser(description="CLI for redsun-mimir examples")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("stage", help="Run the stage widget")
+    subparsers.add_parser("stage-uc2", help="Run the stage widget with UC2")
     subparsers.add_parser("light", help="Run the light widget")
     subparsers.add_parser("light-uc2", help="Run the light widget with UC2")
     subparsers.add_parser("detector", help="Run the detector widget")
@@ -30,6 +32,8 @@ def main() -> None:
     options = parser.parse_args(namespace=Options())
     if options.command == "stage":
         stage_widget()
+    elif options.command == "stage-uc2":
+        stage_widget_uc2()
     elif options.command == "light":
         light_widget()
     elif options.command == "light-uc2":
