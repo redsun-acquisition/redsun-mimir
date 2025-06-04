@@ -147,10 +147,9 @@ class MovementInfo(Struct):
         Defaults to 0 (relative position).
     isaccel: `int`
         Flag whether acceleration ramping should be applied at the beginning of the movement (1) or not (0).
-        Defaults to 1.
-    isforever: `int`
-        Flag indicating if the movement should be continous (1) or not (0).
-        Defaults to 1 (continous movement).
+        Defaults to 0.
+    isforever: `int`, optional
+        Currently unused. Defaults to `UNSET`.
     """
 
     id: int = field(name="stepperid")
@@ -158,8 +157,8 @@ class MovementInfo(Struct):
     speed: int = field(default=3000)
     accel: int = field(default=10000)
     isabs: int = field(default=0)
-    isaccel: int = field(default=1)
-    isforever: int = field(default=1)
+    isaccel: int = field(default=0)
+    isforever: int | UnsetType = field(default=UNSET)
 
 
 class Movement(Struct):
