@@ -140,7 +140,17 @@ class StageWidget(BaseQtWidget):
         )
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
-        """Move the motor by a step size."""
+        """Move the motor by a step size.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        axis : ``str``
+            Motor axis.
+        direction_up : ``bool``
+            If `True`, increase motor's position.
+        """
         current_position = float(
             self._labels["pos:" + motor + ":" + axis].text().split()[0]
         )
@@ -151,7 +161,17 @@ class StageWidget(BaseQtWidget):
             self.sigMotorMove.emit(motor, axis, current_position - step_size)
 
     def _update_position(self, motor: str, axis: str, position: float) -> None:
-        """Update the motor position."""
+        """Update the motor position.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        axis : ``str``
+            Motor axis.
+        position : ``float``
+            New position of the motor.
+        """
         new_pos = f"{position:.2f} {self._motors_info[motor].egu}"
         self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 

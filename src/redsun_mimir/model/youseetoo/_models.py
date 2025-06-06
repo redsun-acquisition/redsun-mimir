@@ -459,11 +459,10 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
 
-        # convert the value to steps;
-        # the value is in engineering units,
-        # and the motor step is in nanometers;
-        # the conversion factor is stored in self._factor
         steps = int(value * self._factor) // self.motor_step
+
+        self.logger.debug(f"Moving motor along {self.axis} of {steps} steps.")
+
         action = MotorAction(
             movement=MotorAction.generate_movement(
                 id=self._axis_id_map[self.axis], position=steps
@@ -564,3 +563,18 @@ class MimirMotorModel(MotorProtocol, Loggable):
             return
         self._serial.reset_input_buffer()
         status.set_finished()
+
+    def _update_locations_callback(self, _: Status) -> None:
+        """Update the locations of the motor stage.
+
+        This method is called when the motor stage
+        is moved, and updates the locations of the axes.
+
+        Parameters
+        ----------
+        _ : `Status`
+            Status of the motor action. Unused.
+        """
+        # update the readback position
+        # with the new position
+        self._positions[self.axis]["readback"] = self._positions[self.axis]["setpoint"]
