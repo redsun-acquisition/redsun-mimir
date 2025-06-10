@@ -72,7 +72,7 @@ class StageModelInfo(ModelInfo):
         on_setattr=setters.frozen,
         metadata={"description": "Axis names."},
     )
-    step_sizes: dict[str, int | float] = field(
+    step_sizes: dict[str, float] = field(
         validator=validators.instance_of(dict),
         metadata={"description": "Step sizes for each axis."},
     )

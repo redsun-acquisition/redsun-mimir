@@ -199,4 +199,4 @@ class StageWidget(BaseQtWidget):
 
         # only notify the virtual bus if the input is valid
         if state == QtGui.QRegularExpressionValidator.State.Acceptable:
-            self.sigConfigChanged.emit(name, {"axis": axis, "step": float(text)})
+            self.sigConfigChanged.emit(name, {"axis": axis, "step_size": float(text)})

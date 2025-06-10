@@ -63,7 +63,6 @@ class _SerialFactory:
 
         # do an hard reset of the serial port,
         # to ensure that the device is ready
-        # TODO: is DTR necessary?
         cls.serial.dtr = False
         cls.serial.rts = True
         time.sleep(0.1)
@@ -465,7 +464,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 self.axis = value
                 s.set_finished()
                 return s
-            elif propr == "step" and isinstance(value, int | float):
+            elif propr == "step_size" and isinstance(value, float):
                 # in truth this does not have a real effect on the motor,
                 # but for consistency (and if in the future we serialize
                 # the model information) we allow to set the step size

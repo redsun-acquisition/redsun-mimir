@@ -138,7 +138,6 @@ class StageController(Loggable):
                 s.wait(self._ctrl_info.timeout)
             except Exception as e:
                 self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
-                s.set_exception(e)
             finally:
                 if not s.success:
                     self.logger.error(
