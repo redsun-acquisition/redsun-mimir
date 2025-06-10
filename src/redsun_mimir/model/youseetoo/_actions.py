@@ -138,13 +138,13 @@ class MovementInfo(Struct):
         Target position of the stepper motor.
     speed: `int`
         Speed of the stepper motor (steps/s).
-        Defaults to 3000 (3,000 steps/s).
+        Defaults to 10_000 (10,000 steps/s).
     accel: `int`
         Acceleration of the stepper motor (steps/s²).
-        Defaults to 10000 (10,000 steps/s²).
+        Defaults to 10_000 (10,000 steps/s²).
     isabs: `int`
         Flag indicating if the position is absolute (1) or relative (0).
-        Defaults to 0 (relative position).
+        Defaults to 1 (absolute position).
     isaccel: `int`
         Flag whether acceleration ramping should be applied at the beginning of the movement (1) or not (0).
         Defaults to 0.
@@ -154,9 +154,9 @@ class MovementInfo(Struct):
 
     id: int = field(name="stepperid")
     position: int
-    speed: int = field(default=3000)
-    accel: int = field(default=10000)
-    isabs: int = field(default=0)
+    speed: int = field(default=10_000)
+    accel: int = field(default=10_000)
+    isabs: int = field(default=1)
     isaccel: int = field(default=0)
     isforever: int | UnsetType = field(default=UNSET)
 

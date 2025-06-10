@@ -60,6 +60,24 @@ class _SerialFactory:
             baudrate=info.bauderate,
             timeout=info.timeout,
         )
+
+        # do an hard reset of the serial port,
+        # to ensure that the device is ready
+        # TODO: is DTR necessary?
+        cls.serial.dtr = False
+        cls.serial.rts = True
+        time.sleep(0.1)
+        cls.serial.dtr = False
+        cls.serial.rts = False
+        time.sleep(0.5)
+
+        setup = cls.serial.read_until(expected=b"{'setup':'done'}").decode("utf-8")
+        if setup.find("{'setup':'done'}") == -1:
+            raise ValueError(
+                "Failed to setup the serial port. "
+                "The device did not respond with 'setup: done'."
+            )
+
         for callback in cls.callbacks:
             callback(cls.serial)
         cls.callbacks.clear()
@@ -447,7 +465,10 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 self.axis = value
                 s.set_finished()
                 return s
-            elif propr == "step_size" and isinstance(value, int | float):
+            elif propr == "step" and isinstance(value, int | float):
+                # in truth this does not have a real effect on the motor,
+                # but for consistency (and if in the future we serialize
+                # the model information) we allow to set the step size
                 self.model_info.step_sizes[self.axis] = value
                 s.set_finished()
                 return s
