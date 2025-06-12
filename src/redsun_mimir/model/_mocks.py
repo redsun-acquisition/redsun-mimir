@@ -136,6 +136,7 @@ class MockStageModel(MotorProtocol, Loggable):
 
         """
         s = Status()
+        s.add_callback(self._update_readback)
         propr = kwargs.get("prop", None)
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
@@ -161,7 +162,6 @@ class MockStageModel(MotorProtocol, Loggable):
         for _ in range(steps):
             self._positions[self.axis]["setpoint"] += self._step_sizes[self.axis]
         s.set_finished()
-        s.add_callback(self._set_readback)
         return s
 
     def locate(self) -> Location[float]:
@@ -190,15 +190,20 @@ class MockStageModel(MotorProtocol, Loggable):
 
     def shutdown(self) -> None: ...
 
-    def _set_readback(self, _: Status) -> None:
-        """Simulate the motor moving to the setpoint via a callback.
+    def _update_readback(self, status: Status) -> None:
+        """Update the currently active axis readback position.
+
+        When the status object is set as finished successfully,
+        the readback position is updated to match the setpoint.
 
         Parameters
         ----------
         s : Status
-            The status object (not used).
+            The status object associated with the callback.
         axis : str
             Axis name.
-
         """
-        self._positions[self.axis]["readback"] = self._positions[self.axis]["setpoint"]
+        if status.success:
+            self._positions[self.axis]["readback"] = self._positions[self.axis][
+                "setpoint"
+            ]

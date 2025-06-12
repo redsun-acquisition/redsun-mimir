@@ -51,7 +51,8 @@ docs = [
     "myst-parser"
 ]
 uc2 = [
-    "pyserial"
+    "pyserial",
+    "pymmcore-plus"
 ]
 dev = [
     "ruff",

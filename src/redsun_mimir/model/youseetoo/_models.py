@@ -356,7 +356,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         `dict[str, Any]`
             Dictionary with the configuration of the laser source.
         """
-        return self.model_info.read_configuration()
+        return self.model_info.read_configuration(timestamp=time.time())
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe the configuration of the laser source.
@@ -366,7 +366,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         `dict[str, Any]`
             Dictionary with the configuration of the laser source.
         """
-        return self.model_info.describe_configuration()
+        return self.model_info.describe_configuration(timestamp=time.time())
 
 
 NM_TO_NM: Final[int] = 1
@@ -498,11 +498,11 @@ class MimirMotorModel(MotorProtocol, Loggable):
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
-        return self.model_info.read_configuration()
+        return self.model_info.read_configuration(timestamp=time.time())
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe mock configuration."""
-        return self.model_info.describe_configuration()
+        return self.model_info.describe_configuration(timestamp=time.time())
 
     @property
     def parent(self) -> None:
@@ -534,7 +534,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         if written is None or written != len(packet):
             status.set_exception(ValueError("Failed to write to serial port."))
             return
-        # wait for the response
+        # wait for the acknowledge response
         # and clean it up
         # to remove unwanted characters
         resp_str = (
@@ -551,12 +551,19 @@ class MimirMotorModel(MotorProtocol, Loggable):
             return
 
         self.logger.debug(f"Received response: {resp_str}")
-        response = msgspec.json.decode(resp_str, type=Acknowledge)
+        try:
+            response = msgspec.json.decode(resp_str, type=Acknowledge)
+        except msgspec.DecodeError as e:
+            status.set_exception(e)
+            return
         if response.qid != command.qid:
             status.set_exception(
                 ValueError(f"Invalid response from motor. Received: {response}")
             )
             return
+        # wait for the motor response
+        # and clean it up
+        # to remove unwanted characters
         motor_resp_str = (
             str(self._serial.read_until(expected=b"--"))
             .replace("+", "")
@@ -572,7 +579,11 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 ValueError("Failed to read motor response from serial port.")
             )
             return
-        motor_response = msgspec.json.decode(motor_resp_str, type=MotorResponse)
+        try:
+            motor_response = msgspec.json.decode(motor_resp_str, type=MotorResponse)
+        except msgspec.DecodeError as e:
+            status.set_exception(e)
+            return
         if motor_response.qid != command.qid:
             status.set_exception(
                 ValueError(
@@ -584,17 +595,19 @@ class MimirMotorModel(MotorProtocol, Loggable):
         self._serial.reset_input_buffer()
         status.set_finished()
 
-    def _update_locations_callback(self, _: Status) -> None:
-        """Update the locations of the motor stage.
+    def _update_readback(self, status: Status) -> None:
+        """Update the currently active axis readback position.
 
-        This method is called when the motor stage
-        is moved, and updates the locations of the axes.
+        When the status object is set as finished successfully,
+        the readback position is updated to match the setpoint.
 
         Parameters
         ----------
-        _ : `Status`
-            Status of the motor action. Unused.
+        s : Status
+            The status object associated with the callback.
+
         """
-        # update the readback position
-        # with the new position
-        self._positions[self.axis]["readback"] = self._positions[self.axis]["setpoint"]
+        if status.success:
+            self._positions[self.axis]["readback"] = self._positions[self.axis][
+                "setpoint"
+            ]
