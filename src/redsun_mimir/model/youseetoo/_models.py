@@ -479,6 +479,8 @@ class MimirMotorModel(MotorProtocol, Loggable):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
 
+        # update the setpoint position for the current axis
+        self._positions[self.axis]["setpoint"] = value
         steps = int(value * self._factor) // self.motor_step
 
         self.logger.debug(f"Moving motor along {self.axis} of {steps} steps.")
