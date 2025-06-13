@@ -366,7 +366,7 @@ class MimirLaserModel(LightProtocol, Loggable):
         `dict[str, Any]`
             Dictionary with the configuration of the laser source.
         """
-        return self.model_info.describe_configuration(timestamp=time.time())
+        return self.model_info.describe_configuration()
 
 
 NM_TO_NM: Final[int] = 1
@@ -504,7 +504,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe mock configuration."""
-        return self.model_info.describe_configuration(timestamp=time.time())
+        return self.model_info.describe_configuration()
 
     @property
     def parent(self) -> None:

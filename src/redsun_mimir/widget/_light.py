@@ -78,7 +78,7 @@ class LightWidget(BaseQtWidget, Loggable):
                 self._sliders[f"power:{name}"].setOrientation(
                     QtCore.Qt.Orientation.Horizontal
                 )
-                self._sliders[f"power:{name}"].setRange(*model_info.intensity_range)  # type: ignore
+                self._sliders[f"power:{name}"].setRange(*model_info.intensity_range)
                 self._sliders[f"power:{name}"].setSingleStep(model_info.step_size)
                 self._sliders[f"power:{name}"].valueChanged.connect(
                     lambda value, name=name: self._on_slider_changed(value, name)

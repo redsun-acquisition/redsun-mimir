@@ -317,7 +317,7 @@ class DescriptorDelegate(QStyledItemDelegate):
             return cast("QWidget", super().createEditor(parent, option, index))
 
         # Check if this setting has limits
-        limits = descriptor.get("limits", {}).get("control", {})
+        limits = descriptor.get("limits", {}).get("control", {})  # type: ignore[var-annotated]
         low = limits.get("low", None)
         high = limits.get("high", None)
 

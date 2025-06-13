@@ -34,96 +34,56 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from napari._vispy.overlays.base import LayerOverlayMixin, VispySceneOverlay
-from napari._vispy.visuals.interaction_box import InteractionBox
-from napari.components.overlays.base import SceneOverlay
-from napari.components.overlays.interaction_box import (
-    InteractionBoxHandle,  # noqa: TC002
-)
-from napari.layers.utils.interaction_box import (
-    calculate_bounds_from_contained_points,
-)
+from napari._vispy.overlays.interaction_box import VispySelectionBoxOverlay
+from napari.components.overlays import SelectionBoxOverlay
 
 if TYPE_CHECKING:
-    from typing import Any
-
-    import numpy.typing as npt
+    from napari._vispy.overlays.interaction_box import InteractionBox
     from napari.layers import Image
-    from vispy.scene.node import Node
 
 
-class ROIInteractionBoxOverlay(SceneOverlay):  # type: ignore[misc]
+class ROIInteractionBoxOverlay(SelectionBoxOverlay):  # type: ignore[misc]
     """A box to select a region of interest in an image.
 
     Attributes
     ----------
+    bounds : 2-tuple of 2-tuples
+        Corners at top left and bottom right in layer coordinates.
+    handles : bool
+        Whether to show the handles for transfomation or just the box.
+    selected_handle : Optional[InteractionBoxHandle]
+        The currently selected handle.
     visible : bool
         If the overlay is visible or not.
     opacity : float
         The opacity of the overlay. 0 is fully transparent.
-    bounds : tuple[Tuple[float, float], Tuple[float, float]]
-        The bounds of the overlay, formatted as ((x0, y0), (x1, y1)).
-        During initialization, they coincide with the bounds of the
-        associated layer.
-    selected_handle : Optional[ROIInteractionBoxHandle]
-        The currently selected handle.
+    order : int
+        The rendering order of the overlay: lower numbers get rendered first.
+
+    Notes
+    -----
+    The attributes are inherited from `SelectionBoxOverlay`.
     """
 
-    bounds: tuple[tuple[float, float], tuple[float, float]]
-    selected_handle: InteractionBoxHandle | None = None
 
-    def update_from_points(self, points: npt.NDArray[Any]) -> None:
-        """Create as a bounding box of the given points."""
-        self.bounds = calculate_bounds_from_contained_points(points)
-
-
-class VispyROIBoxOverlay(LayerOverlayMixin, VispySceneOverlay):  # type: ignore[misc]
+class VispyROIBoxOverlay(VispySelectionBoxOverlay):  # type: ignore[misc]
     """Vispy overlay, connected to an assigne Image layer and its associated ROIInteractionBoxOverlay.
 
-    Provides a visual representation of the region of interest (ROI) in the image layer.
-
-    Parameters
-    ----------
-    layer : Image
-        The image layer to which the overlay is associated.
-    overlay : ROIInteractionBoxOverlay
-        The overlay that provides the bounds and selected handle for the ROI.
-    parent : Node, optional
-        The parent node in the Vispy scene graph. If not provided, defaults to None.
+    Provides a visual representation of the region of interest (ROI) of the image layer.
     """
 
     node: InteractionBox
     overlay: ROIInteractionBoxOverlay
     layer: Image
 
-    def __init__(
-        self,
-        *,
-        layer: Image,
-        overlay: ROIInteractionBoxOverlay,
-        parent: Node | None = None,
-    ) -> None:
-        super().__init__(
-            node=InteractionBox(), layer=layer, overlay=overlay, parent=parent
-        )
-        self.layer.events.set_data.connect(self._on_visible_change)
-        self.overlay.events.bounds.connect(self._on_bounds_change)
-        self.overlay.events.selected_handle.connect(self._on_bounds_change)
-
     def _on_bounds_change(self) -> None:
         if self.layer._slice_input.ndisplay == 2:
+            top_left, bot_right = self.overlay.bounds
             self.node.set_data(
-                *self.overlay.bounds,
+                # invert axes for vispy
+                top_left[::-1],
+                bot_right[::-1],
+                handles=self.overlay.handles,
                 selected=self.overlay.selected_handle,
-                handles=True,
+                rotation=False,
             )
-
-    def _on_visible_change(self) -> None:
-        if self.layer._slice_input.ndisplay == 2:
-            super()._on_visible_change()
-        else:
-            self.node.visible = False
-
-    def reset(self) -> None:
-        super().reset()
-        self._on_bounds_change()
