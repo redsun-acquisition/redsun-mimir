@@ -220,7 +220,15 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
 
 @runtime_checkable
 class DetectorProtocol(ModelProtocol, Settable, Protocol):
-    """Protocol for detector models."""
+    """Protocol for detector models.
+
+    Attributes
+    ----------
+    roi : ``ROI``
+        Region of interest (ROI) tuple.
+    """
+
+    roi: ROI
 
     @abstractmethod
     def read(self) -> dict[str, Reading[Any]]:
@@ -298,33 +306,5 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         -------
         ``Status``
             Status object of the operation.
-        """
-        ...
-
-
-@runtime_checkable
-class ResizableProtocol(Protocol):
-    """Protocol for devices supporting cropping operations over the acquired data.
-
-    Note
-    ----
-    This is a **custom** protocol, **not** part of the Bluesky framework.
-    The protocol is not implemented by the ``DetectorProtocol``.
-    """
-
-    @abstractmethod
-    def resize(self, roi: ROI) -> Status:
-        """Resize the device to the specified region of interest (ROI).
-
-        Parameters
-        ----------
-        roi : ``ROI``
-            Region of interest.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-
         """
         ...
