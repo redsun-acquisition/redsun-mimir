@@ -7,6 +7,11 @@ models:
     plugin_id: test
     sensor_shape: [100, 100]
     pixel_size: [1, 1]
+  Other mock camera:
+    plugin_name: test
+    plugin_id: test
+    sensor_shape: [100, 100]
+    pixel_size: [1, 1]
 controllers:
   ImageController:
     plugin_name: test
