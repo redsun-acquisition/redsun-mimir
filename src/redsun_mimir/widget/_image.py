@@ -155,7 +155,7 @@ class ImageWidget(BaseQtWidget):
         # TODO: dtype should be provided either from the descriptor or from the model info
         layer = self.viewer_model.add_image(
             np.zeros(shape=self.detectors_info[detector].sensor_shape, dtype=np.uint8),
-            name="My Detector",
+            name=detector,
         )
         layer._overlays.update(
             {
@@ -171,6 +171,7 @@ class ImageWidget(BaseQtWidget):
         self.viewer_window.add_dock_widget(
             self.settings_controls[detector],
             name=f"{detector}",
+            allowed_areas=["right"],
             area="right",
             tabify=True,
         )
