@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
@@ -19,7 +20,6 @@ from redsun_mimir.utils.qt import DescriptorTreeView
 if TYPE_CHECKING:
     from typing import Any
 
-    import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
     from napari.layers import Image
     from sunflare.config import RedSunSessionInfo
@@ -35,27 +35,15 @@ class SettingsControlWidget(QtWidgets.QWidget):
         The image layer to control.
     parent: ``QtWidgets.QWidget``, optional
         The parent widget for this control widget. Defaults to None.
-
-    Attributes
-    ----------
-    sigFullROIRequest : Signal
-        Signal emitted when the full ROI is requested.
-    sigNewROIRequest : Signal(int, int, int, int)
-        Signal emitted when a new ROI is requested; emits
-        the following parameters:
-        - dx: x-coordinate of the top-left corner of the ROI
-        - dy: y-coordinate of the top-left corner of the ROI
-        - width: width of the ROI
-        - height: height of the ROI
     """
-
-    sigConfigRequest = Signal()
-    sigPropertyChanged = Signal(str, dict[str, object])
 
     def __init__(self, layer: Image, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent=parent)
 
         self._layer = layer
+
+        self.tree_view = DescriptorTreeView(self)
+        self.tree_view.model().sigStructureChanged.connect(self._on_structure_changed)
 
         self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
         self._enable_roi_button.setCheckable(True)
@@ -68,6 +56,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
         )
 
         layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.tree_view)
         layout.addWidget(self._enable_roi_button)
         layout.addWidget(self._full_roi_button)
         layout.addWidget(self._accept_button)
@@ -79,9 +68,14 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self._layer.bounding_box.visible = checked
         self._layer._overlays["roi_box"].visible = checked
 
+    def _on_structure_changed(self) -> None:
+        self.tree_view.expandAll()
+        for i in range(self.tree_view.model().columnCount()):
+            self.tree_view.resizeColumnToContents(i)
+
 
 class ImageWidget(BaseQtWidget):
-    """Image widget for displaying images.
+    """Widget for rendering acquired image data and control detector settings.
 
     Parameters
     ----------
@@ -117,13 +111,6 @@ class ImageWidget(BaseQtWidget):
             for name, model_info in self.config.models.items()
             if isinstance(model_info, DetectorModelInfo)
         }
-        self.settings_tree_view = DescriptorTreeView(self)
-        self.settings_tree_view.model().sigStructureChanged.connect(
-            self._on_structure_changed
-        )
-        self.settings_tree_view.model().sigPropertyChanged.connect(
-            self.sigPropertyChanged
-        )
 
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
@@ -139,23 +126,35 @@ class ImageWidget(BaseQtWidget):
         layout.addWidget(self.viewer_window._qt_window)
         self.setLayout(layout)
 
-        # keep a reference to the subcomponents of the viewer
-        # for later use and easier access
-        self._layer_list = self.viewer_window._qt_viewer.layers
-        self._layer_controls = self.viewer_window._qt_viewer.controls
+        self.settings_controls: dict[str, SettingsControlWidget] = {}
 
-        self._roi_controls: dict[Image, SettingsControlWidget] = {}
+    def registration_phase(self) -> None:
+        self.virtual_bus.register_signals(self)
 
-    def add_detector(self, data: npt.NDArray[Any]) -> None:
-        """Add a detector layer to the viewer.
+    def connection_phase(self) -> None:
+        self.virtual_bus["ImageController"]["sigNewDetectorDescriptor"].connect(
+            self._update_detectors_listing
+        )
+        self.virtual_bus["ImageController"]["sigNewDetectorDescriptorReading"].connect(
+            self._update_parameter
+        )
+        self.sigConfigRequest.emit()
+
+    def _update_detectors_listing(
+        self, detector: str, descriptor: dict[str, Descriptor]
+    ) -> None:
+        """Update the detector listing in the viewer.
 
         Parameters
         ----------
-        data : ``npt.NDArray[Any]``
-            The image data to be added as a detector layer.
+        detector : ``str``
+            The name of the detector.
+        descriptor : ``dict[str, Descriptor]``
+            The descriptor containing information about the detectors.
         """
+        # TODO: dtype should be provided either from the descriptor or from the model info
         layer = self.viewer_model.add_image(
-            data,
+            np.zeros(shape=self.detectors_info[detector].sensor_shape, dtype=np.uint8),
             name="My Detector",
         )
         layer._overlays.update(
@@ -167,59 +166,25 @@ class ImageWidget(BaseQtWidget):
         )
         layer.mouse_drag_callbacks.append(resize_selection_box)
         layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-
-        self._roi_controls[layer] = SettingsControlWidget(layer)
+        self.settings_controls[detector] = SettingsControlWidget(layer)
+        self.settings_controls[detector].tree_view.model().update_structure(descriptor)
         self.viewer_window.add_dock_widget(
-            self._roi_controls[layer],
-            name=f"{layer.name}",
+            self.settings_controls[detector],
+            name=f"{detector}",
             area="right",
             tabify=True,
         )
 
-    def registration_phase(self) -> None:
-        self.virtual_bus.register_signals(self)
-
-    def connection_phase(self) -> None:
-        self.virtual_bus["DetectorController"]["sigDetectorConfigDescriptor"].connect(
-            self._update_parameter_layout
-        )
-        self.virtual_bus["DetectorController"]["sigDetectorConfigReading"].connect(
-            self._update_parameter
-        )
-        self.sigConfigRequest.emit()
-
-    def _on_resize_request(
-        self, layer: Image, dx: int, dy: int, width: int, height: int
-    ) -> None:
-        """Handle resize requests for the ROI box.
-
-        Parameters
-        ----------
-        layer : Image
-            The image layer to resize.
-        dx : int
-            The x-coordinate of the top-left corner of the ROI.
-        dy : int
-            The y-coordinate of the top-left corner of the ROI.
-        width : int
-            The width of the ROI.
-        height : int
-            The height of the ROI.
-        """
-        layer._overlays["roi_box"].bounds = ((dy, dx), (dy + height, dx + width))
-        layer.events
-
-    def _update_parameter_layout(
-        self, detector: str, descriptor: dict[str, Descriptor]
-    ) -> None:
-        self.settings_tree_view.model().add_device(detector, descriptor)
-
     def _update_parameter(
         self, detector: str, reading: dict[str, Reading[Any]]
     ) -> None:
-        self.settings_tree_view.model().update_readings(detector, reading)
+        """Update the parameters of a detector.
 
-    def _on_structure_changed(self) -> None:
-        self.settings_tree_view.expandAll()
-        for i in range(self.settings_tree_view.model().columnCount()):
-            self.settings_tree_view.resizeColumnToContents(i)
+        Parameters
+        ----------
+        detector : ``str``
+            The name of the detector.
+        reading : ``dict[str, Reading[Any]]``
+            The reading containing the updated parameters.
+        """
+        self.settings_controls[detector].tree_view.model().update_readings(reading)

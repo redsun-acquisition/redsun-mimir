@@ -4,18 +4,21 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+from psygnal.qt import start_emitting_from_queue
 from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.widget import ImageWidget
+from redsun_mimir.controller import DetectorControllerInfo, ImageController
+from redsun_mimir.model import DetectorModelInfo
+from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.widget import ImageWidget, ImageWidgetInfo
 
 
 def image_widget() -> None:
     """Run a local mock example.
 
-    Launches a Qt ``ImageWidget`` app
+    Launches a Qt ``DetectorWidget`` app
     with a mock device configuration.
     """
     logger = logging.getLogger("redsun")
@@ -23,25 +26,56 @@ def image_widget() -> None:
 
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "mock_image_configuration.yaml"
+    config_path = Path(__file__).parent / "mock_detector_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
+    models_info: dict[str, DetectorModelInfo] = {
+        name: DetectorModelInfo(**values)
+        for name, values in config_dict["models"].items()
+    }
+    ctrl_info: dict[str, DetectorControllerInfo] = {
+        name: DetectorControllerInfo(**values)
+        for name, values in config_dict["controllers"].items()
+    }
+    widget_info: dict[str, ImageWidgetInfo] = {
+        name: ImageWidgetInfo(**values)
+        for name, values in config_dict["widgets"].items()
+    }
 
     config = RedSunSessionInfo(
         session=config_dict["session"],
         engine=config_dict["engine"],
         frontend=config_dict["frontend"],
+        models=models_info,  # type: ignore
+        controllers=ctrl_info,  # type: ignore
+        widgets=widget_info,  # type: ignore
     )
+
+    mock_models: dict[str, SimulatedCameraModel] = {
+        name: SimulatedCameraModel(name, model_info)
+        for name, model_info in models_info.items()
+    }
 
     bus = VirtualBus()
 
+    ctrl = ImageController(
+        config.controllers["ImageController"],  # type: ignore
+        mock_models,
+        bus,
+    )
     widget = ImageWidget(config, bus)
+
+    ctrl.registration_phase()
     widget.registration_phase()
+    ctrl.connection_phase()
     widget.connection_phase()
 
-    widget.add_detector(np.random.randint(0, 255, size=(1024, 1024), dtype=np.uint8))
+    window = QtWidgets.QMainWindow()
+    window.setCentralWidget(widget)
+    window.setWindowTitle("Image widget")
+    window.resize(800, 600)
+    window.show()
 
-    widget.show()
-
+    start_emitting_from_queue()
     app.exec()
 
     bus.shutdown()

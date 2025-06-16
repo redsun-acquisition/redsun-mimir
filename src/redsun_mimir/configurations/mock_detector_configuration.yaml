@@ -8,22 +8,12 @@ models:
     sensor_shape: [100, 100]
     pixel_size: [1, 1]
 controllers:
-  DetectorController:
-    plugin_name: test
-    plugin_id: test
-    timeout: 5.0
-  AcquisitionController:
+  ImageController:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
 widgets:
-  DetectorWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
-  AcquisitionWidget:
+  ImageWidget:
     plugin_name: test
     plugin_id: test
     # doesn't have any effect;

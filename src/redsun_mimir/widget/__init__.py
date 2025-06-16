@@ -1,12 +1,10 @@
 from ._acquisition import AcquisitionWidget
 from ._config import (
     AcquisitionWidgetInfo,
-    DetectorWidgetInfo,
     ImageWidgetInfo,
     LightWidgetInfo,
     StageWidgetInfo,
 )
-from ._detector import DetectorWidget
 from ._image import ImageWidget
 from ._light import LightWidget
 from ._stage import StageWidget
@@ -20,6 +18,4 @@ __all__ = [
     "StageWidgetInfo",
     "LightWidget",
     "LightWidgetInfo",
-    "DetectorWidget",
-    "DetectorWidgetInfo",
 ]

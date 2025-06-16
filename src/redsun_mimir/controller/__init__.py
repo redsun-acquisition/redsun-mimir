@@ -5,14 +5,14 @@ from ._config import (
     LightControllerInfo,
     StageControllerInfo,
 )
-from ._detector import DetectorController
+from ._image import ImageController
 from ._light import LightController
 from ._stage import StageController
 
 __all__ = [
     "AcquisitionController",
     "AcquisitionControllerInfo",
-    "DetectorController",
+    "ImageController",
     "DetectorControllerInfo",
     "StageController",
     "StageControllerInfo",
