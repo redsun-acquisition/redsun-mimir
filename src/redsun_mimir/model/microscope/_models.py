@@ -486,10 +486,10 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         return reading
 
     def shutdown(self) -> None:
-        SimulatedCamera.shutdown(self)
+        SimulatedCamera.shutdown()
 
     def trigger(self) -> Status:
-        SimulatedCamera.trigger(self)
+        SimulatedCamera.trigger()
         s = Status()
         s.set_finished()
         return s
