@@ -84,7 +84,7 @@ class Settable(Protocol):
           (i.e. motor position, temperature, etc.);
         - when keyword arguments are provided,
           the method will update a configuration value
-          of the target motor; for reference use ``prop``
+          of the target device; for reference use ``prop``
           as the keyword name.
 
         For example, a motorized device can use
