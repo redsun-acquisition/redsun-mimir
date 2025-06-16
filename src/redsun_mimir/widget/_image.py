@@ -168,6 +168,12 @@ class ImageWidget(BaseQtWidget):
         layer.mouse_move_callbacks.append(highlight_roi_box_handles)
         self.settings_controls[detector] = SettingsControlWidget(layer)
         self.settings_controls[detector].tree_view.model().update_structure(descriptor)
+        self.settings_controls[detector].tree_view.model().sigPropertyChanged.connect(
+            lambda setting, value: self.sigPropertyChanged.emit(
+                detector, {setting: value}
+            )
+        )
+
         self.viewer_window.add_dock_widget(
             self.settings_controls[detector],
             name=f"{detector}",
