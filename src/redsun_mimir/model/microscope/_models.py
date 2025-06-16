@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
@@ -8,12 +9,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from bluesky.protocols import Descriptor, Reading
+from microscope import ROI as mROI
 from microscope import AxisLimits
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
-from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
+from redsun_mimir.protocols import ROI, DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -265,6 +267,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         self.set_setting("image data type", self._dtype_map["uint8"])
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
+        self.roi = ROI(0, 0, *model_info.sensor_shape)
+        self.set_roi(mROI(*self.roi))
         self.set_client(self._queue)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -285,29 +289,73 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 "image data type",
                 "gain",
                 "display image number",
+                "roi",
             ]:
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
             else:
-                raise_exception = False
-                if propr == "exposure":
-                    self.set_exposure_time(float(value))
-                else:
-                    if propr == "image pattern":
-                        self.set_setting(propr, self._pattern_map[value])
+                exception: Exception | None = None
+                match propr:
+                    case "exposure":
+                        if not isinstance(value, (int, float)):
+                            exception = ValueError(
+                                "Exposure time must be a float or int."
+                            )
+                        self.set_exposure_time(float(value))
+                    case "image pattern":
                         if self.get_setting(propr) != self._pattern_map[value]:
-                            raise_exception = True
-                    elif propr == "image data type":
+                            exception = ValueError(
+                                f"Invalid image pattern: {value}. "
+                                f"Valid patterns are: {list(self._pattern_map.keys())}."
+                            )
+                        self.set_setting(propr, self._pattern_map[value])
+                    case "image data type":
+                        if not isinstance(value, str) or value not in self._dtype_map:
+                            exception = ValueError(
+                                f"Invalid image data type: {value}. "
+                                f"Valid types are: {list(self._dtype_map.keys())}."
+                            )
                         self.set_setting(propr, self._dtype_map[value])
-                        if self.get_setting(propr) != self._dtype_map[value]:
-                            raise_exception = True
-                    else:
+                    case "gain":
+                        if not isinstance(value, (int, float)):
+                            exception = ValueError("Gain must be a float or int.")
+                        self.set_setting(propr, float(value))
+                    case "display image number":
+                        if not isinstance(value, bool):
+                            exception = ValueError(
+                                "Display image number must be a boolean."
+                            )
                         self.set_setting(propr, value)
-                        if self.get_setting(propr) != value:
-                            raise_exception = True
-                    if raise_exception:
-                        s.set_exception(ValueError())
-                        return s
+                    case "roi":
+                        if isinstance(value, Sequence) and len(value) == 4:
+                            new_roi = ROI(*value)
+                            exception = ValueError(
+                                "ROI must be a tuple of (x, y, width, height)."
+                            )
+                            if not (
+                                0 <= new_roi.x < self.model_info.sensor_shape[1]
+                                and 0 <= new_roi.y < self.model_info.sensor_shape[0]
+                                and new_roi.x + new_roi.width
+                                <= self.model_info.sensor_shape[1]
+                                and new_roi.y + new_roi.height
+                                <= self.model_info.sensor_shape[0]
+                            ):
+                                exception = ValueError(
+                                    "ROI must be within the sensor shape bounds."
+                                )
+                        else:
+                            exception = ValueError(
+                                "ROI must be a sequence of four numbers (x, y, width, height)."
+                            )
+                        if self.set_roi(mROI(*value)):
+                            self.roi = ROI(*value)
+                        else:
+                            exception = ValueError(
+                                "Failed to set ROI. Ensure the values are within the sensor shape bounds."
+                            )
+                if exception:
+                    s.set_exception(exception)
+                    return s
                 self.logger.debug("Set %s to %s.", propr, value)
                 s.set_finished()
                 return s
