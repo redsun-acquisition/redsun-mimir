@@ -8,6 +8,8 @@ from sunflare.config import ModelInfo
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from bluesky.protocols import Descriptor
+
 
 def convert_to_tuple(value: Iterable[float | int] | None) -> tuple[int | float, ...]:
     """Convert a value to a tuple of floats.
@@ -190,7 +192,15 @@ def convert_to_float(value: Iterable[float]) -> tuple[float, ...]:
 
 @define(kw_only=True)
 class DetectorModelInfo(ModelInfo):
-    """Configuration of a detector model."""
+    """Configuration of a detector model.
+
+    Parameters
+    ----------
+    sensor_shape : ``tuple[int, int]``
+        Shape of the sensor in pixels (height, width).
+    pixel_size : ``tuple[float, ...]``
+        Size of a sensor pixel in micrometers.
+    """
 
     sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
     pixel_size: tuple[float, ...] = field(
@@ -211,6 +221,13 @@ class DetectorModelInfo(ModelInfo):
         self, _: tuple[float, ...], value: tuple[float, ...]
     ) -> None:
         if not all(isinstance(val, float) for val in value):
-            raise ValueError("All values in the tuple must be floats.")
+            raise ValueError("All pixel sizes must be floats.")
         if len(value) < 1 and len(value) > 3:
-            raise ValueError("The tuple must contain between 1 and 3 values.")
+            raise ValueError("Pixel size must contain between 1 and 3 values.")
+
+    def describe_configuration(
+        self, source: str = "model_info"
+    ) -> dict[str, Descriptor]:
+        config: dict[str, Descriptor] = super().describe_configuration(source)
+        config["pixel_size"]["units"] = "μm"
+        return config
