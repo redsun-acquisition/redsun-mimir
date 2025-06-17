@@ -651,7 +651,9 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                     f"the expected shape {self.model_info.sensor_shape}."
                 )
             # pre-emptively set the height and width
-            # to the input sensor shape
+            # to the input sensor shape; this is useful
+            # in case the sensor shape is different
+            # from the full view of the camera
             self._core.setProperty(
                 self.name, "SensorHeight", self.model_info.sensor_shape[0]
             )
