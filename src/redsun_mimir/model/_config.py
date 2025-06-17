@@ -199,7 +199,7 @@ class DetectorModelInfo(ModelInfo):
     sensor_shape : ``tuple[int, int]``
         Shape of the sensor in pixels (height, width).
     pixel_size : ``tuple[float, ...]``
-        Size of a sensor pixel in micrometers.
+        Sensor pixel size in micrometers.
     """
 
     sensor_shape: tuple[int, int] = field(converter=tuple, on_setattr=setters.frozen)
