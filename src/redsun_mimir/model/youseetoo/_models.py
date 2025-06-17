@@ -4,12 +4,13 @@ import time
 from typing import TYPE_CHECKING
 
 import msgspec
+from pymmcore_plus import CMMCorePlus as Core
 from serial import Serial
 from sunflare.engine import Status
 from sunflare.log import Loggable
 from sunflare.model import Model
 
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
 from ._config import MimirSerialInfo
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from redsun_mimir.model import StageModelInfo
+    from redsun_mimir.model import DetectorModelInfo, StageModelInfo
 
     from ._config import MimirLaserInfo
 
@@ -613,3 +614,74 @@ class MimirMotorModel(MotorProtocol, Loggable):
             self._positions[self.axis]["readback"] = self._positions[self.axis][
                 "setpoint"
             ]
+
+
+class MimirDetectorModel(DetectorProtocol, Loggable):
+    """Mimir detector interface.
+
+    The default device provides a Daheng Imaging camera,
+    controlled via the pymmcore-plus package.
+
+    Parameters
+    ----------
+    name: `str`
+        Name of the model.
+    model_info: `DetectorModelInfo`
+        Model information for the detector.
+    """
+
+    def __init__(self, name: str, model_info: DetectorModelInfo) -> None:
+        self._name = name
+        self._model_info = model_info
+        self._core = Core()
+        try:
+            self._core.loadDevice(self.name, "DahengGalaxy", "DahengCamera")
+            self._core.initializeDevice(self.name)
+            self._core.setCameraDevice(self.name)
+            height, width = (
+                int(self._core.getProperty(self.name, "SensorHeight")),
+                int(self._core.getProperty(self.name, "SensorWidth")),
+            )
+            if (
+                height > self.model_info.sensor_shape[0]
+                or width > self.model_info.sensor_shape[1]
+            ):
+                raise ValueError(
+                    f"Camera sensor shape {height}x{width} exceeds "
+                    f"the expected shape {self.model_info.sensor_shape}."
+                )
+            # pre-emptively set the height and width
+            # to the input sensor shape
+            self._core.setProperty(
+                self.name, "SensorHeight", self.model_info.sensor_shape[0]
+            )
+            self._core.setProperty(
+                self.name, "SensorWidth", self.model_info.sensor_shape[1]
+            )
+        except ValueError as e:
+            self.logger.exception(e)
+            raise e
+        except Exception as e:
+            self.logger.exception(
+                f"Failed to initialize the detector {self.name}. "
+                "Ensure that the camera is connected and the drivers are installed."
+            )
+            raise e
+
+    @property
+    def name(self) -> str:
+        """The name of the detector."""
+        return self._name
+
+    @property
+    def parent(self) -> None:
+        """The parent of the detector.
+
+        For Bluesky compatibility only.
+        """
+        return None
+
+    @property
+    def model_info(self) -> DetectorModelInfo:
+        """The model information for the detector."""
+        return self._model_info
