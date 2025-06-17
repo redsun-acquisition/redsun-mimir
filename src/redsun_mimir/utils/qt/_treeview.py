@@ -489,6 +489,8 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         self._logger = logging.getLogger("redsun")
         self._descriptors: dict[str, Descriptor] = {}
         self._readings: dict[str, Reading[Any]] = {}
+        # Add pending changes storage
+        self._pending_changes: dict[str, dict[str, Any]] = {}
 
         # Build the initial empty tree structure
         self._build_tree()
@@ -890,21 +892,26 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         if index.column() == Column.VALUE and item.node_type == NodeType.SETTING:
             setting_name = item.name
 
-            # the assumption is that the settings is pre-emptively
-            # provided by a descriptor document; hence, if
-            # the setting name is not found in the
-            # descriptor, the setting is not valid and an error is raised
-            # Ensure the structure exists
             if setting_name not in self._readings:
                 self._logger.error(f"Setting '{setting_name}' not found in the model.")
                 return False
 
-            # Update the value
+            # Store the pending change
+            old_value = self._readings[setting_name]
+            self._pending_changes[setting_name] = {
+                "old_value": old_value,
+                "new_value": value,
+                "index": index,
+            }
+
+            # Update the value temporarily
             try:
                 self._readings[setting_name] = value
                 self.dataChanged.emit(
                     index, index, [QtCore.Qt.ItemDataRole.DisplayRole]
                 )
+
+                # Emit the property change signal for the controller to handle
                 self.sigPropertyChanged.emit(setting_name, value)
                 return True
             except Exception as e:
@@ -912,6 +919,33 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                 return False
 
         return False
+
+    def confirm_change(self, setting_name: str, success: bool) -> None:
+        """Confirm or reject the change.
+
+        Parameters
+        ----------
+        setting_name : str
+            Name of the setting that was changed
+        success : bool
+            Whether the change was successful
+
+        """
+        if setting_name not in self._pending_changes:
+            return
+
+        pending = self._pending_changes[setting_name]
+
+        if not success:
+            # Revert the change
+            self._readings[setting_name] = pending["old_value"]
+            self.dataChanged.emit(
+                pending["index"], pending["index"], [QtCore.Qt.ItemDataRole.DisplayRole]
+            )
+            self._logger.info(f"Reverted setting '{setting_name}' to previous value")
+
+        # Clear the pending change
+        del self._pending_changes[setting_name]
 
     def get_settings(self) -> set[str]:
         """Get a set of all setting names.

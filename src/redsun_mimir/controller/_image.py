@@ -45,12 +45,18 @@ class ImageController(Loggable):
         Signal for detector configuration descriptor.
         - ``str``: detector name.
         - ``dict[str, object]``: configuration descriptor.
+    sigConfigurationConfirmed : ``Signal[str, str, bool]``
+        Signal for configuration confirmation.
+        - ``str``: detector name.
+        - ``str``: setting name.
+        - ``bool``: success status.
 
     """
 
     sigNewConfiguration = Signal(str, dict[str, object])
     sigNewDetectorDescriptorReading = Signal(str, dict[str, object])
     sigNewDetectorDescriptor = Signal(str, dict[str, object])
+    sigConfigurationConfirmed = Signal(str, str, bool)
 
     def __init__(
         self,
@@ -83,12 +89,14 @@ class ImageController(Loggable):
             self.read_configuration(name)
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
-        """Configure a detector.
+        """Configure a detector with confirmation feedback.
 
         Update one or more configuration parameters of a detector.
 
         Emits ``sigNewConfiguration`` signal when successful,
         with the detector name and the new configuration.
+        Emits ``sigConfigurationConfirmed`` signal for each setting
+        with confirmation of success or failure.
 
         Parameters
         ----------
@@ -103,13 +111,22 @@ class ImageController(Loggable):
             s = self.detectors[detector].set(value, propr=key)
             try:
                 s.wait(self.ctrl_info.timeout)
-            finally:
-                if not s.success:
+                success = s.success
+
+                if success:
+                    self.sigNewConfiguration.emit(detector, {key: value})
+                    self.logger.debug(f"Successfully configured '{key}' of {detector}")
+                else:
                     self.logger.error(
                         f"Failed to configure '{key}' of {detector}: {s.exception()}"
                     )
-                else:
-                    self.sigNewConfiguration.emit(detector, config)
+
+                # Emit confirmation for each setting
+                self.sigConfigurationConfirmed.emit(detector, key, success)
+
+            except Exception as e:
+                self.logger.error(f"Exception configuring '{key}' of {detector}: {e}")
+                self.sigConfigurationConfirmed.emit(detector, key, False)
 
     def read_configuration(self, detector: str) -> None:
         """Read the configuration of a detector.

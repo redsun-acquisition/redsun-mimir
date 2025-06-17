@@ -6,6 +6,7 @@ import numpy as np
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
+from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
@@ -74,7 +75,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class ImageWidget(BaseQtWidget):
+class ImageWidget(BaseQtWidget, Loggable):
     """Widget for rendering acquired image data and control detector settings.
 
     Parameters
@@ -138,6 +139,10 @@ class ImageWidget(BaseQtWidget):
         self.virtual_bus["ImageController"]["sigNewDetectorDescriptorReading"].connect(
             self._update_parameter
         )
+        # Add confirmation signal connection
+        self.virtual_bus["ImageController"]["sigConfigurationConfirmed"].connect(
+            self._handle_configuration_result
+        )
         self.sigConfigRequest.emit()
 
     def _update_detectors_listing(
@@ -195,3 +200,27 @@ class ImageWidget(BaseQtWidget):
             The reading containing the updated parameters.
         """
         self.settings_controls[detector].tree_view.model().update_readings(reading)
+
+    def _handle_configuration_result(
+        self, detector: str, setting_name: str, success: bool
+    ) -> None:
+        """Handle the result of a configuration change.
+
+        Parameters
+        ----------
+        detector : str
+            Name of the detector
+        setting_name : str
+            Name of the setting that was changed
+        success : bool
+            Whether the configuration change was successful
+        """
+        if detector in self.settings_controls:
+            model = self.settings_controls[detector].tree_view.model()
+            model.confirm_change(setting_name, success)
+
+            if not success:
+                # Optionally show a warning to the user
+                self.logger.warning(
+                    f"Failed to configure {setting_name} for {detector}"
+                )
