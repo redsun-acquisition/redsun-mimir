@@ -812,6 +812,14 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             s.set_exception(e)
         return s
 
+    def trigger(self) -> Status:
+        # TODO: should this do anything?
+        # Maybe makes sense to separate the
+        # protocols
+        s = Status()
+        s.set_finished()
+        return s
+
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
         config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)

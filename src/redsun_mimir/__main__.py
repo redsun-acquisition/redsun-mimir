@@ -3,6 +3,7 @@ from argparse import ArgumentParser, Namespace
 from redsun_mimir.configurations import (
     acquisition_widget,
     image_widget,
+    image_widget_uc2,
     light_widget,
     light_widget_uc2,
     stage_widget,
@@ -26,6 +27,7 @@ def main() -> None:
     subparsers.add_parser("light-uc2", help="Run the light widget with UC2")
     subparsers.add_parser("image", help="Run the image widget")
     subparsers.add_parser("acquisition", help="Run the acquisition widget")
+    subparsers.add_parser("image-uc2", help="Run the image widget with UC2")
 
     options = parser.parse_args(namespace=Options())
     if options.command == "stage":
@@ -38,6 +40,8 @@ def main() -> None:
         light_widget_uc2()
     elif options.command == "image":
         image_widget()
+    elif options.command == "image-uc2":
+        image_widget_uc2()
     elif options.command == "acquisition":
         acquisition_widget()
     else:

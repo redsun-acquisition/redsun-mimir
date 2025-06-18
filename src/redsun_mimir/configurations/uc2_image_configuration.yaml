@@ -1,0 +1,21 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  Mimir detector:
+    plugin_name: test
+    plugin_id: test
+    sensor_shape: [100, 100]
+    pixel_size: [1, 1]
+controllers:
+  ImageController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+widgets:
+  ImageWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center
