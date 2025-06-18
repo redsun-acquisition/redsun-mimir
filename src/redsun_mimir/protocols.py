@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 from sunflare.model import ModelProtocol
 from typing_extensions import Protocol, TypedDict, runtime_checkable
@@ -37,28 +37,6 @@ class PlanManifest(TypedDict):
     docstring: str
     annotations: dict[str, Any]
     togglable: bool
-
-
-class ROI(NamedTuple):
-    """Region of Interest (ROI) information.
-
-    Parameters
-    ----------
-    x : ``int``
-        X coordinate of the ROI.
-    y : ``int``
-        Y coordinate of the ROI.
-    width : ``int``
-        Width of the ROI.
-    height : ``int``
-        Height of the ROI.
-
-    """
-
-    x: int
-    y: int
-    width: int
-    height: int
 
 
 @runtime_checkable
@@ -224,11 +202,17 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
 
     Attributes
     ----------
-    roi : ``ROI``
-        Region of interest (ROI) tuple.
+    roi : ``tuple[int, int, int, int]``
+        Region of interest (ROI) for the detector.
+        The ROI is defined as a tuple of four integers:
+        - (x, y, width, height), where:
+            - x: X coordinate of the top-left corner of the ROI
+            - y: Y coordinate of the top-left corner of the ROI
+            - width: Width of the ROI
+            - height: Height of the ROI
     """
 
-    roi: ROI
+    roi: tuple[int, int, int, int]
 
     @abstractmethod
     def read(self) -> dict[str, Reading[Any]]:

@@ -9,13 +9,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from bluesky.protocols import Descriptor, Reading
-from microscope import ROI as mROI
-from microscope import AxisLimits
+from microscope import ROI, AxisLimits
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
-from redsun_mimir.protocols import ROI, DetectorProtocol, LightProtocol, MotorProtocol
+from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -267,8 +266,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         self.set_setting("image data type", self._dtype_map["uint8"])
 
         self._queue: Queue[tuple[npt.ArrayLike, float]] = Queue()
-        self.roi = ROI(0, 0, *model_info.sensor_shape)
-        self.set_roi(mROI(*self.roi))
+        self.roi = 0, 0, *model_info.sensor_shape
+        self.set_roi(ROI(*self.roi))
         self.set_client(self._queue)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -333,11 +332,11 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                                 "ROI must be a tuple of (x, y, width, height)."
                             )
                             if not (
-                                0 <= new_roi.x < self.model_info.sensor_shape[1]
-                                and 0 <= new_roi.y < self.model_info.sensor_shape[0]
-                                and new_roi.x + new_roi.width
+                                0 <= new_roi.left < self.model_info.sensor_shape[1]
+                                and 0 <= new_roi.top < self.model_info.sensor_shape[0]
+                                and new_roi.left + new_roi.width
                                 <= self.model_info.sensor_shape[1]
-                                and new_roi.y + new_roi.height
+                                and new_roi.top + new_roi.height
                                 <= self.model_info.sensor_shape[0]
                             ):
                                 exception = ValueError(
@@ -347,8 +346,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                             exception = ValueError(
                                 "ROI must be a sequence of four numbers (x, y, width, height)."
                             )
-                        if self.set_roi(mROI(*value)):
-                            self.roi = ROI(*value)
+                        if self.set_roi(ROI(*value)):
+                            self.roi = value
                         else:
                             exception = ValueError(
                                 "Failed to set ROI. Ensure the values are within the sensor shape bounds."
@@ -369,11 +368,16 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
     def describe(self) -> dict[str, Descriptor]:
         return {
-            "queue": {
+            "buffer": {
                 "source": self.name,
                 "dtype": "array",
-                "shape": list(self.model_info.sensor_shape),
-            }
+                "shape": [None, None],
+            },
+            "roi": {
+                "source": self.name,
+                "dtype": "array",
+                "shape": [4],
+            },
         }
 
     def read(self) -> dict[str, Reading[npt.ArrayLike]]:
@@ -384,10 +388,14 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
             value = content[0]
             timestamp = time.time()
         return {
-            "queue": {
+            "buffer": {
                 "value": value,
                 "timestamp": timestamp,
-            }
+            },
+            "roi": {
+                "value": self.roi,
+                "timestamp": timestamp,
+            },
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:

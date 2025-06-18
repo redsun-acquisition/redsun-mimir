@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import msgspec
+from bluesky.protocols import Descriptor, Reading
 from pymmcore_plus import CMMCorePlus as Core
+from pymmcore_plus import PropertyType
 from serial import Serial
 from sunflare.engine import Status
 from sunflare.log import Loggable
@@ -630,6 +633,24 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         Model information for the detector.
     """
 
+    # an helper dict to map the actual mmcore properties
+    # to more user-friendly names, embedding the
+    # egu of each property (if applicable)
+    property_map: Final[dict[str, tuple[str, str]]] = {
+        "frame rate": ("AcquisitionFrameRate", "fps"),
+        "enable frame rate": ("AcquisitionFrameRateMode", ""),
+        "exposure": ("Exposure", "ms"),
+        "gain": ("Gain", ""),
+    }
+    # a mapping from pymmcore property types
+    # to Bluesky descriptor types;
+    property_types: Final[dict[PropertyType, str]] = {
+        PropertyType.Float: "number",
+        PropertyType.Boolean: "boolean",
+        PropertyType.Integer: "integer",
+        PropertyType.String: "string",
+    }
+
     def __init__(self, name: str, model_info: DetectorModelInfo) -> None:
         self._name = name
         self._model_info = model_info
@@ -643,13 +664,15 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                 int(self._core.getProperty(self.name, "SensorWidth")),
             )
             if (
-                height > self.model_info.sensor_shape[0]
-                or width > self.model_info.sensor_shape[1]
+                self.model_info.sensor_shape[0] > height
+                or self.model_info.sensor_shape[1] > width
             ):
-                raise ValueError(
-                    f"Camera sensor shape {height}x{width} exceeds "
-                    f"the expected shape {self.model_info.sensor_shape}."
+                self.logger.warning(
+                    f"Provided sensor shape: {self.model_info.sensor_shape[0]}x{self.model_info.sensor_shape[1]}"
+                    f"Actual sensor shape: {height}x{width}."
+                    f"Overriding."
                 )
+                setattr(self.model_info, "sensor_shape", (height, width))
             # pre-emptively set the height and width
             # to the input sensor shape; this is useful
             # in case the sensor shape is different
@@ -660,6 +683,12 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             self._core.setProperty(
                 self.name, "SensorWidth", self.model_info.sensor_shape[1]
             )
+            self.model_info.serial_number = self._core.getProperty(
+                self.name, "CameraID"
+            )
+            if not self.model_info.vendor:
+                self.model_info.vendor = "Micro-Manager"
+            self.roi = (0, 0, *self.model_info.sensor_shape)
         except ValueError as e:
             self.logger.exception(e)
             raise e
@@ -669,6 +698,144 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                 "Ensure that the camera is connected and the drivers are installed."
             )
             raise e
+
+    def read(self) -> dict[str, Reading[Any]]:
+        """Read the current state of the detector.
+
+        Returns
+        -------
+        `dict[str, Reading[Any]]`
+            Dictionary with the current state of the detector.
+        """
+        timestamp = time.time()
+        return {
+            "buffer": {
+                "value": self._core.getImage(self.name),
+                "timestamp": timestamp,
+            },
+            "roi": {
+                "value": self.roi,
+                "timestamp": timestamp,
+            },
+        }
+
+    def describe(self) -> dict[str, Descriptor]:
+        return {
+            "buffer": {
+                "source": self.name,
+                "dtype": "array",
+                "shape": [None, None],
+            },
+            "roi": {
+                "source": self.name,
+                "dtype": "array",
+                "shape": [4],
+            },
+        }
+
+    def stage(self) -> Status:
+        s = Status()
+        try:
+            self._core.startContinuousSequenceAcquisition(
+                self._core.getProperty(self.name, "Exposure")
+            )
+            self.logger.info(f"Staged detector {self.name} for acquisition.")
+            s.set_finished()
+        except Exception as e:
+            self.logger.exception(f"Failed to stage detector {self.name}: {e}")
+            s.set_exception(e)
+        return s
+
+    def unstage(self) -> Status:
+        s = Status()
+        try:
+            self._core.stopSequenceAcquisition()
+            self.logger.info(f"Unstaged detector {self.name} from acquisition.")
+            s.set_finished()
+        except Exception as e:
+            self.logger.exception(f"Failed to unstage detector {self.name}: {e}")
+            s.set_exception(e)
+        return s
+
+    def set(self, value: Any, **kwargs: Any) -> Status:
+        """Set a property of the detector.
+
+        Parameters
+        ----------
+        value: `Any`
+            The value to set for the property.
+        **kwargs: `dict[str, Any]`
+            Additional keyword arguments, including the property name.
+
+        Returns
+        -------
+        `Status`
+            Status of the operation.
+        """
+        s = Status()
+        propr = kwargs.get("propr", None)
+        if propr is None or propr not in self.property_map:
+            s.set_exception(ValueError(f"Invalid property: {propr}"))
+            return s
+
+        # handle ROI separately
+        if propr == "roi":
+            if not isinstance(value, Sequence) or len(value) != 4:
+                s.set_exception(
+                    ValueError(
+                        "ROI must be a tuple of 4 integers (x, y, width, height)."
+                    )
+                )
+                return s
+            try:
+                self._core.setROI(self.name, *value)
+                self.roi = value
+                s.set_finished()
+                self.logger.info(f"Set ROI to {value} for detector {self.name}.")
+            except Exception as e:
+                self.logger.exception(
+                    f"Failed to set ROI for detector {self.name}: {e}"
+                )
+                s.set_exception(e)
+            return s
+
+        # handle other properties
+        prop_name, _ = self.property_map[propr]
+        try:
+            self._core.setProperty(self.name, prop_name, value)
+            s.set_finished()
+            self.logger.info(f"Set {propr} to {value} for detector {self.name}.")
+        except Exception as e:
+            self.logger.exception(
+                f"Failed to set {propr} for detector {self.name}: {e}"
+            )
+            s.set_exception(e)
+        return s
+
+    def read_configuration(self) -> dict[str, Reading[Any]]:
+        timestamp = time.time()
+        config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)
+        for key, value in self.property_map.items():
+            prop_value = self._core.getProperty(self.name, value[0])
+            config[key] = {
+                "value": prop_value,
+                "timestamp": timestamp,
+            }
+        return config
+
+    def describe_configuration(self) -> dict[str, Descriptor]:
+        config = self.model_info.describe_configuration()
+        for key, value in self.property_map.items():
+            prop_type = self._core.getPropertyType(self.name, value[0])
+            descriptor: Descriptor = {
+                "source": "settings",
+                "dtype": self.property_types[PropertyType.create(prop_type)],
+                "shape": [],
+            }
+            if value[1]:
+                descriptor["units"] = value[1]
+            config[key] = descriptor
+        return config
 
     @property
     def name(self) -> str:
