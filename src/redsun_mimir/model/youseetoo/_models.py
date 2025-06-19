@@ -672,7 +672,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                     f"Actual sensor shape: {height}x{width}."
                     f"Overriding."
                 )
-                setattr(self.model_info, "sensor_shape", (height, width))
+                self.model_info.sensor_shape = (height, width)
             # pre-emptively set the height and width
             # to the input sensor shape; this is useful
             # in case the sensor shape is different
