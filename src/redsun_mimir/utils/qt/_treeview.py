@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
+    from event_model.documents import LimitsRange
 
 
 class CenteredComboBoxDelegate(QtWidgets.QItemDelegate):
@@ -304,7 +305,7 @@ class DescriptorDelegate(QtWidgets.QStyledItemDelegate):
             )
 
         # Check if this setting has limits
-        limits = descriptor.get("limits", {}).get("control", {})  # type: ignore[var-annotated]
+        limits = cast("LimitsRange", descriptor.get("limits", {}).get("control", {}))
         low = limits.get("low", None)
         high = limits.get("high", None)
 
