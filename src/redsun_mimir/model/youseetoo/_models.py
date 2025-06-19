@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar, Final
 
     from bluesky.protocols import Descriptor, Location, Reading
+    from event_model.documents import Dtype
 
     from redsun_mimir.model import DetectorModelInfo, StageModelInfo
 
@@ -639,16 +640,14 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
     property_map: Final[dict[str, tuple[str, str]]] = {
         "frame rate": ("AcquisitionFrameRate", "fps"),
         "enable frame rate": ("AcquisitionFrameRateMode", ""),
-        "exposure": ("Exposure", "ms"),
-        "gain": ("Gain", ""),
     }
     # a mapping from pymmcore property types
     # to Bluesky descriptor types;
-    property_types: Final[dict[PropertyType, str]] = {
-        PropertyType.Float: "number",
-        PropertyType.Boolean: "boolean",
-        PropertyType.Integer: "integer",
-        PropertyType.String: "string",
+    property_types: Final[dict[PropertyType, tuple[Dtype, type]]] = {
+        PropertyType.Float: ("number", float),
+        PropertyType.Boolean: ("boolean", str),
+        PropertyType.Integer: ("integer", int),
+        PropertyType.String: ("string", str),
     }
 
     def __init__(self, name: str, model_info: DetectorModelInfo) -> None:
@@ -659,20 +658,17 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             self._core.loadDevice(self.name, "DahengGalaxy", "DahengCamera")
             self._core.initializeDevice(self.name)
             self._core.setCameraDevice(self.name)
-            height, width = (
-                int(self._core.getProperty(self.name, "SensorHeight")),
-                int(self._core.getProperty(self.name, "SensorWidth")),
+            max_height, max_width = (
+                self._core.getPropertyUpperLimit(self.name, "SensorHeight"),
+                self._core.getPropertyUpperLimit(self.name, "SensorWidth"),
             )
-            if (
-                self.model_info.sensor_shape[0] > height
-                or self.model_info.sensor_shape[1] > width
-            ):
+            if self.model_info.sensor_shape > (max_height, max_width):
                 self.logger.warning(
                     f"Provided sensor shape: {self.model_info.sensor_shape[0]}x{self.model_info.sensor_shape[1]}"
-                    f"Actual sensor shape: {height}x{width}."
+                    f"Actual sensor shape: {max_height}x{max_width}."
                     f"Overriding."
                 )
-                self.model_info.sensor_shape = (height, width)
+                self.model_info.sensor_shape = (max_height, max_width)
             # pre-emptively set the height and width
             # to the input sensor shape; this is useful
             # in case the sensor shape is different
@@ -710,7 +706,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         timestamp = time.time()
         return {
             "buffer": {
-                "value": self._core.getImage(self.name),
+                "value": self._core.popNextImage(),
                 "timestamp": timestamp,
             },
             "roi": {
@@ -737,7 +733,8 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         s = Status()
         try:
             self._core.startContinuousSequenceAcquisition(
-                self._core.getProperty(self.name, "Exposure")
+                float(self._core.getProperty(self.name, "Exposure(us)"))
+                / 1000.0  # convert to ms
             )
             self.logger.info(f"Staged detector {self.name} for acquisition.")
             s.set_finished()
@@ -774,7 +771,9 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         """
         s = Status()
         propr = kwargs.get("propr", None)
-        if propr is None or propr not in self.property_map:
+        if propr is None or (
+            propr not in self.property_map and propr != "roi" and propr != "exposure"
+        ):
             s.set_exception(ValueError(f"Invalid property: {propr}"))
             return s
 
@@ -789,7 +788,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                 return s
             try:
                 self._core.setROI(self.name, *value)
-                self.roi = value
+                self.roi = tuple(*value)
                 s.set_finished()
                 self.logger.info(f"Set ROI to {value} for detector {self.name}.")
             except Exception as e:
@@ -798,11 +797,32 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                 )
                 s.set_exception(e)
             return s
+        if propr == "exposure":
+            if not isinstance(value, (int, float)):
+                s.set_exception(ValueError("Exposure must be a number."))
+                return s
+            try:
+                self._core.setExposure(self.name, float(value))
+                s.set_finished()
+                self.logger.info(
+                    f"Set exposure to {value} ms for detector {self.name}."
+                )
+            except Exception as e:
+                self.logger.exception(
+                    f"Failed to set exposure for detector {self.name}: {e}"
+                )
+                s.set_exception(e)
+            return s
 
         # handle other properties
         prop_name, _ = self.property_map[propr]
+        prop_type, prop_class = self.property_types[
+            PropertyType.create(self._core.getPropertyType(self.name, prop_name))
+        ]
+        if prop_type == "boolean":
+            value = "On" if value else "Off"
         try:
-            self._core.setProperty(self.name, prop_name, value)
+            self._core.setProperty(self.name, prop_name, prop_class(value))
             s.set_finished()
             self.logger.info(f"Set {propr} to {value} for detector {self.name}.")
         except Exception as e:
@@ -813,9 +833,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         return s
 
     def trigger(self) -> Status:
-        # TODO: should this do anything?
-        # Maybe makes sense to separate the
-        # protocols
+        # should this do anything?
         s = Status()
         s.set_finished()
         return s
@@ -825,10 +843,21 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)
         for key, value in self.property_map.items():
             prop_value = self._core.getProperty(self.name, value[0])
+            prop_type, prop_class = self.property_types[
+                PropertyType.create(self._core.getPropertyType(self.name, value[0]))
+            ]
+            if prop_type == "boolean":
+                prop_value = True if prop_value == "On" else False
             config[key] = {
-                "value": prop_value,
+                "value": prop_class(prop_value)
+                if not isinstance(prop_value, bool)
+                else prop_value,
                 "timestamp": timestamp,
             }
+        config["exposure"] = {
+            "value": self._core.getExposure(self.name),
+            "timestamp": timestamp,
+        }
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
@@ -837,12 +866,39 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             prop_type = self._core.getPropertyType(self.name, value[0])
             descriptor: Descriptor = {
                 "source": "settings",
-                "dtype": self.property_types[PropertyType.create(prop_type)],
+                "dtype": self.property_types[PropertyType.create(prop_type)][0],
                 "shape": [],
             }
             if value[1]:
                 descriptor["units"] = value[1]
+            limits = (
+                self._core.getPropertyLowerLimit(self.name, value[0]),
+                self._core.getPropertyUpperLimit(self.name, value[0]),
+            )
+            if limits != (0, 0):
+                descriptor["limits"] = {
+                    "control": {
+                        "low": limits[0],
+                        "high": limits[1],
+                    }
+                }
             config[key] = descriptor
+        config["exposure"] = {
+            "source": "settings",
+            "dtype": "number",
+            "shape": [],
+            "units": "ms",
+            "limits": {
+                "control": {
+                    "low": float(
+                        self._core.getPropertyLowerLimit(self.name, "Exposure(us)")
+                    ),
+                    "high": float(
+                        self._core.getPropertyUpperLimit(self.name, "Exposure(us)")
+                    ),
+                }
+            },
+        }
         return config
 
     @property
