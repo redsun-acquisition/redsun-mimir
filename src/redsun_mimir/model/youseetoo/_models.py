@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import msgspec
 from bluesky.protocols import Descriptor, Reading
 from pymmcore_plus import CMMCorePlus as Core
-from pymmcore_plus import PropertyType
 from serial import Serial
 from sunflare.engine import Status
 from sunflare.log import Loggable
@@ -641,13 +640,11 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         "frame rate": ("AcquisitionFrameRate", "fps"),
         "enable frame rate": ("AcquisitionFrameRateMode", ""),
     }
-    # a mapping from pymmcore property types
-    # to Bluesky descriptor types;
-    property_types: Final[dict[PropertyType, tuple[Dtype, type]]] = {
-        PropertyType.Float: ("number", float),
-        PropertyType.Boolean: ("boolean", str),
-        PropertyType.Integer: ("integer", int),
-        PropertyType.String: ("string", str),
+    dtype_map: Final[dict[str, type]] = {
+        "boolean": str,  # boolean values are represented as "On" and "Off" strings
+        "integer": int,
+        "number": float,
+        "string": str,
     }
 
     def __init__(self, name: str, model_info: DetectorModelInfo) -> None:
@@ -815,14 +812,15 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             return s
 
         # handle other properties
-        prop_name, _ = self.property_map[propr]
-        prop_type, prop_class = self.property_types[
-            PropertyType.create(self._core.getPropertyType(self.name, prop_name))
-        ]
-        if prop_type == "boolean":
+        name, _ = self.property_map[propr]
+        prop_type = self._core.getPropertyType(self.name, name).to_json()
+        if prop_type == "string" and isinstance(value, bool):
+            # special case for boolean properties;
+            # mmcore uses "On" and "Off" strings
+            # to represent boolean values
             value = "On" if value else "Off"
         try:
-            self._core.setProperty(self.name, prop_name, prop_class(value))
+            self._core.setProperty(self.name, name, self.dtype_map[prop_type](value))
             s.set_finished()
             self.logger.info(f"Set {propr} to {value} for detector {self.name}.")
         except Exception as e:
@@ -842,16 +840,16 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         timestamp = time.time()
         config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)
         for key, value in self.property_map.items():
-            prop_value = self._core.getProperty(self.name, value[0])
-            prop_type, prop_class = self.property_types[
-                PropertyType.create(self._core.getPropertyType(self.name, value[0]))
-            ]
-            if prop_type == "boolean":
-                prop_value = True if prop_value == "On" else False
+            prop = self._core.getProperty(self.name, value[0])
+            dtype = self._core.getPropertyType(self.name, value[0]).to_json()
+            if dtype == "string" and prop in ["On", "Off"]:
+                # this is a special case for boolean properties;
+                # mmcore uses "On" and "Off" strings
+                # to represent boolean values, so we convert them
+                dtype = "boolean"
+                prop = True if prop == "On" else False
             config[key] = {
-                "value": prop_class(prop_value)
-                if not isinstance(prop_value, bool)
-                else prop_value,
+                "value": self.dtype_map[dtype](prop),
                 "timestamp": timestamp,
             }
         config["exposure"] = {
@@ -863,10 +861,17 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
     def describe_configuration(self) -> dict[str, Descriptor]:
         config = self.model_info.describe_configuration()
         for key, value in self.property_map.items():
-            prop_type = self._core.getPropertyType(self.name, value[0])
+            dtype: Dtype = self._core.getPropertyType(self.name, value[0]).to_json()
+            if dtype == "string" and self._core.getProperty(self.name, value[0]) in [
+                "On",
+                "Off",
+            ]:
+                # this is a special case for boolean properties;
+                # mmcore uses "On" and "Off" strings
+                dtype = "boolean"
             descriptor: Descriptor = {
                 "source": "settings",
-                "dtype": self.property_types[PropertyType.create(prop_type)][0],
+                "dtype": dtype,
                 "shape": [],
             }
             if value[1]:
