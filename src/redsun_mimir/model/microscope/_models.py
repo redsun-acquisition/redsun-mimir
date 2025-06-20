@@ -367,32 +367,35 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         return s
 
     def describe(self) -> dict[str, Descriptor]:
+        template = "{}:{}"
+        width, height = self.roi[2] - self.roi[0], self.roi[3] - self.roi[1]
         return {
-            "buffer": {
-                "source": self.name,
+            template.format(self.name, "buffer"): {
+                "source": "data",
                 "dtype": "array",
-                "shape": [None, None],
+                "shape": [width, height],
             },
-            "roi": {
-                "source": self.name,
-                "dtype": "array",
+            template.format(self.name, "roi"): {
+                "source": "data",
+                "dtype": "number",
                 "shape": [4],
             },
         }
 
-    def read(self) -> dict[str, Reading[npt.ArrayLike]]:
+    def read(self) -> dict[str, Reading[Any]]:
         content = self._queue.get()
+        template = "{}:{}"
         try:
             value, timestamp = content
         except Exception:
             value = content[0]
             timestamp = time.time()
         return {
-            "buffer": {
+            template.format(self.name, "buffer"): {
                 "value": value,
                 "timestamp": timestamp,
             },
-            "roi": {
+            template.format(self.name, "roi"): {
                 "value": self.roi,
                 "timestamp": timestamp,
             },

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import msgspec
 from bluesky.protocols import Descriptor, Reading
@@ -656,8 +656,8 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
             self._core.initializeDevice(self.name)
             self._core.setCameraDevice(self.name)
             max_height, max_width = (
-                self._core.getPropertyUpperLimit(self.name, "SensorHeight"),
-                self._core.getPropertyUpperLimit(self.name, "SensorWidth"),
+                int(self._core.getPropertyUpperLimit(self.name, "SensorHeight")),
+                int(self._core.getPropertyUpperLimit(self.name, "SensorWidth")),
             )
             if self.model_info.sensor_shape > (max_height, max_width):
                 self.logger.warning(
@@ -837,6 +837,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         return s
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
+        actual_prop: str | bool | int | float
         timestamp = time.time()
         config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)
         for key, value in self.property_map.items():
@@ -847,9 +848,11 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
                 # mmcore uses "On" and "Off" strings
                 # to represent boolean values, so we convert them
                 dtype = "boolean"
-                prop = True if prop == "On" else False
+                actual_prop = True if prop == "On" else False
+            else:
+                actual_prop = prop
             config[key] = {
-                "value": self.dtype_map[dtype](prop),
+                "value": self.dtype_map[dtype](actual_prop),
                 "timestamp": timestamp,
             }
         config["exposure"] = {
@@ -861,7 +864,9 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
     def describe_configuration(self) -> dict[str, Descriptor]:
         config = self.model_info.describe_configuration()
         for key, value in self.property_map.items():
-            dtype: Dtype = self._core.getPropertyType(self.name, value[0]).to_json()
+            dtype = cast(
+                "Dtype", self._core.getPropertyType(self.name, value[0]).to_json()
+            )
             if dtype == "string" and self._core.getProperty(self.name, value[0]) in [
                 "On",
                 "Off",

@@ -124,7 +124,7 @@ class AcquisitionController(Publisher, Loggable):
             manifest.update(
                 {
                     name: {
-                        "docstring": docstr or "No docstring available",
+                        "docstring": docstr or "No information available",
                         "annotations": annotations,
                         "togglable": getattr(plan, "__togglable__", False),
                     }

@@ -26,7 +26,7 @@ def acquisition_widget() -> None:
 
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "mock_detector_configuration.yaml"
+    config_path = Path(__file__).parent / "mock_acquisition_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
     models_info: dict[str, DetectorModelInfo] = {
         name: DetectorModelInfo(**values)
