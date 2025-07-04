@@ -46,8 +46,7 @@ def light_widget_uc2() -> None:
         for name, values in config_dict["controllers"].items()
     }
     widget_info: dict[str, LightWidgetInfo] = {
-        name: LightWidgetInfo(**values)
-        for name, values in config_dict["widgets"].items()
+        name: LightWidgetInfo(**values) for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(
@@ -56,7 +55,7 @@ def light_widget_uc2() -> None:
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore
-        widgets=widget_info,  # type: ignore
+        views=widget_info,  # type: ignore
     )
 
     models: dict[str, MimirLaserModel | MimirSerialModel] = {
@@ -69,7 +68,7 @@ def light_widget_uc2() -> None:
     bus = VirtualBus()
 
     ctrl = LightController(config.controllers["LightController"], models, bus)  # type: ignore
-    widget = LightWidget(config, bus)
+    widget = LightWidget(config.views["LightWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

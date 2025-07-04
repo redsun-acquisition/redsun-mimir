@@ -27,19 +27,19 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sunflare>=0.5.0",
-    "napari>=0.6.2a1",
-    "superqt",
+    "sunflare>=0.6.1",
+    "napari>=0.6.2",
+    "superqt"
 ]
 
 [project.optional-dependencies]
 pyqt = [
     "sunflare[pyqt]",
-    "napari[pyqt6]>=0.6.2a1",
+    "napari[pyqt6]>=0.6.2",
 ]
 pyside = [
     "sunflare[pyside]",
-    "napari[pyside6_experimental]>=0.6.2a1",
+    "napari[pyside6-experimental]>=0.6.2",
 ]
 microscope = [
     "microscope>=0.7.0"

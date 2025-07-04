@@ -6,12 +6,12 @@ from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.model import StageModelInfo
-
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.config import RedSunSessionInfo
+    from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
+
+    from redsun_mimir.model import StageModelInfo
 
 
 class StageWidget(BaseQtWidget):
@@ -19,8 +19,8 @@ class StageWidget(BaseQtWidget):
 
     Parameters
     ----------
-    config : ``RedSunSessionInfo``
-        Configuration for the session.
+    config : ``ViewInfoProtocol``
+        View configuration information.
     virtual_bus : ``VirtualBus``
         Virtual bus for the session.
 
@@ -43,7 +43,7 @@ class StageWidget(BaseQtWidget):
 
     def __init__(
         self,
-        config: RedSunSessionInfo,
+        config: ViewInfoProtocol,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
@@ -59,9 +59,7 @@ class StageWidget(BaseQtWidget):
         main_layout = QtWidgets.QVBoxLayout()
 
         self._motors_info: dict[str, StageModelInfo] = {
-            name: model_info
-            for name, model_info in self.config.models.items()
-            if isinstance(model_info, StageModelInfo)
+            # TODO: fill from controller
         }
 
         # Regular expression for a valid floating-point number
@@ -81,7 +79,7 @@ class StageWidget(BaseQtWidget):
             layout = QtWidgets.QGridLayout()
 
             for i, axis in enumerate(model_info.axis):
-                # create the widgets
+                # create the views
                 suffix = f"{name}:{axis}"
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{axis}")
                 self._labels["label:" + suffix].setTextFormat(

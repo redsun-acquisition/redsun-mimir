@@ -20,7 +20,7 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
     config_dict["controllers"] = {
         k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()
     }
-    config_dict["widgets"] = {}
+    config_dict["views"] = {}
 
     config = RedSunSessionInfo(**config_dict)
 
@@ -31,7 +31,7 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
         config.controllers["StageController"]
         == config_dict["controllers"]["StageController"]
     )
-    assert config.widgets == {}
+    assert config.views == {}
 
     widget = StageWidget(config, bus)
     qtbot.addWidget(widget)

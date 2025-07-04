@@ -14,7 +14,7 @@ from redsun_mimir.utils.qt import CheckableComboBox, ConfigurationGroupBox, Info
 if TYPE_CHECKING:
     from typing import Any
 
-    from sunflare.config import RedSunSessionInfo
+    from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
 
     from redsun_mimir.protocols import PlanManifest
@@ -97,12 +97,12 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        config: RedSunSessionInfo,
+        view_info: ViewInfoProtocol,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
     ):
-        super().__init__(config, virtual_bus, *args, **kwargs)
+        super().__init__(view_info, virtual_bus, *args, **kwargs)
         self.plans_info: dict[str, str] = {}
 
         self.plan_widgets: dict[str, PlanWidget] = {}

@@ -37,8 +37,7 @@ def image_widget() -> None:
         for name, values in config_dict["controllers"].items()
     }
     widget_info: dict[str, ImageWidgetInfo] = {
-        name: ImageWidgetInfo(**values)
-        for name, values in config_dict["widgets"].items()
+        name: ImageWidgetInfo(**values) for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(
@@ -47,7 +46,7 @@ def image_widget() -> None:
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore
-        widgets=widget_info,  # type: ignore
+        views=widget_info,  # type: ignore
     )
 
     mock_models: dict[str, SimulatedCameraModel] = {
@@ -62,7 +61,7 @@ def image_widget() -> None:
         mock_models,
         bus,
     )
-    widget = ImageWidget(config, bus)
+    widget = ImageWidget(config.views["ImageWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

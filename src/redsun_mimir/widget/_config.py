@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from attrs import define, field, setters
-from sunflare.config import WidgetInfo, WidgetPositionTypes
+from sunflare.config import ViewInfo, WidgetPositionTypes
 
 
 @define
-class StageWidgetInfo(WidgetInfo):
+class StageWidgetInfo(ViewInfo):
     """Stage widget information.
 
     Currently provides no additional information.
@@ -15,7 +15,7 @@ class StageWidgetInfo(WidgetInfo):
 
 
 @define
-class LightWidgetInfo(WidgetInfo):
+class LightWidgetInfo(ViewInfo):
     """Light widget information.
 
     Currently provides no additional information.
@@ -25,7 +25,7 @@ class LightWidgetInfo(WidgetInfo):
 
 
 @define
-class AcquisitionWidgetInfo(WidgetInfo):
+class AcquisitionWidgetInfo(ViewInfo):
     """Acquisition widget information.
 
     Currently provides no additional information.
@@ -35,7 +35,7 @@ class AcquisitionWidgetInfo(WidgetInfo):
 
 
 @define
-class ImageWidgetInfo(WidgetInfo):
+class ImageWidgetInfo(ViewInfo):
     """Image widget information.
 
     Overrides the default position to ensure it is

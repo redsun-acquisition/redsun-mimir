@@ -161,7 +161,7 @@ class StageController(Loggable):
         self._virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        """Connect to other controllers/widgets in the active session."""
+        """Connect to other controllers/views in the active session."""
         self._virtual_bus["StageWidget"]["sigMotorMove"].connect(self.move)
         self._virtual_bus["StageWidget"]["sigConfigChanged"].connect(self.configure)
 

@@ -19,7 +19,7 @@ controllers:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
-widgets:
+views:
   StageWidget:
     plugin_name: test
     plugin_id: test

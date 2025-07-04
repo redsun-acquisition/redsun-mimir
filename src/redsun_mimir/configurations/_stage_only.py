@@ -36,8 +36,7 @@ def stage_widget() -> None:
         for name, values in config_dict["controllers"].items()
     }
     widget_info: dict[str, StageWidgetInfo] = {
-        name: StageWidgetInfo(**values)
-        for name, values in config_dict["widgets"].items()
+        name: StageWidgetInfo(**values) for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(
@@ -46,7 +45,7 @@ def stage_widget() -> None:
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore
-        widgets=widget_info,  # type: ignore
+        views=widget_info,  # type: ignore
     )
 
     mock_models: dict[str, MockStageModel] = {
@@ -57,7 +56,7 @@ def stage_widget() -> None:
     bus = VirtualBus()
 
     ctrl = StageController(config.controllers["StageController"], mock_models, bus)  # type: ignore
-    widget = StageWidget(config, bus)
+    widget = StageWidget(config.views["StageWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

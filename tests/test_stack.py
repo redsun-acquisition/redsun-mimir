@@ -21,14 +21,14 @@ def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
     config_dict["controllers"] = {
         k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()
     }
-    config_dict["widgets"] = {}
+    config_dict["views"] = {}
 
     config = RedSunSessionInfo(**config_dict)
 
     motors = {name: MockStageModel(name, info) for name, info in config.models.items()}  # type: ignore
 
     ctrl = StageController(config.controllers["StageController"], motors, bus)  # type: ignore
-    widget = StageWidget(config, bus)
+    widget = StageWidget(config.views["StageWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

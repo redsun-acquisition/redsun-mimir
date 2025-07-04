@@ -8,11 +8,11 @@ from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
-from redsun_mimir.model import LightModelInfo
-
 if TYPE_CHECKING:
-    from sunflare.config import RedSunSessionInfo
+    from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
+
+    from redsun_mimir.model import LightModelInfo
 
 
 class LightWidget(BaseQtWidget, Loggable):
@@ -21,17 +21,15 @@ class LightWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        config: RedSunSessionInfo,
+        view_info: ViewInfoProtocol,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        super().__init__(config, virtual_bus, *args, **kwargs)
+        super().__init__(view_info, virtual_bus, *args, **kwargs)
 
         self._lights_info: dict[str, LightModelInfo] = {
-            name: value
-            for name, value in config.models.items()
-            if isinstance(value, LightModelInfo)
+            # TODO: fill from controller
         }
         self.setWindowTitle("Light sources")
 

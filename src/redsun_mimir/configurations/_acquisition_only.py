@@ -39,7 +39,7 @@ def acquisition_widget() -> None:
     }
     widget_info: dict[str, AcquisitionWidgetInfo] = {
         name: AcquisitionWidgetInfo(**values)
-        for name, values in config_dict["widgets"].items()
+        for name, values in config_dict["views"].items()
         if name == "AcquisitionWidget"
     }
 
@@ -49,7 +49,7 @@ def acquisition_widget() -> None:
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore
-        widgets=widget_info,  # type: ignore
+        views=widget_info,  # type: ignore
     )
 
     mock_models: dict[str, SimulatedCameraModel] = {
@@ -64,7 +64,7 @@ def acquisition_widget() -> None:
         mock_models,
         bus,
     )
-    widget = AcquisitionWidget(config, bus)
+    widget = AcquisitionWidget(config.views["AcquisitionWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

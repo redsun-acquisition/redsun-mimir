@@ -10,7 +10,6 @@ from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.model import DetectorModelInfo
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Reading
     from napari.layers import Image
-    from sunflare.config import RedSunSessionInfo
+    from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
 
 
@@ -95,23 +94,17 @@ class ImageWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        config: RedSunSessionInfo,
+        view_info: ViewInfoProtocol,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            config,
+            view_info,
             virtual_bus,
             *args,
             **kwargs,
         )
-
-        self.detectors_info = {
-            name: model_info
-            for name, model_info in self.config.models.items()
-            if isinstance(model_info, DetectorModelInfo)
-        }
 
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
@@ -159,7 +152,7 @@ class ImageWidget(BaseQtWidget, Loggable):
         """
         # TODO: dtype should be provided either from the descriptor or from the model info
         layer = self.viewer_model.add_image(
-            np.zeros(shape=self.detectors_info[detector].sensor_shape, dtype=np.uint8),
+            np.zeros((100, 100), dtype=np.uint8),
             name=detector,
         )
         layer._overlays.update(
