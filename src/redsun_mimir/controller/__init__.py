@@ -3,19 +3,19 @@ from ._config import (
     AcquisitionControllerInfo,
     DetectorControllerInfo,
     LightControllerInfo,
-    StageControllerInfo,
+    MotorControllerInfo,
 )
 from ._image import ImageController
 from ._light import LightController
-from ._stage import StageController
+from ._motor import MotorController
 
 __all__ = [
     "AcquisitionController",
     "AcquisitionControllerInfo",
     "ImageController",
     "DetectorControllerInfo",
-    "StageController",
-    "StageControllerInfo",
+    "MotorController",
+    "MotorControllerInfo",
     "LightController",
     "LightControllerInfo",
 ]

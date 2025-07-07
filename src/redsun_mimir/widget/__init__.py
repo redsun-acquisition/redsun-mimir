@@ -7,14 +7,14 @@ from ._config import (
 )
 from ._image import ImageWidget
 from ._light import LightWidget
-from ._stage import StageWidget
+from ._motor import MotorWidget
 
 __all__ = [
     "AcquisitionWidget",
     "AcquisitionWidgetInfo",
     "ImageWidget",
     "ImageWidgetInfo",
-    "StageWidget",
+    "MotorWidget",
     "StageWidgetInfo",
     "LightWidget",
     "LightWidgetInfo",

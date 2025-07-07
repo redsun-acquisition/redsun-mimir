@@ -8,7 +8,7 @@ from sunflare.config import ControllerInfo
 if TYPE_CHECKING:
     from typing import Any
 
-__all__ = ["StageControllerInfo", "LightControllerInfo"]
+__all__ = ["MotorControllerInfo", "LightControllerInfo"]
 
 
 @define
@@ -30,7 +30,7 @@ class _CommonControllerInfo(ControllerInfo):
     )
 
 
-class StageControllerInfo(_CommonControllerInfo):
+class MotorControllerInfo(_CommonControllerInfo):
     """Configuration class for the stage controller."""
 
     ...

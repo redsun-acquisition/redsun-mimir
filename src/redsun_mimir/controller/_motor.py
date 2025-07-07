@@ -15,18 +15,18 @@ if TYPE_CHECKING:
 
     from sunflare.model import ModelProtocol
 
-    from redsun_mimir.controller import StageControllerInfo
+    from redsun_mimir.controller import MotorControllerInfo
 
 
-class StageController(Loggable):
+class MotorController(Loggable):
     """Motor stage controller for Redsun Mimir.
 
     The controller allows manual setting of stage positions;
     communication with the user interface is done via
-    signals exchanged with the ``StageWidget`` accross
+    signals exchanged with the ``MotorWidget`` accross
     the virtual bus.
 
-    Whenever a new position is requested from ``StageWidget``
+    Whenever a new position is requested from ``MotorWidget``
     via the ``sigMotorMove`` signal, the controller will move the stage
     to the requested position by launching a background thread
     which will call the ``set`` method of the corresponding motor model.
@@ -36,7 +36,7 @@ class StageController(Loggable):
 
     Parameters
     ----------
-    ctrl_info : ``StageControllerInfo``
+    ctrl_info : ``MotorControllerInfo``
         Configuration for the stage controller.
     models : ``Mapping[str, ModelProtocol]``
         Mapping of model names to model instances.
@@ -71,7 +71,7 @@ class StageController(Loggable):
             def connection_phase(self) -> None:
                 # connect the signal to the slot;
                 # the slot will be invoked in the main thread
-                self._virtual_bus["StageController"]["sigNewPosition"].connect(
+                self._virtual_bus["MotorController"]["sigNewPosition"].connect(
                     self.on_new_position, thread="main"
                 )
 
@@ -82,7 +82,7 @@ class StageController(Loggable):
 
     def __init__(
         self,
-        ctrl_info: StageControllerInfo,
+        ctrl_info: MotorControllerInfo,
         models: Mapping[str, ModelProtocol],
         virtual_bus: VirtualBus,
     ) -> None:
@@ -162,8 +162,8 @@ class StageController(Loggable):
 
     def connection_phase(self) -> None:
         """Connect to other controllers/views in the active session."""
-        self._virtual_bus["StageWidget"]["sigMotorMove"].connect(self.move)
-        self._virtual_bus["StageWidget"]["sigConfigChanged"].connect(self.configure)
+        self._virtual_bus["MotorWidget"]["sigMotorMove"].connect(self.move)
+        self._virtual_bus["MotorWidget"]["sigConfigChanged"].connect(self.configure)
 
     def _run_loop(self) -> None:
         while True:

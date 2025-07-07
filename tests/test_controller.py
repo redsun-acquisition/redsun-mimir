@@ -9,8 +9,8 @@ from sunflare.virtual import HasConnection, HasRegistration, VirtualBus
 from redsun_mimir.controller import (
     LightController,
     LightControllerInfo,
-    StageController,
-    StageControllerInfo,
+    MotorController,
+    MotorControllerInfo,
 )
 from redsun_mimir.model import (
     LightModelInfo,
@@ -25,8 +25,8 @@ def test_stage_controller(
 ) -> None:
     motors = {name: MockStageModel(name, info) for name, info in motor_config.items()}
 
-    info = StageControllerInfo(plugin_name="test", plugin_id="test")
-    ctrl = StageController(info, motors, bus)
+    info = MotorControllerInfo(plugin_name="test", plugin_id="test")
+    ctrl = MotorController(info, motors, bus)
 
     assert isinstance(ctrl, ControllerProtocol | HasRegistration | HasConnection)
 

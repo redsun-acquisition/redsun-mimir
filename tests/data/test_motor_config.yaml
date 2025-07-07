@@ -25,7 +25,7 @@ models:
       Y: [-1000, 1000]
       Z: [-1000, 1000]
 controllers:
-  StageController:
+  MotorController:
     plugin_name: test
     plugin_id: test
     timeout: null

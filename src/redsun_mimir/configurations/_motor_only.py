@@ -9,15 +9,15 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MockStageModel, StageModelInfo
-from redsun_mimir.widget import StageWidget, StageWidgetInfo
+from redsun_mimir.widget import MotorWidget, StageWidgetInfo
 
 
 def stage_widget() -> None:
     """Run a local mock example.
 
-    Launches a Qt ``StageWidget`` app
+    Launches a Qt ``MotorWidget`` app
     with a mock device configuration.
     """
     logger = logging.getLogger("redsun")
@@ -31,8 +31,8 @@ def stage_widget() -> None:
     models_info: dict[str, StageModelInfo] = {
         name: StageModelInfo(**values) for name, values in config_dict["models"].items()
     }
-    ctrl_info: dict[str, StageControllerInfo] = {
-        name: StageControllerInfo(**values)
+    ctrl_info: dict[str, MotorControllerInfo] = {
+        name: MotorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
     widget_info: dict[str, StageWidgetInfo] = {
@@ -55,8 +55,8 @@ def stage_widget() -> None:
 
     bus = VirtualBus()
 
-    ctrl = StageController(config.controllers["StageController"], mock_models, bus)  # type: ignore
-    widget = StageWidget(config.views["StageWidget"], bus)
+    ctrl = MotorController(config.controllers["MotorController"], mock_models, bus)  # type: ignore[arg-type]
+    widget = MotorWidget(config.views["MotorWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

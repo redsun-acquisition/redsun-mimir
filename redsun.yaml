@@ -1,9 +1,9 @@
 models:
 controllers:
   stage:
-    class: redsun_mimir.controller:StageController
-    info: redsun_mimir.controller:StageControllerInfo
+    class: redsun_mimir.controller:MotorController
+    info: redsun_mimir.controller:MotorControllerInfo
 views:
   stage:
-    class: redsun_mimir.widget:StageWidget
+    class: redsun_mimir.widget:MotorWidget
     info: redsun_mimir.widget:StageWidgetInfo

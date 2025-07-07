@@ -6,9 +6,9 @@ from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MockStageModel, StageModelInfo
-from redsun_mimir.widget import StageWidget
+from redsun_mimir.widget import MotorWidget
 
 
 def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
@@ -19,7 +19,7 @@ def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
         k: StageModelInfo(**v) for k, v in config_dict["models"].items()
     }
     config_dict["controllers"] = {
-        k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()
+        k: MotorControllerInfo(**v) for k, v in config_dict["controllers"].items()
     }
     config_dict["views"] = {}
 
@@ -27,8 +27,8 @@ def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
 
     motors = {name: MockStageModel(name, info) for name, info in config.models.items()}  # type: ignore
 
-    ctrl = StageController(config.controllers["StageController"], motors, bus)  # type: ignore
-    widget = StageWidget(config.views["StageWidget"], bus)
+    ctrl = MotorController(config.controllers["MotorController"], motors, bus)  # type: ignore
+    widget = MotorWidget(config.views["MotorWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

@@ -9,20 +9,20 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageController, StageControllerInfo
+from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import StageModelInfo
 from redsun_mimir.model.youseetoo import (
     MimirMotorModel,
     MimirSerialInfo,
     MimirSerialModel,
 )
-from redsun_mimir.widget import StageWidget, StageWidgetInfo
+from redsun_mimir.widget import MotorWidget, StageWidgetInfo
 
 
 def stage_widget_uc2() -> None:
     """Run a local UC2 example.
 
-    Launches a Qt ``StageWidget`` app
+    Launches a Qt ``MotorWidget`` app
     with a UC2 device configuration.
     """
     logger = logging.getLogger("redsun")
@@ -40,8 +40,8 @@ def stage_widget_uc2() -> None:
         elif name == "Stage":
             models_info[name] = StageModelInfo(**values)
 
-    ctrl_info: dict[str, StageControllerInfo] = {
-        name: StageControllerInfo(**values)
+    ctrl_info: dict[str, MotorControllerInfo] = {
+        name: MotorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
     widget_info: dict[str, StageWidgetInfo] = {
@@ -65,8 +65,8 @@ def stage_widget_uc2() -> None:
 
     bus = VirtualBus()
 
-    ctrl = StageController(config.controllers["StageController"], models, bus)  # type: ignore
-    widget = StageWidget(config.views["StageWidget"], bus)
+    ctrl = MotorController(config.controllers["MotorController"], models, bus)  # type: ignore
+    widget = MotorWidget(config.views["MotorWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from redsun_mimir.model import StageModelInfo
 
 
-class StageWidget(BaseQtWidget):
-    """Stage widget for Redsun Mimir.
+class MotorWidget(BaseQtWidget):
+    """Motor widget for Redsun Mimir.
 
     Parameters
     ----------
@@ -133,7 +133,7 @@ class StageWidget(BaseQtWidget):
         We use it to directly build the GUI by retrieving a configuration of
         the currently allocated motors to create the proper widget layout.
         """
-        self.virtual_bus["StageController"]["sigNewPosition"].connect(
+        self.virtual_bus["MotorController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
 

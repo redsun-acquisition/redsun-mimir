@@ -15,12 +15,12 @@ models:
       Z: 100.0
     egu: um
 controllers:
-  StageController:
+  MotorController:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
 views:
-  StageWidget:
+  MotorWidget:
     plugin_name: test
     plugin_id: test
     # doesn't have any effect;

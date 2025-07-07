@@ -5,9 +5,9 @@ from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import StageControllerInfo
+from redsun_mimir.controller import MotorControllerInfo
 from redsun_mimir.model import StageModelInfo
-from redsun_mimir.widget import StageWidget
+from redsun_mimir.widget import MotorWidget
 
 
 def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
@@ -18,7 +18,7 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
         k: StageModelInfo(**v) for k, v in config_dict["models"].items()
     }
     config_dict["controllers"] = {
-        k: StageControllerInfo(**v) for k, v in config_dict["controllers"].items()
+        k: MotorControllerInfo(**v) for k, v in config_dict["controllers"].items()
     }
     config_dict["views"] = {}
 
@@ -28,12 +28,12 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
     assert config.engine == config_dict["engine"]
     assert config.frontend == config_dict["frontend"]
     assert (
-        config.controllers["StageController"]
-        == config_dict["controllers"]["StageController"]
+        config.controllers["MotorController"]
+        == config_dict["controllers"]["MotorController"]
     )
     assert config.views == {}
 
-    widget = StageWidget(config, bus)
+    widget = MotorWidget(config, bus)
     qtbot.addWidget(widget)
 
     expected_axis = "X"
