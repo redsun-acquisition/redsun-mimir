@@ -213,7 +213,6 @@ class ImageWidget(BaseQtWidget, Loggable):
             model.confirm_change(setting_name, success)
 
             if not success:
-                # Optionally show a warning to the user
                 self.logger.warning(
                     f"Failed to configure {setting_name} for {detector}"
                 )
