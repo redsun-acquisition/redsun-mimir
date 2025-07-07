@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+import in_n_out as ino
 from bluesky.utils import maybe_await
 from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
-from ..protocols import DetectorProtocol
+from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
+from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -17,6 +19,8 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
     from ._config import DetectorControllerInfo
+
+store = ino.Store.create("DetectorModelInfo")
 
 
 class ImageController(Loggable):
@@ -72,6 +76,16 @@ class ImageController(Loggable):
             for name, model in models.items()
             if isinstance(model, DetectorProtocol)
         }
+
+    def models_info(self) -> dict[str, DetectorModelInfo]:
+        """Get the models information.
+
+        Returns
+        -------
+        dict[str, DetectorModelInfo]
+            Mapping of model names to model information.
+        """
+        return {name: model.model_info for name, model in self.detectors.items()}
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
