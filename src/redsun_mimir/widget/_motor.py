@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
+
+from redsun_mimir.model import MotorModelInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
 
-    from redsun_mimir.model import StageModelInfo
+store = ino.Store.get_store("MotorModelInfo")
 
 
 class MotorWidget(BaseQtWidget):
@@ -56,11 +59,7 @@ class MotorWidget(BaseQtWidget):
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
 
-        main_layout = QtWidgets.QVBoxLayout()
-
-        self._motors_info: dict[str, StageModelInfo] = {
-            # TODO: fill from controller
-        }
+        self.main_layout = QtWidgets.QVBoxLayout()
 
         # Regular expression for a valid floating-point number
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
@@ -69,6 +68,12 @@ class MotorWidget(BaseQtWidget):
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+
+        setup_ui = store.inject(self.setup_ui)
+        setup_ui()
+
+    def setup_ui(self, motors_info: dict[str, MotorModelInfo]) -> None:
+        self._motors_info = motors_info
 
         # setup the layout and connect the signals
         for name, model_info in self._motors_info.items():
@@ -118,9 +123,9 @@ class MotorWidget(BaseQtWidget):
                     lambda name=name, axis=axis: self._validate_and_notify(name, axis)
                 )
             self._groups[name].setLayout(layout)
-            main_layout.addWidget(self._groups[name])
+            self.main_layout.addWidget(self._groups[name])
 
-        self.setLayout(main_layout)
+        self.setLayout(self.main_layout)
 
     def registration_phase(self) -> None:
         """Register your signals to the virtual bus."""

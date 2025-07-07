@@ -16,12 +16,12 @@ from redsun_mimir.model import (
     LightModelInfo,
     MockLightModel,
     MockStageModel,
-    StageModelInfo,
+    MotorModelInfo,
 )
 
 
 def test_stage_controller(
-    bus: VirtualBus, motor_config: dict[str, StageModelInfo], qtbot: QtBot
+    bus: VirtualBus, motor_config: dict[str, MotorModelInfo], qtbot: QtBot
 ) -> None:
     motors = {name: MockStageModel(name, info) for name, info in motor_config.items()}
 

@@ -1,10 +1,10 @@
-from ._config import DetectorModelInfo, LightModelInfo, StageModelInfo
+from ._config import DetectorModelInfo, LightModelInfo, MotorModelInfo
 from ._mocks import MockLightModel, MockStageModel
 
 __all__ = [
     "MockStageModel",
     "MockLightModel",
-    "StageModelInfo",
+    "MotorModelInfo",
     "LightModelInfo",
     "DetectorModelInfo",
 ]

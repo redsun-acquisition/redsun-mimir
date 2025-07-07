@@ -6,7 +6,7 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorControllerInfo
-from redsun_mimir.model import StageModelInfo
+from redsun_mimir.model import MotorModelInfo
 from redsun_mimir.widget import MotorWidget
 
 
@@ -15,7 +15,7 @@ def test_stage_widget(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
 
     config_dict = RedSunSessionInfo.load_yaml(str(motor_config_path))
     config_dict["models"] = {
-        k: StageModelInfo(**v) for k, v in config_dict["models"].items()
+        k: MotorModelInfo(**v) for k, v in config_dict["models"].items()
     }
     config_dict["controllers"] = {
         k: MotorControllerInfo(**v) for k, v in config_dict["controllers"].items()

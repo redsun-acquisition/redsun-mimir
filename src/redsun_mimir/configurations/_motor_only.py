@@ -10,7 +10,7 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
-from redsun_mimir.model import MockStageModel, StageModelInfo
+from redsun_mimir.model import MockStageModel, MotorModelInfo
 from redsun_mimir.widget import MotorWidget, StageWidgetInfo
 
 
@@ -28,8 +28,8 @@ def stage_widget() -> None:
 
     config_path = Path(__file__).parent / mock_config_path
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, StageModelInfo] = {
-        name: StageModelInfo(**values) for name, values in config_dict["models"].items()
+    models_info: dict[str, MotorModelInfo] = {
+        name: MotorModelInfo(**values) for name, values in config_dict["models"].items()
     }
     ctrl_info: dict[str, MotorControllerInfo] = {
         name: MotorControllerInfo(**values)
@@ -41,7 +41,6 @@ def stage_widget() -> None:
 
     config = RedSunSessionInfo(
         session=config_dict["session"],
-        engine=config_dict["engine"],
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore

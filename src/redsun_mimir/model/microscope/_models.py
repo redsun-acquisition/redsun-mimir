@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from redsun_mimir.model import DetectorModelInfo, LightModelInfo, StageModelInfo
+    from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
 
 class Factory:
@@ -59,7 +59,7 @@ class Factory:
 
 
 class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
-    def __init__(self, name: str, model_info: StageModelInfo) -> None:
+    def __init__(self, name: str, model_info: MotorModelInfo) -> None:
         self._name = name
         self._model_info = model_info
         if model_info.limits is None:
@@ -119,7 +119,7 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
         return self._name
 
     @property
-    def model_info(self) -> StageModelInfo:
+    def model_info(self) -> MotorModelInfo:
         return self._model_info
 
     @property

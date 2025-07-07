@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
+from redsun_mimir.model import LightModelInfo  # noqa: TC001
+
 if TYPE_CHECKING:
     from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
 
     from redsun_mimir.model import LightModelInfo
+
+store = ino.Store.get_store("LightModelInfo")
 
 
 class LightWidget(BaseQtWidget, Loggable):
@@ -33,7 +38,7 @@ class LightWidget(BaseQtWidget, Loggable):
         }
         self.setWindowTitle("Light sources")
 
-        main_layout = QtWidgets.QVBoxLayout()
+        self.main_layout = QtWidgets.QVBoxLayout()
 
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
@@ -43,6 +48,13 @@ class LightWidget(BaseQtWidget, Loggable):
         # Regular expression for a valid floating-point number
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
+
+        # Inject the setup_ui method to fill the widget with light sources
+        setup_ui = store.inject(self.setup_ui)
+        setup_ui()
+
+    def setup_ui(self, lights_info: dict[str, LightModelInfo]) -> None:
+        self._lights_info = lights_info
 
         for name, model_info in self._lights_info.items():
             self._groups[name] = QtWidgets.QGroupBox(
@@ -92,9 +104,9 @@ class LightWidget(BaseQtWidget, Loggable):
                 layout.addWidget(self._buttons[f"on:{name}"], 0, 0, 1, 4)
 
             self._groups[name].setLayout(layout)
-            main_layout.addWidget(self._groups[name])
+            self.main_layout.addWidget(self._groups[name])
 
-        self.setLayout(main_layout)
+        self.setLayout(self.main_layout)
 
     def registration_phase(self) -> None:
         """Register the widget."""

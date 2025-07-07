@@ -10,7 +10,7 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
-from redsun_mimir.model import StageModelInfo
+from redsun_mimir.model import MotorModelInfo
 from redsun_mimir.model.youseetoo import (
     MimirMotorModel,
     MimirSerialInfo,
@@ -32,13 +32,13 @@ def stage_widget_uc2() -> None:
     config_path = Path(__file__).parent / "uc2_motor_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
 
-    models_info: dict[str, MimirSerialInfo | StageModelInfo] = {}
+    models_info: dict[str, MimirSerialInfo | MotorModelInfo] = {}
 
     for name, values in config_dict["models"].items():
         if name == "Serial":
             models_info[name] = MimirSerialInfo(**values)
         elif name == "Stage":
-            models_info[name] = StageModelInfo(**values)
+            models_info[name] = MotorModelInfo(**values)
 
     ctrl_info: dict[str, MotorControllerInfo] = {
         name: MotorControllerInfo(**values)

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import in_n_out as ino
 from sunflare.log import Loggable
 
-from ..protocols import LightProtocol
+from redsun_mimir.model import LightModelInfo
+from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -13,6 +15,8 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
     from ._config import LightControllerInfo
+
+store = ino.Store.create("LightModelInfo")
 
 
 class LightController(Loggable):
@@ -44,6 +48,18 @@ class LightController(Loggable):
             if isinstance(model, LightProtocol)
         }
 
+        store.register_provider(self.models_info, type_hint=dict[str, LightModelInfo])
+
+    def models_info(self) -> dict[str, LightModelInfo]:
+        """Get the models information.
+
+        Returns
+        -------
+        dict[str, LightModelInfo]
+            Mapping of model names to model information.
+        """
+        return {name: model.model_info for name, model in self._lights.items()}
+
     def registration_phase(self) -> None:
         """Register the controller."""
         self._virtual_bus.register_signals(self)
@@ -52,7 +68,6 @@ class LightController(Loggable):
         """Connect the controller."""
         self._virtual_bus["LightWidget"]["sigToggleLightRequest"].connect(self.trigger)
         self._virtual_bus["LightWidget"]["sigIntensityRequest"].connect(self.set)
-        self.logger.debug("Connected to LightWidget")
 
     def trigger(self, name: str) -> None:
         """Toggle the light.

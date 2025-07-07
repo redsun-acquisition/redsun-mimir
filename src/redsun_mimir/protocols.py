@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
     from sunflare.engine import Status
 
-    from redsun_mimir.model import LightModelInfo, StageModelInfo
+    from redsun_mimir.model import LightModelInfo, MotorModelInfo
 
 __all__ = [
     "LightProtocol",
@@ -131,7 +131,7 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
 
     @property
     @abstractmethod
-    def model_info(self) -> StageModelInfo:  # noqa: D102
+    def model_info(self) -> MotorModelInfo:  # noqa: D102
         ...
 
 

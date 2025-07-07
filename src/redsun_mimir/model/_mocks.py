@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from ._config import LightModelInfo, StageModelInfo
+    from ._config import LightModelInfo, MotorModelInfo
 
 
 class MockLightModel(LightProtocol):
@@ -93,7 +93,7 @@ class MockLightModel(LightProtocol):
 class MockStageModel(MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
-    def __init__(self, name: str, model_info: StageModelInfo) -> None:
+    def __init__(self, name: str, model_info: MotorModelInfo) -> None:
         self._name = name
         self._model_info = model_info
         self._positions: dict[str, Location[float]] = {
@@ -185,7 +185,7 @@ class MockStageModel(MotorProtocol, Loggable):
         return self._name
 
     @property
-    def model_info(self) -> StageModelInfo:  # noqa: D102
+    def model_info(self) -> MotorModelInfo:  # noqa: D102
         return self._model_info
 
     def shutdown(self) -> None: ...

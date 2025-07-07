@@ -11,7 +11,7 @@ from redsun_mimir.model import (
     LightModelInfo,
     MockLightModel,
     MockStageModel,
-    StageModelInfo,
+    MotorModelInfo,
 )
 from redsun_mimir.model.microscope import (
     SimulatedCameraModel,
@@ -31,7 +31,7 @@ def get_reading_values(reading: dict[str, Reading[Any]]) -> dict[str, Any]:
     return {key: {"value": value["value"]} for key, value in reading.items()}
 
 
-def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
+def test_motor_construction(motor_config: dict[str, MotorModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in motor_config.items():
         motor = (
@@ -48,7 +48,7 @@ def test_motor_construction(motor_config: dict[str, StageModelInfo]) -> None:
             assert motor.limits == info.limits
 
 
-def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) -> None:
+def test_motor_configurable_protocol(motor_config: dict[str, MotorModelInfo]) -> None:
     for name, info in motor_config.items():
         motor = (
             MockStageModel(name, info)
@@ -82,7 +82,7 @@ def test_motor_configurable_protocol(motor_config: dict[str, StageModelInfo]) ->
         assert cfg == truth
 
 
-def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
+def test_motor_set_direct(motor_config: dict[str, MotorModelInfo]) -> None:
     """Test the motor movement via direct invocation of the ``set`` method.
 
     The test moves the motor to position 100 and then to position 200.
@@ -115,7 +115,7 @@ def test_motor_set_direct(motor_config: dict[str, StageModelInfo]) -> None:
 
 
 def test_motor_plan_absolute(
-    motor_config: dict[str, StageModelInfo], RE: RunEngine
+    motor_config: dict[str, MotorModelInfo], RE: RunEngine
 ) -> None:
     """Test motor execution in a ``RunEngine`` plan.
 
@@ -146,7 +146,7 @@ def test_motor_plan_absolute(
 
 
 def test_motor_plan_relative(
-    motor_config: dict[str, StageModelInfo], RE: RunEngine
+    motor_config: dict[str, MotorModelInfo], RE: RunEngine
 ) -> None:
     """Test motor execution in a ``RunEngine`` plan.
 

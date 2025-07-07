@@ -43,7 +43,7 @@ def convert_limits(
 
 
 @define(kw_only=True)
-class StageModelInfo(ModelInfo):
+class MotorModelInfo(ModelInfo):
     """Configuration of a stage model.
 
     Parameters

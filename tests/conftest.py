@@ -7,7 +7,7 @@ import yaml
 from sunflare.engine import RunEngine
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import DetectorModelInfo, LightModelInfo, StageModelInfo
+from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
 
 @pytest.fixture
@@ -27,16 +27,16 @@ def bus() -> Generator[VirtualBus, None, None]:
 
 
 @pytest.fixture
-def motor_config(config_path: Path) -> dict[str, StageModelInfo]:
+def motor_config(config_path: Path) -> dict[str, MotorModelInfo]:
     """Return the motors configuration."""
-    motors: dict[str, StageModelInfo] = {}
+    motors: dict[str, MotorModelInfo] = {}
 
     motor_config_path = str(config_path / "test_motor_config.yaml")
 
     with open(motor_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
         for name, values in config_dict["models"].items():
-            config = StageModelInfo(**values)
+            config = MotorModelInfo(**values)
             motors[name] = config
     return motors
 

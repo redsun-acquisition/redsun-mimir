@@ -51,7 +51,6 @@ def light_widget_uc2() -> None:
 
     config = RedSunSessionInfo(
         session=config_dict["session"],
-        engine=config_dict["engine"],
         frontend=config_dict["frontend"],
         models=models_info,  # type: ignore
         controllers=ctrl_info,  # type: ignore

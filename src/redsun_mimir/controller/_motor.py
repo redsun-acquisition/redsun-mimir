@@ -4,8 +4,11 @@ from queue import Queue
 from threading import Thread
 from typing import TYPE_CHECKING
 
+import in_n_out as ino
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
+
+from redsun_mimir.model import MotorModelInfo  # noqa: TC001
 
 from ..protocols import MotorProtocol
 
@@ -16,6 +19,9 @@ if TYPE_CHECKING:
     from sunflare.model import ModelProtocol
 
     from redsun_mimir.controller import MotorControllerInfo
+
+
+store = ino.Store.create("MotorModelInfo")
 
 
 class MotorController(Loggable):
@@ -100,6 +106,20 @@ class MotorController(Loggable):
         self._daemon.start()
 
         self.logger.info("Stage controller initialized")
+
+        ino.Store.get_store("MotorModelInfo").register_provider(
+            self.models_info, type_hint=dict[str, MotorModelInfo]
+        )
+
+    def models_info(self) -> dict[str, MotorModelInfo]:
+        """Get the models information.
+
+        Returns
+        -------
+        dict[str, MotorModelInfo]
+            Mapping of model names to model information.
+        """
+        return {name: model.model_info for name, model in self._motors.items()}
 
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.

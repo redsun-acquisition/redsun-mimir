@@ -4,19 +4,19 @@ from typing import Any
 import pytest
 import yaml
 
-from redsun_mimir.model import LightModelInfo, StageModelInfo
+from redsun_mimir.model import LightModelInfo, MotorModelInfo
 
 
 def test_mock_motor_model_info(config_path: Path) -> None:
     """Test the MockStageModel information model."""
-    config: StageModelInfo
+    config: MotorModelInfo
 
     motor_config_path = str(config_path / "test_motor_config.yaml")
 
     with open(motor_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
         for _, values in config_dict["models"].items():
-            config = StageModelInfo(**values)
+            config = MotorModelInfo(**values)
 
     assert config.axis == ["X", "Y", "Z"]
     assert config.step_sizes == {"X": 100.0, "Y": 100.0, "Z": 100.0}

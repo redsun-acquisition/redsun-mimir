@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
     from event_model.documents import Dtype
 
-    from redsun_mimir.model import DetectorModelInfo, StageModelInfo
+    from redsun_mimir.model import DetectorModelInfo, MotorModelInfo
 
     from ._config import MimirLaserInfo
 
@@ -420,7 +420,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         "Z": 3,
     }
 
-    def __init__(self, name: str, model_info: StageModelInfo) -> None:
+    def __init__(self, name: str, model_info: MotorModelInfo) -> None:
         if model_info.egu not in ["nm", "mm", "um", "μm"]:
             err_msg = (
                 f"Invalid engineering unit for Mimir motor: {model_info.egu}. "
@@ -519,7 +519,7 @@ class MimirMotorModel(MotorProtocol, Loggable):
         return self._name
 
     @property
-    def model_info(self) -> StageModelInfo:  # noqa: D102
+    def model_info(self) -> MotorModelInfo:  # noqa: D102
         return self._model_info
 
     def shutdown(self) -> None: ...

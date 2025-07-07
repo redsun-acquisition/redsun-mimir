@@ -29,7 +29,8 @@ requires-python = ">=3.10"
 dependencies = [
     "sunflare>=0.6.1",
     "napari>=0.6.2",
-    "superqt"
+    "superqt",
+    "in-n-out"
 ]
 
 [project.optional-dependencies]
