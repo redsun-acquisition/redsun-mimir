@@ -13,12 +13,12 @@ models:
     sensor_shape: [100, 100]
     pixel_size: [1, 1]
 controllers:
-  ImageController:
+  DetectorController:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
 views:
-  ImageWidget:
+  DetectorWidget:
     plugin_name: test
     plugin_id: test
     # doesn't have any effect;

@@ -9,16 +9,16 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import DetectorControllerInfo, ImageController
+from redsun_mimir.controller import DetectorController, DetectorControllerInfo
 from redsun_mimir.model import DetectorModelInfo
 from redsun_mimir.model.youseetoo import MimirDetectorModel
-from redsun_mimir.widget import ImageWidget, ImageWidgetInfo
+from redsun_mimir.widget import DetectorWidget, ImageWidgetInfo
 
 
 def image_widget_uc2() -> None:
     """Run a local UC2 example.
 
-    Launches a Qt ``ImageWidget`` app
+    Launches a Qt ``DetectorWidget`` app
     with a UC2 device configuration.
     """
     logger = logging.getLogger("redsun")
@@ -55,12 +55,12 @@ def image_widget_uc2() -> None:
 
     bus = VirtualBus()
 
-    ctrl = ImageController(
-        config.controllers["ImageController"],  # type: ignore
+    ctrl = DetectorController(
+        config.controllers["DetectorController"],  # type: ignore
         mock_models,
         bus,
     )
-    widget = ImageWidget(config.views["ImageWidget"], bus)
+    widget = DetectorWidget(config.views["DetectorWidget"], bus)
 
     ctrl.registration_phase()
     widget.registration_phase()

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 store = ino.Store.create("DetectorModelInfo")
 
 
-class ImageController(Loggable):
+class DetectorController(Loggable):
     """Controller for detector configuration.
 
     Parameters
@@ -91,10 +91,10 @@ class ImageController(Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["ImageWidget"]["sigConfigRequest"].connect(
+        self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect(
             self._provide_configuration
         )
-        self.virtual_bus["ImageWidget"]["sigPropertyChanged"].connect(self.configure)
+        self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
 
     def _provide_configuration(self) -> None:
         for name in self.detectors.keys():

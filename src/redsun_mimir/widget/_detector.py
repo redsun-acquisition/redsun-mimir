@@ -74,7 +74,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class ImageWidget(BaseQtWidget, Loggable):
+class DetectorWidget(BaseQtWidget, Loggable):
     """Widget for rendering acquired image data and control detector settings.
 
     Parameters
@@ -126,14 +126,14 @@ class ImageWidget(BaseQtWidget, Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["ImageController"]["sigNewDetectorDescriptor"].connect(
+        self.virtual_bus["DetectorController"]["sigNewDetectorDescriptor"].connect(
             self._update_detectors_listing
         )
-        self.virtual_bus["ImageController"]["sigNewDetectorDescriptorReading"].connect(
-            self._update_parameter
-        )
+        self.virtual_bus["DetectorController"][
+            "sigNewDetectorDescriptorReading"
+        ].connect(self._update_parameter)
         # Add confirmation signal connection
-        self.virtual_bus["ImageController"]["sigConfigurationConfirmed"].connect(
+        self.virtual_bus["DetectorController"]["sigConfigurationConfirmed"].connect(
             self._handle_configuration_result
         )
         self.sigConfigRequest.emit()
