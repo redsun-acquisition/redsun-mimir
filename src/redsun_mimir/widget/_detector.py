@@ -109,6 +109,12 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
         )
+
+        # TODO: this should be replaced with
+        # a custom viewer by using the napari
+        # components rather than the
+        # original napari window;
+        # for now we'll go with this
         self.viewer_window = Window(
             viewer=self.viewer_model,
             show=False,
@@ -213,6 +219,4 @@ class DetectorWidget(BaseQtWidget, Loggable):
             model.confirm_change(setting_name, success)
 
             if not success:
-                self.logger.warning(
-                    f"Failed to configure {setting_name} for {detector}"
-                )
+                self.logger.error(f"Failed to configure {setting_name} for {detector}")

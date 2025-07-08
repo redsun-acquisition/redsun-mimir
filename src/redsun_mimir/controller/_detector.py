@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 
     from ._config import DetectorControllerInfo
 
-store = ino.Store.create("DetectorModelInfo")
+info_store = ino.Store.create("DetectorModelInfo")
+config_store = ino.Store.create("DetectorConfiguration")
 
 
 class DetectorController(Loggable):
@@ -77,6 +78,8 @@ class DetectorController(Loggable):
             if isinstance(model, DetectorProtocol)
         }
 
+        info_store.register_provider(self.models_info)
+
     def models_info(self) -> dict[str, DetectorModelInfo]:
         """Get the models information.
 
@@ -92,15 +95,18 @@ class DetectorController(Loggable):
 
     def connection_phase(self) -> None:
         self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect(
-            self._provide_configuration
+            self.models_configuration
         )
         self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
 
-    def _provide_configuration(self) -> None:
+    def models_configuration(self) -> dict[str, dict[str, Descriptor | Reading[Any]]]:
+        """Get the configuration of all detectors."""
         for name in self.detectors.keys():
             self.describe_configuration(name)
         for name in self.detectors.keys():
             self.read_configuration(name)
+
+        return {}
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         """Configure a detector with confirmation feedback.
