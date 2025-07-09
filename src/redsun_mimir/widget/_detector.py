@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import in_n_out as ino
 import numpy as np
 from napari.components import ViewerModel
 from napari.window import Window
@@ -10,6 +11,8 @@ from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
+from redsun_mimir.common import ConfigurationDict  # noqa: TC001
+from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -20,10 +23,13 @@ from redsun_mimir.utils.qt import DescriptorTreeView
 if TYPE_CHECKING:
     from typing import Any
 
-    from bluesky.protocols import Descriptor, Reading
     from napari.layers import Image
-    from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
+
+    from ._config import DetectorWidgetInfo
+
+info_store = ino.Store.get_store("DetectorModelInfo")
+config_store = ino.Store.get_store("DetectorConfiguration")
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -87,14 +93,18 @@ class DetectorWidget(BaseQtWidget, Loggable):
         Additional positional arguments.
     **kwargs : ``Any``
         Additional keyword arguments.
+
+    Attributes
+    ----------
+    sigPropertyChanged : ``Signal[str, dict[str, object]]``
+        Signal emitted when a property of a detector is changed.
     """
 
-    sigConfigRequest = Signal()
     sigPropertyChanged = Signal(str, dict[str, object])
 
     def __init__(
         self,
-        view_info: ViewInfoProtocol,
+        view_info: DetectorWidgetInfo,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
@@ -128,77 +138,71 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
+        # Inject the setup_ui method to fill the widget with light sources
+        setup_ui = info_store.inject(self.setup_ui)
+        setup_ui()
+
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["DetectorController"]["sigNewDetectorDescriptor"].connect(
-            self._update_detectors_listing
-        )
-        self.virtual_bus["DetectorController"][
-            "sigNewDetectorDescriptorReading"
-        ].connect(self._update_parameter)
-        # Add confirmation signal connection
         self.virtual_bus["DetectorController"]["sigConfigurationConfirmed"].connect(
             self._handle_configuration_result
         )
-        self.sigConfigRequest.emit()
 
-    def _update_detectors_listing(
-        self, detector: str, descriptor: dict[str, Descriptor]
-    ) -> None:
-        """Update the detector listing in the viewer.
+    def setup_ui(self, models_info: dict[str, DetectorModelInfo]) -> None:
+        """Initialize the user interface.
 
         Parameters
         ----------
-        detector : ``str``
-            The name of the detector.
-        descriptor : ``dict[str, Descriptor]``
-            The descriptor containing information about the detectors.
+        models_info : ``dict[str, DetectorModelInfo]``
+            Mapping of detector names to their model information.
+            Injected from the `DetectorController`.
         """
-        # TODO: dtype should be provided either from the descriptor or from the model info
-        layer = self.viewer_model.add_image(
-            np.zeros((100, 100), dtype=np.uint8),
-            name=detector,
-        )
-        layer._overlays.update(
-            {
-                "roi_box": ROIInteractionBoxOverlay(
-                    bounds=((0, 0), layer.data.shape), handles=True
-                )
-            }
-        )
-        layer.mouse_drag_callbacks.append(resize_selection_box)
-        layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-        self.settings_controls[detector] = SettingsControlWidget(layer)
-        self.settings_controls[detector].tree_view.model().update_structure(descriptor)
-        self.settings_controls[detector].tree_view.model().sigPropertyChanged.connect(
-            lambda setting, value: self.sigPropertyChanged.emit(
-                detector, {setting: value}
+        self._detectors_info = models_info
+
+        def _get_configuration(config: ConfigurationDict) -> ConfigurationDict:
+            """Inject the configuration data from the controller."""
+            return config
+
+        config = config_store.inject(_get_configuration)()
+
+        for detector, info in self._detectors_info.items():
+            # TODO: how to handle different data types?
+            descriptor = config["descriptors"][detector]
+            reading = config["readings"][detector]
+            layer = self.viewer_model.add_image(
+                np.zeros(shape=info.sensor_shape, dtype=np.uint8),
             )
-        )
+            layer._overlays.update(
+                {
+                    "roi_box": ROIInteractionBoxOverlay(
+                        bounds=((0, 0), layer.data.shape), handles=True
+                    )
+                }
+            )
+            layer.mouse_drag_callbacks.append(resize_selection_box)
+            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
+            self.settings_controls[detector] = SettingsControlWidget(layer)
+            self.settings_controls[detector].tree_view.model().update_structure(
+                descriptor
+            )
+            self.settings_controls[detector].tree_view.model().update_readings(reading)
+            self.settings_controls[
+                detector
+            ].tree_view.model().sigPropertyChanged.connect(
+                lambda setting, value: self.sigPropertyChanged.emit(
+                    detector, {setting: value}
+                )
+            )
 
-        self.viewer_window.add_dock_widget(
-            self.settings_controls[detector],
-            name=f"{detector}",
-            allowed_areas=["right"],
-            area="right",
-            tabify=True,
-        )
-
-    def _update_parameter(
-        self, detector: str, reading: dict[str, Reading[Any]]
-    ) -> None:
-        """Update the parameters of a detector.
-
-        Parameters
-        ----------
-        detector : ``str``
-            The name of the detector.
-        reading : ``dict[str, Reading[Any]]``
-            The reading containing the updated parameters.
-        """
-        self.settings_controls[detector].tree_view.model().update_readings(reading)
+            self.viewer_window.add_dock_widget(
+                self.settings_controls[detector],
+                name=f"{detector}",
+                allowed_areas=["right"],
+                area="right",
+                tabify=True,
+            )
 
     def _handle_configuration_result(
         self, detector: str, setting_name: str, success: bool

@@ -1,7 +1,7 @@
 from ._acquisition import AcquisitionWidget
 from ._config import (
     AcquisitionWidgetInfo,
-    ImageWidgetInfo,
+    DetectorWidgetInfo,
     LightWidgetInfo,
     StageWidgetInfo,
 )
@@ -13,7 +13,7 @@ __all__ = [
     "AcquisitionWidget",
     "AcquisitionWidgetInfo",
     "DetectorWidget",
-    "ImageWidgetInfo",
+    "DetectorWidgetInfo",
     "MotorWidget",
     "StageWidgetInfo",
     "LightWidget",

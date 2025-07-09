@@ -8,6 +8,7 @@ from bluesky.utils import maybe_await
 from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
+from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
 
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
     from ._config import DetectorControllerInfo
+
 
 info_store = ino.Store.create("DetectorModelInfo")
 config_store = ino.Store.create("DetectorConfiguration")
@@ -42,14 +44,6 @@ class DetectorController(Loggable):
         Signal for new configuration.
         - ``str``: detector name.
         - ``dict[str, object]``: new configuration.
-    sigNewDetectorDescriptorReading : ``Signal[str, dict[str, object]]``
-        Signal for detector configuration reading.
-        - ``str``: detector name.
-        - ``dict[str, object]``: configuration reading.
-    sigNewDetectorDescriptor : ``Signal[str, dict[str, object]]``
-        Signal for detector configuration descriptor.
-        - ``str``: detector name.
-        - ``dict[str, object]``: configuration descriptor.
     sigConfigurationConfirmed : ``Signal[str, str, bool]``
         Signal for configuration confirmation.
         - ``str``: detector name.
@@ -59,8 +53,6 @@ class DetectorController(Loggable):
     """
 
     sigNewConfiguration = Signal(str, dict[str, object])
-    sigNewDetectorDescriptorReading = Signal(str, dict[str, object])
-    sigNewDetectorDescriptor = Signal(str, dict[str, object])
     sigConfigurationConfirmed = Signal(str, str, bool)
 
     def __init__(
@@ -79,6 +71,7 @@ class DetectorController(Loggable):
         }
 
         info_store.register_provider(self.models_info)
+        config_store.register_provider(self.models_configuration)
 
     def models_info(self) -> dict[str, DetectorModelInfo]:
         """Get the models information.
@@ -94,19 +87,23 @@ class DetectorController(Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["DetectorWidget"]["sigConfigRequest"].connect(
-            self.models_configuration
-        )
         self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
 
-    def models_configuration(self) -> dict[str, dict[str, Descriptor | Reading[Any]]]:
+    def models_configuration(self) -> ConfigurationDict:
         """Get the configuration of all detectors."""
-        for name in self.detectors.keys():
-            self.describe_configuration(name)
-        for name in self.detectors.keys():
-            self.read_configuration(name)
+        descriptors = {
+            name: self.describe_configuration(name) for name in self.detectors.keys()
+        }
+        readings = {
+            name: self.read_configuration(name) for name in self.detectors.keys()
+        }
 
-        return {}
+        config: ConfigurationDict = {
+            "descriptors": descriptors,
+            "readings": readings,
+        }
+
+        return config
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         """Configure a detector with confirmation feedback.
@@ -148,39 +145,41 @@ class DetectorController(Loggable):
                 self.logger.error(f"Exception configuring '{key}' of {detector}: {e}")
                 self.sigConfigurationConfirmed.emit(detector, key, False)
 
-    def read_configuration(self, detector: str) -> None:
+    def read_configuration(self, detector: str) -> dict[str, Reading[Any]]:
         """Read the configuration of a detector.
-
-        The configuration is emitted via the ``sigNewDetectorDescriptorReading`` signal.
 
         Parameters
         ----------
         detector : ``str``
             Detector name.
 
+        Returns
+        -------
+        dict[str, Reading[Any]]
+            Mapping of configuration parameters to their readings.
         """
 
         async def _async_helper() -> dict[str, Reading[Any]]:
             return await maybe_await(self.detectors[detector].read_configuration())
 
-        self.sigNewDetectorDescriptorReading.emit(
-            detector, asyncio.run(_async_helper())
-        )
+        return asyncio.run(_async_helper())
 
-    def describe_configuration(self, detector: str) -> None:
+    def describe_configuration(self, detector: str) -> dict[str, Descriptor]:
         """Read the configuration description of a detector.
-
-        The configuration description is emitted
-        via the ``sigNewDetectorDescriptor`` signal.
 
         Parameters
         ----------
         detector : ``str``
             Detector name.
+
+        Returns
+        -------
+        dict[str, Descriptor]
+            Mapping of configuration parameters to their descriptors.
 
         """
 
         async def _async_helper() -> dict[str, Descriptor]:
             return await maybe_await(self.detectors[detector].describe_configuration())
 
-        self.sigNewDetectorDescriptor.emit(detector, asyncio.run(_async_helper()))
+        return asyncio.run(_async_helper())

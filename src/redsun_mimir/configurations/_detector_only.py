@@ -12,10 +12,10 @@ from sunflare.virtual import VirtualBus
 from redsun_mimir.controller import DetectorController, DetectorControllerInfo
 from redsun_mimir.model import DetectorModelInfo
 from redsun_mimir.model.microscope import SimulatedCameraModel
-from redsun_mimir.widget import DetectorWidget, ImageWidgetInfo
+from redsun_mimir.widget import DetectorWidget, DetectorWidgetInfo
 
 
-def image_widget() -> None:
+def detector_widget() -> None:
     """Run a local mock example.
 
     Launches a Qt ``DetectorWidget`` app
@@ -36,8 +36,9 @@ def image_widget() -> None:
         name: DetectorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
-    widget_info: dict[str, ImageWidgetInfo] = {
-        name: ImageWidgetInfo(**values) for name, values in config_dict["views"].items()
+    widget_info: dict[str, DetectorWidgetInfo] = {
+        name: DetectorWidgetInfo(**values)
+        for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(
@@ -60,7 +61,7 @@ def image_widget() -> None:
         mock_models,
         bus,
     )
-    widget = DetectorWidget(config.views["DetectorWidget"], bus)
+    widget = DetectorWidget(config.views["DetectorWidget"], bus)  # type: ignore
 
     ctrl.registration_phase()
     widget.registration_phase()

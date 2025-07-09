@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field, setters
-from sunflare.config import ViewInfo, WidgetPositionTypes
+from sunflare.config import ViewInfo
 
 
 @define
@@ -35,14 +35,17 @@ class AcquisitionWidgetInfo(ViewInfo):
 
 
 @define
-class ImageWidgetInfo(ViewInfo):
-    """Image widget information.
+class DetectorWidgetInfo(ViewInfo):
+    """Detector widget information.
 
-    Overrides the default position to ensure it is
-    always put as the center widget in the main window.
+    Parameters
+    ----------
+    viewer_title : str
+        Title of the viewer.
+        Defaults to "Image viewer".
     """
 
-    position: WidgetPositionTypes = field(
-        default=WidgetPositionTypes.CENTER,
+    viewer_title: str = field(
+        default="Image viewer",
         on_setattr=setters.frozen,
     )

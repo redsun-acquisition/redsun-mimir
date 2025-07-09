@@ -2,8 +2,8 @@ from argparse import ArgumentParser, Namespace
 
 from redsun_mimir.configurations import (
     acquisition_widget,
-    image_widget,
-    image_widget_uc2,
+    detector_widget,
+    detector_widget_uc2,
     light_widget,
     light_widget_uc2,
     stage_widget,
@@ -25,9 +25,9 @@ def main() -> None:
     subparsers.add_parser("stage-uc2", help="Run the stage widget with UC2")
     subparsers.add_parser("light", help="Run the light widget")
     subparsers.add_parser("light-uc2", help="Run the light widget with UC2")
-    subparsers.add_parser("image", help="Run the image widget")
+    subparsers.add_parser("detector", help="Run the detector widget")
+    subparsers.add_parser("detector-uc2", help="Run the detector widget with UC2")
     subparsers.add_parser("acquisition", help="Run the acquisition widget")
-    subparsers.add_parser("image-uc2", help="Run the image widget with UC2")
 
     options = parser.parse_args(namespace=Options())
     if options.command == "stage":
@@ -38,10 +38,10 @@ def main() -> None:
         light_widget()
     elif options.command == "light-uc2":
         light_widget_uc2()
-    elif options.command == "image":
-        image_widget()
-    elif options.command == "image-uc2":
-        image_widget_uc2()
+    elif options.command == "detector":
+        detector_widget()
+    elif options.command == "detector-uc2":
+        detector_widget_uc2()
     elif options.command == "acquisition":
         acquisition_widget()
     else:
