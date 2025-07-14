@@ -1,23 +1,24 @@
-import inspect
-from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Annotated, Any
+from __future__ import annotations
 
-import bluesky.plans as bp
-from bluesky.utils import RunEngineInterrupted
+from collections.abc import Sequence  # noqa: TC003
+from threading import Event
+from typing import TYPE_CHECKING
+
+import bluesky.plan_stubs as bps
+from bluesky.utils import MsgGenerator  # noqa: TC002
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.model import ModelProtocol
 from sunflare.virtual import Publisher, Signal, VirtualBus
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import togglable
-
-from ._config import AcquisitionControllerInfo
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from typing import Mapping
 
-    from redsun_mimir.protocols import PlanManifest
+    from sunflare.model import ModelProtocol
+
+    from ._config import AcquisitionControllerInfo
 
 
 class AcquisitionController(Publisher, Loggable):
@@ -38,109 +39,50 @@ class AcquisitionController(Publisher, Loggable):
             for name, model in models.items()
             if isinstance(model, DetectorProtocol)
         }
-
+        self.live_event = Event()
         self.engine = RunEngine(socket_prefix="ACQ", socket=self.pub_socket)
 
-        @togglable
-        def live_count(
-            detectors: Annotated[
-                Sequence[str], [det_name for det_name in self.detectors.keys()]
-            ],
-        ) -> str | None:
-            """Start a live acquisition with the selected detectors.
-
-            Parameters
-            ----------
-            detectors : ``Sequence[str]``
-                The detectors to use in the live acquisition.
-
-            Returns
-            -------
-            ``Future | str``
-                The future object for the live acquisition.
-                If no detectors are selected, a string error message is returned.
-            """
-            if len(detectors) == 0:
-                error_msg = "No detectors selected for live count."
-                return error_msg
-            self.logger.debug("Starting live acquisition: %s", detectors)
-            dets = [self.detectors[name] for name in detectors]
-            self.engine(bp.count(dets, num=None))
-            return None
-
-        def snapshot(
-            detectors: Annotated[
-                Sequence[str], [det_name for det_name in self.detectors.keys()]
-            ],
-            frames: int,
-        ) -> str | None:
-            """Take one (or more) snapshots from each detector.
-
-            Parameters
-            ----------
-            detectors: ``Sequence[str]``
-                The detectors to take a snapshot from.
-            frames: ``int``
-                The number of snapshots to take for each detector.
-
-            Returns
-            -------
-            ``Future | str``
-                The future object for the snapshot.
-                If no detectors are selected, a string error message is returned.
-            """
-            if len(detectors) == 0:
-                error_msg = "No detectors selected for snapshot."
-                return error_msg
-            self.logger.debug("Taking snapshots: %s", detectors)
-            dets = [self.detectors[name] for name in detectors]
-            self.engine(bp.count(dets, num=frames))
-            return None
-
-        self.plans: dict[str, Callable[..., str | None]] = {
-            "Live count": live_count,
-            "Snapshot": snapshot,
-        }
+        # generate a manifest for the built-in plans
+        for plan in [self.live_count, self.snap]:
+            ...
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None:
-        self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
-            self._run_plan
-        )
-        self.virtual_bus["AcquisitionWidget"]["sigStopPlanRequest"].connect(
-            self._stop_plan
-        )
-        self.virtual_bus["AcquisitionWidget"]["sigRequestPlansManifest"].connect(
-            self._send_plans_manifest
-        )
+    def connection_phase(self) -> None: ...
 
-    def _send_plans_manifest(self) -> None:
-        manifest: dict[str, PlanManifest] = {}
-        for name, plan in self.plans.items():
-            docstr = inspect.getdoc(plan)
-            annotations = inspect.get_annotations(plan)
-            manifest.update(
-                {
-                    name: {
-                        "docstring": docstr or "No information available",
-                        "annotations": annotations,
-                        "togglable": getattr(plan, "__togglable__", False),
-                    }
-                }
-            )
-        self.sigPlansManifest.emit(manifest)
+    def live_count(self, detectors: Sequence[DetectorProtocol]) -> MsgGenerator[None]:
+        """Start a live acquisition with the selected detectors.
 
-    def _run_plan(self, plan: str, kwargs: dict[str, Any]) -> None:
-        ret = self.plans[plan](**kwargs)
-        if ret:
-            self.logger.error(ret)
+        Parameters
+        ----------
+        detectors : ``Sequence[DetectorProtocol]``
+            The detectors to use in the live acquisition.
+        """
+        self.live_event.set()
+        yield from bps.stage_all(detectors)
+        while self.live_event.is_set():
+            yield from bps.trigger_and_read(detectors, name="live-stream")
+        yield from bps.unstage_all(detectors)
 
-    def _stop_plan(self) -> None:
-        if self.engine.state == "running":
-            try:
-                self.engine.stop()
-            except RunEngineInterrupted:
-                # silently ignore the exception
-                pass
+    def snap(
+        self, detectors: Sequence[DetectorProtocol], num_frames: int = 1
+    ) -> MsgGenerator[None]:
+        """Take ``num_frames`` snapshot from each detector.
+
+        Parameters
+        ----------
+        detectors : ``Sequence[DetectorProtocol]``
+            The detectors to take a snapshot from.
+        num_frames : ``int``, optional
+            The number of snapshots to take for each detector.
+            Must be a non-zero, positive integer.
+            Default is 1.
+        """
+        if num_frames <= 0:
+            raise ValueError("Number of frames must be a positive integer.")
+
+        yield from bps.stage_all(detectors)
+        for _ in range(num_frames):
+            yield from bps.trigger_and_read(detectors, name="snap-stream")
+        yield from bps.unstage_all(detectors)

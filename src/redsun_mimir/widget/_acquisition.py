@@ -181,11 +181,11 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plans_combobox.addItems(names)
         self.plans_combobox.setCurrentText(names[0])
         for name, manifest in manifests.items():
-            is_togglable = manifest["togglable"]
-            self.plans_info[name] = manifest["docstring"]
+            is_togglable = manifest.is_toggleable
+            self.plans_info[name] = manifest.description
             layout = QtW.QFormLayout()
             groupbox = ConfigurationGroupBox()
-            annotations = manifest["annotations"]
+            annotations = manifest["annotations"]  # type: ignore
             for key, annotation in annotations.items():
                 if key == "return":
                     # skip the return argument

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 from sunflare.model import ModelProtocol
-from typing_extensions import Protocol, TypedDict, runtime_checkable
+from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from typing import Any
@@ -21,24 +20,6 @@ __all__ = [
 ]
 
 
-class PlanManifest(TypedDict):
-    """Manifest of plan metadata.
-
-    Parameters
-    ----------
-    docstring: ``str``
-        Plan docstring. Accessible via ``inspect.getdoc(plan_func)``.
-    annotations: ``dict[str, Any]``
-        Plan type annotations. Accessible via ``inspect.get_annotations(plan_func)``.
-    togglable: ``bool``
-        Whether the plan is togglable or not (usually marked via the ``togglable`` decorator).
-    """
-
-    docstring: str
-    annotations: dict[str, Any]
-    togglable: bool
-
-
 @runtime_checkable
 class Settable(Protocol):
     """Protocol for settable models.
@@ -50,7 +31,6 @@ class Settable(Protocol):
     set a value and return a status object.
     """
 
-    @abstractmethod
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a value in the model.
 
@@ -114,7 +94,6 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
 
     axis: str
 
-    @abstractmethod
     def locate(self) -> Location[Any]:
         """Return the current motor position.
 
@@ -130,7 +109,6 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
         ...
 
     @property
-    @abstractmethod
     def model_info(self) -> MotorModelInfo:  # noqa: D102
         ...
 
@@ -155,7 +133,6 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
     intensity: float | int
     enabled: bool
 
-    @abstractmethod
     def trigger(self) -> Status:
         """Toggle the activation status of the light source.
 
@@ -167,7 +144,6 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def read(self) -> dict[str, Reading[float | int | bool]]:
         """Read the current status of the light source.
 
@@ -181,7 +157,6 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
@@ -191,7 +166,6 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
         ...
 
     @property
-    @abstractmethod
     def model_info(self) -> LightModelInfo:  # noqa: D102
         ...
 
@@ -214,7 +188,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
 
     roi: tuple[int, int, int, int]
 
-    @abstractmethod
     def read(self) -> dict[str, Reading[Any]]:
         """Take a reading from the detector.
 
@@ -236,7 +209,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
@@ -258,7 +230,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def stage(self) -> Status:
         """Prepare the detector for acquisition.
 
@@ -270,7 +241,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def unstage(self) -> Status:
         """Stop the detector acquisition.
 
@@ -282,7 +252,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    @abstractmethod
     def trigger(self) -> Status:
         """Trigger a reading from the detector.
 
@@ -294,6 +263,5 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         ...
 
     @property
-    @abstractmethod
     def model_info(self) -> DetectorModelInfo:  # noqa: D102
         ...

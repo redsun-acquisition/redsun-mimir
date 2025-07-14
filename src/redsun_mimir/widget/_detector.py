@@ -169,6 +169,8 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
         for detector, info in self._detectors_info.items():
             # TODO: how to handle different data types?
+            # the information is provided by the descriptor
+            # but only in the "describe", not "describe_configuration"
             descriptor = config["descriptors"][detector]
             reading = config["readings"][detector]
             layer = self.viewer_model.add_image(
