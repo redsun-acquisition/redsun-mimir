@@ -3,12 +3,15 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Annotated, NamedTuple, cast, get_args, get_origin
 
+import in_n_out as ino
+import magicgui.widgets as mw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
+from redsun_mimir.common import PlanManifest  # noqa: TC001
 from redsun_mimir.utils.qt import CheckableComboBox, ConfigurationGroupBox, InfoDialog
 
 if TYPE_CHECKING:
@@ -16,8 +19,6 @@ if TYPE_CHECKING:
 
     from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
-
-    from redsun_mimir.protocols import PlanManifest
 
 
 # TODO: these functions
@@ -43,10 +44,17 @@ def create_checkbox(
 
 
 def create_spinbox(
-    parent: QtW.QWidget, layout: QtW.QFormLayout, name: str, default: int
+    parent: QtW.QWidget,
+    layout: QtW.QFormLayout,
+    name: str,
+    default: int,
+    limits: tuple[int, int] | None = None,
 ) -> None:
     widget = QtW.QSpinBox(parent)
     widget.setValue(default)
+    if limits:
+        widget.setMinimum(limits[0])
+        widget.setMaximum(limits[1])
     layout.addRow(name, widget)
 
 
@@ -65,6 +73,9 @@ class PlanWidget(NamedTuple):
     def show(self) -> None:
         self.group.show()
         self.run.show()
+
+
+store = ino.Store.get_store("PlanManifest")
 
 
 class AcquisitionWidget(BaseQtWidget, Loggable):
@@ -138,6 +149,43 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plans_combobox.currentTextChanged.connect(self._on_plan_changed)
         self.setLayout(layout)
 
+        ino.Store.get_store("PlanManifest").inject(self.setup_ui)()
+
+    def setup_ui(self, manifests: set[PlanManifest]) -> None:
+        """Initialize the UI with the provided plan manifests.
+
+        Widgets are created via `magicgui`, based on the
+        plan manifest information.
+
+        Parameters
+        ----------
+        manifests : set[PlanManifest]
+            Set of plan manifests to populate the UI with.
+            Injected from `AcquisitionController`.
+        """
+        widgets: list[mw.Widget] = []
+        for manifest in manifests:
+            self.plans_info[manifest.name]
+            for pname, param in manifest.parameters.items():
+                wtype: str | None = None
+                if param.meta:
+                    if param.meta.exclude:
+                        # parameter is excluded;
+                        # skip it
+                        continue
+                if param.annotation is bool:
+                    wtype = "RadioButton"
+                widgets.append(
+                    mw.create_widget(
+                        name=pname,
+                        value=param.default,
+                        annotation=param.annotation,
+                        param_kind=param.kind,
+                        gui_only=True,
+                        widget_type=wtype,
+                    )
+                )
+
     def _on_plan_changed(self, text: str) -> None:
         for name, widget in self.plan_widgets.items():
             if name == text:
@@ -149,14 +197,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None:
-        self.virtual_bus["AcquisitionController"]["sigPlansManifest"].connect(
-            self._on_plans_manifest
-        )
-        self.virtual_bus["AcquisitionController"]["sigPlanDone"].connect(
-            self._on_plan_done
-        )
-        self.sigRequestPlansManifest.emit()
+    def connection_phase(self) -> None: ...
 
     def _on_action_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()

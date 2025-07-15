@@ -1,24 +1,28 @@
 from __future__ import annotations
 
-from collections.abc import Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence  # noqa: TC003
 from threading import Event
 from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
+import in_n_out as ino
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
-from sunflare.model import ModelProtocol
 from sunflare.virtual import Publisher, Signal, VirtualBus
 
-from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.common import PlanManifest, generate_plan_manifest
+from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
+from redsun_mimir.utils import togglable
 
 if TYPE_CHECKING:
-    from typing import Mapping
+    from typing import Any, Callable, Mapping
 
     from sunflare.model import ModelProtocol
 
     from ._config import AcquisitionControllerInfo
+
+store = ino.Store.create("PlanManifest")
 
 
 class AcquisitionController(Publisher, Loggable):
@@ -34,23 +38,29 @@ class AcquisitionController(Publisher, Loggable):
         super().__init__(virtual_bus)
         self.ctrl_info = ctrl_info
         self.virtual_bus = virtual_bus
-        self.detectors = {
-            name: model
-            for name, model in models.items()
-            if isinstance(model, DetectorProtocol)
-        }
+        self.models = models
         self.live_event = Event()
         self.engine = RunEngine(socket_prefix="ACQ", socket=self.pub_socket)
 
-        # generate a manifest for the built-in plans
-        for plan in [self.live_count, self.snap]:
-            ...
+        # type annotating "plans" seems the only way to
+        # make mypy happy here; a list comprehension
+        # would be enough but it is what it is
+        plans: list[Callable[..., MsgGenerator[Any]]] = [self.live_count, self.snap]
+        self.manifests: set[PlanManifest] = set(
+            [generate_plan_manifest(plan, models) for plan in plans]
+        )
+
+        store.register_provider(self.plans_manifests)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
+    def plans_manifests(self) -> set[PlanManifest]:
+        return self.manifests
+
     def connection_phase(self) -> None: ...
 
+    @togglable
     def live_count(self, detectors: Sequence[DetectorProtocol]) -> MsgGenerator[None]:
         """Start a live acquisition with the selected detectors.
 

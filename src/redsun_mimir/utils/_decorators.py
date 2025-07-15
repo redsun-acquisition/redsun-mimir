@@ -1,34 +1,34 @@
-from functools import wraps
-from typing import Callable, ParamSpec, TypeVar
+from typing import Any, Callable, Concatenate, ParamSpec, TypeVar, overload
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def togglable(func: Callable[P, R]) -> Callable[P, R]:
-    """Mark a plan as togglable.
+@overload
+def togglable(func: Callable[P, R]) -> Callable[P, R]: ...
+@overload
+def togglable(
+    func: Callable[Concatenate[Any, P], R],
+) -> Callable[Concatenate[Any, P], R]: ...
+def togglable(
+    func: Callable[P, R] | Callable[Concatenate[Any, P], R],
+) -> Callable[P, R] | Callable[Concatenate[Any, P], R]:
+    """Mark a function or method as togglable.
 
-    Parameters
-    ----------
-    func : ``Callable``
-        The function to be decorated.
+    "Togglable" means that the plan expects some mechanism
+    to divert the flow of execution depending on some internal state
+    which can be "toggled" by external means.
 
-    Returns
-    -------
-    ``Callable``
-        The decorated function with the ``__togglable__`` attribute set to True.
-
-    Notes
-    -----
-    This decorator adds a boolean attribute ```__togglable__``` to the function,
-    which can be used to identify plans that support toggling behavior.
-
+    For example: a live acquisition plan will be toggled on
+    when the function is called; then when the user clicks a button,
+    an internal threading.Event is cleared, which will cause
+    the plan to naturally stop.
     """
-
-    @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        return func(*args, **kwargs)
-
-    setattr(wrapper, "__togglable__", True)
-
-    return wrapper
+    # the very long type annotation seems to be the way to
+    # "eat" default arguments such as "self" or "cls"
+    # for bound methods; not sure if this has any actual effect, because
+    # in the issue below, they refer to defining two separate decorators
+    # while this is just one, simply overloaded... will have to test it out
+    # https://github.com/python/mypy/issues/13222#issuecomment-1193073470
+    setattr(func, "__togglable__", True)
+    return func
