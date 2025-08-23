@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Generator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
     Callable,
-    Generator,
-    Generic,
-    Mapping,
-    Sequence,
     TypeVar,
     get_args,
     get_origin,
@@ -26,7 +23,7 @@ T = TypeVar("T")
 
 
 @dataclass(frozen=True)
-class Meta(Generic[T]):
+class Meta:
     """Metadata for a plan parameter.
 
     Generic dataclass that can provide
@@ -50,8 +47,8 @@ class Meta(Generic[T]):
         Defaults to False.
     """
 
-    min: T | None = None
-    max: T | None = None
+    min: float | int | None = None
+    max: float | int | None = None
     choices: list[str] | None = None
     exclude: bool = False
 
@@ -80,8 +77,20 @@ class ParameterInfo:
     kind: inspect._ParameterKind
     default: Any | None = None
     origin: type[Any] | None = None
-    meta: Meta[Any] | None = None
+    meta: Meta | None = None
     choices: list[str] | None = None
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.annotation,
+                self.kind,
+                self.default,
+                self.origin,
+                self.meta,
+                frozenset(self.choices or []),
+            )
+        )
 
     @classmethod
     def from_parameter(
@@ -111,6 +120,13 @@ class ParameterInfo:
         # Extract Meta metadata from Annotated types
         meta = _extract_metadata_from_annotated(resolved_type)
 
+        # Determine the actual annotation type (inner type for containers)
+        annotation = resolved_type
+        if origin in (Sequence, list, tuple, set):
+            args = get_args(resolved_type)
+            if args and len(args) > 0:
+                annotation = args[0]  # Use inner type as annotation
+
         # Extract choices from Meta or protocol types
         choices = None
         if meta and meta.choices:
@@ -118,10 +134,10 @@ class ParameterInfo:
         elif models and _is_protocol_type(resolved_type):
             protocol_type = _extract_protocol_type(resolved_type)
             if protocol_type:
-                choices = extract_protocol_choices(protocol_type, models)
+                choices = _extract_protocol_choices(protocol_type, models)
 
         return cls(
-            annotation=resolved_type,
+            annotation=annotation,
             kind=param.kind,
             default=param.default if param.default != inspect.Parameter.empty else None,
             origin=origin,
@@ -156,8 +172,19 @@ class PlanManifest:
     parameters: dict[str, ParameterInfo]
     is_toggleable: bool = False  # For continuous plans like live_count
 
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.name,
+                self.display_name,
+                self.description,
+                frozenset(self.parameters.items()),
+                self.is_toggleable,
+            )
+        )
 
-def extract_protocol_choices(
+
+def _extract_protocol_choices(
     protocol_type: type[ModelProtocol], models: Mapping[str, ModelProtocol]
 ) -> list[str]:
     """Extract available model names for a specific protocol type.
@@ -177,7 +204,7 @@ def extract_protocol_choices(
     return [name for name, model in models.items() if isinstance(model, protocol_type)]
 
 
-def _extract_metadata_from_annotated(annotation: Any) -> Meta[Any] | None:
+def _extract_metadata_from_annotated(annotation: Any) -> Meta | None:
     """Extract Meta metadata from typing.Annotated annotations.
 
     Parameters
@@ -365,3 +392,34 @@ def generate_plan_manifest(
         parameters=parameters,
         is_toggleable=getattr(plan_func, "__togglable__", False),
     )
+
+
+def filter_models(
+    models: Mapping[str, ModelProtocol],
+    proto: type[ModelProtocol],
+    choices: Sequence[str] | None = None,
+) -> list[ModelProtocol]:
+    """Filter models by a specific protocol type.
+
+    Parameters
+    ----------
+    models : ``Mapping[str, ModelProtocol]``
+        Mapping of model names to model instances.
+    proto : ``type[ModelProtocol]``
+        The protocol type to filter for.
+    choices : ``Sequence[str]``, optional
+        If provided, return only models associated with names in this sequence.
+        Default is ``None`` (all ``proto`` models are returned).
+
+    Returns
+    -------
+    list[ModelProtocol]
+        List of model instances that implement the given protocol.
+    """
+    if choices is not None:
+        return [
+            model
+            for name, model in models.items()
+            if isinstance(model, proto) and name in choices
+        ]
+    return [model for model in models.values() if isinstance(model, proto)]

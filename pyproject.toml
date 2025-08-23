@@ -55,7 +55,11 @@ uc2 = [
     "pyserial",
     "pymmcore-plus"
 ]
+all = [
+    "redsun-mimir[microscope,uc2]",
+]
 dev = [
+    "redsun-mimir[all,pyqt]",
     "ruff",
     "mypy",
     "pytest",  # https://docs.pytest.org/en/latest/contents.html

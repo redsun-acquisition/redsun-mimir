@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, Annotated, NamedTuple, cast, get_args, get_origin
+from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING, cast
 
 import in_n_out as ino
 import magicgui.widgets as mw
+from magicgui import register_type
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from sunflare.log import Loggable
+from sunflare.model import ModelProtocol
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import PlanManifest  # noqa: TC001
-from redsun_mimir.utils.qt import CheckableComboBox, ConfigurationGroupBox, InfoDialog
+from redsun_mimir.utils.qt import InfoDialog
 
 if TYPE_CHECKING:
     from typing import Any
@@ -21,46 +24,22 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-# TODO: these functions
-# could be replaced by
-# magicgui (and they should)
-def create_combobox(
-    parent: QtW.QWidget,
-    layout: QtW.QFormLayout,
-    name: str,
-    default: list[str],
-) -> None:
-    cbox = CheckableComboBox(parent)
-    cbox.addItems(default)
-    layout.addRow(name, cbox)
+@dataclass(frozen=True)
+class PlanWidget:
+    """Helper dataclass to hold plan UI information."""
 
-
-def create_checkbox(
-    parent: QtW.QWidget, layout: QtW.QFormLayout, name: str, default: bool
-) -> None:
-    widget = QtW.QCheckBox(parent)
-    widget.setChecked(default)
-    layout.addRow(name, widget)
-
-
-def create_spinbox(
-    parent: QtW.QWidget,
-    layout: QtW.QFormLayout,
-    name: str,
-    default: int,
-    limits: tuple[int, int] | None = None,
-) -> None:
-    widget = QtW.QSpinBox(parent)
-    widget.setValue(default)
-    if limits:
-        widget.setMinimum(limits[0])
-        widget.setMaximum(limits[1])
-    layout.addRow(name, widget)
-
-
-class PlanWidget(NamedTuple):
-    group: ConfigurationGroupBox
+    group: QtW.QGroupBox
     run: QtW.QPushButton
+    container: mw.Container[Any]
+    togglable: bool
+
+    def toggle(self, status: bool) -> None:
+        if status:
+            self.group.setEnabled(False)
+            self.run.setText("Stop")
+        else:
+            self.group.setEnabled(True)
+            self.run.setText("Run")
 
     def setEnabled(self, enabled: bool) -> None:
         self.group.setEnabled(enabled)
@@ -73,6 +52,19 @@ class PlanWidget(NamedTuple):
     def show(self) -> None:
         self.group.show()
         self.run.show()
+
+    @cached_property
+    def parameters(self) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        for i in range(len(self.container)):
+            w: mw.bases.ValueWidget[Any] = self.container[i]
+            if isinstance(w.annotation, ModelProtocol):
+                # store the annotation and the current
+                # selected choices in a tuple
+                params[w.name] = (w.annotation, w.value)
+            else:
+                params[w.name] = w.value
+        return params
 
 
 store = ino.Store.get_store("PlanManifest")
@@ -90,21 +82,17 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     Attributes
     ----------
-    sigLaunchPlanRequest : ``Signal[str, Sequence[str], dict[str, Any]]``
+    sigLaunchPlanRequest : ``Signal[str, bool, dict[str, Any]]``
         Signal to launch a plan.
         - ``str``: The plan name.
-        - ``dict[str, Any]``: Additional plan-specific keyword arguments.
-    sigStopPlanRequest : ``Signal[str]``
+        - ``bool``: Whether the plan is togglable.
+        - ``dict[str, Any]``: Plan parameters.
+    sigStopPlanRequest : ``Signal``
         Signal to stop a running plan.
-        - ``str``: The plan name.
-    sigRequestPlansManifest : ``Signal``
-        Signal to request the available plans from the underlying controller.
-
     """
 
-    sigLaunchPlanRequest = Signal(str, object)
-    sigStopPlanRequest = Signal(str)
-    sigRequestPlansManifest = Signal()
+    sigLaunchPlanRequest = Signal(str, bool, object)
+    sigStopPlanRequest = Signal()
 
     def __init__(
         self,
@@ -163,28 +151,62 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             Set of plan manifests to populate the UI with.
             Injected from `AcquisitionController`.
         """
-        widgets: list[mw.Widget] = []
         for manifest in manifests:
-            self.plans_info[manifest.name]
+            self.plans_combobox.addItem(manifest.name)
+            self.plans_info[manifest.name] = manifest.description
+            layout = QtW.QVBoxLayout()
+            groupbox = QtW.QGroupBox(parent=self)
+            widgets: list[mw.Widget] = []
             for pname, param in manifest.parameters.items():
-                wtype: str | None = None
+                options: dict[str, Any] = {}
+                default = param.default
                 if param.meta:
                     if param.meta.exclude:
-                        # parameter is excluded;
-                        # skip it
+                        # skip excluded parameters
                         continue
-                if param.annotation is bool:
-                    wtype = "RadioButton"
-                widgets.append(
-                    mw.create_widget(
-                        name=pname,
-                        value=param.default,
-                        annotation=param.annotation,
-                        param_kind=param.kind,
-                        gui_only=True,
-                        widget_type=wtype,
-                    )
+                    if param.meta.min is not None:
+                        options["min"] = param.meta.min
+                    if param.meta.max is not None:
+                        options["max"] = param.meta.max
+                # TODO: understand why mypy says this is unreachable
+                if isinstance(param.annotation, ModelProtocol):  # type: ignore[unreachable]
+                    register_type(param.annotation, widget_type=mw.Select)
+                    options["choices"] = param.choices
+                    default = param.choices[0] if param.choices else default
+                widget = mw.create_widget(
+                    name=pname,
+                    value=default,
+                    annotation=param.annotation,
+                    param_kind=param.kind,
+                    options=options,
                 )
+                widgets.append(widget)
+            container = mw.Container(
+                widgets=widgets,
+            )
+            run_button = QtW.QPushButton("Run")
+            if manifest.is_toggleable:
+                run_button.setCheckable(True)
+                run_button.toggled.connect(self._on_plan_toggled)
+            else:
+                run_button.clicked.connect(self._on_plan_launch)
+
+            groupbox.hide()
+            run_button.hide()
+            if manifest.name == self.plans_combobox.currentText():
+                groupbox.show()
+                run_button.show()
+
+            layout.addWidget(container.native)
+            groupbox.setLayout(layout)
+            self.groups_layout.addWidget(groupbox)
+            self.button_layout.addWidget(run_button)
+            self.plan_widgets[manifest.name] = PlanWidget(
+                group=groupbox,
+                run=run_button,
+                container=container,
+                togglable=manifest.is_toggleable,
+            )
 
     def _on_plan_changed(self, text: str) -> None:
         for name, widget in self.plan_widgets.items():
@@ -199,78 +221,37 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def connection_phase(self) -> None: ...
 
-    def _on_action_toggled(self, toggled: bool) -> None:
+    def _on_plan_toggled(self, toggled: bool) -> None:
+        """Toggle the execution of a plan.
+
+        Parameters
+        ----------
+        toggled : bool
+            Whether the plan is now toggled on or off.
+        """
         plan = self.plans_combobox.currentText()
-        self.plans_combobox.setEnabled(not toggled)
-        self.plan_widgets[plan].group.setEnabled(not toggled)
+        self.plan_widgets[plan].toggle(toggled)
         if toggled:
-            configuration = self.plan_widgets[plan].group.configuration()
-            self.sigLaunchPlanRequest.emit(plan, configuration)
-            self.plan_widgets[plan].run.setText("Stop")
+            togglable, parameters = (
+                self.plan_widgets[plan].togglable,
+                self.plan_widgets[plan].parameters,
+            )
+            self.logger.debug(f"Launching {plan}")
+            self.logger.debug(f"Parameters: {parameters}")
+            self.sigLaunchPlanRequest.emit(plan, togglable, parameters)
         else:
-            self.sigStopPlanRequest.emit(plan)
-            self.plan_widgets[plan].run.setText("Run")
+            self.sigStopPlanRequest.emit()
+            self.plan_widgets[plan].setEnabled(True)
 
-    def _on_action_requested(self) -> None:
+    def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()
-        configuration = self.plan_widgets[plan].group.configuration()
-        self.sigLaunchPlanRequest.emit(plan, configuration)
-        self.plan_widgets[plan].setEnabled(False)
-
-    def _on_plans_manifest(self, manifests: dict[str, PlanManifest]) -> None:
-        names = list(manifests.keys())
-        self.plans_combobox.addItems(names)
-        self.plans_combobox.setCurrentText(names[0])
-        for name, manifest in manifests.items():
-            is_togglable = manifest.is_toggleable
-            self.plans_info[name] = manifest.description
-            layout = QtW.QFormLayout()
-            groupbox = ConfigurationGroupBox()
-            annotations = manifest["annotations"]  # type: ignore
-            for key, annotation in annotations.items():
-                if key == "return":
-                    # skip the return argument
-                    continue
-                if get_origin(annotation) is Annotated:
-                    # annotated type
-                    args = get_args(annotation)
-                    type_hint = args[0]
-                    metadata = args[1:]
-                    # TODO: how to treat metadata
-                    # for non-sequence types?
-                    if get_origin(type_hint) in (Sequence, Iterable):
-                        create_combobox(self, layout, key, metadata[-1])
-                    elif type_hint is bool:
-                        create_checkbox(self, layout, key, False)
-                    elif type_hint is int:
-                        create_spinbox(self, layout, key, 1)
-                    else:
-                        self.logger.warning("Unsupported type %s, skipping.", type_hint)
-                else:
-                    if annotation is bool:
-                        create_checkbox(self, layout, key, False)
-                    elif annotation is int:
-                        create_spinbox(self, layout, key, 1)
-                    else:
-                        self.logger.warning("Unsupported type %s, skipping.", type_hint)
-
-            run_button = QtW.QPushButton("Run")
-            if is_togglable:
-                run_button.setCheckable(True)
-                run_button.toggled.connect(self._on_action_toggled)
-            else:
-                run_button.clicked.connect(self._on_action_requested)
-
-            groupbox.hide()
-            run_button.hide()
-            if name == self.plans_combobox.currentText():
-                groupbox.show()
-                run_button.show()
-
-            groupbox.setLayout(layout)
-            self.groups_layout.addWidget(groupbox)
-            self.button_layout.addWidget(run_button)
-            self.plan_widgets[name] = PlanWidget(groupbox, run_button)
+        togglable, parameters = (
+            self.plan_widgets[plan].togglable,
+            self.plan_widgets[plan].parameters,
+        )
+        self.logger.debug(f"Launching {plan}")
+        self.logger.debug(f"Parameters: {parameters}")
+        self.sigLaunchPlanRequest.emit(plan, togglable, parameters)
 
     def _on_plan_done(self) -> None:
         plan = self.plans_combobox.currentText()
