@@ -59,6 +59,9 @@ class AcquisitionController(Loggable):
         self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )
+        self.virtual_bus["AcquisitionWidget"]["sigStopPlanRequest"].connect(
+            self.stop_plan
+        )
 
     def plans_manifests(self) -> set[PlanManifest]:
         return self.manifests
@@ -74,12 +77,10 @@ class AcquisitionController(Loggable):
         """
         self.logger.debug("Starting live count acquisition.")
         yield from bps.open_run()
-        yield from bps.create(name="live-count")
         yield from bps.stage_all(*detectors)
         while self.live_event.is_set():
-            yield from bps.broadcast_msg("read", detectors)
+            yield from bps.trigger_and_read(detectors, name="live")
         yield from bps.unstage_all(*detectors)
-        yield from bps.save()
         yield from bps.close_run(exit_status="success")
         self.logger.debug("Live count acquisition stopped.")
 
@@ -101,12 +102,10 @@ class AcquisitionController(Loggable):
             raise ValueError("Number of frames must be a positive integer.")
 
         yield from bps.open_run()
-        yield from bps.create(name="snap-stream")
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
-            yield from bps.broadcast_msg("read", detectors)
+            yield from bps.trigger_and_read(detectors, name="snap")
         yield from bps.unstage_all(*detectors)
-        yield from bps.save()
         yield from bps.close_run(exit_status="success")
 
     def launch_plan(self, plan: str, togglable: bool, kwargs: dict[str, Any]) -> None:

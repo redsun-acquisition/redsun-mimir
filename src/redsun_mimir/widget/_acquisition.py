@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
 from typing import TYPE_CHECKING, cast
 
 import in_n_out as ino
@@ -53,7 +52,7 @@ class PlanWidget:
         self.group.show()
         self.run.show()
 
-    @cached_property
+    @property
     def parameters(self) -> dict[str, Any]:
         params: dict[str, Any] = {}
         for i in range(len(self.container)):
@@ -169,8 +168,8 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                     if param.meta.max is not None:
                         options["max"] = param.meta.max
                 # TODO: understand why mypy says this is unreachable
-                if isinstance(param.annotation, ModelProtocol):  # type: ignore[unreachable]
-                    register_type(param.annotation, widget_type=mw.Select)
+                if isinstance(param.annotation, ModelProtocol):
+                    register_type(param.annotation, widget_type=mw.Select)  # type: ignore[unreachable]
                     options["choices"] = param.choices
                     default = param.choices[0] if param.choices else default
                 widget = mw.create_widget(

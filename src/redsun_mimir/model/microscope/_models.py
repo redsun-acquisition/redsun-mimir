@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
@@ -367,39 +368,53 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         return s
 
     def describe(self) -> dict[str, Descriptor]:
-        template = "{}:{}"
         width, height = self.roi[2] - self.roi[0], self.roi[3] - self.roi[1]
-        return {
-            template.format(self.name, "buffer"): {
-                "source": "data",
-                "dtype": "array",
-                "shape": [width, height],
-            },
-            template.format(self.name, "roi"): {
-                "source": "data",
-                "dtype": "number",
-                "shape": [4],
-            },
-        }
+        return OrderedDict(
+            [
+                (
+                    f"{self.name}:buffer",
+                    {
+                        "source": "data",
+                        "dtype": "array",
+                        "shape": [width, height],
+                    },
+                ),
+                (
+                    f"{self.name}:roi",
+                    {
+                        "source": "data",
+                        "dtype": "number",
+                        "shape": [4],
+                    },
+                ),
+            ]
+        )
 
     def read(self) -> dict[str, Reading[Any]]:
         content = self._queue.get()
-        template = "{}:{}"
         try:
             value, timestamp = content
         except Exception:
             value = content[0]
             timestamp = time.time()
-        return {
-            template.format(self.name, "buffer"): {
-                "value": value,
-                "timestamp": timestamp,
-            },
-            template.format(self.name, "roi"): {
-                "value": self.roi,
-                "timestamp": timestamp,
-            },
-        }
+        return OrderedDict(
+            [
+                (
+                    f"{self.name}:buffer",
+                    {
+                        "value": value,
+                        "timestamp": timestamp,
+                    },
+                ),
+                (
+                    f"{self.name}:roi",
+                    {
+                        "value": self.roi,
+                        "timestamp": timestamp,
+                    },
+                ),
+            ]
+        )
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptor = self.model_info.describe_configuration("model_info/readonly")
@@ -495,6 +510,9 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         )
 
         return reading
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}:{self.name}"
 
     def shutdown(self) -> None:
         SimulatedCamera.shutdown(self)
