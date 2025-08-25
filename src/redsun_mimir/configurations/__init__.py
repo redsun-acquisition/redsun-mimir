@@ -1,4 +1,5 @@
 from ._acquisition_only import acquisition_widget
+from ._acquisition_only_uc2 import acquisition_widget_uc2
 from ._detector_only import detector_widget
 from ._detector_only_uc2 import detector_widget_uc2
 from ._light_only import light_widget
@@ -8,6 +9,7 @@ from ._motor_only_uc2 import stage_widget_uc2
 
 __all__ = [
     "acquisition_widget",
+    "acquisition_widget_uc2",
     "stage_widget",
     "light_widget",
     "detector_widget",

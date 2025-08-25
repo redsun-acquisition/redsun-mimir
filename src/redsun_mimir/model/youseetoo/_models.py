@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
     from event_model.documents import Dtype
+    from numpy.typing import NDArray
 
     from redsun_mimir.model import DetectorModelInfo, MotorModelInfo
 
@@ -700,27 +701,38 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         `dict[str, Reading[Any]]`
             Dictionary with the current state of the detector.
         """
-        timestamp = time.time()
+        buffer: NDArray[Any]
+        timestamp: float
+        self.logger.debug("Reading image from detector %s.", self.name)
+        while True:
+            try:
+                buffer = self._core.getLastImage()
+                timestamp = time.time()
+                break
+            except IndexError:
+                # no image available yet
+                ...
         return {
-            "buffer": {
-                "value": self._core.popNextImage(),
+            f"{self.name}:buffer": {
+                "value": buffer,
                 "timestamp": timestamp,
             },
-            "roi": {
+            f"{self.name}:roi": {
                 "value": self.roi,
                 "timestamp": timestamp,
             },
         }
 
     def describe(self) -> dict[str, Descriptor]:
+        width, height = self.roi[2] - self.roi[0], self.roi[3] - self.roi[1]
         return {
-            "buffer": {
-                "source": self.name,
+            f"{self.name}:buffer": {
+                "source": "data",
                 "dtype": "array",
-                "shape": [None, None],
+                "shape": [width, height],
             },
-            "roi": {
-                "source": self.name,
+            f"{self.name}:roi": {
+                "source": "data",
                 "dtype": "array",
                 "shape": [4],
             },

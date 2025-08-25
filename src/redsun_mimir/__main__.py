@@ -1,14 +1,6 @@
 from argparse import ArgumentParser, Namespace
 
-from redsun_mimir.configurations import (
-    acquisition_widget,
-    detector_widget,
-    detector_widget_uc2,
-    light_widget,
-    light_widget_uc2,
-    stage_widget,
-    stage_widget_uc2,
-)
+import redsun_mimir.configurations as configurations
 
 
 class Options(Namespace):
@@ -28,22 +20,25 @@ def main() -> None:
     subparsers.add_parser("detector", help="Run the detector widget")
     subparsers.add_parser("detector-uc2", help="Run the detector widget with UC2")
     subparsers.add_parser("acquisition", help="Run the acquisition widget")
+    subparsers.add_parser("acquisition-uc2", help="Run the acquisition widget with UC2")
 
     options = parser.parse_args(namespace=Options())
     if options.command == "stage":
-        stage_widget()
+        configurations.stage_widget()
     elif options.command == "stage-uc2":
-        stage_widget_uc2()
+        configurations.stage_widget_uc2()
     elif options.command == "light":
-        light_widget()
+        configurations.light_widget()
     elif options.command == "light-uc2":
-        light_widget_uc2()
+        configurations.light_widget_uc2()
     elif options.command == "detector":
-        detector_widget()
+        configurations.detector_widget()
     elif options.command == "detector-uc2":
-        detector_widget_uc2()
+        configurations.detector_widget_uc2()
     elif options.command == "acquisition":
-        acquisition_widget()
+        configurations.acquisition_widget()
+    elif options.command == "acquisition-uc2":
+        configurations.acquisition_widget_uc2()
     else:
         parser.print_help()
 
