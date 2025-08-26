@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
 import in_n_out as ino
-from bluesky.plans import count
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
@@ -105,7 +104,16 @@ class AcquisitionController(Loggable):
             raise ValueError("Number of frames must be a positive integer.")
 
         self.logger.debug("Taking %d frame(s) snapshot.", frames)
-        yield from count(detectors, num=frames)
+        yield from bps.open_run()
+        yield from bps.stage_all(*detectors)
+        for _ in range(frames):
+            # manually call create and save
+            yield from bps.create(name="snap-stream")
+            yield from bps.broadcast_msg("trigger", detectors)
+            yield from bps.broadcast_msg("read", detectors)
+            yield from bps.save()
+        yield from bps.unstage_all(*detectors)
+        yield from bps.close_run(exit_status="success")
         self.logger.debug("Snapshot acquisition finished.")
 
     def launch_plan(self, plan: str, togglable: bool, kwargs: dict[str, Any]) -> None:
