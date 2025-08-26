@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
+    from sunflare.engine import DocumentType
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus
 
@@ -88,6 +89,9 @@ class DetectorController(Loggable):
 
     def connection_phase(self) -> None:
         self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
+        self.virtual_bus["AcquisitionController"]["sigNewDocument"].connect(
+            self.handle_document
+        )
 
     def models_configuration(self) -> ConfigurationDict:
         """Get the configuration of all detectors."""
@@ -183,3 +187,18 @@ class DetectorController(Loggable):
             return await maybe_await(self.detectors[detector].describe_configuration())
 
         return asyncio.run(_async_helper())
+
+    def handle_document(self, name: str, doc: DocumentType) -> None:
+        """Handle new documents from the RunEngine.
+
+        Parameters
+        ----------
+        name : ``str``
+            Document name (e.g., 'start', 'stop', 'event', etc.).
+        doc : ``sunflare.engine.DocumentType``
+            Document content.
+        """
+        from pprint import pprint
+
+        print(f"Document received: {name}")
+        pprint(doc)

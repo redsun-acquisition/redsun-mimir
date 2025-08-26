@@ -29,6 +29,7 @@ store = ino.Store.create("PlanManifest")
 
 class AcquisitionController(Loggable):
     sigPlanDone = Signal(object)
+    sigNewDocument = Signal(str, object)
 
     def __init__(
         self,
@@ -41,6 +42,7 @@ class AcquisitionController(Loggable):
         self.models = models
         self.live_event = Event()
         self.engine = RunEngine()
+        self._sig_token = self.engine.subscribe(self.sigNewDocument)
         self.futures: set[Future[Any]] = set()
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
