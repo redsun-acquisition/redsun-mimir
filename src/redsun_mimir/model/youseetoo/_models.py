@@ -703,15 +703,12 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         """
         buffer: NDArray[Any]
         timestamp: float
-        self.logger.debug("Reading image from detector %s.", self.name)
-        while True:
-            try:
-                buffer = self._core.getLastImage()
-                timestamp = time.time()
-                break
-            except IndexError:
-                # no image available yet
-                ...
+        # wait until images are available
+        while not self._core.getRemainingImageCount():
+            ...
+        buffer = self._core.getLastImage()
+        timestamp = time.time()
+
         return {
             f"{self.name}:buffer": {
                 "value": buffer,
