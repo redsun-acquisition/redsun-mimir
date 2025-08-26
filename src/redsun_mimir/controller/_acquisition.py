@@ -102,7 +102,9 @@ class AcquisitionController(Loggable):
         if frames <= 0:
             raise ValueError("Number of frames must be a positive integer.")
 
+        self.logger.debug("Taking %d frame(s) snapshot.", frames)
         yield from count(detectors, num=frames)
+        self.logger.debug("Snapshot acquisition finished.")
 
     def launch_plan(self, plan: str, togglable: bool, kwargs: dict[str, Any]) -> None:
         """Launch the specified plan.
