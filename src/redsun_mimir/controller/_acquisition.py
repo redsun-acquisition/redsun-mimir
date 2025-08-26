@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
 import in_n_out as ino
+from bluesky.plans import count
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
@@ -101,12 +102,7 @@ class AcquisitionController(Loggable):
         if frames <= 0:
             raise ValueError("Number of frames must be a positive integer.")
 
-        yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-        for _ in range(frames):
-            yield from bps.trigger_and_read(detectors, name="snap")
-        yield from bps.unstage_all(*detectors)
-        yield from bps.close_run(exit_status="success")
+        yield from count(detectors, num=frames)
 
     def launch_plan(self, plan: str, togglable: bool, kwargs: dict[str, Any]) -> None:
         """Launch the specified plan.
