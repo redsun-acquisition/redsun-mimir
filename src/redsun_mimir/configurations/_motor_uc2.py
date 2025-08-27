@@ -16,7 +16,7 @@ from redsun_mimir.model.youseetoo import (
     MimirSerialInfo,
     MimirSerialModel,
 )
-from redsun_mimir.widget import MotorWidget, StageWidgetInfo
+from redsun_mimir.widget import MotorWidget, MotorWidgetInfo
 
 
 def stage_widget_uc2() -> None:
@@ -44,8 +44,8 @@ def stage_widget_uc2() -> None:
         name: MotorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
-    widget_info: dict[str, StageWidgetInfo] = {
-        name: StageWidgetInfo(**values) for name, values in config_dict["views"].items()
+    widget_info: dict[str, MotorWidgetInfo] = {
+        name: MotorWidgetInfo(**values) for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(

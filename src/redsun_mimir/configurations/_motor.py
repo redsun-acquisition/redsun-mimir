@@ -11,7 +11,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MockStageModel, MotorModelInfo
-from redsun_mimir.widget import MotorWidget, StageWidgetInfo
+from redsun_mimir.widget import MotorWidget, MotorWidgetInfo
 
 
 def stage_widget() -> None:
@@ -35,8 +35,8 @@ def stage_widget() -> None:
         name: MotorControllerInfo(**values)
         for name, values in config_dict["controllers"].items()
     }
-    widget_info: dict[str, StageWidgetInfo] = {
-        name: StageWidgetInfo(**values) for name, values in config_dict["views"].items()
+    widget_info: dict[str, MotorWidgetInfo] = {
+        name: MotorWidgetInfo(**values) for name, values in config_dict["views"].items()
     }
 
     config = RedSunSessionInfo(

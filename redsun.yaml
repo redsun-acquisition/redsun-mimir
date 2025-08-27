@@ -6,4 +6,4 @@ controllers:
 views:
   stage:
     class: redsun_mimir.widget:MotorWidget
-    info: redsun_mimir.widget:StageWidgetInfo
+    info: redsun_mimir.widget:MotorWidgetInfo

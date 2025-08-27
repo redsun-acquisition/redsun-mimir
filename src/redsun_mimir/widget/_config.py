@@ -5,7 +5,7 @@ from sunflare.config import ViewInfo
 
 
 @define
-class StageWidgetInfo(ViewInfo):
+class MotorWidgetInfo(ViewInfo):
     """Stage widget information.
 
     Currently provides no additional information.
