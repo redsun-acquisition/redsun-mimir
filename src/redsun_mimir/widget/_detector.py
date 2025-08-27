@@ -149,6 +149,9 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self.virtual_bus["DetectorController"]["sigConfigurationConfirmed"].connect(
             self._handle_configuration_result
         )
+        self.virtual_bus["DetectorController"]["sigNewData"].connect(
+            self._update_layers, thread="main"
+        )
 
     def setup_ui(self, models_info: dict[str, DetectorModelInfo]) -> None:
         """Initialize the user interface.
@@ -175,6 +178,7 @@ class DetectorWidget(BaseQtWidget, Loggable):
             reading = config["readings"][detector]
             layer = self.viewer_model.add_image(
                 np.zeros(shape=info.sensor_shape, dtype=np.uint8),
+                name=detector,
             )
             layer._overlays.update(
                 {
@@ -226,3 +230,20 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
             if not success:
                 self.logger.error(f"Failed to configure {setting_name} for {detector}")
+
+    def _update_layers(self, data: dict[str, dict[str, Any]]) -> None:
+        """Update the image layers with new data.
+
+        Parameters
+        ----------
+        data : dict[str, dict[str, Any]]
+            Nested dictionary where the outer key is the detector name,
+            and the inner dictionary contains keys 'buffer' and 'roi'.
+            'buffer' is the raw data array, and 'roi' is a 4-tuple defining
+            the region of interest (x_start, x_end, y_start, y_end).
+        """
+        for detector_name, packet in data.items():
+            if detector_name in self.settings_controls:
+                layer = self.viewer_model.layers[detector_name]
+                if "buffer" in packet:
+                    layer.data = packet["buffer"]

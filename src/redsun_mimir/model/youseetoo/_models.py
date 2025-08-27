@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
     from event_model.documents import Dtype
-    from numpy.typing import NDArray
 
     from redsun_mimir.model import DetectorModelInfo, MotorModelInfo
 
@@ -701,8 +700,6 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
         `dict[str, Reading[Any]]`
             Dictionary with the current state of the detector.
         """
-        buffer: NDArray[Any]
-        timestamp: float
         # wait until images are available
         while not self._core.getRemainingImageCount():
             ...

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import in_n_out as ino
 from bluesky.utils import maybe_await
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
+    from event_model import Event
     from sunflare.engine import DocumentType
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus
@@ -50,11 +51,19 @@ class DetectorController(Loggable):
         - ``str``: detector name.
         - ``str``: setting name.
         - ``bool``: success status.
-
+    sigNewData : ``Signal[dict[str, dict[str, Any]]]``
+        Signal for new data; the controller should actively
+        listen to new incoming data from a controller equipped
+        with a run engine capable of emitting new documents.
+        - ``dict[str, dict[str, Any]]``: nested dictionary:
+            - outer key: detector name.
+            - inner keys: raw data buffer (`'buffer'`) and region of interest (`'roi'`).
+            - `roi` formatted as `(x_start, x_end, y_start, y_end)`.
     """
 
     sigNewConfiguration = Signal(str, dict[str, object])
     sigConfigurationConfirmed = Signal(str, str, bool)
+    sigNewData = Signal(str, object)
 
     def __init__(
         self,
@@ -70,6 +79,8 @@ class DetectorController(Loggable):
             for name, model in models.items()
             if isinstance(model, DetectorProtocol)
         }
+
+        self.hints = ["buffer", "roi"]
 
         info_store.register_provider(self.models_info)
         config_store.register_provider(self.models_configuration)
@@ -90,7 +101,7 @@ class DetectorController(Loggable):
     def connection_phase(self) -> None:
         self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
         self.virtual_bus["AcquisitionController"]["sigNewDocument"].connect(
-            self.handle_document
+            self.process
         )
 
     def models_configuration(self) -> ConfigurationDict:
@@ -188,8 +199,8 @@ class DetectorController(Loggable):
 
         return asyncio.run(_async_helper())
 
-    def handle_document(self, name: str, doc: DocumentType) -> None:
-        """Handle new documents from the RunEngine.
+    def process(self, name: str, doc: DocumentType) -> None:
+        """Process new documents.
 
         Parameters
         ----------
@@ -198,7 +209,13 @@ class DetectorController(Loggable):
         doc : ``sunflare.engine.DocumentType``
             Document content.
         """
-        from pprint import pprint
-
-        print(f"Document received: {name}")
-        pprint(doc)
+        if name == "event":
+            doc = cast("Event", doc)
+            packet: dict[str, Any] = {}
+            for key, value in doc["data"].items():
+                detector_name, data_key = key.split(":")
+                if detector_name in self.detectors and data_key in self.hints:
+                    if detector_name not in packet:
+                        packet[detector_name] = {}
+                    packet[detector_name][data_key] = value
+            self.sigNewData.emit(packet)
