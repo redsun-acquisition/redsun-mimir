@@ -13,8 +13,8 @@ from redsun_mimir.controller import LightController, LightControllerInfo
 from redsun_mimir.model.youseetoo import (
     MimirLaserInfo,
     MimirLaserModel,
-    MimirSerialInfo,
     MimirSerialModel,
+    MimirSerialModelInfo,
 )
 from redsun_mimir.widget import LightWidget, LightWidgetInfo
 
@@ -33,11 +33,11 @@ def light_widget_uc2() -> None:
     config_path = Path(__file__).parent / "uc2_light_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
 
-    models_info: dict[str, MimirLaserInfo | MimirSerialInfo] = {}
+    models_info: dict[str, MimirLaserInfo | MimirSerialModelInfo] = {}
 
     for name, values in config_dict["models"].items():
         if name == "Serial":
-            models_info[name] = MimirSerialInfo(**values)
+            models_info[name] = MimirSerialModelInfo(**values)
         elif name == "Laser 1":
             models_info[name] = MimirLaserInfo(**values)
 
@@ -59,7 +59,7 @@ def light_widget_uc2() -> None:
 
     models: dict[str, MimirLaserModel | MimirSerialModel] = {
         name: MimirSerialModel(name, model_info)
-        if isinstance(model_info, MimirSerialInfo)
+        if isinstance(model_info, MimirSerialModelInfo)
         else MimirLaserModel(name, model_info)
         for name, model_info in models_info.items()
     }

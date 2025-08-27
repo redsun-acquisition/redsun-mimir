@@ -13,8 +13,8 @@ from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MotorModelInfo
 from redsun_mimir.model.youseetoo import (
     MimirMotorModel,
-    MimirSerialInfo,
     MimirSerialModel,
+    MimirSerialModelInfo,
 )
 from redsun_mimir.widget import MotorWidget, MotorWidgetInfo
 
@@ -32,11 +32,11 @@ def stage_widget_uc2() -> None:
     config_path = Path(__file__).parent / "uc2_motor_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
 
-    models_info: dict[str, MimirSerialInfo | MotorModelInfo] = {}
+    models_info: dict[str, MimirSerialModelInfo | MotorModelInfo] = {}
 
     for name, values in config_dict["models"].items():
         if name == "Serial":
-            models_info[name] = MimirSerialInfo(**values)
+            models_info[name] = MimirSerialModelInfo(**values)
         elif name == "Stage":
             models_info[name] = MotorModelInfo(**values)
 
@@ -58,7 +58,7 @@ def stage_widget_uc2() -> None:
 
     models: dict[str, MimirSerialModel | MimirMotorModel] = {
         name: MimirSerialModel(name, model_info)
-        if isinstance(model_info, MimirSerialInfo)
+        if isinstance(model_info, MimirSerialModelInfo)
         else MimirMotorModel(name, model_info)
         for name, model_info in models_info.items()
     }

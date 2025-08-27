@@ -15,7 +15,7 @@ from sunflare.model import Model
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
-from ._config import MimirSerialInfo
+from ._config import MimirSerialModelInfo
 
 if TYPE_CHECKING:
     from typing import Any, Callable, ClassVar, Final
@@ -51,12 +51,12 @@ class _SerialFactory:
     callbacks: ClassVar[list[Callable[[Serial], None]]] = []
 
     @classmethod
-    def setup(cls, info: MimirSerialInfo) -> None:
+    def setup(cls, info: MimirSerialModelInfo) -> None:
         """Create the serial object.
 
         Parameters
         ----------
-        info: `MimirSerialInfo`
+        info: `MimirSerialModelInfo`
             Serial information to setup the serial object.
         """
         cls.serial = Serial(
@@ -117,7 +117,7 @@ class _SerialFactory:
         callback(cls.serial)
 
 
-class MimirSerialModel(Model[MimirSerialInfo]):
+class MimirSerialModel(Model[MimirSerialModelInfo]):
     """Mimir interface for serial communication.
 
     This model is in charge of setting up the serial
@@ -139,7 +139,7 @@ class MimirSerialModel(Model[MimirSerialInfo]):
 
     """
 
-    def __init__(self, name: str, model_info: MimirSerialInfo) -> None:
+    def __init__(self, name: str, model_info: MimirSerialModelInfo) -> None:
         super().__init__(name, model_info)
         _SerialFactory.setup(model_info)
 

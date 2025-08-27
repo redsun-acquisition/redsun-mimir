@@ -27,7 +27,7 @@ class BaudeRate(IntEnum):
 
 
 @define(kw_only=True)
-class MimirSerialInfo(ModelInfo):
+class MimirSerialModelInfo(ModelInfo):
     """Model information for Mimir device serial communication.
 
     Attributes
