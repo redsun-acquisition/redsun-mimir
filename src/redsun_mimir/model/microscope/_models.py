@@ -395,7 +395,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         try:
             value, timestamp = content
         except Exception:
-            value = content[0]
+            value = content  # type: ignore[assignment]
             timestamp = time.time()
         return OrderedDict(
             [
