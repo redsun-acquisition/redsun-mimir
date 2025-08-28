@@ -67,7 +67,8 @@ class MotorWidget(BaseQtWidget):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-        ino.Store.get_store("MotorModelInfo").inject(self.setup_ui)()
+        self.store = ino.Store.get_store("MotorModelInfo")
+        self.store.inject(self.setup_ui)()
 
     def setup_ui(self, motors_info: dict[str, MotorModelInfo]) -> None:
         self._motors_info = motors_info

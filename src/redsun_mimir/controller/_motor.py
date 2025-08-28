@@ -21,9 +21,6 @@ if TYPE_CHECKING:
     from redsun_mimir.controller import MotorControllerInfo
 
 
-store = ino.Store.create("MotorModelInfo")
-
-
 class MotorController(Loggable):
     """Motor stage controller for Redsun Mimir.
 
@@ -107,7 +104,8 @@ class MotorController(Loggable):
 
         self.logger.info("Stage controller initialized")
 
-        ino.Store.get_store("MotorModelInfo").register_provider(
+        self.store = ino.Store.create("MotorModelInfo")
+        self.store.register_provider(
             self.models_info, type_hint=dict[str, MotorModelInfo]
         )
 
