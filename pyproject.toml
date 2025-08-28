@@ -149,5 +149,4 @@ source = "vcs"
 include = ["src", "tests"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/redsun_mimir"]
-sources = ["src"]
+packages = ["src/redsun_mimir"]

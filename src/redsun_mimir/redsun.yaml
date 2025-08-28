@@ -4,13 +4,13 @@ models:
     info: redsun_mimir.model.youseetoo:MimirSerialModelInfo
   mimir-motor:
     class: redsun_mimir.model.youseetoo:MimirMotorModel
-    info: redsun_mimir.model.youseetoo:MotorModelInfo
+    info: redsun_mimir.model:MotorModelInfo
   mimir-laser:
     class: redsun_mimir.model.youseetoo:MimirLaserModel
-    info: redsun_mimir.model.youseetoo:LaserModelInfo
+    info: redsun_mimir.model:LaserModelInfo
   mimir-detector:
     class: redsun_mimir.model.youseetoo:MimirDetectorModel
-    info: redsun_mimir.model.youseetoo:DetectorModelInfo
+    info: redsun_mimir.model:DetectorModelInfo
 controllers:
   acquisition:
     class: redsun_mimir.controller:AcquisitionController
