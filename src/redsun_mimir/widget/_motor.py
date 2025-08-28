@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from sunflare.config import ViewInfoProtocol
     from sunflare.virtual import VirtualBus
 
-store = ino.Store.get_store("MotorModelInfo")
-
 
 class MotorWidget(BaseQtWidget):
     """Motor widget for Redsun Mimir.
@@ -69,8 +67,7 @@ class MotorWidget(BaseQtWidget):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-        setup_ui = store.inject(self.setup_ui)
-        setup_ui()
+        ino.Store.get_store("MotorModelInfo").inject(self.setup_ui)()
 
     def setup_ui(self, motors_info: dict[str, MotorModelInfo]) -> None:
         self._motors_info = motors_info
