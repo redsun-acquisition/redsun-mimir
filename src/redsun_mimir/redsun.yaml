@@ -1,4 +1,5 @@
 models:
+  # mimir models
   mimir-serial:
     class: redsun_mimir.model.youseetoo:MimirSerialModel
     info: redsun_mimir.model.youseetoo:MimirSerialModelInfo
@@ -11,6 +12,10 @@ models:
   mimir-detector:
     class: redsun_mimir.model.youseetoo:MimirDetectorModel
     info: redsun_mimir.model:DetectorModelInfo
+  # microscope/mock models
+  mock-light:
+    class: redsun_mimir.model:MockLightModel
+    info: redsun_mimir.model:MockLightModelInfo
 controllers:
   acquisition:
     class: redsun_mimir.controller:AcquisitionController
