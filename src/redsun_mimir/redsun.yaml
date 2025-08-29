@@ -16,7 +16,7 @@ models:
   # microscope/mock models
   mock-light:
     class: redsun_mimir.model:MockLightModel
-    info: redsun_mimir.model:MockLightModelInfo
+    info: redsun_mimir.model:LightModelInfo
   mock-motor:
     class: redsun_mimir.model:MockMotorModel
     info: redsun_mimir.model:MotorModelInfo
@@ -38,8 +38,8 @@ controllers:
     info: redsun_mimir.controller:DetectorControllerInfo
 views:
   acquisition:
-    class: redsun_mimir.view:AcquisitionWidget
-    info: redsun_mimir.view:AcquisitionWidgetInfo
+    class: redsun_mimir.widget:AcquisitionWidget
+    info: redsun_mimir.widget:AcquisitionWidgetInfo
   motor:
     class: redsun_mimir.widget:MotorWidget
     info: redsun_mimir.widget:MotorWidgetInfo
