@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ._config import LightModelInfo, MotorModelInfo
 
 
-class MockLightModel(LightProtocol):
+class MockLightModel(LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
     def __init__(self, name: str, model_info: LightModelInfo) -> None:
@@ -25,14 +25,22 @@ class MockLightModel(LightProtocol):
         self._model_info = model_info
         self.enabled = False
         self.intensity = 0.0
+        self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set the intensity of the light source.
 
-        .. note::
+        Parameters
+        ----------
+        value : ``Any``
+            New intensity value. Must be of type ``int`` or ``float``.
+        **kwargs : ``Any``
+            Additional keyword arguments (not used).
 
-            **kwargs are ignored in this implementation.
-
+        Returns
+        -------
+        ``Status``
+            The status object.
         """
         s = Status()
         if not isinstance(value, int | float):
@@ -104,6 +112,8 @@ class MockMotorModel(MotorProtocol, Loggable):
         self.axis = self._model_info.axis[0]
 
         self._step_sizes = self._model_info.step_sizes
+
+        self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set something in the mock model.
