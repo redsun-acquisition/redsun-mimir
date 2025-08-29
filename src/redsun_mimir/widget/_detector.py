@@ -139,8 +139,8 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
         # Inject the setup_ui method to fill the widget with light sources
-        setup_ui = info_store.inject(self.setup_ui)
-        setup_ui()
+        info_store.inject(self.setup_ui)()
+        self.logger.info("Initialized")
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)

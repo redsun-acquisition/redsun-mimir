@@ -102,12 +102,11 @@ class MotorController(Loggable):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self.logger.info("Stage controller initialized")
-
         self.store = ino.Store.create("MotorModelInfo")
         self.store.register_provider(
             self.models_info, type_hint=dict[str, MotorModelInfo]
         )
+        self.logger.info("Initialized")
 
     def models_info(self) -> dict[str, MotorModelInfo]:
         """Get the models information.
