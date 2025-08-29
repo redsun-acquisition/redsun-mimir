@@ -7,7 +7,7 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
-from redsun_mimir.model import MockStageModel, MotorModelInfo
+from redsun_mimir.model import MockMotorModel, MotorModelInfo
 from redsun_mimir.widget import MotorWidget
 
 
@@ -25,7 +25,7 @@ def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
 
     config = RedSunSessionInfo(**config_dict)
 
-    motors = {name: MockStageModel(name, info) for name, info in config.models.items()}  # type: ignore
+    motors = {name: MockMotorModel(name, info) for name, info in config.models.items()}  # type: ignore
 
     ctrl = MotorController(config.controllers["MotorController"], motors, bus)  # type: ignore
     widget = MotorWidget(config.views["MotorWidget"], bus)

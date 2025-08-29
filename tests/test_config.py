@@ -8,7 +8,7 @@ from redsun_mimir.model import LightModelInfo, MotorModelInfo
 
 
 def test_mock_motor_model_info(config_path: Path) -> None:
-    """Test the MockStageModel information model."""
+    """Test the MockMotorModel information model."""
     config: MotorModelInfo
 
     motor_config_path = str(config_path / "test_motor_config.yaml")

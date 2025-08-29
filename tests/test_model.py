@@ -10,7 +10,7 @@ from redsun_mimir.model import (
     DetectorModelInfo,
     LightModelInfo,
     MockLightModel,
-    MockStageModel,
+    MockMotorModel,
     MotorModelInfo,
 )
 from redsun_mimir.model.microscope import (
@@ -35,7 +35,7 @@ def test_motor_construction(motor_config: dict[str, MotorModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in motor_config.items():
         motor = (
-            MockStageModel(name, info)
+            MockMotorModel(name, info)
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
         )
@@ -51,7 +51,7 @@ def test_motor_construction(motor_config: dict[str, MotorModelInfo]) -> None:
 def test_motor_configurable_protocol(motor_config: dict[str, MotorModelInfo]) -> None:
     for name, info in motor_config.items():
         motor = (
-            MockStageModel(name, info)
+            MockMotorModel(name, info)
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
         )
@@ -92,7 +92,7 @@ def test_motor_set_direct(motor_config: dict[str, MotorModelInfo]) -> None:
     """
     for name, info in motor_config.items():
         motor = (
-            MockStageModel(name, info)
+            MockMotorModel(name, info)
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
         )
@@ -136,7 +136,7 @@ def test_motor_plan_absolute(
 
     motors = tuple(
         [
-            MockStageModel(name, info)
+            MockMotorModel(name, info)
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
             for name, info in motor_config.items()
@@ -167,7 +167,7 @@ def test_motor_plan_relative(
 
     motors = tuple(
         [
-            MockStageModel(name, info)
+            MockMotorModel(name, info)
             if info.plugin_id == "test"
             else SimulatedStageModel(name, info)
             for name, info in motor_config.items()

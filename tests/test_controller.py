@@ -15,7 +15,7 @@ from redsun_mimir.controller import (
 from redsun_mimir.model import (
     LightModelInfo,
     MockLightModel,
-    MockStageModel,
+    MockMotorModel,
     MotorModelInfo,
 )
 
@@ -23,7 +23,7 @@ from redsun_mimir.model import (
 def test_stage_controller(
     bus: VirtualBus, motor_config: dict[str, MotorModelInfo], qtbot: QtBot
 ) -> None:
-    motors = {name: MockStageModel(name, info) for name, info in motor_config.items()}
+    motors = {name: MockMotorModel(name, info) for name, info in motor_config.items()}
 
     info = MotorControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = MotorController(info, motors, bus)

@@ -90,7 +90,7 @@ class MockLightModel(LightProtocol):
         return self._model_info
 
 
-class MockStageModel(MotorProtocol, Loggable):
+class MockMotorModel(MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
     def __init__(self, name: str, model_info: MotorModelInfo) -> None:

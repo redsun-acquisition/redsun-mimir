@@ -1,8 +1,8 @@
 from ._config import DetectorModelInfo, LightModelInfo, MotorModelInfo
-from ._mocks import MockLightModel, MockStageModel
+from ._mocks import MockLightModel, MockMotorModel
 
 __all__ = [
-    "MockStageModel",
+    "MockMotorModel",
     "MockLightModel",
     "MotorModelInfo",
     "LightModelInfo",
