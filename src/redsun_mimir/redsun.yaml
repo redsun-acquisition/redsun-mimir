@@ -12,10 +12,17 @@ models:
   mimir-detector:
     class: redsun_mimir.model.youseetoo:MimirDetectorModel
     info: redsun_mimir.model:DetectorModelInfo
+
   # microscope/mock models
   mock-light:
     class: redsun_mimir.model:MockLightModel
     info: redsun_mimir.model:MockLightModelInfo
+  mock-motor:
+    class: redsun_mimir.model:MockMotorModel
+    info: redsun_mimir.model:MotorModelInfo
+  mock-detector:
+    class: redsun_mimir.model.microscope:SimulatedCameraModel
+    info: redsun_mimir.model:DetectorModelInfo
 controllers:
   acquisition:
     class: redsun_mimir.controller:AcquisitionController
