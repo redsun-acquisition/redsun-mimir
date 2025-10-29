@@ -9,5 +9,5 @@ if TYPE_CHECKING:
 class ConfigurationDict(TypedDict):
     """TypedDict grouping configuration data."""
 
-    descriptors: dict[str, dict[str, "Descriptor"]]
-    readings: dict[str, dict[str, "Reading[Any]"]]
+    descriptors: dict[str, dict[str, Descriptor]]
+    readings: dict[str, dict[str, Reading[Any]]]
