@@ -23,6 +23,7 @@ models:
   mock-detector:
     class: redsun_mimir.model.microscope:SimulatedCameraModel
     info: redsun_mimir.model:DetectorModelInfo
+
 controllers:
   acquisition:
     class: redsun_mimir.controller:AcquisitionController
@@ -36,6 +37,7 @@ controllers:
   detector:
     class: redsun_mimir.controller:DetectorController
     info: redsun_mimir.controller:DetectorControllerInfo
+
 views:
   acquisition:
     class: redsun_mimir.widget:AcquisitionWidget
