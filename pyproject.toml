@@ -27,23 +27,38 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sunflare>=0.6.1",
-    "napari>=0.6.4",
+    "sunflare>=0.6.2",
+    "napari>=0.6.6",
     "in-n-out>=0.2.1",
     "superqt>=0.7.4",
 ]
 
+[dependency-groups]
+dev = [
+    "redsun-mimir[microscope,uc2,pyqt]",
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-qt>=4.5.0",
+    "ruff>=0.14.2",
+    "sphinx>=8.1.3",
+    "pydata-sphinx-theme>=0.16.1",
+    "sphinx-design>=0.6.1",
+    "myst-parser>=4.0.1",
+]
+
 [project.optional-dependencies]
 pyqt = [
-    "napari[pyqt6]>=0.6.4",
-    "sunflare[pyqt]",
+    "napari[pyqt6]>=0.6.6",
+    "sunflare[pyqt]>=0.6.2",
 ]
 pyside = [
-    "napari[pyside6]>=0.6.4",
-    "sunflare[pyside]",
+    "napari[pyside6]>=0.6.6",
+    "sunflare[pyside]>=0.6.2",
 ]
 microscope = [
-    "microscope>=0.7.0"
+    "microscope>=0.7.0",
 ]
 docs = [
     "sphinx",
@@ -52,20 +67,8 @@ docs = [
     "myst-parser"
 ]
 uc2 = [
-    "pyserial",
-    "pymmcore-plus"
-]
-all = [
-    "redsun-mimir[microscope,uc2]",
-]
-dev = [
-    "redsun-mimir[all,pyqt]",
-    "ruff",
-    "mypy",
-    "pytest",  # https://docs.pytest.org/en/latest/contents.html
-    "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
-    "pytest-qt",
-    "pre-commit",
+    "pymmcore-plus>=0.16.0",
+    "pyserial>=3.5",
 ]
 
 [project.urls]
