@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, cast
 
 import msgspec
-from bluesky.protocols import Descriptor, Reading
 from pymmcore_plus import CMMCorePlus as Core
 from serial import Serial
 from sunflare.engine import Status
