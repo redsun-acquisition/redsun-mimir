@@ -845,7 +845,7 @@ class MimirDetectorModel(DetectorProtocol, Loggable):
     def read_configuration(self) -> dict[str, Reading[Any]]:
         actual_prop: str | bool | int | float
         timestamp = time.time()
-        config: dict[str, Reading[Any]] = self.model_info.read_configuration(timestamp)
+        config = self.model_info.read_configuration(timestamp)
         for key, value in self.property_map.items():
             prop = self._core.getProperty(self.name, value[0])
             dtype = self._core.getPropertyType(self.name, value[0]).to_json()
