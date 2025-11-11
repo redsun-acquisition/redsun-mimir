@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -17,7 +17,7 @@ from typing import (
 from sunflare.model import ModelProtocol
 
 if TYPE_CHECKING:
-    from bluesky.utils import Msg
+    from bluesky.utils import MsgGenerator
 
 T = TypeVar("T")
 
@@ -323,7 +323,7 @@ def _extract_protocol_type(annotation: Any) -> type[ModelProtocol] | None:
 
 
 def generate_plan_manifest(
-    plan_func: Callable[..., Generator[Msg, Any, Any]],
+    plan_func: Callable[..., MsgGenerator[Any]],
     models: Mapping[str, ModelProtocol],
 ) -> PlanManifest:
     """Generate a plan manifest from a function signature.
