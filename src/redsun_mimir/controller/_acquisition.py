@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import bluesky.plan_stubs as bps
 import in_n_out as ino
 from bluesky.utils import MsgGenerator  # noqa: TC002
+from sunflare.controller import ControllerProtocol
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 store = ino.Store.create("PlanManifest")
 
 
-class AcquisitionController(Loggable):
+class AcquisitionController(ControllerProtocol, Loggable):
     sigPlanDone = Signal(object)
     sigNewDocument = Signal(str, object)
 
@@ -107,11 +108,7 @@ class AcquisitionController(Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
-            # manually call create and save
-            yield from bps.create(name="snap-stream")
-            yield from bps.broadcast_msg("trigger", detectors)
-            yield from bps.broadcast_msg("read", detectors)
-            yield from bps.save()
+            yield from bps.trigger_and_read(detectors, name="snap")
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
         self.logger.debug("Snapshot acquisition finished.")
