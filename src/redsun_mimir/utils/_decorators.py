@@ -13,7 +13,7 @@ def togglable(
 def togglable(
     func: Callable[P, R] | Callable[Concatenate[Any, P], R],
 ) -> Callable[P, R] | Callable[Concatenate[Any, P], R]:
-    """Mark a function or method as togglable.
+    """Mark a plan (whether a function or method) as togglable.
 
     "Togglable" means that the plan expects some mechanism
     to divert the flow of execution depending on some internal state

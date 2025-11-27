@@ -1,4 +1,8 @@
-from ._config import DetectorModelInfo, LightModelInfo, MotorModelInfo
+from ._config import (
+    DetectorModelInfo,
+    LightModelInfo,
+    MotorModelInfo,
+)
 from ._mocks import MockLightModel, MockMotorModel
 
 __all__ = [

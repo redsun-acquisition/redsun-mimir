@@ -1,6 +1,5 @@
 from ._config import MimirLaserInfo, MimirSerialModelInfo
 from ._models import (
-    MimirDetectorModel,
     MimirLaserModel,
     MimirMotorModel,
     MimirSerialModel,
@@ -12,5 +11,4 @@ __all__ = [
     "MimirSerialModelInfo",
     "MimirSerialModel",
     "MimirMotorModel",
-    "MimirDetectorModel",
 ]

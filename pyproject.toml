@@ -107,7 +107,11 @@ omit = [
 
 [tool.mypy]
 files = "src/**/*.py"
-disable_error_code = ["import-untyped", "no-untyped-call"]
+disable_error_code = [
+    "import-untyped",
+    "no-untyped-call",
+    "type-abstract" # remove once mypy supports TypeForm
+]
 pretty = true
 
 # Use strict defaults

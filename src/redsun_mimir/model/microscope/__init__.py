@@ -1,3 +1,3 @@
-from ._models import SimulatedCameraModel, SimulatedLightModel, SimulatedStageModel
+from ._models import SimulatedLightModel, SimulatedStageModel
 
-__all__ = ["SimulatedStageModel", "SimulatedLightModel", "SimulatedCameraModel"]
+__all__ = ["SimulatedStageModel", "SimulatedLightModel"]

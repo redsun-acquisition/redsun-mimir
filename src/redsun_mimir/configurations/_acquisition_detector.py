@@ -15,8 +15,7 @@ from redsun_mimir.controller import (
     DetectorController,
     DetectorControllerInfo,
 )
-from redsun_mimir.model import DetectorModelInfo
-from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.widget import (
     AcquisitionWidget,
     AcquisitionWidgetInfo,
@@ -43,8 +42,8 @@ def acquisition_detector_widget() -> None:
 
     config_path = Path(__file__).parent / "acquisition_detector_config.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, DetectorModelInfo] = {
-        name: DetectorModelInfo(**values)
+    models_info: dict[str, MMCoreCameraModelInfo] = {
+        name: MMCoreCameraModelInfo(**values)
         for name, values in config_dict["models"].items()
     }
     ctrl_info: dict[str, ControllerInfoProtocol] = {}
@@ -71,7 +70,7 @@ def acquisition_detector_widget() -> None:
     )
 
     mock_models: dict[str, ModelProtocol] = {
-        name: SimulatedCameraModel(name, model_info)
+        name: MMCoreCameraModel(name, model_info)
         for name, model_info in models_info.items()
     }
 

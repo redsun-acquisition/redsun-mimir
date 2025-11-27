@@ -10,8 +10,7 @@ from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import DetectorController, DetectorControllerInfo
-from redsun_mimir.model import DetectorModelInfo
-from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.widget import DetectorWidget, DetectorWidgetInfo
 
 
@@ -28,8 +27,8 @@ def detector_widget() -> None:
 
     config_path = Path(__file__).parent / "mock_detector_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, DetectorModelInfo] = {
-        name: DetectorModelInfo(**values)
+    models_info: dict[str, MMCoreCameraModelInfo] = {
+        name: MMCoreCameraModelInfo(**values)
         for name, values in config_dict["models"].items()
     }
     ctrl_info: dict[str, DetectorControllerInfo] = {
@@ -49,8 +48,8 @@ def detector_widget() -> None:
         views=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, SimulatedCameraModel] = {
-        name: SimulatedCameraModel(name, model_info)
+    mock_models: dict[str, MMCoreCameraModel] = {
+        name: MMCoreCameraModel(name, model_info)
         for name, model_info in models_info.items()
     }
 

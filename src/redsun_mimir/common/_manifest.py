@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from bluesky.utils import MsgGenerator
 
 T = TypeVar("T")
+P = TypeVar("P", bound=ModelProtocol)
 
 
 @dataclass(frozen=True)
@@ -33,15 +34,15 @@ class Meta:
 
     Parameters
     ----------
-    min : T, optional
+    min : ``float`` or ``int``, optional
         Minimum value for a parameter.
-    max : T, optional
+    max : ``float`` or ``int``, optional
         Maximum value for a parameter.
-    choices : list[str], optional
+    choices : ``list[str]``, optional
         List of possible choices for a parameter value.
-        Useful to restrict, for example, the devics
+        Useful to restrict, for example, the devices
         that can be selected by a widget.
-    exclude : bool, optional
+    exclude : ``bool``, optional
         If True, the parameter will not be
         generated in the UI.
         Defaults to False.
@@ -396,16 +397,16 @@ def generate_plan_manifest(
 
 def filter_models(
     models: Mapping[str, ModelProtocol],
-    proto: type[ModelProtocol],
+    proto: type[P],
     choices: Sequence[str] | None = None,
-) -> list[ModelProtocol]:
-    """Filter models by a specific protocol type.
+) -> dict[str, P]:
+    """Filter models by a specific protocol type and return a dictionary of names to instances.
 
     Parameters
     ----------
     models : ``Mapping[str, ModelProtocol]``
         Mapping of model names to model instances.
-    proto : ``type[ModelProtocol]``
+    proto : ``type[P]``
         The protocol type to filter for.
     choices : ``Sequence[str]``, optional
         If provided, return only models associated with names in this sequence.
@@ -413,13 +414,39 @@ def filter_models(
 
     Returns
     -------
-    list[ModelProtocol]
-        List of model instances that implement the given protocol.
+    ``dict[str, P]``
+        Dictionary mapping model names to model instances that implement the given protocol.
     """
     if choices is not None:
-        return [
-            model
+        return {
+            name: model
             for name, model in models.items()
             if isinstance(model, proto) and name in choices
-        ]
-    return [model for model in models.values() if isinstance(model, proto)]
+        }
+    return {name: model for name, model in models.items() if isinstance(model, proto)}
+
+
+def get_choice_list(
+    models: Mapping[str, ModelProtocol], proto: type[P], choices: Sequence[str]
+) -> list[P]:
+    """Get a list of model names that implement a specific protocol.
+
+    Parameters
+    ----------
+    models : ``Mapping[str, ModelProtocol]``
+        Mapping of model names to model instances.
+    proto : ``type[P]``
+        The protocol type to filter for.
+    choices : ``Sequence[str]``
+        Sequence of model names to consider.
+
+    Returns
+    -------
+    ``list[P]``
+        List of model names that implement the given protocol.
+    """
+    return [
+        model
+        for name, model in models.items()
+        if isinstance(model, proto) and name in choices
+    ]

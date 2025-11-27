@@ -6,9 +6,11 @@ from sunflare.model import ModelProtocol
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from typing import Any
 
     from bluesky.protocols import Descriptor, Location, Reading
+    from event_model.documents.event import PartialEvent
     from sunflare.engine import Status
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
@@ -174,6 +176,15 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
 class DetectorProtocol(ModelProtocol, Settable, Protocol):
     """Protocol for detector models.
 
+    Implements the following protocols:
+
+    - ``Settable``
+    - ``Stageable``
+    - ``Flyable``
+    - ``Subscribable``
+    - ``Collectable``
+    - ``EventCollectable``
+
     Attributes
     ----------
     roi : ``tuple[int, int, int, int]``
@@ -187,48 +198,6 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
     """
 
     roi: tuple[int, int, int, int]
-
-    def read(self) -> dict[str, Reading[Any]]:
-        """Take a reading from the detector.
-
-        Example return value:
-
-        .. code-block:: python
-
-            # requires `time` module
-            return {
-                "data": Reading(value=5, timestamp=time.time()),
-                "other-data": Reading(value=16, timestamp=time.time()),
-            }
-
-        Returns
-        -------
-        ``dict[str, Reading[int | float]]``
-            Dictionary with the current detector intensity.
-
-        """
-        ...
-
-    def describe(self) -> dict[str, Descriptor]:
-        """Return a dictionary with the same keys as ``read``.
-
-        The dictionary holds the metadata with relevant
-        information about the detector channels.
-
-        The returned value can also be a ``collections.OrderedDict``.
-
-        Example return value:
-
-        .. code-block:: python
-
-            return {
-                "TIRF-channel": Descriptor(source="data", dtype="number", shape=[]),
-                "iSCAT-channel": Descriptor(
-                    source="other-data", dtype="number", shape=[]
-                ),
-            }
-        """
-        ...
 
     def stage(self) -> Status:
         """Prepare the detector for acquisition.
@@ -252,13 +221,49 @@ class DetectorProtocol(ModelProtocol, Settable, Protocol):
         """
         ...
 
-    def trigger(self) -> Status:
-        """Trigger a reading from the detector.
+    def kickoff(self) -> Status:
+        """Kick off a continuous acquisition.
 
         Returns
         -------
         ``Status``
             Status object of the operation.
+        """
+        ...
+
+    def complete(self) -> Status:
+        """Complete a continuous acquisition.
+
+        Returns
+        -------
+        ``Status``
+            Status object of the operation.
+        """
+        ...
+
+    def describe_collect(
+        self,
+    ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
+        """Describe the eventually-to-collect data.
+
+        Returns
+        -------
+        dict[str, DataKey] | dict[str, dict[str, DataKey]]
+
+            Since a flyer can potentially return more than one event stream, this is either
+            - a dict of stream names (strings) mapped to a ``describe()``-type output for each.
+            - a ``describe()``-type output of the descriptor name passed in with the ``name``
+                argument of the message.
+        """
+        ...
+
+    def collect(self) -> Iterator[PartialEvent]:
+        """Collect data from the detector.
+
+        Yields
+        ------
+        ``Iterator[PartialEvent]``
+            An iterator over partial event documents.
         """
         ...
 

@@ -100,9 +100,15 @@ class DetectorController(Loggable):
 
     def connection_phase(self) -> None:
         self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
-        self.virtual_bus["AcquisitionController"]["sigNewDocument"].connect(
-            self.process
-        )
+        try:
+            self.virtual_bus["AcquisitionController"]["sigNewDocument"].connect(
+                self.process
+            )
+        except KeyError:
+            self.logger.warning(
+                "AcquisitionController not found on the virtual bus; "
+                "data processing will be disabled."
+            )
 
     def models_configuration(self) -> ConfigurationDict:
         """Get the configuration of all detectors."""

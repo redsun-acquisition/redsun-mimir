@@ -9,9 +9,6 @@ models:
   mimir-laser:
     class: redsun_mimir.model.youseetoo:MimirLaserModel
     info: redsun_mimir.model:LaserModelInfo
-  mimir-detector:
-    class: redsun_mimir.model.youseetoo:MimirDetectorModel
-    info: redsun_mimir.model:DetectorModelInfo
 
   # microscope/mock models
   mock-light:
