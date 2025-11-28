@@ -36,7 +36,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "redsun-mimir[microscope,uc2,pyqt]",
-    "mypy>=1.18.2",
+    "mypy>=1.19",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
@@ -110,9 +110,12 @@ files = "src/**/*.py"
 disable_error_code = [
     "import-untyped",
     "no-untyped-call",
-    "type-abstract" # remove once mypy supports TypeForm
+    # figure out TypeForm
+    # and then remove this exclusion
+    "type-abstract"
 ]
 pretty = true
+fixed_format_cache = true
 
 # Use strict defaults
 strict = true
