@@ -161,9 +161,9 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             events_param = manifest.parameters.get("events", None)
             if events_param and events_param.kind == inspect.Parameter.KEYWORD_ONLY:
                 # TODO: understand why mypy says this is unreachable
-                if isinstance(events_param.origin, Sequence) and isinstance(
+                if isinstance(events_param.origin, Sequence) and isinstance(  # type: ignore[unreachable]
                     events_param.annotation, str
-                ):  # type: ignore[unreachable]
+                ):
                     # TODO: what to do here?
                     ...
             for pname, param in manifest.parameters.items():
