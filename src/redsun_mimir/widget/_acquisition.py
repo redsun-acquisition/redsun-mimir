@@ -178,9 +178,9 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                     if param.meta.max is not None:
                         options["max"] = param.meta.max
                 # TODO: understand why mypy says this is unreachable
-                if isinstance(param.origin, Sequence) and isinstance(
+                if isinstance(param.origin, Sequence) and isinstance(  # type: ignore[unreachable]
                     param.annotation, ModelProtocol
-                ):  # type: ignore[unreachable]
+                ):
                     register_type(param.annotation, widget_type=mw.Select)  # type: ignore[unreachable]
                     options["choices"] = param.choices
                     default = param.choices[0] if param.choices else default
