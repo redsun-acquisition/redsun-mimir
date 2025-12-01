@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -156,6 +158,14 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             layout = QtW.QVBoxLayout()
             groupbox = QtW.QGroupBox(parent=self)
             widgets: list[mw.Widget] = []
+            events_param = manifest.parameters.get("events", None)
+            if events_param and events_param.kind == inspect.Parameter.KEYWORD_ONLY:
+                # TODO: understand why mypy says this is unreachable
+                if isinstance(events_param.origin, Sequence) and isinstance(
+                    events_param.annotation, str
+                ):  # type: ignore[unreachable]
+                    # TODO: what to do here?
+                    ...
             for pname, param in manifest.parameters.items():
                 options: dict[str, Any] = {}
                 default = param.default
@@ -168,7 +178,9 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                     if param.meta.max is not None:
                         options["max"] = param.meta.max
                 # TODO: understand why mypy says this is unreachable
-                if isinstance(param.annotation, ModelProtocol):
+                if isinstance(param.origin, Sequence) and isinstance(
+                    param.annotation, ModelProtocol
+                ):  # type: ignore[unreachable]
                     register_type(param.annotation, widget_type=mw.Select)  # type: ignore[unreachable]
                     options["choices"] = param.choices
                     default = param.choices[0] if param.choices else default

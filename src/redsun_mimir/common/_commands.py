@@ -4,46 +4,15 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING
 
-from bluesky.utils import Msg
-
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Mapping
     from typing import Any
 
-    from bluesky.utils import MsgGenerator
+    from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
 
-def wait_for_any(
-    events: Iterable[asyncio.Event], timeout: float = 0.001
-) -> MsgGenerator[asyncio.Event]:
-    """Wait for any of the given input events to be set.
-
-    This is an helper plan stub similar to `wait_for` in `bluesky.plan_stubs`,
-    but in contrast it will return when any of the input events is set.
-
-    Plan execution will be blocked until one of the events is set; but
-    background tasks will proceed as usual.
-
-    Parameters
-    ----------
-    events: Iterable[asyncio.Event]
-        An iterable of asyncio events to wait for.
-
-    timeout: float, optional
-        The maximum time (in seconds) to wait for an event to be set.
-        Default is 0.001 seconds.
-
-    Returns
-    -------
-    asyncio.Event
-        The event that was set to unblock the plan.
-    """
-    ret: asyncio.Event = yield Msg("wait_for", events, timeout=timeout)
-    return ret
-
-
-async def _wait_for_any(self: RunEngine, msg: Msg) -> asyncio.Event | None:
+async def _wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] | None:
     """Instruct the run engine to wait for any of the given events to be set.
 
     Parameters
@@ -52,25 +21,32 @@ async def _wait_for_any(self: RunEngine, msg: Msg) -> asyncio.Event | None:
         The message containing the events to wait for.
         Packs an iterable of asyncio.Event in `msg.args` and a timeout in `msg.kwargs`.
 
+        - `events`: Mapping[str, asyncio.Event]
+        - `timeout`: float
+
         Expected message format:
 
-        Msg("wait_for_any", None, events, timeout=timeout)
+        Msg("wait_for_any", events, timeout=timeout)
 
         If timeout is not provided, a default value of 0.001 seconds is used.
 
     Returns
     -------
-    asyncio.Event
-        The event that was set to unblock the plan.
+    tuple[str, asyncio.Event] | None
+        A tuple containing the name and the event that was set to unblock the plan;
+        None if timeout occurred before any event was set.
     """
-    events: Iterable[asyncio.Event] = msg.args[0]
+    event_map: Mapping[str, asyncio.Event] = msg.args[0]
     timeout: float = msg.kwargs.get("timeout", 0.001)
 
     # Create a mapping to track which task corresponds to which event
-    event_tasks = {asyncio.create_task(event.wait()): event for event in events}
+    event_tasks = {
+        asyncio.create_task(event.wait(), name=name)
+        for name, event in event_map.items()
+    }
 
     done, pending = await asyncio.wait(
-        event_tasks.keys(), return_when=asyncio.FIRST_COMPLETED, timeout=timeout
+        event_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
     )
 
     # Cancel all pending tasks
@@ -81,7 +57,8 @@ async def _wait_for_any(self: RunEngine, msg: Msg) -> asyncio.Event | None:
     if not done:
         return None
     completed_task = done.pop()
-    return event_tasks[completed_task]
+    task_name = completed_task.get_name()
+    return task_name, event_map[task_name]
 
 
 def register_bound_command(

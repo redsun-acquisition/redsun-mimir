@@ -17,12 +17,15 @@ from redsun_mimir.common import (
     filter_models,
     generate_plan_manifest,
     get_choice_list,
+    interrupts,
+)
+from redsun_mimir.common import (
+    plan_stubs as sps,
 )
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
 from redsun_mimir.utils import togglable
 
 if TYPE_CHECKING:
-    import asyncio
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
@@ -69,15 +72,17 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.models = models
         self.live_event = Event()
         self.engine = RunEngine()
+        self.event_manager = interrupts.EventManager()
+
         self.futures: set[Future[Any]] = set()
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "live_count": self.live_count,
             "snap": self.snap,
         }
-        self.manifests: set[PlanManifest] = set(
-            [generate_plan_manifest(plan, models) for plan in self.plans.values()]
-        )
+        self.manifests: set[PlanManifest] = {
+            generate_plan_manifest(plan, models) for plan in self.plans.values()
+        }
 
         store.register_provider(self.plans_manifests)
 
@@ -96,7 +101,9 @@ class AcquisitionController(ControllerProtocol, Loggable):
         return self.manifests
 
     @togglable
-    def live_count(self, detectors: Sequence[DetectorProtocol]) -> MsgGenerator[None]:
+    def live_count(
+        self, detectors: Sequence[DetectorProtocol], /, events: Sequence[str] = ["stop"]
+    ) -> MsgGenerator[None]:
         """Start a live acquisition with the selected detectors.
 
         Parameters
@@ -105,31 +112,18 @@ class AcquisitionController(ControllerProtocol, Loggable):
             The detectors to use in the live acquisition.
         """
         self.logger.debug("Starting live count acquisition.")
+
+        event_map = interrupts.create(events, self.event_manager)
+
         yield from bps.open_run()
-        yield from bps.kickoff_all(*detectors, wait=True)
-        while self.live_event.is_set():
-            yield from bps.trigger_and_read(detectors, name="live")
-        yield from bps.complete_all(*detectors, wait=True)
+        yield from bps.stage_all(*detectors)
+
+        # TODO: DetectorProtocol should inherit from Flyable but it doesn't;
+        # needs to be fixed in sunflare package
+        yield from sps.collect_while_waiting(detectors, event_map, stream_name="live")  # type: ignore[arg-type]
+        yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
         self.logger.debug("Live count acquisition stopped.")
-
-    def acquire_asynchronously(
-        self,
-        detectors: Sequence[DetectorProtocol],
-        futures: Sequence[asyncio.Future[None]],
-    ) -> MsgGenerator[None]:
-        yield from bps.open_run()
-        yield from bps.kickoff_all(*detectors, wait=True)
-        for det in detectors:
-            yield from bps.collect(det, stream=True, return_payload=False)
-
-        # collect should happen asynchronously... right?
-        # documents are emitted and processed as they arrive;
-        # now we wait for futures to be set;
-        # although this ideally should be a sequence of asyncio.Event instead
-        yield from bps.wait_for(futures)
-        yield from bps.complete_all(*detectors, wait=True)
-        yield from bps.close_run(exit_status="success")
 
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
@@ -148,15 +142,14 @@ class AcquisitionController(ControllerProtocol, Loggable):
         if frames <= 0:
             raise ValueError("Number of frames must be a positive integer.")
 
-        self.logger.debug("Taking %d frame(s) snapshot.", frames)
-        yield from bps.subscribe("all", self.sigNewDocument)
+        self.logger.debug(f"Taking {frames} frame(s).")
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
             yield from bps.trigger_and_read(detectors, name="snap")
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
-        self.logger.debug("Snapshot acquisition finished.")
+        self.logger.debug("Snapshot done.")
 
     def launch_plan(
         self, plan_name: str, togglable: bool, kwargs: dict[str, Any]
