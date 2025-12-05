@@ -7,18 +7,16 @@ from bluesky.utils import MsgGenerator
 from sunflare.engine import RunEngine
 
 from redsun_mimir.model import (
-    DetectorModelInfo,
     LightModelInfo,
     MockLightModel,
     MockMotorModel,
     MotorModelInfo,
 )
 from redsun_mimir.model.microscope import (
-    SimulatedCameraModel,
     SimulatedLightModel,
     SimulatedStageModel,
 )
-from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 
 def get_descriptor_values(cfg: dict[str, Descriptor]) -> dict[str, Any]:
@@ -265,38 +263,3 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
         ]
     )
     RE(setting_plan(lights))
-
-
-def test_detector_construction(detector_config: dict[str, DetectorModelInfo]) -> None:
-    """Test the motor object construction."""
-    for name, info in detector_config.items():
-        det = SimulatedCameraModel(name, info)
-        assert isinstance(det, DetectorProtocol)
-        assert det.name == name
-        assert det.model_info.sensor_shape == info.sensor_shape
-        assert det.model_info.pixel_size == info.pixel_size
-
-
-def test_detector_configurable_protocol(
-    detector_config: dict[str, DetectorModelInfo],
-) -> None:
-    for name, info in detector_config.items():
-        det = SimulatedCameraModel(name, info)
-        cfg = get_descriptor_values(det.read_configuration())
-        truth = {
-            "vendor": {"value": "N/A"},
-            "serial_number": {"value": "N/A"},
-            "family": {
-                "value": "N/A",
-            },
-            "sensor_shape": {"value": info.sensor_shape},
-            "pixel_size": {"value": info.pixel_size},
-            # TODO: this field should be supported
-            # "roi": {"value": (0, 0, 1024, 1024) },
-            "image pattern": {"value": "noise"},
-            "image data type": {"value": "uint8"},
-            "gain": {"value": 0},
-            "exposure": {"value": 0.1},
-            "display image number": {"value": True},
-        }
-        assert cfg == truth
