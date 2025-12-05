@@ -9,14 +9,12 @@ from inspect import Parameter, _empty, signature
 from typing import (
     TYPE_CHECKING,
     Any,
-    Concatenate,
     Protocol,
     TypeVar,
     cast,
     get_args,
     get_origin,
     get_type_hints,
-    overload,
     runtime_checkable,
 )
 from typing import (
@@ -95,14 +93,27 @@ class EventsInfo:
 @runtime_checkable
 class ActionedFunction(Protocol[P, R_co]):
     """
-    Callable that has been "actioned" with a `__actions__` mapping.
+    Callable that has been marked as actioned.
+
+    "Actioned" means that the internal flow of the function can be influenced
+    by external actions, typically triggered by user interaction.
 
     Used both for static typing (decorator return type) and for runtime checks:
 
-        if isinstance(f, ActionedFunction):
-            print(f.__actions__)
+    >>> if isinstance(f, ActionedFunction):
+    >>>     print(f.__actions__)
+
+    Attributes
+    ----------
+    __togglable__ : bool
+        Whether the function is togglable (i.e. an infinite loop that the run engine can stop.)
+    __actions__ : Mapping[str, Actions]
+        Mapping of parameter names to Actions instances,
+        indicating which parameters are associated with which actions.
+
     """
 
+    __togglable__: bool
     __actions__: cabc.Mapping[str, Actions]
 
     @abstractmethod
@@ -152,22 +163,6 @@ class ParamDescription:
     @property
     def has_default(self) -> bool:
         return self.default is not _empty
-
-    @property
-    def is_var_positional(self) -> bool:
-        return self.kind == ParamKind.VAR_POSITIONAL
-
-    @property
-    def is_var_keyword(self) -> bool:
-        return self.kind == ParamKind.VAR_KEYWORD
-
-    @property
-    def is_positional_only(self) -> bool:
-        return self.kind == ParamKind.POSITIONAL_ONLY
-
-    @property
-    def is_kwonly(self) -> bool:
-        return self.kind == ParamKind.KEYWORD_ONLY
 
 
 @dataclass
@@ -369,36 +364,6 @@ def create_plan_spec(
     )
 
 
-@overload
-def togglable(func: cabc.Callable[P, R]) -> cabc.Callable[P, R]: ...
-@overload
-def togglable(
-    func: cabc.Callable[Concatenate[Any, P], R],
-) -> cabc.Callable[Concatenate[Any, P], R]: ...
-def togglable(
-    func: cabc.Callable[P, R] | cabc.Callable[Concatenate[Any, P], R],
-) -> cabc.Callable[P, R] | cabc.Callable[Concatenate[Any, P], R]:
-    """Mark a plan (whether a function or method) as togglable.
-
-    "Togglable" means that the plan expects some mechanism
-    to divert the flow of execution depending on some internal state
-    which can be "toggled" by external means.
-
-    For example: a live acquisition plan will be toggled on
-    when the function is called; then when the user clicks a button,
-    an internal threading.Event is cleared, which will cause
-    the plan to naturally stop.
-    """
-    # the very long type annotation seems to be the way to
-    # "eat" default arguments such as "self" or "cls"
-    # for bound methods; not sure if this has any actual effect, because
-    # in the issue below, they refer to defining two separate decorators
-    # while this is just one, simply overloaded... will have to test it out
-    # https://github.com/python/mypy/issues/13222#issuecomment-1193073470
-    setattr(func, "__togglable__", True)
-    return func
-
-
 def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
     if not isinstance(names, cabc.Sequence) or isinstance(names, (str, bytes)):
         raise TypeError(
@@ -414,13 +379,16 @@ def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
 
 def actioned(
     mapping: cabc.Mapping[str, cabc.Sequence[str]],
+    togglable: bool = False,
 ) -> cabc.Callable[[cabc.Callable[P, R_co]], ActionedFunction[P, R_co]]:
     """Attach action names to parameters typed as `Actions`.
 
     Parameters
     ----------
     mapping : ``Mapping[str, Sequence[str]]``
-        Mapping of parameter names to sequences of action names.
+        Mapping of parameter names to sequences of action names.ù
+    togglable : bool, optional
+        Whether the function is togglable (i.e. an infinite loop that the run engine can stop.)
 
     Returns
     -------
@@ -473,6 +441,7 @@ def actioned(
             actions_map = merged
 
         setattr(func, "__actions__", actions_map)
+        setattr(func, "__togglable__", togglable)
 
         # Tell the type checker (and runtime protocol) that this callable
         # now satisfies ActionedFunction[PS, R_co].
