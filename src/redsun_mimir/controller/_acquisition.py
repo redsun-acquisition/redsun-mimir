@@ -13,17 +13,15 @@ from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
 from redsun_mimir.common import (
-    PlanManifest,
-    filter_models,
-    generate_plan_manifest,
-    get_choice_list,
+    PlanSpec,
+    create_plan_spec,
     interrupts,
 )
 from redsun_mimir.common import (
     plan_stubs as sps,
 )
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
-from redsun_mimir.utils import togglable
+from redsun_mimir.utils import filter_models, get_choice_list
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -33,7 +31,7 @@ if TYPE_CHECKING:
 
     from ._config import AcquisitionControllerInfo, RendererControllerInfo
 
-store = ino.Store.create("PlanManifest")
+store = ino.Store.create("plan_specs")
 
 
 class AcquisitionController(ControllerProtocol, Loggable):
@@ -80,11 +78,11 @@ class AcquisitionController(ControllerProtocol, Loggable):
             "live_count": self.live_count,
             "snap": self.snap,
         }
-        self.manifests: set[PlanManifest] = {
-            generate_plan_manifest(plan, models) for plan in self.plans.values()
+        self.plan_specs: set[PlanSpec] = {
+            create_plan_spec(plan, models) for plan in self.plans.values()
         }
 
-        store.register_provider(self.plans_manifests)
+        store.register_provider(self.plans_specificiers)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
@@ -97,10 +95,9 @@ class AcquisitionController(ControllerProtocol, Loggable):
             self.stop_plan
         )
 
-    def plans_manifests(self) -> set[PlanManifest]:
-        return self.manifests
+    def plans_specificiers(self) -> set[PlanSpec]:
+        return self.plan_specs
 
-    @togglable
     def live_count(
         self, detectors: Sequence[DetectorProtocol], /, events: Sequence[str] = ["stop"]
     ) -> MsgGenerator[None]:
@@ -150,6 +147,9 @@ class AcquisitionController(ControllerProtocol, Loggable):
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
         self.logger.debug("Snapshot done.")
+
+    def __call__(self, plan_name: str, kwargs: dict[str, Any]) -> None:
+        self.launch_plan(plan_name, togglable=False, kwargs=kwargs)
 
     def launch_plan(
         self, plan_name: str, togglable: bool, kwargs: dict[str, Any]

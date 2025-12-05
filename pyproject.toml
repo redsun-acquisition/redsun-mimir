@@ -115,7 +115,6 @@ disable_error_code = [
     "type-abstract"
 ]
 pretty = true
-fixed_format_cache = true
 
 # Use strict defaults
 strict = true

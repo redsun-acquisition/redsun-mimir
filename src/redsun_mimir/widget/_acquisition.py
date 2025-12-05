@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-import inspect
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import in_n_out as ino
-import magicgui.widgets as mw
-from magicgui import register_type
+import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from sunflare.log import Loggable
-from sunflare.model import ModelProtocol
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.common import PlanManifest  # noqa: TC001
-from redsun_mimir.utils.qt import InfoDialog
+from redsun_mimir.common import Actions, PlanSpec
+from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
 if TYPE_CHECKING:
     from typing import Any
@@ -27,45 +23,42 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlanWidget:
-    """Helper dataclass to hold plan UI information."""
+    """
+    Container for of a plan-binded widget.
 
-    group: QtW.QGroupBox
-    run: QtW.QPushButton
-    container: mw.Container[Any]
-    togglable: bool
+    Parameters
+    ----------
+    spec : ``PlanSpec``
+        The plan specification.
+    group_box : ``QtWidgets.QGroupBox``
+        The group box containing the plan UI.
+    run_button : ``QtWidgets.QPushButton``
+        The button to run the plan.
+    container : ``magicgui.widgets.Container[Any]``
+        The container holding the parameter widgets.
+    """
+
+    spec: PlanSpec
+    group_box: QtW.QGroupBox
+    run_button: QtW.QPushButton
+    container: mgw.Container[mgw.bases.ValueWidget[Any]]
+    actions_group: QtW.QGroupBox | None = None
 
     def toggle(self, status: bool) -> None:
-        if status:
-            self.group.setEnabled(False)
-            self.run.setText("Stop")
-        else:
-            self.group.setEnabled(True)
-            self.run.setText("Run")
+        self.group_box.setEnabled(not status)
+        self.run_button.setText("Stop" if status else "Run")
 
     def setEnabled(self, enabled: bool) -> None:
-        self.group.setEnabled(enabled)
-        self.run.setEnabled(enabled)
-
-    def hide(self) -> None:
-        self.group.hide()
-        self.run.hide()
-
-    def show(self) -> None:
-        self.group.show()
-        self.run.show()
+        self.group_box.setEnabled(enabled)
+        self.run_button.setEnabled(enabled)
 
     @property
     def parameters(self) -> dict[str, Any]:
-        params: dict[str, Any] = {}
-        for i in range(len(self.container)):
-            w: mw.bases.ValueWidget[Any] = self.container[i]
-            if isinstance(w.annotation, ModelProtocol):
-                # store the annotation and the current
-                # selected choices in a tuple
-                params[w.name] = (w.annotation, w.value)
-            else:
-                params[w.name] = w.value
-        return params
+        """Key-value mapping of parameter names to their current values.
+
+        The presenter is in charge of sorting these into args and kwargs.
+        """
+        return {w.name: w.value for w in self.container}
 
 
 store = ino.Store.get_store("PlanManifest")
@@ -105,10 +98,17 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         super().__init__(view_info, virtual_bus, *args, **kwargs)
         self.plans_info: dict[str, str] = {}
 
-        self.plan_widgets: dict[str, PlanWidget] = {}
+        # root layout
+        self.root_layout = QtW.QHBoxLayout(self)
+        self.root_layout.setContentsMargins(4, 4, 4, 4)
+        self.root_layout.setSpacing(4)
 
+        # combobox to select which plan to show
         self.plans_combobox = QtW.QComboBox(self)
         self.plans_combobox.setToolTip("Select a plan to run")
+        self.root_layout.addWidget(self.plans_combobox, 1)
+
+        # info button to open a dialog with plan docstring
         self.info_btn = QtW.QPushButton(self)
         self.info_btn.setIcon(
             cast("QtW.QStyle", self.style()).standardIcon(
@@ -122,110 +122,101 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.info_btn.setIconSize(QtCore.QSize(16, 16))
         self.info_btn.setFlat(True)
         self.info_btn.clicked.connect(self._on_info_clicked)
+        self.root_layout.addWidget(self.plans_combobox, 0)
 
-        top_layout = QtW.QHBoxLayout()
-        top_layout.addWidget(self.plans_combobox, 1)
-        top_layout.addWidget(self.info_btn, 0)
+        # stacked widget: one page per plan (each page is a param form);
+        # only used for visualization, not for logic
+        self.stack_widget = QtW.QStackedWidget(self)
+        self.root_layout.addWidget(self.stack_widget)
 
-        self.groups_layout = QtW.QVBoxLayout()
-        self.button_layout = QtW.QHBoxLayout()
+        # plan name to PlanWidget mapping
+        self.plan_widgets: dict[str, PlanWidget] = {}
 
-        layout = QtW.QVBoxLayout(self)
-        layout.addLayout(top_layout)
-        layout.addLayout(self.groups_layout)
-        layout.addLayout(self.button_layout)
+        self.plans_combobox.currentIndexChanged.connect(
+            self.stack_widget.setCurrentIndex
+        )
+        self.setLayout(self.root_layout)
 
-        self.plans_combobox.currentTextChanged.connect(self._on_plan_changed)
-        self.setLayout(layout)
+        ino.Store.get_store("plan_specs").inject(self.setup_ui)()
 
-        ino.Store.get_store("PlanManifest").inject(self.setup_ui)()
+    def setup_ui(self, specs: set[PlanSpec]) -> None:
+        """
+        Build the UI for the acquisition plans.
 
-    def setup_ui(self, manifests: set[PlanManifest]) -> None:
-        """Initialize the UI with the provided plan manifests.
-
-        Widgets are created via `magicgui`, based on the
-        plan manifest information.
+        This is called via injection, to ensure that the
+        plan specifications are available from the store.
 
         Parameters
         ----------
-        manifests : set[PlanManifest]
-            Set of plan manifests to populate the UI with.
-            Injected from `AcquisitionController`.
+        specs : ``set[PlanSpec]``
+            The set of available plan specifications.
         """
-        for manifest in manifests:
-            self.plans_combobox.addItem(manifest.name)
-            self.plans_info[manifest.name] = manifest.description
-            layout = QtW.QVBoxLayout()
-            groupbox = QtW.QGroupBox(parent=self)
-            widgets: list[mw.Widget] = []
-            events_param = manifest.parameters.get("events", None)
-            if events_param and events_param.kind == inspect.Parameter.KEYWORD_ONLY:
-                # TODO: understand why mypy says this is unreachable
-                if isinstance(events_param.origin, Sequence) and isinstance(  # type: ignore[unreachable]
-                    events_param.annotation, str
-                ):
-                    # TODO: what to do here?
-                    ...
-            for pname, param in manifest.parameters.items():
-                options: dict[str, Any] = {}
-                default = param.default
-                if param.meta:
-                    if param.meta.exclude:
-                        # skip excluded parameters
-                        continue
-                    if param.meta.min is not None:
-                        options["min"] = param.meta.min
-                    if param.meta.max is not None:
-                        options["max"] = param.meta.max
-                # TODO: understand why mypy says this is unreachable
-                if isinstance(param.origin, Sequence) and isinstance(  # type: ignore[unreachable]
-                    param.annotation, ModelProtocol
-                ):
-                    register_type(param.annotation, widget_type=mw.Select)  # type: ignore[unreachable]
-                    options["choices"] = param.choices
-                    default = param.choices[0] if param.choices else default
-                widget = mw.create_widget(
-                    name=pname,
-                    value=default,
-                    annotation=param.annotation,
-                    param_kind=param.kind,
-                    options=options,
-                )
-                widgets.append(widget)
-            container = mw.Container(
-                widgets=widgets,
+        # Sort specs by name for stable ordering
+        for spec in sorted(specs, key=lambda s: s.name):
+            func_name = spec.name
+            self.plans_combobox.addItem(func_name)
+
+            page = QtW.QWidget()
+            page_layout = QtW.QVBoxLayout(page)
+            page_layout.setContentsMargins(4, 4, 4, 4)
+            page_layout.setSpacing(4)
+
+            # Group box for regular parameters
+            group_box = QtW.QGroupBox("Parameters")
+            group_layout = QtW.QFormLayout(group_box)
+            page_layout.addWidget(group_box)
+
+            param_widgets: dict[str, mgw.Widget] = {}
+
+            # Regular parameters (exclude Actions-typed params)
+            for p in spec.parameters:
+                if p.actions is not None or p.annotation is Actions:
+                    # Don't generate parameter widgets for Actions params.
+                    continue
+                # Skip var-keyword (**kwargs): no sane generic widget.
+                if p.is_var_keyword:
+                    continue
+                w = create_param_widget(p)
+                param_widgets[p.name] = w
+
+            container = mgw.Container(
+                widgets=[w.native for w in param_widgets.values()]
             )
+            group_layout.addRow(container.native)
+
+            # Run button
             run_button = QtW.QPushButton("Run")
-            if manifest.is_toggleable:
-                run_button.setCheckable(True)
-                run_button.toggled.connect(self._on_plan_toggled)
-            else:
-                run_button.clicked.connect(self._on_plan_launch)
+            page_layout.addWidget(run_button)
 
-            groupbox.hide()
-            run_button.hide()
-            if manifest.name == self.plans_combobox.currentText():
-                groupbox.show()
-                run_button.show()
+            # Actions group (for parameters typed as Actions with a default)
+            actions_group_box: QtW.QGroupBox | None = None
+            actions_params = [p for p in spec.parameters if p.actions is not None]
 
-            layout.addWidget(container.native)
-            groupbox.setLayout(layout)
-            self.groups_layout.addWidget(groupbox)
-            self.button_layout.addWidget(run_button)
-            self.plan_widgets[manifest.name] = PlanWidget(
-                group=groupbox,
-                run=run_button,
+            if actions_params:
+                actions_group_box = QtW.QGroupBox("Actions")
+                actions_layout = QtW.QHBoxLayout(actions_group_box)
+
+                for p in actions_params:
+                    act = p.actions
+                    if act is None:
+                        continue
+                    for name_str in act.names:
+                        btn = QtW.QPushButton(str(name_str))
+                        # No wiring for now; user can extend this.
+                        actions_layout.addWidget(btn)
+
+                page_layout.addWidget(actions_group_box)
+
+            self.stack_widget.addWidget(page)
+            self.plan_widgets[func_name] = PlanWidget(
+                spec=spec,
+                group_box=group_box,
+                run_button=run_button,
                 container=container,
-                togglable=manifest.is_toggleable,
+                actions_group=actions_group_box,
             )
 
-    def _on_plan_changed(self, text: str) -> None:
-        for name, widget in self.plan_widgets.items():
-            if name == text:
-                widget.show()
-            else:
-                widget.hide()
-        self.adjustSize()
+        self.stack_widget.setCurrentIndex(0)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
@@ -233,41 +224,23 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def connection_phase(self) -> None: ...
 
     def _on_plan_toggled(self, toggled: bool) -> None:
-        """Toggle the execution of a plan.
-
-        Parameters
-        ----------
-        toggled : bool
-            Whether the plan is now toggled on or off.
-        """
-        plan = self.plans_combobox.currentText()
-        self.plan_widgets[plan].toggle(toggled)
-        if toggled:
-            togglable, parameters = (
-                self.plan_widgets[plan].togglable,
-                self.plan_widgets[plan].parameters,
-            )
-            self.logger.debug(f"Launching {plan}")
-            self.logger.debug(f"Parameters: {parameters}")
-            self.sigLaunchPlanRequest.emit(plan, togglable, parameters)
-        else:
-            self.sigStopPlanRequest.emit()
-            self.plan_widgets[plan].setEnabled(True)
+        # TODO: implement plan toggling logic
+        ...
 
     def _on_plan_launch(self) -> None:
-        plan = self.plans_combobox.currentText()
-        togglable, parameters = (
-            self.plan_widgets[plan].togglable,
-            self.plan_widgets[plan].parameters,
-        )
-        self.logger.debug(f"Launching {plan}")
-        self.logger.debug(f"Parameters: {parameters}")
-        self.sigLaunchPlanRequest.emit(plan, togglable, parameters)
+        # TODO: implement plan launch logic;
+        # the event handling for start/stop
+        # should maybe pass by the engine
+        # to simplify things and keep things
+        # consistently... maybe
+        # the toggling event can be
+        # added as a parameter to Actions?
+        ...
 
     def _on_plan_done(self) -> None:
         plan = self.plans_combobox.currentText()
         self.plan_widgets[plan].setEnabled(True)
 
     def _on_info_clicked(self) -> None:
-        info = self.plans_info[self.plans_combobox.currentText()]
-        InfoDialog.show_dialog("Plan information", info, parent=self)
+        widget = self.plan_widgets[self.plans_combobox.currentText()]
+        InfoDialog.show_dialog("Plan information", widget.spec.docs, parent=self)

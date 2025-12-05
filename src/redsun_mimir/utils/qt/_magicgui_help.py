@@ -1,25 +1,14 @@
-# mypy: disable-error-code="union-attr"
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from magicgui import widgets as mgw
-from qtpy import QtWidgets
 
 from redsun_mimir.common._plan_spec import ParamKind
 from redsun_mimir.utils import issequence
 
-from ._treeview import DescriptorTreeView
-
 if TYPE_CHECKING:
     from redsun_mimir.common import ParamDescription
-
-__all__ = [
-    "InfoDialog",
-    "DescriptorTreeView",
-    "collect_arguments",
-    "create_param_widget",
-]
 
 
 def create_param_widget(param: ParamDescription) -> mgw.Widget:
@@ -87,73 +76,3 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
         w = mgw.LineEdit(name=name)
 
     return w
-
-
-class InfoDialog(QtWidgets.QDialog):
-    """Dialog to provide information to the user.
-
-    Parameters
-    ----------
-    title : ``str``
-        The title of the dialog window, by default "Information"
-    text : ``str``, optional
-        The text to display in the text edit area.
-        If ``None``, a placeholder text will be displayed.
-    parent : ``QtWidgets.QWidget``, optional
-        The parent widget, by default None
-
-    """
-
-    def __init__(
-        self,
-        title: str,
-        text: str,
-        parent: QtWidgets.QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-
-        self.setWindowTitle(title)
-        self.resize(500, 300)
-
-        layout = QtWidgets.QVBoxLayout(self)
-
-        self.text_edit = QtWidgets.QTextEdit()
-        self.text_edit.setReadOnly(True)
-        self.text_edit.setMarkdown(text)
-        layout.addWidget(self.text_edit)
-
-        self.ok_button = QtWidgets.QPushButton("OK")
-        self.ok_button.setDefault(True)
-        self.ok_button.clicked.connect(self.accept)
-
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(self.ok_button)
-        layout.addLayout(button_layout)
-
-        self.setLayout(layout)
-
-    @classmethod
-    def show_dialog(
-        cls, title: str, text: str, parent: QtWidgets.QWidget | None = None
-    ) -> int:
-        """Create and show the dialog in one step.
-
-        Parameters
-        ----------
-        title : ``str``
-            The title of the dialog window.
-        text : ``str``, optional
-            The text to display in the text edit area.
-            If ``None``, a placeholder text will be displayed.
-        parent : ``QtWidgets.QWidget``, optional
-            The parent widget, by default None.
-
-        Returns
-        -------
-        ``int``
-            Dialog result code (``QDialog.Accepted``)
-
-        """
-        dialog = cls(title, text, parent)
-        return dialog.exec()
