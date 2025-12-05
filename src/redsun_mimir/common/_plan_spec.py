@@ -9,6 +9,7 @@ from inspect import Parameter, _empty, signature
 from typing import (
     TYPE_CHECKING,
     Any,
+    ParamSpec,
     Protocol,
     TypeVar,
     cast,
@@ -16,9 +17,6 @@ from typing import (
     get_origin,
     get_type_hints,
     runtime_checkable,
-)
-from typing import (
-    ParamSpec as ParamSpec,
 )
 
 from redsun_mimir.utils import issequence
