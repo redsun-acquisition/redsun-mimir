@@ -431,13 +431,6 @@ def actioned(
             _validate_action_names(param_name, names)
             actions_map[param_name] = Actions(list(names))
 
-        # Merge with any existing mapping (later decorators override earlier)
-        existing: cabc.Mapping[str, Actions] | None = getattr(func, "__actions__", None)
-        if existing:
-            merged = dict(existing)
-            merged.update(actions_map)
-            actions_map = merged
-
         setattr(func, "__actions__", actions_map)
         setattr(func, "__togglable__", togglable)
 
