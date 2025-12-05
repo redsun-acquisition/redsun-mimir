@@ -16,7 +16,7 @@ from redsun_mimir.model.youseetoo import (
     MimirSerialModel,
     MimirSerialModelInfo,
 )
-from redsun_mimir.widget import LightWidget, LightWidgetInfo
+from redsun_mimir.view import LightWidget, LightWidgetInfo
 
 
 def light_widget_uc2() -> None:

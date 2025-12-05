@@ -11,7 +11,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MockMotorModel, MotorModelInfo
-from redsun_mimir.widget import MotorWidget, MotorWidgetInfo
+from redsun_mimir.view import MotorWidget, MotorWidgetInfo
 
 
 def stage_widget() -> None:

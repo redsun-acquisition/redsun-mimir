@@ -8,7 +8,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MockMotorModel, MotorModelInfo
-from redsun_mimir.widget import MotorWidget
+from redsun_mimir.view import MotorWidget
 
 
 def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:

@@ -11,7 +11,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import DetectorController, DetectorControllerInfo
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
-from redsun_mimir.widget import DetectorWidget, DetectorWidgetInfo
+from redsun_mimir.view import DetectorWidget, DetectorWidgetInfo
 
 
 def detector_widget_uc2() -> None:

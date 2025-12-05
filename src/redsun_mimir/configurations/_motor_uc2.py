@@ -16,7 +16,7 @@ from redsun_mimir.model.youseetoo import (
     MimirSerialModel,
     MimirSerialModelInfo,
 )
-from redsun_mimir.widget import MotorWidget, MotorWidgetInfo
+from redsun_mimir.view import MotorWidget, MotorWidgetInfo
 
 
 def stage_widget_uc2() -> None:

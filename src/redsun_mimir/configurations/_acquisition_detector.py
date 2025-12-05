@@ -16,7 +16,7 @@ from redsun_mimir.controller import (
     DetectorControllerInfo,
 )
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
-from redsun_mimir.widget import (
+from redsun_mimir.view import (
     AcquisitionWidget,
     AcquisitionWidgetInfo,
     DetectorWidget,

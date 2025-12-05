@@ -11,7 +11,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import AcquisitionController, AcquisitionControllerInfo
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
-from redsun_mimir.widget import AcquisitionWidget, AcquisitionWidgetInfo
+from redsun_mimir.view import AcquisitionWidget, AcquisitionWidgetInfo
 
 
 def acquisition_widget_uc2() -> None:

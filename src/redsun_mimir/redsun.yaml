@@ -37,14 +37,14 @@ controllers:
 
 views:
   acquisition:
-    class: redsun_mimir.widget:AcquisitionWidget
-    info: redsun_mimir.widget:AcquisitionWidgetInfo
+    class: redsun_mimir.view:AcquisitionWidget
+    info: redsun_mimir.view:AcquisitionWidgetInfo
   motor:
-    class: redsun_mimir.widget:MotorWidget
-    info: redsun_mimir.widget:MotorWidgetInfo
+    class: redsun_mimir.view:MotorWidget
+    info: redsun_mimir.view:MotorWidgetInfo
   light:
-    class: redsun_mimir.widget:LightWidget
-    info: redsun_mimir.widget:LightWidgetInfo
+    class: redsun_mimir.view:LightWidget
+    info: redsun_mimir.view:LightWidgetInfo
   detector:
-    class: redsun_mimir.widget:DetectorWidget
-    info: redsun_mimir.widget:DetectorWidgetInfo
+    class: redsun_mimir.view:DetectorWidget
+    info: redsun_mimir.view:DetectorWidgetInfo

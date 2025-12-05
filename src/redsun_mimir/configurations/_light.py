@@ -11,7 +11,7 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.controller import LightController, LightControllerInfo
 from redsun_mimir.model import LightModelInfo, MockLightModel
-from redsun_mimir.widget import LightWidget, LightWidgetInfo
+from redsun_mimir.view import LightWidget, LightWidgetInfo
 
 
 def light_widget() -> None:
