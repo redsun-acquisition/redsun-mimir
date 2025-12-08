@@ -174,7 +174,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                     # Don't generate parameter widgets for Actions params.
                     continue
                 # Skip var-keyword (**kwargs): no sane generic widget.
-                if p.is_var_keyword:
+                if p.kind.name == "VAR_KEYWORD":
                     continue
                 w = create_param_widget(p)
                 param_widgets[p.name] = w
@@ -186,6 +186,12 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
             # Run button
             run_button = QtW.QPushButton("Run")
+            if spec.togglable:
+                run_button.setCheckable(True)
+                run_button.toggled.connect(self._on_plan_toggled)
+            else:
+                run_button.clicked.connect(self._on_plan_launch)
+
             page_layout.addWidget(run_button)
 
             # Actions group (for parameters typed as Actions with a default)
@@ -224,18 +230,17 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def connection_phase(self) -> None: ...
 
     def _on_plan_toggled(self, toggled: bool) -> None:
-        # TODO: implement plan toggling logic
-        ...
+        if toggled:
+            plan = self.plans_combobox.currentText()
+            parameters = self.plan_widgets[plan].parameters
+            self.sigLaunchPlanRequest.emit(plan, True, parameters)
+        else:
+            self.sigStopPlanRequest.emit()
 
     def _on_plan_launch(self) -> None:
-        # TODO: implement plan launch logic;
-        # the event handling for start/stop
-        # should maybe pass by the engine
-        # to simplify things and keep things
-        # consistently... maybe
-        # the toggling event can be
-        # added as a parameter to Actions?
-        ...
+        plan = self.plans_combobox.currentText()
+        parameters = self.plan_widgets[plan].parameters
+        self.sigLaunchPlanRequest.emit(plan, False, parameters)
 
     def _on_plan_done(self) -> None:
         plan = self.plans_combobox.currentText()

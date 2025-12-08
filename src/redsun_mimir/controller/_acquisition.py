@@ -13,13 +13,13 @@ from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
 from redsun_mimir.common import (
+    Actions,
     PlanSpec,
+    actioned,
     create_plan_spec,
     interrupts,
 )
-from redsun_mimir.common import (
-    plan_stubs as sps,
-)
+from redsun_mimir.common import plan_stubs as sps
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
 from redsun_mimir.utils import filter_models, get_choice_list
 
@@ -98,8 +98,9 @@ class AcquisitionController(ControllerProtocol, Loggable):
     def plans_specificiers(self) -> set[PlanSpec]:
         return self.plan_specs
 
+    @actioned(togglable=True)
     def live_count(
-        self, detectors: Sequence[DetectorProtocol], /, events: Sequence[str] = ["stop"]
+        self, detectors: Sequence[DetectorProtocol], /, events: Actions
     ) -> MsgGenerator[None]:
         """Start a live acquisition with the selected detectors.
 
@@ -110,7 +111,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
         """
         self.logger.debug("Starting live count acquisition.")
 
-        event_map = interrupts.create(events, self.event_manager)
+        event_map = interrupts.create(events.names, self.event_manager)
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)

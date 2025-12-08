@@ -89,16 +89,16 @@ class EventsInfo:
 
 
 @runtime_checkable
-class ActionedFunction(Protocol[P, R_co]):
+class ActionedPlan(Protocol[P, R_co]):
     """
-    Callable that has been marked as actioned.
+    Plan that has been marked as actioned.
 
-    "Actioned" means that the internal flow of the function can be influenced
+    "Actioned" means that the internal flow of the plan can be influenced
     by external actions, typically triggered by user interaction.
 
     Used both for static typing (decorator return type) and for runtime checks:
 
-    >>> if isinstance(f, ActionedFunction):
+    >>> if isinstance(f, ActionedPlan):
     >>>     print(f.__actions__)
 
     Attributes
@@ -175,11 +175,15 @@ class PlanSpec:
         Plan docstring.
     parameters: list[ParamDescription]
         List of parameter specifications.
+    togglable : bool
+        Whether the plan is togglable,
+        for example an infinite loop that the run engine can stop.
     """
 
     name: str
     docs: str
     parameters: list[ParamDescription]
+    togglable: bool = False
 
 
 def collect_arguments(
@@ -292,9 +296,11 @@ def create_plan_spec(
     type_hints = get_type_hints(plan, include_extras=True)
 
     func_actions_meta: cabc.Mapping[str, Actions] = {}
+    togglable = False
 
-    if isinstance(func_obj, ActionedFunction):
+    if isinstance(func_obj, ActionedPlan):
         func_actions_meta = func_obj.__actions__
+        togglable = func_obj.__togglable__
 
     params: list[ParamDescription] = []
 
@@ -359,6 +365,7 @@ def create_plan_spec(
         name=plan.__name__,
         docs=inspect.getdoc(plan) or "No documentation available.",
         parameters=params,
+        togglable=togglable,
     )
 
 
@@ -376,22 +383,22 @@ def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
 
 
 def actioned(
-    mapping: cabc.Mapping[str, cabc.Sequence[str]],
+    mapping: cabc.Mapping[str, cabc.Sequence[str]] | None = None,
     togglable: bool = False,
-) -> cabc.Callable[[cabc.Callable[P, R_co]], ActionedFunction[P, R_co]]:
+) -> cabc.Callable[[cabc.Callable[P, R_co]], ActionedPlan[P, R_co]]:
     """Attach action names to parameters typed as `Actions`.
 
     Parameters
     ----------
-    mapping : ``Mapping[str, Sequence[str]]``
-        Mapping of parameter names to sequences of action names.ù
+    mapping : ``Mapping[str, Sequence[str]]``, optional
+        Mapping of parameter names to sequences of action names.
     togglable : bool, optional
-        Whether the function is togglable (i.e. an infinite loop that the run engine can stop.)
+        Whether the plan is togglable (i.e. an infinite loop that the run engine can stop.)
 
     Returns
     -------
-    ``Callable[[Callable[P, R_co]], ActionedFunction[P, R_co]]``
-        A decorator that marks the function as actioned.
+    ``Callable[[Callable[P, R_co]], ActionedPlan[P, R_co]]``
+        A decorator that marks the plan as actioned.
 
     Example
     -------
@@ -417,25 +424,26 @@ def actioned(
     Keys in `mapping` must correspond to parameter names annotated as `Actions`.
     """
 
-    def decorator(func: cabc.Callable[P, R_co]) -> ActionedFunction[P, R_co]:
+    def decorator(func: cabc.Callable[P, R_co]) -> ActionedPlan[P, R_co]:
         hints = get_type_hints(func, include_extras=True)
         actions_map: dict[str, Actions] = {}
 
-        for param_name, names in mapping.items():
-            ann = hints.get(param_name, None)
-            if ann is not Actions:
-                raise TypeError(
-                    f"Parameter {param_name!r} must be annotated as Actions "
-                    f"to use @actioned; got {ann!r}"
-                )
-            _validate_action_names(param_name, names)
-            actions_map[param_name] = Actions(list(names))
+        if mapping:
+            for param_name, names in mapping.items():
+                ann = hints.get(param_name, None)
+                if ann is not Actions:
+                    raise TypeError(
+                        f"Parameter {param_name!r} must be annotated as Actions "
+                        f"to use @actioned; got {ann!r}"
+                    )
+                _validate_action_names(param_name, names)
+                actions_map[param_name] = Actions(list(names))
 
         setattr(func, "__actions__", actions_map)
         setattr(func, "__togglable__", togglable)
 
         # Tell the type checker (and runtime protocol) that this callable
-        # now satisfies ActionedFunction[PS, R_co].
-        return cast("ActionedFunction[P, R_co]", func)
+        # now satisfies ActionedPlan[PS, R_co].
+        return cast("ActionedPlan[P, R_co]", func)
 
     return decorator
