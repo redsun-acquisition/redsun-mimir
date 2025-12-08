@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from threading import Event
 from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
@@ -16,12 +15,12 @@ from redsun_mimir.common import (
     Actions,
     PlanSpec,
     actioned,
+    collect_arguments,
     create_plan_spec,
     interrupts,
 )
-from redsun_mimir.common import plan_stubs as sps
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
-from redsun_mimir.utils import filter_models, get_choice_list
+from redsun_mimir.utils import filter_models, get_choice_list, issequence
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -68,7 +67,6 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.ctrl_info = ctrl_info
         self.virtual_bus = virtual_bus
         self.models = models
-        self.live_event = Event()
         self.engine = RunEngine()
         self.event_manager = interrupts.EventManager()
 
@@ -78,8 +76,8 @@ class AcquisitionController(ControllerProtocol, Loggable):
             "live_count": self.live_count,
             "snap": self.snap,
         }
-        self.plan_specs: set[PlanSpec] = {
-            create_plan_spec(plan, models) for plan in self.plans.values()
+        self.plan_specs: dict[str, PlanSpec] = {
+            name: create_plan_spec(plan, models) for name, plan in self.plans.items()
         }
 
         store.register_provider(self.plans_specificiers)
@@ -96,11 +94,12 @@ class AcquisitionController(ControllerProtocol, Loggable):
         )
 
     def plans_specificiers(self) -> set[PlanSpec]:
-        return self.plan_specs
+        return set(self.plan_specs.values())
 
     @actioned(togglable=True)
     def live_count(
-        self, detectors: Sequence[DetectorProtocol], /, events: Actions
+        self,
+        detectors: Sequence[DetectorProtocol],
     ) -> MsgGenerator[None]:
         """Start a live acquisition with the selected detectors.
 
@@ -109,19 +108,14 @@ class AcquisitionController(ControllerProtocol, Loggable):
         detectors : ``Sequence[DetectorProtocol]``
             The detectors to use in the live acquisition.
         """
-        self.logger.debug("Starting live count acquisition.")
-
-        event_map = interrupts.create(events.names, self.event_manager)
-
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
         # TODO: DetectorProtocol should inherit from Flyable but it doesn't;
         # needs to be fixed in sunflare package
-        yield from sps.collect_while_waiting(detectors, event_map, stream_name="live")  # type: ignore[arg-type]
-        yield from bps.unstage_all(*detectors)
-        yield from bps.close_run(exit_status="success")
-        self.logger.debug("Live count acquisition stopped.")
+        # run until the stop live button is clicked
+        while True:
+            yield from bps.collect(*detectors, stream=True, return_payload=False)
 
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
@@ -138,49 +132,84 @@ class AcquisitionController(ControllerProtocol, Loggable):
             Default is 1.
         """
         if frames <= 0:
-            raise ValueError("Number of frames must be a positive integer.")
+            # safeguard against invalid input
+            frames = 1
 
-        self.logger.debug(f"Taking {frames} frame(s).")
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
-            yield from bps.trigger_and_read(detectors, name="snap")
+            yield from bps.collect(*detectors, stream=True, return_payload=False)
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
-        self.logger.debug("Snapshot done.")
 
-    def __call__(self, plan_name: str, kwargs: dict[str, Any]) -> None:
-        self.launch_plan(plan_name, togglable=False, kwargs=kwargs)
-
-    def launch_plan(
-        self, plan_name: str, togglable: bool, kwargs: dict[str, Any]
-    ) -> None:
+    def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
 
         Parameters
         ----------
         plan_name : ``str``
             The name of the plan to launch.
-        togglable : ``bool``
-            Whether the plan is togglable.
-        kwargs : ``dict[str, Any]``
-            Keyword arguments to pass to the plan.
+        param_values : ``Mapping[str, Any]``
+            The parameter values to pass to the plan.
+            Elaborated from the UI inputs.
         """
+        if (
+            plan_name not in self.plans.keys()
+            or plan_name not in self.plan_specs.keys()
+        ):
+            return
+
         plan = self.plans[plan_name]
-        for name, arg in kwargs.items():
-            if type(arg) is tuple and len(arg) == 2:
-                # view packs the annotation and value in a tuple
-                # for models; unpack it and update the kwargs
-                # with the actual models
-                choices = get_choice_list(self.models, arg[0], arg[1])
-                kwargs[name] = choices
-        if togglable:
-            # TODO: this imposes the constraint that
-            # plans always have to refer to the local
-            # live_event obj; maybe it should be
-            # passed as an argument to the plan?
-            self.live_event.set()
-        fut = self.engine(plan(**kwargs))
+        spec = self.plan_specs[plan_name]
+
+        # start with values coming from the view
+        values: dict[str, Any] = dict(param_values)
+
+        # For Actions-typed parameters that have metadata but no GUI input,
+        # inject the Actions instance so the function can always be called.
+        for p in spec.parameters:
+            if (
+                p.annotation is Actions
+                and p.actions is not None
+                and p.name not in values
+            ):
+                values[p.name] = p.actions
+
+        resolved: dict[str, Any] = {}
+
+        # For Actions-typed parameters that have metadata but no GUI input,
+        # inject the Actions instance so the function can always be called.
+        for p in spec.parameters:
+            if p.name not in values:
+                continue
+            val = values[p.name]
+            models: list[ModelProtocol] = []
+
+            # Model-backed parameter: indicated by presence of choices
+            if p.choices is not None:
+                # Coerce widget value into a list of string labels
+                if isinstance(val, str):
+                    labels = [val]
+                elif isinstance(val, Sequence) and not isinstance(val, (str, bytes)):
+                    labels = [str(v) for v in val]
+                else:
+                    labels = [str(val)]
+                proto: type[ModelProtocol] | None = p.model_proto
+                if proto:
+                    models = get_choice_list(self.models, proto, labels)
+
+                if p.kind.name == "VAR_POSITIONAL" or issequence(p.annotation):
+                    # Sequence[...] or *detectors → pass the list as-is
+                    resolved[p.name] = models
+                else:
+                    # Single model parameter → first match or None
+                    resolved[p.name] = models[0] if models else None
+            else:
+                # Non-model parameter (or no registry): pass through
+                resolved[p.name] = val
+
+        args, kwargs = collect_arguments(spec, resolved)
+        fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
         # TODO: add a specific callback that emits
@@ -190,11 +219,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
 
     def stop_plan(self) -> None:
         """Stop the running plan."""
-        if self.live_event.is_set():
-            self.live_event.clear()
-            self.logger.debug("Stopping live plan.")
-        else:
-            self.engine.stop()
+        self.engine.stop()
 
 
 class MedianAcquisitionController(ControllerProtocol, Loggable):

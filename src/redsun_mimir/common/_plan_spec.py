@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from inspect import Parameter, _empty, signature
 from typing import (
-    TYPE_CHECKING,
     Any,
     ParamSpec,
     Protocol,
@@ -19,10 +18,9 @@ from typing import (
     runtime_checkable,
 )
 
-from redsun_mimir.utils import issequence
+from sunflare.model import ModelProtocol
 
-if TYPE_CHECKING:
-    from sunflare.model import ModelProtocol
+from redsun_mimir.utils import issequence
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -146,6 +144,11 @@ class ParamDescription:
         If True, this parameter should not be exposed as a normal input widget.
     events : EventsInfo | None
         If this parameter represents events, this holds the event names.
+    actions : Actions | None
+        If this parameter is annotated as `Actions`, this holds the associated action object.
+    model_proto : type[ModelProtocol] | None
+        If this parameter is associated with a ModelProtocol type,
+        this holds the actual type.
     """
 
     name: str
@@ -157,6 +160,7 @@ class ParamDescription:
     multiselect: bool = False
     hidden: bool = False
     actions: Actions | None = None
+    model_proto: type[ModelProtocol] | None = None
 
     @property
     def has_default(self) -> bool:
@@ -336,19 +340,18 @@ def create_plan_spec(
         # Find possible choices using isinstance on actual objects
         choices: list[str] | None = None
         matching: list[str] = []
+        model_proto: type[ModelProtocol] | None = None
         for key, obj in models.items():
-            try:
-                if isinstance(obj, elem_ann):
-                    matching.append(key)
-            except TypeError:
-                continue
+            if isinstance(obj, elem_ann):
+                matching.append(key)
         if matching:
             choices = matching
+            # If elem_ann is compatible with ModelProtocol, capture it
+            if isinstance(elem_ann, ModelProtocol):
+                model_proto = elem_ann  # type: ignore[assignment]
 
         # Map inspect.Parameter.kind to our ParamKind
-        pkind = _PARAM_KIND_MAP.get(param.kind)
-        if pkind is None:
-            raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
+        pkind = _PARAM_KIND_MAP[param.kind]
 
         params.append(
             ParamDescription(
@@ -358,6 +361,7 @@ def create_plan_spec(
                 default=param.default,
                 choices=choices,
                 actions=actions,
+                model_proto=model_proto,
             )
         )
 

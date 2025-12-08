@@ -75,8 +75,7 @@ def collect_while_waiting(
     event: tuple[str, asyncio.Event] | None = None
     while event is None:
         event = yield from wait_for_any(events, timeout=refresh_period)
-        for obj in objs:
-            yield from bps.collect(
-                obj, name=stream_name, stream=True, return_payload=False
-            )
+        yield from bps.collect(
+            *objs, name=stream_name, stream=True, return_payload=False
+        )
     return event

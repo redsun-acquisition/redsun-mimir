@@ -76,16 +76,15 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     Attributes
     ----------
-    sigLaunchPlanRequest : ``Signal[str, bool, dict[str, Any]]``
+    sigLaunchPlanRequest : ``Signal[str, dict[str, Any]]``
         Signal to launch a plan.
         - ``str``: The plan name.
-        - ``bool``: Whether the plan is togglable.
         - ``dict[str, Any]``: Plan parameters.
     sigStopPlanRequest : ``Signal``
         Signal to stop a running plan.
     """
 
-    sigLaunchPlanRequest = Signal(str, bool, object)
+    sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
 
     def __init__(
@@ -233,14 +232,14 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         if toggled:
             plan = self.plans_combobox.currentText()
             parameters = self.plan_widgets[plan].parameters
-            self.sigLaunchPlanRequest.emit(plan, True, parameters)
+            self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
             self.sigStopPlanRequest.emit()
 
     def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()
         parameters = self.plan_widgets[plan].parameters
-        self.sigLaunchPlanRequest.emit(plan, False, parameters)
+        self.sigLaunchPlanRequest.emit(plan, parameters)
 
     def _on_plan_done(self) -> None:
         plan = self.plans_combobox.currentText()
