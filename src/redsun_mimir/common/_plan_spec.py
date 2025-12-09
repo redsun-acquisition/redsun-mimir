@@ -167,7 +167,7 @@ class ParamDescription:
         return self.default is not _empty
 
 
-@dataclass
+@dataclass(eq=False)
 class PlanSpec:
     """Description of a plan's signature & type hints.
 
@@ -253,6 +253,26 @@ def collect_arguments(
     return tuple(args), kwargs
 
 
+def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
+    """Iterate over a function signature's parameters, skipping 'self'/'cls'."""
+    # Make a mutable, ordered snapshot
+    items = list(sig.parameters.items())
+
+    if items:
+        first_name, first_param = items[0]
+
+        # Drop only if it's *actually* the implicit instance/class parameter:
+        if first_name in {"self", "cls"} and first_param.kind in (
+            Parameter.POSITIONAL_ONLY,
+            Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            items = items[1:]  # skip it
+
+    # Now iterate the (possibly trimmed) list
+    for name, param in items:
+        yield name, param
+
+
 def create_plan_spec(
     plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
     models: cabc.Mapping[str, ModelProtocol],
@@ -290,14 +310,21 @@ def create_plan_spec(
 
     sig = signature(func_obj)
 
-    if (
-        sig.return_annotation is _empty
-        or get_origin(sig.return_annotation) is None
-        or not isinstance(get_origin(sig.return_annotation), cabc.Generator)
-    ):
-        raise TypeError(f"Plan {plan.__name__} must have a MsgGenerator return type.")
+    type_hints = get_type_hints(func_obj, include_extras=True)
+    return_type = type_hints.get("return", None)
 
-    type_hints = get_type_hints(plan, include_extras=True)
+    if return_type is None:
+        raise TypeError(f"Plan {plan.__name__} must have a return type annotation.")
+
+    origin = get_origin(return_type)
+    isgen = (
+        origin is not None
+        and issubclass(origin, cabc.Generator)
+        or origin is cabc.Generator
+    )
+
+    if not isgen:
+        raise TypeError(f"Plan {plan.__name__} must have a MsgGenerator return type.")
 
     func_actions_meta: cabc.Mapping[str, Actions] = {}
     togglable = False
@@ -308,7 +335,7 @@ def create_plan_spec(
 
     params: list[ParamDescription] = []
 
-    for name, param in sig.parameters.items():
+    for name, param in iterate_signature(sig):
         ann: Any = type_hints.get(name, param.annotation)
         if ann is _empty:
             ann = Any

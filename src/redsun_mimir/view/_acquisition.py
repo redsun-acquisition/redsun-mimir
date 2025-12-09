@@ -61,7 +61,7 @@ class PlanWidget:
         return {w.name: w.value for w in self.container}
 
 
-store = ino.Store.get_store("PlanManifest")
+store = ino.Store.get_store("plan_specs")
 
 
 class AcquisitionWidget(BaseQtWidget, Loggable):
@@ -98,14 +98,18 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plans_info: dict[str, str] = {}
 
         # root layout
-        self.root_layout = QtW.QHBoxLayout(self)
+        self.root_layout = QtW.QVBoxLayout(self)
         self.root_layout.setContentsMargins(4, 4, 4, 4)
         self.root_layout.setSpacing(4)
+
+        # combobox and info button layout
+        self.top_bar_layout = QtW.QHBoxLayout()
+        self.top_bar_layout.setContentsMargins(0, 0, 0, 0)
+        self.top_bar_layout.setSpacing(4)
 
         # combobox to select which plan to show
         self.plans_combobox = QtW.QComboBox(self)
         self.plans_combobox.setToolTip("Select a plan to run")
-        self.root_layout.addWidget(self.plans_combobox, 1)
 
         # info button to open a dialog with plan docstring
         self.info_btn = QtW.QPushButton(self)
@@ -121,7 +125,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.info_btn.setIconSize(QtCore.QSize(16, 16))
         self.info_btn.setFlat(True)
         self.info_btn.clicked.connect(self._on_info_clicked)
-        self.root_layout.addWidget(self.plans_combobox, 0)
+
+        # add widgets to the horizontal layout
+        self.top_bar_layout.addWidget(self.plans_combobox, 1)  # stretch = 1 (expands)
+        self.top_bar_layout.addWidget(self.info_btn, 0)  # fixed width
+
+        # put the top bar into the main vertical layout
+        self.root_layout.addLayout(self.top_bar_layout)
 
         # stacked widget: one page per plan (each page is a param form);
         # only used for visualization, not for logic
@@ -165,22 +175,27 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             group_layout = QtW.QFormLayout(group_box)
             page_layout.addWidget(group_box)
 
-            param_widgets: dict[str, mgw.Widget] = {}
+            param_widgets: dict[str, mgw.bases.ValueWidget[Any]] = {}
 
             # Regular parameters (exclude Actions-typed params)
             for p in spec.parameters:
+                if p.hidden:
+                    # do nothing
+                    continue
                 if p.actions is not None or p.annotation is Actions:
                     # Don't generate parameter widgets for Actions params.
                     continue
-                # Skip var-keyword (**kwargs): no sane generic widget.
+                # Skip var-keyword (**kwargs): no sane generic widget yet.
                 if p.kind.name == "VAR_KEYWORD":
                     continue
                 w = create_param_widget(p)
-                param_widgets[p.name] = w
+                param_widgets[p.name] = cast("mgw.bases.ValueWidget[Any]", w)
 
             container = mgw.Container(
-                widgets=[w.native for w in param_widgets.values()]
+                widgets=[w for w in param_widgets.values()],
             )
+            native_container: QtW.QWidget = container.native
+            native_container.adjustSize()
             group_layout.addRow(container.native)
 
             # Run button

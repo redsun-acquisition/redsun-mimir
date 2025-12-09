@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, get_args
 
 from magicgui import widgets as mgw
 
@@ -58,6 +58,27 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
                 choices=param.choices,
                 value=param.default if param.has_default else param.choices[0],
             )
+        return w
+
+    # non-model sequence: Sequence[float, int, ...];
+    # str and bytes are also sequences, but should not be treated as such
+    # for the purpose of this use case and falls back to magicgui's default handling
+    if issequence(param.annotation) and not isinstance(param.annotation, (str, bytes)):
+        actual_annotation: type[Any] = Any
+
+        # convert Sequence[T] to list[T] for magicgui
+        args: tuple[type[Any]] = get_args(param.annotation)
+        arg = args[0] if len(args) > 0 else None
+        if arg:
+            actual_annotation = list[arg]  # type: ignore[valid-type]
+        else:
+            actual_annotation = list
+
+        w = mgw.ListEdit(
+            label=param.name,
+            annotation=actual_annotation,
+            layout="vertical",
+        )
         return w
 
     name = param.name

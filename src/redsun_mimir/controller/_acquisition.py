@@ -17,7 +17,6 @@ from redsun_mimir.common import (
     actioned,
     collect_arguments,
     create_plan_spec,
-    interrupts,
 )
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
 from redsun_mimir.utils import filter_models, get_choice_list, issequence
@@ -68,7 +67,6 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.virtual_bus = virtual_bus
         self.models = models
         self.engine = RunEngine()
-        self.event_manager = interrupts.EventManager()
 
         self.futures: set[Future[Any]] = set()
 
@@ -105,8 +103,8 @@ class AcquisitionController(ControllerProtocol, Loggable):
 
         Parameters
         ----------
-        detectors : ``Sequence[DetectorProtocol]``
-            The detectors to use in the live acquisition.
+        - detectors : ``Sequence[DetectorProtocol]``
+            - The detectors to use in the live acquisition.
         """
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
@@ -120,14 +118,14 @@ class AcquisitionController(ControllerProtocol, Loggable):
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
     ) -> MsgGenerator[None]:
-        """Take ``num_frames`` snapshot from each detector.
+        """Take ``frames`` number snapshot from each detector.
 
         Parameters
         ----------
-        detectors : ``Sequence[DetectorProtocol]``
-            The detectors to take a snapshot from.
-        num_frames : ``int``, optional
-            The number of snapshots to take for each detector.
+        - detectors : ``Sequence[DetectorProtocol]``
+            - The detectors to take a snapshot from.
+        - frames : ``int``, optional
+            - The number of snapshots to take for each detector.
             Must be a non-zero, positive integer.
             Default is 1.
         """

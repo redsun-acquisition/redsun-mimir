@@ -61,8 +61,25 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
                 choices=param.choices,
                 allow_multiple=True,
                 annotation=param.annotation,
-                value=param.default if param.has_default else None,
+                value=param.default if param.has_default else param.choices[0],
             )
+            # the inner native widget is a QListWidget, we can manipulate it
+            # to have a better user experience and make the selection widget
+            # resize it properly to the content and scrollable if too many items
+            # are present
+            inner_w: QtWidgets.QListWidget = w.native
+            height = 2 * inner_w.frameWidth()  # top + bottom frame
+
+            # get number of rows
+            count = inner_w.count()
+            for row in range(count):
+                height += inner_w.sizeHintForRow(row)
+
+            # account for spacing between rows
+            height += inner_w.spacing() * max(0, count - 1)
+
+            inner_w.setFixedHeight(height)
+
         else:
             w = mgw.ComboBox(
                 name=param.name,

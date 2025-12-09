@@ -28,19 +28,14 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._name = name
         self._model_info = model_info
         self._core = Core.instance()
-
-        # helper attribute to access some more
-        # device-specific functionalities to bypass the
-        # need to always go through the core;
-        # due to https://github.com/pymmcore-plus/pymmcore-plus/issues/522
-        # we actually need to first call the `core.loadDevice`
-        # before getting the device object via `core.getDeviceObject`;
         try:
             self._core.loadDevice(name, model_info.adapter, model_info.device)
+            self._core.initializeDevice(name)
+
+            # use device object for property manipulation
             self._device = self._core.getDeviceObject(
                 name, device_type=DeviceType.Camera
             )
-            self._device.initialize()
         except Exception as e:
             self.logger.error(f"Failed to initialize device {name}")
             raise e
@@ -78,12 +73,12 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if not propr:
             s.set_exception(ValueError("No property specified."))
         elif propr in self._device_schema["properties"]:
-            self._device.setProperty(propr, value)
+            self._core.setProperty(self.name, propr, value)
             s.set_finished()
             self.logger.debug(f"Set {propr} to {value}.")
         elif propr == "roi":
             # TODO: should we validate the ROI here?
-            self._device.setROI(*value)
+            self._core.setROI(self.name, *value)
             self.roi = tuple(value)
             s.set_finished()
             self.logger.debug(f"Set ROI to {value}.")
@@ -127,7 +122,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         s = Status()
         try:
             if not self._core.isSequenceRunning():
-                self._device.core.startContinuousSequenceAcquisition()
+                self._core.startContinuousSequenceAcquisition()
                 self.logger.debug(f"Staged {self.name}.")
             s.set_finished()
         except Exception as e:
@@ -139,7 +134,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         s = Status()
         try:
             if self._core.isSequenceRunning():
-                self._device.stopSequenceAcquisition()
+                self._core.stopSequenceAcquisition(self.name)
                 self.logger.debug(f"Unstaged {self.name}.")
             s.set_finished()
         except Exception as e:
@@ -156,7 +151,11 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         return self.stage()
 
     def complete(self) -> Status:
-        """Complete the continuous acquisition."""
+        """Complete the continuous acquisition.
+
+        For micro-manager, this is equivalent to unstaging the detector,
+        as acquisition doesn't block the main thread.
+        """
         return self.unstage()
 
     def collect(self) -> Iterator[PartialEvent]:

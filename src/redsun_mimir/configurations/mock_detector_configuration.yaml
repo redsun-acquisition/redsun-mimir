@@ -2,12 +2,7 @@ session: redsun-mimir
 engine: bluesky
 frontend: pyqt
 models:
-  Mock camera:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [100, 100]
-    pixel_size: [1, 1]
-  Other mock camera:
+  Mock1:
     plugin_name: test
     plugin_id: test
     sensor_shape: [100, 100]
