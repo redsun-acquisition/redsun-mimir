@@ -5,7 +5,7 @@ models:
   Mock1:
     plugin_name: test
     plugin_id: test
-    sensor_shape: [100, 100]
+    sensor_shape: [512, 512]
     pixel_size: [1, 1]
 controllers:
   AcquisitionController:

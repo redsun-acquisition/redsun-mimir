@@ -45,7 +45,6 @@ class PlanWidget:
     actions_group: QtW.QGroupBox | None = None
 
     def toggle(self, status: bool) -> None:
-        self.group_box.setEnabled(not status)
         self.run_button.setText("Stop" if status else "Run")
 
     def setEnabled(self, enabled: bool) -> None:
@@ -244,12 +243,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def connection_phase(self) -> None: ...
 
     def _on_plan_toggled(self, toggled: bool) -> None:
+        plan = self.plans_combobox.currentText()
         if toggled:
-            plan = self.plans_combobox.currentText()
             parameters = self.plan_widgets[plan].parameters
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
             self.sigStopPlanRequest.emit()
+        self.plan_widgets[plan].toggle(toggled)
 
     def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()

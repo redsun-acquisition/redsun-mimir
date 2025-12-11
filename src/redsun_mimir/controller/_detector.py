@@ -11,12 +11,13 @@ from sunflare.virtual import Signal
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.utils import filter_models
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
-    from event_model import Event
+    from event_model import Event, EventPage
     from sunflare.engine import DocumentType
     from sunflare.model import ModelProtocol
     from sunflare.virtual import VirtualBus
@@ -74,11 +75,7 @@ class DetectorController(Loggable):
         self.ctrl_info = ctrl_info
         self.virtual_bus = virtual_bus
 
-        self.detectors = {
-            name: model
-            for name, model in models.items()
-            if isinstance(model, DetectorProtocol)
-        }
+        self.detectors = filter_models(models, DetectorProtocol)
 
         self.hints = ["buffer", "roi"]
 
@@ -215,13 +212,18 @@ class DetectorController(Loggable):
         doc : ``sunflare.engine.DocumentType``
             Document content.
         """
-        if name == "event":
-            doc = cast("Event", doc)
-            packet: dict[str, Any] = {}
-            for key, value in doc["data"].items():
+        event: Event | EventPage
+        packet: dict[str, Any] | None = None
+        if name in ["event", "event_page"]:
+            packet = {}
+            event = cast("Event", doc)
+            for key, value in event["data"].items():
                 detector_name, data_key = key.split(":")
                 if detector_name in self.detectors and data_key in self.hints:
                     if detector_name not in packet:
                         packet[detector_name] = {}
-                    packet[detector_name][data_key] = value
+                    packet[detector_name][data_key] = (
+                        value if name == "event" else value[0]
+                    )
+        if packet:
             self.sigNewData.emit(packet)

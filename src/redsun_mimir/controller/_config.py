@@ -54,12 +54,16 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
 
     Parameters
     ----------
+    debug : ``bool``, optional
+        Enable additional debugging output.
+        Default is ``False``.
     metadata : ``dict[str, Any]``, optional
         Additional metadata for the controller's engine.
         Default is an empty dictionary.
 
     """
 
+    debug: bool = field(default=False, validator=validators.instance_of(bool))
     metadata: dict[str, Any] = field(default={}, validator=validators.instance_of(dict))
 
 

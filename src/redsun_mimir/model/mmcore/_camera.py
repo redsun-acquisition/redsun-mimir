@@ -13,7 +13,7 @@ from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Any
+    from typing import Any, ClassVar
 
     from bluesky.protocols import Descriptor, Reading
     from event_model.documents.event import PartialEvent
@@ -22,20 +22,37 @@ if TYPE_CHECKING:
 
 
 class MMCoreCameraModel(DetectorProtocol, Loggable):
-    """Demo camera wrapper for CMMCorePlus."""
+    """Demo camera wrapper for CMMCorePlus.
+
+    This class is a hack because it will fail initialization if
+    a second camera object of the same class is created; this
+    is because at this time MMCore does not support multiple
+    instances of the same camera device.
+    """
+
+    # class variable to track initialization status;
+    # multiple instances are not supported
+    initialized: ClassVar[bool] = False
 
     def __init__(self, name: str, model_info: MMCoreCameraModelInfo) -> None:
         self._name = name
         self._model_info = model_info
         self._core = Core.instance()
         try:
+            if MMCoreCameraModel.initialized:
+                raise RuntimeError(
+                    "MMCoreCameraModel has already been initialized once; "
+                    "multiple instances are not supported."
+                )
+
             self._core.loadDevice(name, model_info.adapter, model_info.device)
-            self._core.initializeDevice(name)
+            self._core.initializeAllDevices()
 
             # use device object for property manipulation
             self._device = self._core.getDeviceObject(
                 name, device_type=DeviceType.Camera
             )
+            MMCoreCameraModel.initialized = True
         except Exception as e:
             self.logger.error(f"Failed to initialize device {name}")
             raise e
@@ -52,6 +69,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
 
         self.roi = (0, 0, *self.model_info.sensor_shape)
         self._device_schema = self._device.schema()
+        self._buffer_key = f"{self.name}:buffer"
+        self._roi_key = f"{self.name}:roi"
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -186,26 +205,27 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         img = self._core.popNextImage()
         stamp = time.time()
         yield {
-            "data": {f"{self.name}:buffer": img, f"{self.name}:roi": self.roi},
+            "data": {self._buffer_key: img, self._roi_key: self.roi},
+            "timestamps": {self._buffer_key: stamp, self._roi_key: stamp},
             "time": stamp,
-            "timestamps": {f"{self.name}:buffer": stamp},
         }
 
-    def describe_collect(self) -> dict[str, Descriptor]:
+    def describe_collect(self) -> dict[str, dict[str, Descriptor]]:
         width, height = self._core.getImageWidth(), self._core.getImageHeight()
-        collect_descriptor: dict[str, Descriptor] = {
-            f"{self.name}:buffer": {
-                "source": "data",
-                "dtype": "array",
-                "shape": [height, width],
-            },
-            f"{self.name}:roi": {
-                "source": "data",
-                "dtype": "array",
-                "shape": [4],
-            },
+        return {
+            self.name: {
+                self._buffer_key: {
+                    "source": "data",
+                    "dtype": "array",
+                    "shape": [height, width],
+                },
+                self._roi_key: {
+                    "source": "data",
+                    "dtype": "array",
+                    "shape": [4],
+                },
+            }
         }
-        return collect_descriptor
 
     @property
     def name(self) -> str:

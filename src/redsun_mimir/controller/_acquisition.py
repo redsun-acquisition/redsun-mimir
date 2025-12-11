@@ -18,16 +18,17 @@ from redsun_mimir.common import (
     collect_arguments,
     create_plan_spec,
 )
-from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
-from redsun_mimir.utils import filter_models, get_choice_list, issequence
+from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
+from redsun_mimir.utils import get_choice_list, issequence
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
+    from event_model.documents import Document
     from sunflare.model import ModelProtocol
 
-    from ._config import AcquisitionControllerInfo, RendererControllerInfo
+    from ._config import AcquisitionControllerInfo
 
 store = ino.Store.create("plan_specs")
 
@@ -56,6 +57,8 @@ class AcquisitionController(ControllerProtocol, Loggable):
 
     sigPlanDone = Signal()
     sigNewDocument = Signal(str, object)
+    log_token: int
+    sig_token: int
 
     def __init__(
         self,
@@ -67,6 +70,9 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.virtual_bus = virtual_bus
         self.models = models
         self.engine = RunEngine()
+        if ctrl_info.debug:
+            self.log_token = self.engine.subscribe(self.log_document_type)
+        self.sig_token = self.engine.subscribe(self.sigNewDocument.emit)
 
         self.futures: set[Future[Any]] = set()
 
@@ -113,7 +119,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
         # needs to be fixed in sunflare package
         # run until the stop live button is clicked
         while True:
-            yield from bps.collect(*detectors, stream=True, return_payload=False)
+            yield from bps.collect(*detectors, return_payload=False)
 
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
@@ -136,7 +142,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
-            yield from bps.collect(*detectors, stream=True, return_payload=False)
+            yield from bps.collect(*detectors, return_payload=False)
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
@@ -219,19 +225,14 @@ class AcquisitionController(ControllerProtocol, Loggable):
         """Stop the running plan."""
         self.engine.stop()
 
+    def log_document_type(self, name: str, doc: Document) -> None:
+        """Log the document nama and type for debugging.
 
-class MedianAcquisitionController(ControllerProtocol, Loggable):
-    def __init__(
-        self,
-        ctrl_info: RendererControllerInfo,
-        models: Mapping[str, ModelProtocol],
-        virtual_bus: VirtualBus,
-    ) -> None:
-        self.virtual_bus = virtual_bus
-        self.ctrl_info = ctrl_info
-        self.detectors = filter_models(models, DetectorProtocol)
-        self.motors = filter_models(models, MotorProtocol)
-
-    def registration_phase(self) -> None: ...
-
-    def connection_phase(self) -> None: ...
+        Parameters
+        ----------
+        name : ``str``
+            The name of the document ("start", "stop", "event", "descriptor").
+        doc : ``Document``
+            The document data (unused).
+        """
+        self.logger.debug(f"New document: {name}")
