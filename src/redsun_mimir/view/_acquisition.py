@@ -11,7 +11,8 @@ from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.common import Actions, PlanSpec
+from redsun_mimir.common import PlanSpec  # noqa: TC001
+from redsun_mimir.common.actions import Actions
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
 if TYPE_CHECKING:
@@ -36,6 +37,8 @@ class PlanWidget:
         The button to run the plan.
     container : ``magicgui.widgets.Container[Any]``
         The container holding the parameter widgets.
+    pause_button : ``QtWidgets.QPushButton | None``
+        The button to pause the plan (if applicable).
     """
 
     spec: PlanSpec
@@ -43,9 +46,15 @@ class PlanWidget:
     run_button: QtW.QPushButton
     container: mgw.Container[mgw.bases.ValueWidget[Any]]
     actions_group: QtW.QGroupBox | None = None
+    pause_button: QtW.QPushButton | None = None
 
     def toggle(self, status: bool) -> None:
         self.run_button.setText("Stop" if status else "Run")
+
+    def pause(self, status: bool) -> None:
+        if self.pause_button:
+            self.pause_button.setText("Resume" if status else "Pause")
+            self.run_button.setEnabled(not status)
 
     def setEnabled(self, enabled: bool) -> None:
         self.group_box.setEnabled(enabled)
@@ -80,11 +89,14 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         - ``str``: The plan name.
         - ``dict[str, Any]``: Plan parameters.
     sigStopPlanRequest : ``Signal``
-        Signal to stop a running plan.
+        Signal to stop the currently running plan.
+    sigPauseResumeRequest : ``Signal[bool]``
+        Signal to pause or resume the currently running plan.
     """
 
     sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
+    sigPauseResumeRequest = Signal(bool)
 
     def __init__(
         self,
@@ -159,7 +171,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         specs : ``set[PlanSpec]``
             The set of available plan specifications.
         """
-        # Sort specs by name for stable ordering
+        # sort specs by name for stable ordering
         for spec in sorted(specs, key=lambda s: s.name):
             func_name = spec.name
             self.plans_combobox.addItem(func_name)
@@ -197,6 +209,9 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             native_container.adjustSize()
             group_layout.addRow(container.native)
 
+            run_layout = QtW.QHBoxLayout()
+            run_container = QtW.QWidget(self)
+
             # Run button
             run_button = QtW.QPushButton("Run")
             if spec.togglable:
@@ -204,8 +219,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                 run_button.toggled.connect(self._on_plan_toggled)
             else:
                 run_button.clicked.connect(self._on_plan_launch)
-
-            page_layout.addWidget(run_button)
+            run_layout.addWidget(run_button)
+            if spec.pausable:
+                pause_button = QtW.QPushButton("Pause")
+                # No wiring for now; user can extend this.
+                run_layout.addWidget(pause_button)
+            run_container.setLayout(run_layout)
+            page_layout.addWidget(run_container)
 
             # Actions group (for parameters typed as Actions with a default)
             actions_group_box: QtW.QGroupBox | None = None
@@ -250,6 +270,11 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         else:
             self.sigStopPlanRequest.emit()
         self.plan_widgets[plan].toggle(toggled)
+
+    def _on_plan_maybe_paused(self, paused: bool) -> None:
+        plan = self.plans_combobox.currentText()
+        self.plan_widgets[plan].pause(paused)
+        self.sigPauseResumeRequest.emit(paused)
 
     def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()

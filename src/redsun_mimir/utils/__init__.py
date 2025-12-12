@@ -2,6 +2,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, TypeVar, get_origin
 
 from sunflare.model import ModelProtocol
+from typing_extensions import TypeIs
 
 __all__ = ["filter_models", "get_choice_list", "issequence"]
 
@@ -65,7 +66,7 @@ def get_choice_list(
     ]
 
 
-def issequence(ann: Any) -> bool:
+def issequence(ann: Any) -> TypeIs[Sequence[Any]]:
     """Return True if annotation looks like a Sequence[...] generic."""
     origin = get_origin(ann)
     if origin is None:

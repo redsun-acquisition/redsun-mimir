@@ -2,29 +2,21 @@ from __future__ import annotations
 
 import collections.abc as cabc
 import inspect
-from abc import abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 from inspect import Parameter, _empty, signature
 from typing import (
+    Annotated,
     Any,
-    ParamSpec,
-    Protocol,
-    TypeVar,
-    cast,
     get_args,
     get_origin,
     get_type_hints,
-    runtime_checkable,
 )
 
 from sunflare.model import ModelProtocol
 
+from redsun_mimir.common.actions import ActionedPlan, Actions
 from redsun_mimir.utils import issequence
-
-P = ParamSpec("P")
-R = TypeVar("R")
-R_co = TypeVar("R_co", covariant=True)
 
 
 class ParamKind(IntEnum):
@@ -53,73 +45,6 @@ _PARAM_KIND_MAP: dict[Any, ParamKind] = {
 
 
 @dataclass
-class Actions:
-    """
-    Container type to indicate a set of named actions.
-
-    Example:
-        def my_func(
-            detectors: Sequence[DetectorProtocol],
-            events: Actions = Actions(names=["stop", "pause"]),
-        ) -> None:
-            ...
-
-    If a parameter is annotated as `Actions` but has no default value, no
-    UI elements will be generated for it.
-    """
-
-    names: list[str]
-
-
-@dataclass
-class AnnotatedInfo:
-    """Information extracted from typing.Annotated[T, *metadata]."""
-
-    base_type: Any
-    metadata: tuple[Any, ...] = field(default_factory=tuple)
-
-
-@dataclass
-class EventsInfo:
-    """Runtime info for an events parameter."""
-
-    names: list[str]
-
-
-@runtime_checkable
-class ActionedPlan(Protocol[P, R_co]):
-    """
-    Plan that has been marked as actioned.
-
-    "Actioned" means that the internal flow of the plan can be influenced
-    by external actions, typically triggered by user interaction.
-
-    Used both for static typing (decorator return type) and for runtime checks:
-
-    >>> if isinstance(f, ActionedPlan):
-    >>>     print(f.__actions__)
-
-    Attributes
-    ----------
-    __togglable__ : bool
-        Whether the function is togglable (i.e. an infinite loop that the run engine can stop.)
-    __actions__ : Mapping[str, Actions]
-        Mapping of parameter names to Actions instances,
-        indicating which parameters are associated with which actions.
-
-    """
-
-    __togglable__: bool
-    __actions__: cabc.Mapping[str, Actions]
-
-    @abstractmethod
-    def __call__(
-        self, *args: P.args, **kwargs: P.kwargs
-    ) -> R_co:  # pragma: no cover - protocol
-        ...
-
-
-@dataclass
 class ParamDescription:
     """Description of a single plan parameter.
 
@@ -133,17 +58,12 @@ class ParamDescription:
         Type annotation of the parameter.
     default : Any
         Default value of the parameter.
-    annotated : AnnotatedInfo | None
-        If the parameter is annotated with `typing.Annotated`, this holds
-        the extracted information. Otherwise, None.
     choices : list[str] | None
         Names of possible choices for this parameter (for ModelProtocol types).
     multiselect : bool
         If True, this parameter allows multiple selections (for ModelProtocol types).
     hidden : bool
         If True, this parameter should not be exposed as a normal input widget.
-    events : EventsInfo | None
-        If this parameter represents events, this holds the event names.
     actions : Actions | None
         If this parameter is annotated as `Actions`, this holds the associated action object.
     model_proto : type[ModelProtocol] | None
@@ -155,7 +75,6 @@ class ParamDescription:
     kind: ParamKind
     annotation: Any
     default: Any
-    annotated: AnnotatedInfo | None = None
     choices: list[str] | None = None
     multiselect: bool = False
     hidden: bool = False
@@ -188,6 +107,7 @@ class PlanSpec:
     docs: str
     parameters: list[ParamDescription]
     togglable: bool = False
+    pausable: bool = False
 
 
 def collect_arguments(
@@ -254,21 +174,25 @@ def collect_arguments(
 
 
 def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
-    """Iterate over a function signature's parameters, skipping 'self'/'cls'."""
-    # Make a mutable, ordered snapshot
+    """Iterate over a function signature's parameters, skipping 'self'/'cls'.
+
+    Yields
+    ------
+    Iterator[tuple[str, Parameter]]
+        Tuples of (parameter name, Parameter object).
+    """
     items = list(sig.parameters.items())
 
     if items:
         first_name, first_param = items[0]
 
-        # Drop only if it's *actually* the implicit instance/class parameter:
+        # drop only if it's actually the implicit instance/class parameter:
         if first_name in {"self", "cls"} and first_param.kind in (
             Parameter.POSITIONAL_ONLY,
             Parameter.POSITIONAL_OR_KEYWORD,
         ):
             items = items[1:]  # skip it
 
-    # Now iterate the (possibly trimmed) list
     for name, param in items:
         yield name, param
 
@@ -317,68 +241,95 @@ def create_plan_spec(
         raise TypeError(f"Plan {plan.__name__} must have a return type annotation.")
 
     origin = get_origin(return_type)
-    isgen = (
-        origin is not None
-        and issubclass(origin, cabc.Generator)
-        or origin is cabc.Generator
+    isgen = origin is not None and (
+        issubclass(origin, cabc.Generator) or origin is cabc.Generator
     )
 
     if not isgen:
         raise TypeError(f"Plan {plan.__name__} must have a MsgGenerator return type.")
 
-    func_actions_meta: cabc.Mapping[str, Actions] = {}
     togglable = False
 
     if isinstance(func_obj, ActionedPlan):
-        func_actions_meta = func_obj.__actions__
         togglable = func_obj.__togglable__
 
     params: list[ParamDescription] = []
 
     for name, param in iterate_signature(sig):
-        ann: Any = type_hints.get(name, param.annotation)
-        if ann is _empty:
-            ann = Any
+        raw_ann: Any = type_hints.get(name, param.annotation)
+        if raw_ann is _empty:
+            raw_ann = Any
 
-        actions: Actions | None = None
+        actions_meta: Actions | None = None
 
-        # If the parameter type is Actions, and we have a default Actions
-        # instance, capture it for the UI.
-        # Direct default: events: Actions = Actions(names=[...])
-        if ann is Actions:
-            default_val = param.default
-            if default_val is not _empty and isinstance(default_val, Actions):
-                _validate_action_names(name, default_val.names)
-                actions = default_val
+        # Peel Annotated[..., Actions(...)] if present
+        if get_origin(raw_ann) is Annotated:
+            args = get_args(raw_ann)
+            if args:
+                base_ann = args[0]
+                extras = args[1:]
+            else:
+                base_ann = Any
+                extras = ()
+            # TODO: for now, discard multiple extras;
+            # we might add more metadata types later
+            # or throw if there are unknown extras
+            if len(extras) > 1:
+                base_ann = Any
+                extras = ()
+            elif isinstance(extras[0], Actions):
+                actions_meta = extras[0]
+            ann = base_ann
+        else:
+            ann = raw_ann
 
-        # Decorator-based metadata (overrides default if present)
-        if name in func_actions_meta:
-            actions = func_actions_meta[name]
+        # If we have Actions metadata, enforce the underlying type
+        # to be Sequence[str]
+        elem_ann: Any
+        if actions_meta:
+            _validate_action_names(name, actions_meta.names)
+            if not issequence(ann):
+                raise TypeError(
+                    f"Parameter {name!r} uses Actions metadata but is not "
+                    f"annotated as a Sequence[...] type; got {ann!r}"
+                )
+            elem_args = get_args(ann)
+            elem_ann = elem_args[0] if elem_args else Any
+            if elem_ann is not str:
+                raise TypeError(
+                    f"Parameter {name!r} uses Actions metadata but its element "
+                    f"type is not str; got {elem_ann!r}"
+                )
 
-        # Decide which annotation we use for matching registry objects:
-        # - For Sequence[T], use T
-        # - Otherwise, use the annotation itself
+        # Now figure out if this is a sequence for other purposes
         if issequence(ann):
             elem_args = get_args(ann)
-            elem_ann: Any = elem_args[0] if elem_args else Any
+            elem_ann = elem_args[0] if elem_args else Any
         else:
             elem_ann = ann
 
-        # Find possible choices using isinstance on actual objects
+        # Compute choices from model_registry using isinstance on actual objects
         choices: list[str] | None = None
-        matching: list[str] = []
         model_proto: type[ModelProtocol] | None = None
+
+        matching: list[str] = []
         for key, obj in models.items():
-            if isinstance(obj, elem_ann):
-                matching.append(key)
+            try:
+                if isinstance(obj, elem_ann):
+                    matching.append(key)
+            except TypeError:
+                # elem_ann might not be suitable as second arg to isinstance
+                continue
         if matching:
             choices = matching
-            # If elem_ann is compatible with ModelProtocol, capture it
-            if isinstance(elem_ann, ModelProtocol):
+            # If elem_ann is a proper subclass of ModelProtocol, keep proto
+            if isinstance(elem_ann, type) and isinstance(elem_ann, ModelProtocol):
                 model_proto = elem_ann  # type: ignore[assignment]
 
         # Map inspect.Parameter.kind to our ParamKind
-        pkind = _PARAM_KIND_MAP[param.kind]
+        pkind = _PARAM_KIND_MAP.get(param.kind)
+        if pkind is None:
+            raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
 
         params.append(
             ParamDescription(
@@ -387,16 +338,24 @@ def create_plan_spec(
                 annotation=ann,
                 default=param.default,
                 choices=choices,
-                actions=actions,
+                actions=actions_meta,
                 model_proto=model_proto,
             )
         )
 
+    ret_ann: Any = type_hints.get("return", sig.return_annotation)
+    if ret_ann is _empty:
+        ret_ann = Any
+
+    togglable = bool(getattr(func_obj, "__togglable__", False))
+    pausable = bool(getattr(func_obj, "__pausable__", False))
+
     return PlanSpec(
-        name=plan.__name__,
-        docs=inspect.getdoc(plan) or "No documentation available.",
+        name=func_obj.__name__,
+        docs=inspect.getdoc(func_obj) or "No documentation available.",
         parameters=params,
         togglable=togglable,
+        pausable=pausable,
     )
 
 
@@ -411,70 +370,3 @@ def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
             f"All entries in Actions for parameter {param_name!r} must be str; "
             f"got {names!r}"
         )
-
-
-def actioned(
-    mapping: cabc.Mapping[str, cabc.Sequence[str]] | None = None,
-    togglable: bool = False,
-) -> cabc.Callable[[cabc.Callable[P, R_co]], ActionedPlan[P, R_co]]:
-    """Attach action names to parameters typed as `Actions`.
-
-    Parameters
-    ----------
-    mapping : ``Mapping[str, Sequence[str]]``, optional
-        Mapping of parameter names to sequences of action names.
-    togglable : bool, optional
-        Whether the plan is togglable (i.e. an infinite loop that the run engine can stop.)
-
-    Returns
-    -------
-    ``Callable[[Callable[P, R_co]], ActionedPlan[P, R_co]]``
-        A decorator that marks the plan as actioned.
-
-    Example
-    -------
-        @actioned({"events": ["stop", "pause"]})
-        def live_count(
-            detectors: Sequence[DetectorProtocol],
-            /,
-            events: Actions,
-        ) -> MsgGenerator[None]:
-            ...
-
-    Raises
-    ------
-    ``TypeError``
-        If any parameter in `mapping` is not annotated as `Actions`,
-        or if the associated value is not a sequence of strings.
-
-    Notes
-    -----
-    This does not modify the function signature; instead it stores the
-    information on the underlying function object (in ``__actions__``),
-    to be retrieved later by inspection.
-    Keys in `mapping` must correspond to parameter names annotated as `Actions`.
-    """
-
-    def decorator(func: cabc.Callable[P, R_co]) -> ActionedPlan[P, R_co]:
-        hints = get_type_hints(func, include_extras=True)
-        actions_map: dict[str, Actions] = {}
-
-        if mapping:
-            for param_name, names in mapping.items():
-                ann = hints.get(param_name, None)
-                if ann is not Actions:
-                    raise TypeError(
-                        f"Parameter {param_name!r} must be annotated as Actions "
-                        f"to use @actioned; got {ann!r}"
-                    )
-                _validate_action_names(param_name, names)
-                actions_map[param_name] = Actions(list(names))
-
-        setattr(func, "__actions__", actions_map)
-        setattr(func, "__togglable__", togglable)
-
-        # Tell the type checker (and runtime protocol) that this callable
-        # now satisfies ActionedPlan[PS, R_co].
-        return cast("ActionedPlan[P, R_co]", func)
-
-    return decorator

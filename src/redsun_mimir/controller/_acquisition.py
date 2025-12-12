@@ -12,12 +12,11 @@ from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
 from redsun_mimir.common import (
-    Actions,
     PlanSpec,
-    actioned,
     collect_arguments,
     create_plan_spec,
 )
+from redsun_mimir.common.actions import Actions, actioned
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
 from redsun_mimir.utils import get_choice_list, issequence
 
