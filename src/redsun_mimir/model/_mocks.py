@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
-from ..protocols import LightProtocol, MotorProtocol
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any

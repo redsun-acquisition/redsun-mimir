@@ -3041,13 +3041,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-docs = [
-    { name = "myst-parser" },
-    { name = "pydata-sphinx-theme" },
-    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "sphinx-design" },
-]
 microscope = [
     { name = "microscope" },
 ]
@@ -3057,6 +3050,12 @@ pyqt = [
 ]
 pyside = [
     { name = "napari", extra = ["pyside6"] },
+    { name = "sunflare", extra = ["pyside"] },
+]
+sim = [
+    { name = "microscope" },
+    { name = "napari", extra = ["pyside6"] },
+    { name = "pymmcore-plus" },
     { name = "sunflare", extra = ["pyside"] },
 ]
 uc2 = [
@@ -3073,7 +3072,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-qt" },
-    { name = "redsun-mimir", extra = ["microscope", "pyqt", "uc2"] },
+    { name = "redsun-mimir", extra = ["microscope", "pyqt", "sim", "uc2"] },
     { name = "ruff" },
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -3084,21 +3083,21 @@ dev = [
 requires-dist = [
     { name = "in-n-out", specifier = ">=0.2.1" },
     { name = "microscope", marker = "extra == 'microscope'", specifier = ">=0.7.0" },
-    { name = "myst-parser", marker = "extra == 'docs'" },
+    { name = "microscope", marker = "extra == 'sim'", specifier = ">=0.7.0" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
-    { name = "pydata-sphinx-theme", marker = "extra == 'docs'" },
+    { name = "napari", extras = ["pyside6"], marker = "extra == 'sim'", specifier = ">=0.6.6" },
+    { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "sphinx", marker = "extra == 'docs'" },
-    { name = "sphinx-design", marker = "extra == 'docs'" },
     { name = "sunflare", specifier = ">=0.6.2" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.6.2" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.6.2" },
+    { name = "sunflare", extras = ["pyside"], marker = "extra == 'sim'", specifier = ">=0.6.2" },
     { name = "superqt", specifier = ">=0.7.4" },
 ]
-provides-extras = ["docs", "microscope", "pyqt", "pyside", "uc2"]
+provides-extras = ["microscope", "pyqt", "pyside", "sim", "uc2"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3109,7 +3108,7 @@ dev = [
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun-mimir", extras = ["microscope", "uc2", "pyqt"] },
+    { name = "redsun-mimir", extras = ["microscope", "uc2", "pyqt", "sim"] },
     { name = "ruff", specifier = ">=0.14.2" },
     { name = "sphinx", specifier = ">=8.1.3" },
     { name = "sphinx-design", specifier = ">=0.6.1" },

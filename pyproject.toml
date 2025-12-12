@@ -35,7 +35,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "redsun-mimir[microscope,uc2,pyqt]",
+    "redsun-mimir[microscope,uc2,pyqt,sim]",
     "mypy>=1.19",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
@@ -60,15 +60,14 @@ pyside = [
 microscope = [
     "microscope>=0.7.0",
 ]
-docs = [
-    "sphinx",
-    "pydata-sphinx-theme",
-    "sphinx-design",
-    "myst-parser"
-]
 uc2 = [
     "pymmcore-plus>=0.16.0",
     "pyserial>=3.5",
+]
+sim = [
+    "redsun-mimir[pyside]",
+    "microscope>=0.7.0",
+    "pymmcore-plus>=0.16.0",
 ]
 
 [project.urls]
