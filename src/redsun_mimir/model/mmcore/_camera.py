@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from bluesky.protocols import Descriptor
+from bluesky.protocols import Descriptor, Pausable
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import DeviceType
 from sunflare.engine import Status
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ._config import MMCoreCameraModelInfo
 
 
-class MMCoreCameraModel(DetectorProtocol, Loggable):
+class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
     This class is a hack because it will fail initialization if
@@ -209,6 +209,20 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             "timestamps": {self._buffer_key: stamp, self._roi_key: stamp},
             "time": stamp,
         }
+
+    def pause(self) -> None:
+        """Pause the acquisition.
+
+        This translates to stopping the sequence acquisition.
+        """
+        self._core.stopSequenceAcquisition(self.name)
+
+    def resume(self) -> None:
+        """Resume the acquisition.
+
+        This translates to starting the sequence acquisition.
+        """
+        self._core.startContinuousSequenceAcquisition()
 
     def describe_collect(self) -> dict[str, dict[str, Descriptor]]:
         width, height = self._core.getImageWidth(), self._core.getImageHeight()

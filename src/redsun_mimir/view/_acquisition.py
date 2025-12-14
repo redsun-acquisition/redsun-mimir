@@ -50,6 +50,8 @@ class PlanWidget:
 
     def toggle(self, status: bool) -> None:
         self.run_button.setText("Stop" if status else "Run")
+        if self.pause_button:
+            self.pause_button.setEnabled(status)
 
     def pause(self, status: bool) -> None:
         if self.pause_button:
@@ -220,9 +222,14 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             else:
                 run_button.clicked.connect(self._on_plan_launch)
             run_layout.addWidget(run_button)
-            if spec.pausable:
+
+            # we can't pause if we can't toggle
+            pause_button: QtW.QPushButton | None = None
+            if spec.togglable and spec.pausable:
                 pause_button = QtW.QPushButton("Pause")
-                # No wiring for now; user can extend this.
+                pause_button.setEnabled(False)
+                pause_button.setCheckable(True)
+                pause_button.toggled.connect(self._on_plan_maybe_paused)
                 run_layout.addWidget(pause_button)
             run_container.setLayout(run_layout)
             page_layout.addWidget(run_container)
@@ -251,6 +258,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                 spec=spec,
                 group_box=group_box,
                 run_button=run_button,
+                pause_button=pause_button,
                 container=container,
                 actions_group=actions_group_box,
             )
@@ -264,14 +272,15 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
+        self.plan_widgets[plan].toggle(toggled)
         if toggled:
             parameters = self.plan_widgets[plan].parameters
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
             self.sigStopPlanRequest.emit()
-        self.plan_widgets[plan].toggle(toggled)
 
     def _on_plan_maybe_paused(self, paused: bool) -> None:
+        self.logger.debug(f"Plan pause toggled: {paused}")
         plan = self.plans_combobox.currentText()
         self.plan_widgets[plan].pause(paused)
         self.sigPauseResumeRequest.emit(paused)

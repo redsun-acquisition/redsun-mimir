@@ -74,6 +74,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.sig_token = self.engine.subscribe(self.sigNewDocument.emit)
 
         self.futures: set[Future[Any]] = set()
+        self.discard_by_pause = False
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "live_count": self.live_count,
@@ -95,11 +96,14 @@ class AcquisitionController(ControllerProtocol, Loggable):
         self.virtual_bus["AcquisitionWidget"]["sigStopPlanRequest"].connect(
             self.stop_plan
         )
+        self.virtual_bus["AcquisitionWidget"]["sigPauseResumeRequest"].connect(
+            self.pause_or_resume_plan
+        )
 
     def plans_specificiers(self) -> set[PlanSpec]:
         return set(self.plan_specs.values())
 
-    @actioned(togglable=True)
+    @actioned(togglable=True, pausable=True)
     def live_count(
         self,
         detectors: Sequence[DetectorProtocol],
@@ -114,10 +118,11 @@ class AcquisitionController(ControllerProtocol, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
-        # TODO: DetectorProtocol should inherit from Flyable but it doesn't;
-        # needs to be fixed in sunflare package
-        # run until the stop live button is clicked
         while True:
+            yield from bps.checkpoint()
+            # TODO: DetectorProtocol should inherit from Flyable but it doesn't;
+            # needs to be fixed in sunflare package
+            # run until the stop live button is clicked
             yield from bps.collect(*detectors, return_payload=False)
 
     def snap(
@@ -215,10 +220,26 @@ class AcquisitionController(ControllerProtocol, Loggable):
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
-        # TODO: add a specific callback that emits
-        # a possible result object from the future,
-        # and it also discards the future from the set
-        fut.add_done_callback(self.futures.discard)
+        fut.add_done_callback(self._discard_future)
+
+    def pause_or_resume_plan(self, pause: bool) -> None:
+        """Pause or resume the running plan.
+
+        Parameters
+        ----------
+        pause : ``bool``
+            If True, pause the plan; if False, resume the plan.
+        """
+        if pause:
+            self.discard_by_pause = True
+            self.engine.request_pause(defer=True)
+        else:
+            # when resuming, the previous
+            # future has beend discarded;
+            # we store the new future again
+            fut = self.engine.resume()
+            self.futures.add(fut)
+            fut.add_done_callback(self._discard_future)
 
     def stop_plan(self) -> None:
         """Stop the running plan."""
@@ -235,3 +256,11 @@ class AcquisitionController(ControllerProtocol, Loggable):
             The document data (unused).
         """
         self.logger.debug(f"New document: {name}")
+
+    def _discard_future(self, fut: Future[Any]) -> None:
+        # TODO: consider emitting a result
+        # if the plan was not paused
+        # and it also discards the future from the set
+        if self.discard_by_pause:
+            self.discard_by_pause = False
+        self.futures.discard(fut)

@@ -12,7 +12,6 @@ controllers:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
-    debug: true
 views:
   AcquisitionWidget:
     plugin_name: test
