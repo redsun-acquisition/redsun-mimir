@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from psygnal.qt import start_emitting_from_queue
 from qtpy import QtCore, QtWidgets
-from sunflare.config import ControllerInfoProtocol, RedSunSessionInfo, ViewInfoProtocol
+from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
@@ -46,8 +46,8 @@ def acquisition_detector_widget() -> None:
         name: MMCoreCameraModelInfo(**values)
         for name, values in config_dict["models"].items()
     }
-    ctrl_info: dict[str, ControllerInfoProtocol] = {}
-    widget_info: dict[str, ViewInfoProtocol] = {}
+    ctrl_info: dict[str, PPresenterInfo] = {}
+    widget_info: dict[str, PViewInfo] = {}
 
     for name, values in config_dict["controllers"].items():
         if name == "DetectorController":
