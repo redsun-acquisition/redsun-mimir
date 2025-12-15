@@ -12,7 +12,7 @@ from superqt import QLabeledDoubleSlider, QLabeledSlider
 from redsun_mimir.model import LightModelInfo  # noqa: TC001
 
 if TYPE_CHECKING:
-    from sunflare.config import ViewInfoProtocol
+    from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
     from redsun_mimir.model import LightModelInfo
@@ -26,7 +26,7 @@ class LightWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        view_info: ViewInfoProtocol,
+        view_info: PViewInfo,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,

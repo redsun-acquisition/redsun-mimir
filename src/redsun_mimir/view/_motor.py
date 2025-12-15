@@ -11,7 +11,7 @@ from redsun_mimir.model import MotorModelInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.config import ViewInfoProtocol
+    from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
 
@@ -20,7 +20,7 @@ class MotorWidget(BaseQtWidget):
 
     Parameters
     ----------
-    config : ``ViewInfoProtocol``
+    config : ``PViewInfo``
         View configuration information.
     virtual_bus : ``VirtualBus``
         Virtual bus for the session.
@@ -44,7 +44,7 @@ class MotorWidget(BaseQtWidget):
 
     def __init__(
         self,
-        config: ViewInfoProtocol,
+        config: PViewInfo,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,

@@ -18,7 +18,7 @@ from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 if TYPE_CHECKING:
     from typing import Any
 
-    from sunflare.config import ViewInfoProtocol
+    from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
 
@@ -102,7 +102,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        view_info: ViewInfoProtocol,
+        view_info: PViewInfo,
         virtual_bus: VirtualBus,
         *args: Any,
         **kwargs: Any,
