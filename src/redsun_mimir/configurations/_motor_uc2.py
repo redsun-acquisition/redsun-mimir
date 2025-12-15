@@ -9,13 +9,13 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import MotorController, MotorControllerInfo
 from redsun_mimir.model import MotorModelInfo
 from redsun_mimir.model.youseetoo import (
     MimirMotorModel,
     MimirSerialModel,
     MimirSerialModelInfo,
 )
+from redsun_mimir.presenter import MotorController, MotorControllerInfo
 from redsun_mimir.view import MotorWidget, MotorWidgetInfo
 
 

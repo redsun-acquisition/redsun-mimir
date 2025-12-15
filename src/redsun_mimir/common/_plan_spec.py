@@ -13,7 +13,7 @@ from typing import (
     get_type_hints,
 )
 
-from sunflare.model import ModelProtocol
+from sunflare.model import PModel
 
 from redsun_mimir.common.actions import ActionedPlan, Actions
 from redsun_mimir.utils import issequence
@@ -59,15 +59,15 @@ class ParamDescription:
     default : Any
         Default value of the parameter.
     choices : list[str] | None
-        Names of possible choices for this parameter (for ModelProtocol types).
+        Names of possible choices for this parameter (for PModel types).
     multiselect : bool
-        If True, this parameter allows multiple selections (for ModelProtocol types).
+        If True, this parameter allows multiple selections (for PModel types).
     hidden : bool
         If True, this parameter should not be exposed as a normal input widget.
     actions : Actions | None
         If this parameter is annotated as `Actions`, this holds the associated action object.
-    model_proto : type[ModelProtocol] | None
-        If this parameter is associated with a ModelProtocol type,
+    model_proto : type[PModel] | None
+        If this parameter is associated with a PModel type,
         this holds the actual type.
     """
 
@@ -79,7 +79,7 @@ class ParamDescription:
     multiselect: bool = False
     hidden: bool = False
     actions: Actions | None = None
-    model_proto: type[ModelProtocol] | None = None
+    model_proto: type[PModel] | None = None
 
     @property
     def has_default(self) -> bool:
@@ -199,7 +199,7 @@ def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parame
 
 def create_plan_spec(
     plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
-    models: cabc.Mapping[str, ModelProtocol],
+    models: cabc.Mapping[str, PModel],
 ) -> PlanSpec:
     """
     Inspect `plan` and return a PlanSpec with one ParamDescription per parameter.
@@ -208,9 +208,9 @@ def create_plan_spec(
     ----------
     plan : Callable[..., Any]
         The plan to inspect.
-    models : Mapping[str, ModelProtocol]
+    models : Mapping[str, PModel]
         Registry of models for computing choices
-        of parameters annotated with a subclass of `ModelProtocol`.
+        of parameters annotated with a subclass of `PModel`.
 
     Returns
     -------
@@ -310,7 +310,7 @@ def create_plan_spec(
 
         # Compute choices from model_registry using isinstance on actual objects
         choices: list[str] | None = None
-        model_proto: type[ModelProtocol] | None = None
+        model_proto: type[PModel] | None = None
 
         matching: list[str] = []
         for key, obj in models.items():
@@ -322,8 +322,8 @@ def create_plan_spec(
                 continue
         if matching:
             choices = matching
-            # If elem_ann is a proper subclass of ModelProtocol, keep proto
-            if isinstance(elem_ann, type) and isinstance(elem_ann, ModelProtocol):
+            # If elem_ann is a proper subclass of PModel, keep proto
+            if isinstance(elem_ann, type) and isinstance(elem_ann, PModel):
                 model_proto = elem_ann  # type: ignore[assignment]
 
         # Map inspect.Parameter.kind to our ParamKind

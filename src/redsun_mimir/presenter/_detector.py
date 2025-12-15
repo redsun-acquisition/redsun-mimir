@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from event_model import Event, EventPage
     from sunflare.engine import DocumentType
-    from sunflare.model import ModelProtocol
+    from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
 
     from ._config import DetectorControllerInfo
@@ -36,7 +36,7 @@ class DetectorController(Loggable):
     ----------
     ctrl_info : ``DetectorControllerInfo``
         Controller information.
-    models : ``Mapping[str, ModelProtocol]``
+    models : ``Mapping[str, PModel]``
         Mapping of model names to model instances.
     virtual_bus : ``VirtualBus``
         Reference to the virtual bus.
@@ -53,8 +53,8 @@ class DetectorController(Loggable):
         - ``str``: setting name.
         - ``bool``: success status.
     sigNewData : ``Signal[dict[str, dict[str, Any]]]``
-        Signal for new data; the controller should actively
-        listen to new incoming data from a controller equipped
+        Signal for new data; the presenter should actively
+        listen to new incoming data from a presenter equipped
         with a run engine capable of emitting new documents.
         - ``dict[str, dict[str, Any]]``: nested dictionary:
             - outer key: detector name.
@@ -69,7 +69,7 @@ class DetectorController(Loggable):
     def __init__(
         self,
         ctrl_info: DetectorControllerInfo,
-        models: Mapping[str, ModelProtocol],
+        models: Mapping[str, PModel],
         virtual_bus: VirtualBus,
     ) -> None:
         self.ctrl_info = ctrl_info

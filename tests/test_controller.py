@@ -3,20 +3,20 @@ import time
 from bluesky.protocols import Location
 from psygnal import emit_queued
 from pytestqt.qtbot import QtBot
-from sunflare.controller import ControllerProtocol
+from sunflare.presenter import PPresenter
 from sunflare.virtual import HasConnection, HasRegistration, VirtualBus
 
-from redsun_mimir.controller import (
-    LightController,
-    LightControllerInfo,
-    MotorController,
-    MotorControllerInfo,
-)
 from redsun_mimir.model import (
     LightModelInfo,
     MockLightModel,
     MockMotorModel,
     MotorModelInfo,
+)
+from redsun_mimir.presenter import (
+    LightController,
+    LightControllerInfo,
+    MotorController,
+    MotorControllerInfo,
 )
 
 
@@ -28,7 +28,7 @@ def test_stage_controller(
     info = MotorControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = MotorController(info, motors, bus)
 
-    assert isinstance(ctrl, ControllerProtocol | HasRegistration | HasConnection)
+    assert isinstance(ctrl, PPresenter | HasRegistration | HasConnection)
 
     def check_new_position(motor: str, position: float) -> None:
         assert motor == "Mock motor"
@@ -79,7 +79,7 @@ def test_light_widget(
     info = LightControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = LightController(info, lights, bus)
 
-    assert isinstance(ctrl, ControllerProtocol | HasRegistration | HasConnection)
+    assert isinstance(ctrl, PPresenter | HasRegistration | HasConnection)
     assert not ctrl._lights["Mock laser"].enabled
     ctrl.trigger("Mock laser")
     assert ctrl._lights["Mock laser"].enabled

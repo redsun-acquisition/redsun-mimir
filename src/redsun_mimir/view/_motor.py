@@ -132,7 +132,7 @@ class MotorWidget(BaseQtWidget):
     def connection_phase(self) -> None:
         """Connect your signals to the virtual bus.
 
-        The controller layer will be already built when this method is called.
+        The presenter layer will be already built when this method is called.
         We use it to directly build the GUI by retrieving a configuration of
         the currently allocated motors to create the proper widget layout.
         """

@@ -19,8 +19,8 @@ class _CommonControllerInfo(ControllerInfo):
     ----------
     timeout : ``float``, optional
         Timeout in seconds.
-        If a controller doesn't reach the requested state within this time,
-        the controller will raise an exception.
+        If a presenter doesn't reach the requested state within this time,
+        the presenter will raise an exception.
         Default is ``None`` (no timeout, wait indefinitely).
 
     """
@@ -31,26 +31,26 @@ class _CommonControllerInfo(ControllerInfo):
 
 
 class MotorControllerInfo(_CommonControllerInfo):
-    """Configuration class for the stage controller."""
+    """Configuration class for the stage presenter."""
 
     ...
 
 
 class LightControllerInfo(_CommonControllerInfo):
-    """Configuration class for the light controller."""
+    """Configuration class for the light presenter."""
 
     ...
 
 
 class DetectorControllerInfo(_CommonControllerInfo):
-    """Configuration class for the detector controller."""
+    """Configuration class for the detector presenter."""
 
     ...
 
 
 @define(kw_only=True)
 class AcquisitionControllerInfo(_CommonControllerInfo):
-    """Configuration class for the acquisition controller.
+    """Configuration class for the acquisition presenter.
 
     Parameters
     ----------
@@ -58,7 +58,7 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
         Enable additional debugging output.
         Default is ``False``.
     metadata : ``dict[str, Any]``, optional
-        Additional metadata for the controller's engine.
+        Additional metadata for the presenter's engine.
         Default is an empty dictionary.
 
     """
@@ -68,12 +68,12 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
 
 
 class ImageControllerInfo(_CommonControllerInfo):
-    """Configuration class for the image visualization controller."""
+    """Configuration class for the image visualization presenter."""
 
     ...
 
 
 class RendererControllerInfo(_CommonControllerInfo):
-    """Configuration class for the a controller."""
+    """Configuration class for the a presenter."""
 
     ...

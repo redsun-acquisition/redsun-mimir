@@ -34,7 +34,7 @@ class LightWidget(BaseQtWidget, Loggable):
         super().__init__(view_info, virtual_bus, *args, **kwargs)
 
         self._lights_info: dict[str, LightModelInfo] = {
-            # TODO: fill from controller
+            # TODO: fill from presenter
         }
         self.setWindowTitle("Light sources")
 

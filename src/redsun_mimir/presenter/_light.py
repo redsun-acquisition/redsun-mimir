@@ -11,7 +11,7 @@ from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from sunflare.model import ModelProtocol
+    from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
 
     from ._config import LightControllerInfo
@@ -25,8 +25,8 @@ class LightController(Loggable):
     Parameters
     ----------
     config : ``LightControllerInfo``
-        Configuration for the light controller.
-    models : ``Mapping[str, ModelProtocol]``
+        Configuration for the light presenter.
+    models : ``Mapping[str, PModel]``
         Mapping of model names to model instances.
     bus : ``VirtualBus``
         The bus for communication.
@@ -36,7 +36,7 @@ class LightController(Loggable):
     def __init__(
         self,
         ctrl_info: LightControllerInfo,
-        models: Mapping[str, ModelProtocol],
+        models: Mapping[str, PModel],
         virtual_bus: VirtualBus,
     ) -> None:
         self._ctrl_info = ctrl_info
@@ -61,11 +61,11 @@ class LightController(Loggable):
         return {name: model.model_info for name, model in self._lights.items()}
 
     def registration_phase(self) -> None:
-        """Register the controller."""
+        """Register the presenter."""
         self._virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        """Connect the controller."""
+        """Connect the presenter."""
         self._virtual_bus["LightWidget"]["sigToggleLightRequest"].connect(self.trigger)
         self._virtual_bus["LightWidget"]["sigIntensityRequest"].connect(self.set)
 

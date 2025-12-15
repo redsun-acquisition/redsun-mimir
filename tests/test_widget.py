@@ -5,8 +5,8 @@ from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import MotorControllerInfo
 from redsun_mimir.model import MotorModelInfo
+from redsun_mimir.presenter import MotorControllerInfo
 from redsun_mimir.view import MotorWidget
 
 

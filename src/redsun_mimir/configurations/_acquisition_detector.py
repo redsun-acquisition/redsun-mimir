@@ -9,13 +9,13 @@ from qtpy import QtCore, QtWidgets
 from sunflare.config import ControllerInfoProtocol, RedSunSessionInfo, ViewInfoProtocol
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import (
+from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
+from redsun_mimir.presenter import (
     AcquisitionController,
     AcquisitionControllerInfo,
     DetectorController,
     DetectorControllerInfo,
 )
-from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.view import (
     AcquisitionWidget,
     AcquisitionWidgetInfo,
@@ -24,7 +24,7 @@ from redsun_mimir.view import (
 )
 
 if TYPE_CHECKING:
-    from sunflare.model import ModelProtocol
+    from sunflare.model import PModel
 
 
 def acquisition_detector_widget() -> None:
@@ -69,7 +69,7 @@ def acquisition_detector_widget() -> None:
         views=widget_info,
     )
 
-    mock_models: dict[str, ModelProtocol] = {
+    mock_models: dict[str, PModel] = {
         name: MMCoreCameraModel(name, model_info)
         for name, model_info in models_info.items()
     }

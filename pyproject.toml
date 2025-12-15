@@ -27,7 +27,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sunflare>=0.6.3",
+    "sunflare>=0.7.0",
     "napari>=0.6.6",
     "in-n-out>=0.2.1",
     "superqt>=0.7.4",
@@ -46,16 +46,17 @@ dev = [
     "pydata-sphinx-theme>=0.16.1",
     "sphinx-design>=0.6.1",
     "myst-parser>=4.0.1",
+    "microscope>=0.7.0",
 ]
 
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.6.6",
-    "sunflare[pyqt]>=0.6.2",
+    "sunflare[pyqt]>=0.7.0",
 ]
 pyside = [
     "napari[pyside6]>=0.6.6",
-    "sunflare[pyside]>=0.6.2",
+    "sunflare[pyside]>=0.7.0",
 ]
 microscope = [
     "microscope>=0.7.0",
@@ -65,7 +66,6 @@ uc2 = [
     "pyserial>=3.5",
 ]
 sim = [
-    "redsun-mimir[pyside]",
     "microscope>=0.7.0",
     "pymmcore-plus>=0.16.0",
 ]

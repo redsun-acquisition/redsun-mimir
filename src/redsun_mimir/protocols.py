@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sunflare.model import ModelProtocol
+from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ class Settable(Protocol):
 
 
 @runtime_checkable
-class MotorProtocol(ModelProtocol, Settable, Protocol):
+class MotorProtocol(PModel, Settable, Protocol):
     """Protocol for motor models.
 
     Implements the ``Locatable`` protocol.
@@ -116,7 +116,7 @@ class MotorProtocol(ModelProtocol, Settable, Protocol):
 
 
 @runtime_checkable
-class LightProtocol(ModelProtocol, Settable, Protocol):
+class LightProtocol(PModel, Settable, Protocol):
     """Protocol for light models.
 
     Implements the ``Readable`` protocol.
@@ -173,7 +173,7 @@ class LightProtocol(ModelProtocol, Settable, Protocol):
 
 
 @runtime_checkable
-class DetectorProtocol(ModelProtocol, Settable, Protocol):
+class DetectorProtocol(PModel, Settable, Protocol):
     """Protocol for detector models.
 
     Implements the following protocols:

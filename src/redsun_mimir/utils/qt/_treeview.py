@@ -912,7 +912,7 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                     index, index, [QtCore.Qt.ItemDataRole.DisplayRole]
                 )
 
-                # Emit the property change signal for the controller to handle
+                # Emit the property change signal for the presenter to handle
                 self.sigPropertyChanged.emit(setting_name, value)
                 return True
             except Exception as e:

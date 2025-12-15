@@ -1,16 +1,16 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, TypeVar, get_origin
 
-from sunflare.model import ModelProtocol
+from sunflare.model import PModel
 from typing_extensions import TypeIs
 
 __all__ = ["filter_models", "get_choice_list", "issequence"]
 
-P = TypeVar("P", bound=ModelProtocol)
+P = TypeVar("P", bound=PModel)
 
 
 def filter_models(
-    models: Mapping[str, ModelProtocol],
+    models: Mapping[str, PModel],
     proto: type[P],
     choices: Sequence[str] | None = None,
 ) -> dict[str, P]:
@@ -18,7 +18,7 @@ def filter_models(
 
     Parameters
     ----------
-    models : ``Mapping[str, ModelProtocol]``
+    models : ``Mapping[str, PModel]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.
@@ -41,13 +41,13 @@ def filter_models(
 
 
 def get_choice_list(
-    models: Mapping[str, ModelProtocol], proto: type[P], choices: Sequence[str]
+    models: Mapping[str, PModel], proto: type[P], choices: Sequence[str]
 ) -> list[P]:
     """Get a list of model names that implement a specific protocol.
 
     Parameters
     ----------
-    models : ``Mapping[str, ModelProtocol]``
+    models : ``Mapping[str, PModel]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.

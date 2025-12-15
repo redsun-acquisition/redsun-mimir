@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 import bluesky.plan_stubs as bps
 import in_n_out as ino
 from bluesky.utils import MsgGenerator  # noqa: TC002
-from sunflare.controller import ControllerProtocol
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
+from sunflare.presenter import PPresenter
 from sunflare.virtual import Signal, VirtualBus
 
 from redsun_mimir.common import (
@@ -25,21 +25,21 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Mapping
 
     from event_model.documents import Document
-    from sunflare.model import ModelProtocol
+    from sunflare.model import PModel
 
     from ._config import AcquisitionControllerInfo
 
 store = ino.Store.create("plan_specs")
 
 
-class AcquisitionController(ControllerProtocol, Loggable):
-    """A centralized acquisition controller to manage a Bluesky run engine.
+class AcquisitionController(PPresenter, Loggable):
+    """A centralized acquisition presenter to manage a Bluesky run engine.
 
     Parameters
     ----------
     ctrl_info : ``AcquisitionControllerInfo``
-        The acquisition controller configuration information.
-    models : ``Mapping[str, ModelProtocol]``
+        The acquisition presenter configuration information.
+    models : ``Mapping[str, PModel]``
         The available models in the application.
     virtual_bus : ``VirtualBus``
         The virtual bus to register signals on.
@@ -62,7 +62,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
     def __init__(
         self,
         ctrl_info: AcquisitionControllerInfo,
-        models: Mapping[str, ModelProtocol],
+        models: Mapping[str, PModel],
         virtual_bus: VirtualBus,
     ) -> None:
         self.ctrl_info = ctrl_info
@@ -191,7 +191,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
             if p.name not in values:
                 continue
             val = values[p.name]
-            models: list[ModelProtocol] = []
+            models: list[PModel] = []
 
             # Model-backed parameter: indicated by presence of choices
             if p.choices is not None:
@@ -202,7 +202,7 @@ class AcquisitionController(ControllerProtocol, Loggable):
                     labels = [str(v) for v in val]
                 else:
                     labels = [str(val)]
-                proto: type[ModelProtocol] | None = p.model_proto
+                proto: type[PModel] | None = p.model_proto
                 if proto:
                     models = get_choice_list(self.models, proto, labels)
 

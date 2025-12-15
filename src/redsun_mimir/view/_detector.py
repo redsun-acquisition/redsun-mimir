@@ -165,7 +165,7 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self._detectors_info = models_info
 
         def _get_configuration(config: ConfigurationDict) -> ConfigurationDict:
-            """Inject the configuration data from the controller."""
+            """Inject the configuration data from the presenter."""
             return config
 
         config = config_store.inject(_get_configuration)()

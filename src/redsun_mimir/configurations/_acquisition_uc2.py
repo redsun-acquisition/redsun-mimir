@@ -9,8 +9,8 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import AcquisitionController, AcquisitionControllerInfo
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
+from redsun_mimir.presenter import AcquisitionController, AcquisitionControllerInfo
 from redsun_mimir.view import AcquisitionWidget, AcquisitionWidgetInfo
 
 

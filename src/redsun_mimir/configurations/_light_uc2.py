@@ -9,13 +9,13 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.controller import LightController, LightControllerInfo
 from redsun_mimir.model.youseetoo import (
     MimirLaserInfo,
     MimirLaserModel,
     MimirSerialModel,
     MimirSerialModelInfo,
 )
+from redsun_mimir.presenter import LightController, LightControllerInfo
 from redsun_mimir.view import LightWidget, LightWidgetInfo
 
 

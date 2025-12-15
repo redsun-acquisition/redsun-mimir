@@ -125,7 +125,7 @@ class MimirSerialModel(Model[MimirSerialModelInfo]):
 
         Currently it is not exposed to the user.
         In the future an appropriate serial stack
-        (widget and controller) should be provided.
+        (widget and presenter) should be provided.
 
     Parameters
     ----------

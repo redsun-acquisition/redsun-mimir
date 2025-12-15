@@ -16,32 +16,32 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
-    from sunflare.model import ModelProtocol
+    from sunflare.model import PModel
 
-    from redsun_mimir.controller import MotorControllerInfo
+    from redsun_mimir.presenter import MotorControllerInfo
 
 
 class MotorController(Loggable):
-    """Motor stage controller for Redsun Mimir.
+    """Motor stage presenter for Redsun Mimir.
 
-    The controller allows manual setting of stage positions;
+    The presenter allows manual setting of stage positions;
     communication with the user interface is done via
     signals exchanged with the ``MotorWidget`` accross
     the virtual bus.
 
     Whenever a new position is requested from ``MotorWidget``
-    via the ``sigMotorMove`` signal, the controller will move the stage
+    via the ``sigMotorMove`` signal, the presenter will move the stage
     to the requested position by launching a background thread
     which will call the ``set`` method of the corresponding motor model.
 
-    When the movement is completed, the controller will emit
+    When the movement is completed, the presenter will emit
     the ``sigMotorMoved`` signal to notify the widget.
 
     Parameters
     ----------
     ctrl_info : ``MotorControllerInfo``
-        Configuration for the stage controller.
-    models : ``Mapping[str, ModelProtocol]``
+        Configuration for the stage presenter.
+    models : ``Mapping[str, PModel]``
         Mapping of model names to model instances.
     virtual_bus : VirtualBus
         Virtual bus for the session.
@@ -86,7 +86,7 @@ class MotorController(Loggable):
     def __init__(
         self,
         ctrl_info: MotorControllerInfo,
-        models: Mapping[str, ModelProtocol],
+        models: Mapping[str, PModel],
         virtual_bus: VirtualBus,
     ) -> None:
         self._ctrl_info = ctrl_info
@@ -165,7 +165,7 @@ class MotorController(Loggable):
         return success_map
 
     def shutdown(self) -> None:
-        """Shutdown the controller.
+        """Shutdown the presenter.
 
         Close the daemon thread and wait
         for it to finish its last task
@@ -174,7 +174,7 @@ class MotorController(Loggable):
         self._queue.join()
 
     def registration_phase(self) -> None:
-        """Register the controller signals to the virtual bus."""
+        """Register the presenter signals to the virtual bus."""
         self._virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
