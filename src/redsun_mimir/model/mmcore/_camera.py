@@ -12,11 +12,9 @@ from sunflare.log import Loggable
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from typing import Any, ClassVar
 
     from bluesky.protocols import Descriptor, Reading
-    from event_model.documents.event import PartialEvent
 
     from ._config import MMCoreCameraModelInfo
 
@@ -177,16 +175,13 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         """
         return self.unstage()
 
-    def collect(self) -> Iterator[PartialEvent]:
-        """Collect an acquired image.
+    def read(self) -> dict[str, Reading[Any]]:
+        """Read an acquired image.
 
-        `self.collect()` should be called under the assumption
-        that `self.kickoff()` has been called and acquisition is ongoing.
-
-        Yields
-        ------
-        ``Iterator[PartialEvent]``
-            An iterator over partial event documents.
+        Returns
+        -------
+        dict[str, Reading[Any]]
+            A dictionary containing the acquired image and ROI.
 
         Raises
         ------
@@ -204,10 +199,9 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             time.sleep(0.001)
         img = self._core.popNextImage()
         stamp = time.time()
-        yield {
-            "data": {self._buffer_key: img, self._roi_key: self.roi},
-            "timestamps": {self._buffer_key: stamp, self._roi_key: stamp},
-            "time": stamp,
+        return {
+            self._buffer_key: {"value": img, "timestamp": stamp},
+            self._roi_key: {"value": self.roi, "timestamp": stamp},
         }
 
     def pause(self) -> None:
@@ -224,21 +218,26 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         """
         self._core.startContinuousSequenceAcquisition()
 
-    def describe_collect(self) -> dict[str, dict[str, Descriptor]]:
+    def describe(self) -> dict[str, Descriptor]:
+        """Describe the data produced by the detector.
+
+        Returns
+        -------
+        dict[str, dict[str, Descriptor]]
+            A dictionary describing the data produced by the detector.
+        """
         width, height = self._core.getImageWidth(), self._core.getImageHeight()
         return {
-            self.name: {
-                self._buffer_key: {
-                    "source": "data",
-                    "dtype": "array",
-                    "shape": [height, width],
-                },
-                self._roi_key: {
-                    "source": "data",
-                    "dtype": "array",
-                    "shape": [4],
-                },
-            }
+            self._buffer_key: {
+                "source": "data",
+                "dtype": "array",
+                "shape": [height, width],
+            },
+            self._roi_key: {
+                "source": "data",
+                "dtype": "array",
+                "shape": [4],
+            },
         }
 
     @property

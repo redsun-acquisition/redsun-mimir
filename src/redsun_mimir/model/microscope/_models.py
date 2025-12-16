@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
 from threading import Event
 from typing import TYPE_CHECKING
 
@@ -15,12 +16,11 @@ from sunflare.log import Loggable
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from concurrent.futures import Future
     from typing import Any, ClassVar
 
+    import numpy.typing as npt
     from bluesky.protocols import Descriptor, Location, Reading
-    from event_model.documents.event import PartialEvent
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
@@ -250,6 +250,8 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         # Set initial ROI to full sensor
         self.roi = (0, 0, *model_info.sensor_shape)
 
+        self._queue: Queue[tuple[npt.NDArray[Any], float]] = Queue()
+        self.set_client(self._queue)
         # Key names for data collection
         self._buffer_key = f"{self.name}:buffer"
         self._roi_key = f"{self.name}:roi"
@@ -331,6 +333,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
         s = Status()
         try:
             self.enable()
+            self._do_enable()
             self.logger.debug(f"Staged {self.name}")
             s.set_finished()
         except Exception as e:
@@ -373,52 +376,61 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
             s.set_exception(e)
         return s
 
-    def describe_collect(
+    def trigger(self) -> Status:
+        """Trigger the detector to acquire an image."""
+        s = Status()
+        try:
+            super().trigger()
+            s.set_finished()
+        except Exception as e:
+            self.logger.error(f"Failed to trigger {self.name}: {e}")
+            s.set_exception(e)
+        return s
+
+    def describe(
         self,
-    ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
-        """Describe the data that will be collected."""
-        return {
+    ) -> dict[str, Descriptor]:
+        """Describe the a reading from a detector."""
+        ret_val: dict[str, Descriptor] = {
             self._buffer_key: {
                 "source": self.name,
                 "dtype": "array",
                 "shape": list(self.model_info.sensor_shape),
-                "external": "FILESTORE:" + self._buffer_key,
             },
             self._roi_key: {
                 "source": self.name,
                 "dtype": "array",
-                "shape": [4],  # ROI is (x, y, width, height)
+                "shape": [4],
             },
         }
+        return ret_val
 
-    def collect(self) -> Iterator[PartialEvent]:
-        """Collect data from the detector.
+    def read(self) -> dict[str, Reading[Any]]:
+        """Read data from the detector.
 
-        Yields
-        ------
-        Iterator[PartialEvent]
-            Partial event documents with image data and ROI.
+        Returns
+        -------
+        dict[str, Reading[Any]]
+            A dictionary containing the readings from the detector.
         """
-        timestamp = time.time()
-
-        try:
-            # Get image data from SimulatedCamera (returns tuple of (image, timestamp))
-            image_data, image_timestamp = self.grab_next_data()
-
-            yield {
-                "data": {
-                    self._buffer_key: image_data,
-                    self._roi_key: self.roi,
-                },
-                "timestamps": {
-                    self._buffer_key: image_timestamp,
-                    self._roi_key: timestamp,
-                },
-                "time": timestamp,
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to collect data from {self.name}: {e}")
-            raise
+        timestamp: float
+        data: npt.NDArray[Any]
+        queue_item = self._queue.get()
+        if len(queue_item) == 2:
+            data, timestamp = queue_item
+        else:
+            data = queue_item  # type: ignore[unreachable]
+            timestamp = time.time()
+        return {
+            self._buffer_key: {
+                "value": data,
+                "timestamp": timestamp,
+            },
+            self._roi_key: {
+                "value": self.roi,
+                "timestamp": timestamp,
+            },
+        }
 
     @property
     def name(self) -> str:

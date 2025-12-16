@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
-    from event_model import Event, EventPage
+    from event_model import Event
     from sunflare.engine import DocumentType
     from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
@@ -212,18 +212,15 @@ class DetectorController(Loggable):
         doc : ``sunflare.engine.DocumentType``
             Document content.
         """
-        event: Event | EventPage
+        event: Event
         packet: dict[str, Any] | None = None
-        if name in ["event", "event_page"]:
-            packet = {}
+        if name == "event":
             event = cast("Event", doc)
+            packet = {}
             for key, value in event["data"].items():
                 detector_name, data_key = key.split(":")
                 if detector_name in self.detectors and data_key in self.hints:
                     if detector_name not in packet:
                         packet[detector_name] = {}
-                    packet[detector_name][data_key] = (
-                        value if name == "event" else value[0]
-                    )
-        if packet:
-            self.sigNewData.emit(packet)
+                    packet[detector_name][data_key] = value
+                    self.sigNewData.emit(packet)

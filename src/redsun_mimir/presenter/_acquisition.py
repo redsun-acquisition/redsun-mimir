@@ -119,11 +119,9 @@ class AcquisitionController(PPresenter, Loggable):
         yield from bps.stage_all(*detectors)
 
         while True:
+            # keep a checkpoint in case of pause/resume
             yield from bps.checkpoint()
-            # TODO: DetectorProtocol should inherit from Flyable but it doesn't;
-            # needs to be fixed in sunflare package
-            # run until the stop live button is clicked
-            yield from bps.collect(*detectors, return_payload=False)
+            yield from bps.trigger_and_read(detectors, name="live_count")
 
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
@@ -146,7 +144,7 @@ class AcquisitionController(PPresenter, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         for _ in range(frames):
-            yield from bps.collect(*detectors, return_payload=False)
+            yield from bps.trigger_and_read(detectors, name="snap")
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 

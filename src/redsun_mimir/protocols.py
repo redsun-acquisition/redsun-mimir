@@ -6,11 +6,9 @@ from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from typing import Any
 
     from bluesky.protocols import Descriptor, Location, Reading
-    from event_model.documents.event import PartialEvent
     from sunflare.engine import Status
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
@@ -181,9 +179,7 @@ class DetectorProtocol(PModel, Settable, Protocol):
     - ``Settable``
     - ``Stageable``
     - ``Flyable``
-    - ``Subscribable``
-    - ``Collectable``
-    - ``EventCollectable``
+    - ``Readable``
 
     Attributes
     ----------
@@ -222,7 +218,7 @@ class DetectorProtocol(PModel, Settable, Protocol):
         ...
 
     def kickoff(self) -> Status:
-        """Kick off a continuous acquisition.
+        """Kick off an asynchronous acquisition.
 
         Returns
         -------
@@ -232,7 +228,7 @@ class DetectorProtocol(PModel, Settable, Protocol):
         ...
 
     def complete(self) -> Status:
-        """Complete a continuous acquisition.
+        """Complete an asynchronous acquisition.
 
         Returns
         -------
@@ -241,29 +237,25 @@ class DetectorProtocol(PModel, Settable, Protocol):
         """
         ...
 
-    def describe_collect(
+    def describe(
         self,
     ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
-        """Describe the eventually-to-collect data.
+        """Describe the a reading from a detector.
 
         Returns
         -------
-        dict[str, DataKey] | dict[str, dict[str, DataKey]]
-
-            Since a flyer can potentially return more than one event stream, this is either
-            - a dict of stream names (strings) mapped to a ``describe()``-type output for each.
-            - a ``describe()``-type output of the descriptor name passed in with the ``name``
-                argument of the message.
+        dict[str, Descriptor]
+            A dictionary describing the reading from the detector.
         """
         ...
 
-    def collect(self) -> Iterator[PartialEvent]:
-        """Collect data from the detector.
+    def read(self) -> dict[str, Reading[Any]]:
+        """Read data from the detector.
 
-        Yields
-        ------
-        ``Iterator[PartialEvent]``
-            An iterator over partial event documents.
+        Returns
+        -------
+        dict[str, Reading[Any]]
+            A dictionary containing the readings from the detector.
         """
         ...
 

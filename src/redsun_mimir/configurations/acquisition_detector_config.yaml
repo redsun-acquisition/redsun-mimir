@@ -7,6 +7,11 @@ models:
     plugin_id: test
     sensor_shape: [512, 512]
     pixel_size: [1, 1]
+  Mock2:
+    plugin_name: test
+    plugin_id: test
+    sensor_shape: [512, 512]
+    pixel_size: [1, 1]
 controllers:
   AcquisitionController:
     plugin_name: test

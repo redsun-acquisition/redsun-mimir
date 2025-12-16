@@ -9,6 +9,8 @@ from qtpy import QtCore, QtWidgets
 from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
+from redsun_mimir.model import DetectorModelInfo
+from redsun_mimir.model.microscope import SimulatedCameraModel
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.presenter import (
     AcquisitionController,
@@ -24,6 +26,7 @@ from redsun_mimir.view import (
 )
 
 if TYPE_CHECKING:
+    from sunflare.config import PModelInfo
     from sunflare.model import PModel
 
 
@@ -42,10 +45,15 @@ def acquisition_detector_widget() -> None:
 
     config_path = Path(__file__).parent / "acquisition_detector_config.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, MMCoreCameraModelInfo] = {
-        name: MMCoreCameraModelInfo(**values)
-        for name, values in config_dict["models"].items()
-    }
+    models_info: dict[str, PModelInfo] = {}
+
+    for name, values in config_dict["models"].items():
+        if name == "Mock1":
+            models_info[name] = MMCoreCameraModelInfo(**values)
+        elif name == "Mock2":
+            models_info[name] = DetectorModelInfo(**values)
+        else:
+            raise ValueError(f"Unknown model name: {name}")
     ctrl_info: dict[str, PPresenterInfo] = {}
     widget_info: dict[str, PViewInfo] = {}
 
@@ -64,15 +72,19 @@ def acquisition_detector_widget() -> None:
     config = RedSunSessionInfo(
         session=config_dict["session"],
         frontend=config_dict["frontend"],
-        models=models_info,  # type: ignore
+        models=models_info,
         controllers=ctrl_info,
         views=widget_info,
     )
 
-    mock_models: dict[str, PModel] = {
-        name: MMCoreCameraModel(name, model_info)
-        for name, model_info in models_info.items()
-    }
+    mock_models: dict[str, PModel] = {}
+    for name, model_info in models_info.items():
+        if name == "Mock1":
+            mock_models[name] = MMCoreCameraModel(name, model_info)  # type: ignore
+        elif name == "Mock2":
+            mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
+        else:
+            raise ValueError(f"Unknown model name: {name}")
 
     bus = VirtualBus()
 
