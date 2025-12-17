@@ -48,9 +48,9 @@ def acquisition_detector_widget() -> None:
     models_info: dict[str, PModelInfo] = {}
 
     for name, values in config_dict["models"].items():
-        if name == "Mock1":
+        if "mmcore" in name:
             models_info[name] = MMCoreCameraModelInfo(**values)
-        elif name == "Mock2":
+        elif "microscope" in name:
             models_info[name] = DetectorModelInfo(**values)
         else:
             raise ValueError(f"Unknown model name: {name}")
@@ -79,9 +79,9 @@ def acquisition_detector_widget() -> None:
 
     mock_models: dict[str, PModel] = {}
     for name, model_info in models_info.items():
-        if name == "Mock1":
+        if "mmcore" in name:
             mock_models[name] = MMCoreCameraModel(name, model_info)  # type: ignore
-        elif name == "Mock2":
+        elif "microscope" in name:
             mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
         else:
             raise ValueError(f"Unknown model name: {name}")

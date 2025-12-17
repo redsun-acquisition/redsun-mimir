@@ -2,12 +2,17 @@ session: redsun-mimir
 engine: bluesky
 frontend: pyqt
 models:
-  Mock1:
+  mmcore-mock:
     plugin_name: test
     plugin_id: test
     sensor_shape: [512, 512]
     pixel_size: [1, 1]
-  Mock2:
+  microscope-mock1:
+    plugin_name: test
+    plugin_id: test
+    sensor_shape: [512, 512]
+    pixel_size: [1, 1]
+  microscope-mock2:
     plugin_name: test
     plugin_id: test
     sensor_shape: [512, 512]

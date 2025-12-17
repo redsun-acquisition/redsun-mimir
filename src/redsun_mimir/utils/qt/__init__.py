@@ -68,17 +68,13 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
             # resize it properly to the content and scrollable if too many items
             # are present
             inner_w: QtWidgets.QListWidget = w.native
-            height = 2 * inner_w.frameWidth()  # top + bottom frame
 
-            # get number of rows
-            count = inner_w.count()
-            for row in range(count):
-                height += inner_w.sizeHintForRow(row)
-
-            # account for spacing between rows
-            height += inner_w.spacing() * max(0, count - 1)
-
-            inner_w.setFixedHeight(height)
+            # adjust size based on number of items;
+            # the +5 for width is to make it a little less tight
+            inner_w.setFixedSize(
+                inner_w.sizeHintForColumn(0) + inner_w.frameWidth() * 2 + 5,
+                inner_w.sizeHintForRow(0) * inner_w.count() + 2 * inner_w.frameWidth(),
+            )
 
         else:
             w = mgw.ComboBox(

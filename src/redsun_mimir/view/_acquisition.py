@@ -112,17 +112,14 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
         # root layout
         self.root_layout = QtW.QVBoxLayout(self)
-        self.root_layout.setContentsMargins(4, 4, 4, 4)
-        self.root_layout.setSpacing(4)
 
         # combobox and info button layout
         self.top_bar_layout = QtW.QHBoxLayout()
-        self.top_bar_layout.setContentsMargins(0, 0, 0, 0)
-        self.top_bar_layout.setSpacing(4)
 
         # combobox to select which plan to show
         self.plans_combobox = QtW.QComboBox(self)
         self.plans_combobox.setToolTip("Select a plan to run")
+        self.plans_combobox.setFixedHeight(32)
 
         # info button to open a dialog with plan docstring
         self.info_btn = QtW.QPushButton(self)
@@ -132,7 +129,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             )
         )
         self.info_btn.setToolTip("Information about the selected plan")
-        button_size = QtCore.QSize(24, 24)
+        button_size = QtCore.QSize(32, 32)
         self.info_btn.setMinimumSize(button_size)
         self.info_btn.setMaximumSize(button_size)
         self.info_btn.setIconSize(QtCore.QSize(16, 16))
@@ -140,8 +137,8 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.info_btn.clicked.connect(self._on_info_clicked)
 
         # add widgets to the horizontal layout
-        self.top_bar_layout.addWidget(self.plans_combobox, 1)  # stretch = 1 (expands)
-        self.top_bar_layout.addWidget(self.info_btn, 0)  # fixed width
+        self.top_bar_layout.addWidget(self.plans_combobox)
+        self.top_bar_layout.addWidget(self.info_btn)
 
         # put the top bar into the main vertical layout
         self.root_layout.addLayout(self.top_bar_layout)
