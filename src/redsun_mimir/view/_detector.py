@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
     from ._config import DetectorWidgetInfo
 
-info_store = ino.Store.get_store("DetectorModelInfo")
-config_store = ino.Store.get_store("DetectorConfiguration")
+info_store = ino.Store.get_store("detector_info")
+config_store = ino.Store.get_store("detector_configuration")
 
 
 class SettingsControlWidget(QtWidgets.QWidget):

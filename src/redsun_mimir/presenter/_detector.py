@@ -4,6 +4,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 import in_n_out as ino
+from bluesky.run_engine import get_bluesky_event_loop
 from bluesky.utils import maybe_await
 from sunflare.log import Loggable
 from sunflare.virtual import Signal
@@ -25,8 +26,8 @@ if TYPE_CHECKING:
     from ._config import DetectorControllerInfo
 
 
-info_store = ino.Store.create("DetectorModelInfo")
-config_store = ino.Store.create("DetectorConfiguration")
+info_store = ino.Store.create("detector_info")
+config_store = ino.Store.create("detector_configuration")
 
 
 class DetectorController(Loggable):
@@ -78,6 +79,8 @@ class DetectorController(Loggable):
         self.detectors = filter_models(models, DetectorProtocol)
 
         self.hints = ["buffer", "roi"]
+
+        self._loop: asyncio.AbstractEventLoop = get_bluesky_event_loop()
 
         info_store.register_provider(self.models_info)
         config_store.register_provider(self.models_configuration)
@@ -163,6 +166,12 @@ class DetectorController(Loggable):
                 self.logger.error(f"Exception configuring '{key}' of {detector}: {e}")
                 self.sigConfigurationConfirmed.emit(detector, key, False)
 
+    async def _describe_config_async(self, detector: str) -> dict[str, Descriptor]:
+        return await maybe_await(self.detectors[detector].describe_configuration())
+
+    async def _read_config_async(self, detector: str) -> dict[str, Reading[Any]]:
+        return await maybe_await(self.detectors[detector].read_configuration())
+
     def read_configuration(self, detector: str) -> dict[str, Reading[Any]]:
         """Read the configuration of a detector.
 
@@ -176,11 +185,9 @@ class DetectorController(Loggable):
         dict[str, Reading[Any]]
             Mapping of configuration parameters to their readings.
         """
-
-        async def _async_helper() -> dict[str, Reading[Any]]:
-            return await maybe_await(self.detectors[detector].read_configuration())
-
-        return asyncio.run(_async_helper())
+        return asyncio.run_coroutine_threadsafe(
+            self._read_config_async(detector), self._loop
+        ).result()
 
     def describe_configuration(self, detector: str) -> dict[str, Descriptor]:
         """Read the configuration description of a detector.
@@ -196,11 +203,9 @@ class DetectorController(Loggable):
             Mapping of configuration parameters to their descriptors.
 
         """
-
-        async def _async_helper() -> dict[str, Descriptor]:
-            return await maybe_await(self.detectors[detector].describe_configuration())
-
-        return asyncio.run(_async_helper())
+        return asyncio.run_coroutine_threadsafe(
+            self._describe_config_async(detector), self._loop
+        ).result()
 
     def process(self, name: str, doc: DocumentType) -> None:
         """Process new documents.
