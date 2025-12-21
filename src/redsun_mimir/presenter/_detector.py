@@ -98,6 +98,7 @@ class DetectorController(DocumentRouter, Loggable):
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
+        self.virtual_bus.register_callbacks(self)
 
     def connection_phase(self) -> None:
         self.virtual_bus.signals["DetectorWidget"]["sigPropertyChanged"].connect(
