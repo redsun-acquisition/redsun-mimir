@@ -130,8 +130,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         )
         self.info_btn.setToolTip("Information about the selected plan")
         button_size = QtCore.QSize(32, 32)
-        self.info_btn.setMinimumSize(button_size)
-        self.info_btn.setMaximumSize(button_size)
+        self.info_btn.setFixedSize(button_size)
         self.info_btn.setIconSize(QtCore.QSize(16, 16))
         self.info_btn.setFlat(True)
         self.info_btn.clicked.connect(self._on_info_clicked)
@@ -265,7 +264,10 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None: ...
+    def connection_phase(self) -> None:
+        self.virtual_bus["AcquisitionController"]["sigPlanDone"].connect(
+            self._on_plan_done
+        )
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
@@ -285,11 +287,11 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()
         parameters = self.plan_widgets[plan].parameters
+        self.plan_widgets[plan].setEnabled(False)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
     def _on_plan_done(self) -> None:
-        plan = self.plans_combobox.currentText()
-        self.plan_widgets[plan].setEnabled(True)
+        self.plan_widgets[self.plans_combobox.currentText()].setEnabled(True)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]
