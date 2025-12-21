@@ -77,5 +77,3 @@ def acquisition_widget_uc2() -> None:
 
     start_emitting_from_queue()
     app.exec()
-
-    bus.shutdown()

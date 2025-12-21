@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
-    from event_model.documents import Document
     from sunflare.model import PModel
 
     from ._config import AcquisitionControllerInfo
@@ -55,9 +54,6 @@ class AcquisitionController(PPresenter, Loggable):
     """
 
     sigPlanDone = Signal()
-    sigNewDocument = Signal(str, object)
-    log_token: int
-    sig_token: int
 
     def __init__(
         self,
@@ -69,9 +65,6 @@ class AcquisitionController(PPresenter, Loggable):
         self.virtual_bus = virtual_bus
         self.models = models
         self.engine = RunEngine()
-        if ctrl_info.debug:
-            self.log_token = self.engine.subscribe(self.log_document_type)
-        self.sig_token = self.engine.subscribe(self.sigNewDocument.emit)
 
         self.futures: set[Future[Any]] = set()
         self.discard_by_pause = False
@@ -90,15 +83,18 @@ class AcquisitionController(PPresenter, Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
+        self.virtual_bus.signals["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )
-        self.virtual_bus["AcquisitionWidget"]["sigStopPlanRequest"].connect(
+        self.virtual_bus.signals["AcquisitionWidget"]["sigStopPlanRequest"].connect(
             self.stop_plan
         )
-        self.virtual_bus["AcquisitionWidget"]["sigPauseResumeRequest"].connect(
+        self.virtual_bus.signals["AcquisitionWidget"]["sigPauseResumeRequest"].connect(
             self.pause_or_resume_plan
         )
+
+        for callback in self.virtual_bus.callbacks.values():
+            self.engine.subscribe(callback)
 
     def plans_specificiers(self) -> set[PlanSpec]:
         return set(self.plan_specs.values())
@@ -159,12 +155,6 @@ class AcquisitionController(PPresenter, Loggable):
             The parameter values to pass to the plan.
             Elaborated from the UI inputs.
         """
-        if (
-            plan_name not in self.plans.keys()
-            or plan_name not in self.plan_specs.keys()
-        ):
-            return
-
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
@@ -220,7 +210,7 @@ class AcquisitionController(PPresenter, Loggable):
 
         if not spec.togglable:
             # Single-shot plan: emit done when finished
-            fut.add_done_callback(lambda f: self.sigPlanDone.emit())
+            fut.add_done_callback(lambda _: self.sigPlanDone.emit())
 
         fut.add_done_callback(self._discard_future)
 
@@ -246,18 +236,6 @@ class AcquisitionController(PPresenter, Loggable):
     def stop_plan(self) -> None:
         """Stop the running plan."""
         self.engine.stop()
-
-    def log_document_type(self, name: str, doc: Document) -> None:
-        """Log the document nama and type for debugging.
-
-        Parameters
-        ----------
-        name : ``str``
-            The name of the document ("start", "stop", "event", "descriptor").
-        doc : ``Document``
-            The document data (unused).
-        """
-        self.logger.debug(f"New document: {name}")
 
     def _discard_future(self, fut: Future[Any]) -> None:
         # TODO: consider emitting a result

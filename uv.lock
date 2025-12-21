@@ -3090,6 +3090,7 @@ name = "redsun-mimir"
 source = { editable = "." }
 dependencies = [
     { name = "in-n-out" },
+    { name = "msgspec" },
     { name = "napari" },
     { name = "sunflare" },
     { name = "superqt" },
@@ -3138,13 +3139,14 @@ requires-dist = [
     { name = "in-n-out", specifier = ">=0.2.1" },
     { name = "microscope", marker = "extra == 'microscope'", specifier = ">=0.7.0" },
     { name = "microscope", marker = "extra == 'sim'", specifier = ">=0.7.0" },
+    { name = "msgspec", specifier = ">=0.20.0" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "sunflare", specifier = ">=0.7.0" },
+    { name = "sunflare", specifier = ">=0.8.1" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.7.0" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.7.0" },
     { name = "superqt", specifier = ">=0.7.4" },
@@ -3833,20 +3835,18 @@ wheels = [
 
 [[package]]
 name = "sunflare"
-version = "0.7.0"
+version = "0.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "bluesky" },
-    { name = "msgspec" },
     { name = "psygnal" },
     { name = "pyyaml" },
-    { name = "pyzmq" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/6a/544f7225d441b1c07b2bfc1b34f68e77be02f937915d1faf97b2a2b99fa0/sunflare-0.7.0.tar.gz", hash = "sha256:8fc2d6010aa84e9a35867c340b53b3aa1f23b5d1f88df4d15103b90103c0b03a", size = 25932, upload-time = "2025-12-15T11:45:32.92Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/e4/6f2fe4fc565901a8c13578cffa3defbd76bdbec93dafb5f4d6cf26b1c29d/sunflare-0.8.1.tar.gz", hash = "sha256:2d0430f6657da746d0c1f324e2419d4b13cf3c302647c1aa690cbf602c46d8af", size = 38589, upload-time = "2025-12-21T16:47:35.842Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/56/4888aa5b2c064fa26f667d25ea5c694da19ad1b0857f389667d0a737658b/sunflare-0.7.0-py3-none-any.whl", hash = "sha256:4e48caadb083bb5b62916236d65efca1ce9c09e314de0a8371508111a16fa86b", size = 35668, upload-time = "2025-12-15T11:45:31.503Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/b9/2c8a5adb9ae90c7958c53fc3e146e916825bf2010835030bd48da4b41e4d/sunflare-0.8.1-py3-none-any.whl", hash = "sha256:fb18dfe84e8ff586d10d777dfee54d64bd1785c6a91ab0b56a2ab42cc65cb738", size = 33076, upload-time = "2025-12-21T16:47:34.447Z" },
 ]
 
 [package.optional-dependencies]

@@ -179,8 +179,10 @@ class MotorController(Loggable):
 
     def connection_phase(self) -> None:
         """Connect to other controllers/views in the active session."""
-        self._virtual_bus["MotorWidget"]["sigMotorMove"].connect(self.move)
-        self._virtual_bus["MotorWidget"]["sigConfigChanged"].connect(self.configure)
+        self._virtual_bus.signals["MotorWidget"]["sigMotorMove"].connect(self.move)
+        self._virtual_bus.signals["MotorWidget"]["sigConfigChanged"].connect(
+            self.configure
+        )
 
     def _run_loop(self) -> None:
         while True:

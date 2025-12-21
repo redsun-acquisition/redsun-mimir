@@ -136,7 +136,7 @@ class MotorWidget(BaseQtWidget):
         We use it to directly build the GUI by retrieving a configuration of
         the currently allocated motors to create the proper widget layout.
         """
-        self.virtual_bus["MotorController"]["sigNewPosition"].connect(
+        self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import in_n_out as ino
 from bluesky.run_engine import get_bluesky_event_loop
 from bluesky.utils import maybe_await
+from event_model import DocumentRouter
 from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Reading
     from event_model import Event
-    from sunflare.engine import DocumentType
     from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
 
@@ -30,7 +30,7 @@ info_store = ino.Store.create("detector_info")
 config_store = ino.Store.create("detector_configuration")
 
 
-class DetectorController(Loggable):
+class DetectorController(DocumentRouter, Loggable):
     """Controller for detector configuration.
 
     Parameters
@@ -73,6 +73,7 @@ class DetectorController(Loggable):
         models: Mapping[str, PModel],
         virtual_bus: VirtualBus,
     ) -> None:
+        super().__init__()
         self.ctrl_info = ctrl_info
         self.virtual_bus = virtual_bus
 
@@ -99,16 +100,9 @@ class DetectorController(Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["DetectorWidget"]["sigPropertyChanged"].connect(self.configure)
-        try:
-            self.virtual_bus["AcquisitionController"]["sigNewDocument"].connect(
-                self.process
-            )
-        except KeyError:
-            self.logger.warning(
-                "AcquisitionController not found on the virtual bus; "
-                "data processing will be disabled."
-            )
+        self.virtual_bus.signals["DetectorWidget"]["sigPropertyChanged"].connect(
+            self.configure
+        )
 
     def models_configuration(self) -> ConfigurationDict:
         """Get the configuration of all detectors."""
@@ -207,25 +201,20 @@ class DetectorController(Loggable):
             self._describe_config_async(detector), self._loop
         ).result()
 
-    def process(self, name: str, doc: DocumentType) -> None:
-        """Process new documents.
+    def event(self, doc: Event) -> Event:
+        """Process new event documents.
 
         Parameters
         ----------
-        name : ``str``
-            Document name (e.g., 'start', 'stop', 'event', etc.).
-        doc : ``sunflare.engine.DocumentType``
-            Document content.
+        doc : ``Event``
+            The event document.
         """
-        event: Event
-        packet: dict[str, Any] | None = None
-        if name == "event":
-            event = cast("Event", doc)
-            packet = {}
-            for key, value in event["data"].items():
-                detector_name, data_key = key.split(":")
-                if detector_name in self.detectors and data_key in self.hints:
-                    if detector_name not in packet:
-                        packet[detector_name] = {}
-                    packet[detector_name][data_key] = value
-                    self.sigNewData.emit(packet)
+        packet: dict[str, Any] = {}
+        for key, value in doc["data"].items():
+            detector_name, data_key = key.split(":")
+            if detector_name in self.detectors and data_key in self.hints:
+                if detector_name not in packet:
+                    packet[detector_name] = {}
+                packet[detector_name][data_key] = value
+                self.sigNewData.emit(packet)
+        return doc

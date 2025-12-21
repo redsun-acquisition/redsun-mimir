@@ -66,8 +66,12 @@ class LightController(Loggable):
 
     def connection_phase(self) -> None:
         """Connect the presenter."""
-        self._virtual_bus["LightWidget"]["sigToggleLightRequest"].connect(self.trigger)
-        self._virtual_bus["LightWidget"]["sigIntensityRequest"].connect(self.set)
+        self._virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
+            self.trigger
+        )
+        self._virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(
+            self.set
+        )
 
     def trigger(self, name: str) -> None:
         """Toggle the light.

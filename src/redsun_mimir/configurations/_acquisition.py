@@ -91,5 +91,3 @@ def acquisition_widget() -> None:
 
     start_emitting_from_queue()
     app.exec()
-
-    bus.shutdown()

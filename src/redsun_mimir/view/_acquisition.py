@@ -265,7 +265,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["AcquisitionController"]["sigPlanDone"].connect(
+        self.virtual_bus.signals["AcquisitionController"]["sigPlanDone"].connect(
             self._on_plan_done
         )
 

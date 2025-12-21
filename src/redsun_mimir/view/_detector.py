@@ -146,10 +146,10 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self.virtual_bus.register_signals(self)
 
     def connection_phase(self) -> None:
-        self.virtual_bus["DetectorController"]["sigConfigurationConfirmed"].connect(
-            self._handle_configuration_result
-        )
-        self.virtual_bus["DetectorController"]["sigNewData"].connect(
+        self.virtual_bus.signals["DetectorController"][
+            "sigConfigurationConfirmed"
+        ].connect(self._handle_configuration_result)
+        self.virtual_bus.signals["DetectorController"]["sigNewData"].connect(
             self._update_layers, thread="main"
         )
 
