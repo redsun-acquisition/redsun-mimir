@@ -218,6 +218,10 @@ class AcquisitionController(PPresenter, Loggable):
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
+        if not spec.togglable:
+            # Single-shot plan: emit done when finished
+            fut.add_done_callback(lambda f: self.sigPlanDone.emit())
+
         fut.add_done_callback(self._discard_future)
 
     def pause_or_resume_plan(self, pause: bool) -> None:
