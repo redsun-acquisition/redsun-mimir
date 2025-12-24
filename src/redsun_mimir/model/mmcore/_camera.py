@@ -175,6 +175,20 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         """
         return self.unstage()
 
+    def pause(self) -> None:
+        """Pause the acquisition.
+
+        This translates to stopping the sequence acquisition.
+        """
+        self._core.stopSequenceAcquisition(self.name)
+
+    def resume(self) -> None:
+        """Resume the acquisition.
+
+        This translates to starting the sequence acquisition.
+        """
+        self._core.startContinuousSequenceAcquisition()
+
     def read(self) -> dict[str, Reading[Any]]:
         """Read an acquired image.
 
@@ -185,7 +199,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
 
         Raises
         ------
-        ``RuntimeError``
+        RuntimeError
             If acquisition is not running.
         """
         # there are no clear information
@@ -203,20 +217,6 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             self._buffer_key: {"value": img, "timestamp": stamp},
             self._roi_key: {"value": self.roi, "timestamp": stamp},
         }
-
-    def pause(self) -> None:
-        """Pause the acquisition.
-
-        This translates to stopping the sequence acquisition.
-        """
-        self._core.stopSequenceAcquisition(self.name)
-
-    def resume(self) -> None:
-        """Resume the acquisition.
-
-        This translates to starting the sequence acquisition.
-        """
-        self._core.startContinuousSequenceAcquisition()
 
     def describe(self) -> dict[str, Descriptor]:
         """Describe the data produced by the detector.
