@@ -43,15 +43,13 @@ from napari.layers.utils.interaction_box import (
 )
 
 if TYPE_CHECKING:
-    from typing import Generator
+    from typing import Iterator
 
     from napari._vispy.mouse_event import NapariMouseEvent
     from napari.layers import Image
 
 
-def resize_selection_box(
-    layer: Image, event: NapariMouseEvent
-) -> Generator[None, None, None]:
+def resize_selection_box(layer: Image, event: NapariMouseEvent) -> Iterator[None]:
     """Resize the selection box based on mouse movement.
 
     Parameters
@@ -127,9 +125,9 @@ def highlight_roi_box_handles(layer: Image, event: NapariMouseEvent) -> None:
 
     Parameters
     ----------
-    layer : Image
+    layer: Image
         The layer to highlight the selection box for.
-    event : NapariMouseEvent
+    event: NapariMouseEvent
         The event triggered by mouse movement.
     """
     if len(event.dims_displayed) != 2:
