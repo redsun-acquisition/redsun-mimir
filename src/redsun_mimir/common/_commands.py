@@ -11,8 +11,10 @@ if TYPE_CHECKING:
     from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
+__all__ = ["wait_for_any", "register_bound_command"]
 
-async def _wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] | None:
+
+async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] | None:
     """Instruct the run engine to wait for any of the given events to be set.
 
     Parameters
