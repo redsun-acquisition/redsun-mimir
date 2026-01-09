@@ -8,6 +8,8 @@ from inspect import Parameter, _empty, signature
 from typing import (
     Annotated,
     Any,
+    Mapping,
+    Sequence,
     get_args,
     get_origin,
     get_type_hints,
@@ -15,8 +17,8 @@ from typing import (
 
 from sunflare.model import PModel
 
-from redsun_mimir.common.actions import ActionedPlan, Actions
-from redsun_mimir.utils import issequence
+from redsun_mimir.actions import ActionedPlan, ActionList
+from redsun_mimir.utils import get_choice_list, issequence
 
 
 class ParamKind(IntEnum):
@@ -64,8 +66,8 @@ class ParamDescription:
         If True, this parameter allows multiple selections (for PModel types).
     hidden : bool
         If True, this parameter should not be exposed as a normal input widget.
-    actions : Actions | None
-        If this parameter is annotated as `Actions`, this holds the associated action object.
+    actions : ActionList | None
+        If this parameter is annotated as `ActionList`, this holds the associated action object.
     model_proto : type[PModel] | None
         If this parameter is associated with a PModel type,
         this holds the actual type.
@@ -78,7 +80,7 @@ class ParamDescription:
     choices: list[str] | None = None
     multiselect: bool = False
     hidden: bool = False
-    actions: Actions | None = None
+    actions: ActionList | None = None
     model_proto: type[PModel] | None = None
 
     @property
@@ -173,6 +175,76 @@ def collect_arguments(
     return tuple(args), kwargs
 
 
+def resolve_arguments(
+    spec: PlanSpec,
+    param_values: Mapping[str, Any],
+    models: Mapping[str, PModel],
+) -> dict[str, Any]:
+    """Resolve plan arguments from UI parameter values.
+
+    Parameters
+    ----------
+    spec : ``PlanSpec``
+        The plan specification containing parameter metadata.
+    param_values : ``Mapping[str, Any]``
+        The parameter values from the UI.
+    models : ``Mapping[str, PModel]``
+        The available models in the application.
+
+    Returns
+    -------
+    dict[str, Any]
+        The resolved arguments ready to pass to the plan function.
+    """
+    # start with values coming from the view
+    values: dict[str, Any] = dict(param_values)
+
+    # For ActionList-typed parameters that have metadata but no GUI input,
+    # inject the ActionList instance so the function can always be called.
+    for p in spec.parameters:
+        if (
+            isinstance(p.annotation, ActionList)
+            and p.actions is not None
+            and p.name not in values
+        ):
+            values[p.name] = p.actions
+
+    resolved: dict[str, Any] = {}
+
+    # For ActionList-typed parameters that have metadata but no GUI input,
+    # inject the ActionList instance so the function can always be called.
+    for p in spec.parameters:
+        if p.name not in values:
+            continue
+        val = values[p.name]
+        model_list: list[PModel] = []
+
+        # Model-backed parameter: indicated by presence of choices
+        if p.choices is not None:
+            # Coerce widget value into a list of string labels
+            if isinstance(val, str):
+                labels = [val]
+            elif isinstance(val, Sequence) and not isinstance(val, (str, bytes)):
+                labels = [str(v) for v in val]
+            else:
+                labels = [str(val)]
+            proto: type[PModel] | None = p.model_proto
+            if proto:
+                model_list = get_choice_list(models, proto, labels)
+
+            if p.kind.name == "VAR_POSITIONAL" or issequence(p.annotation):
+                # Sequence[...] or *detectors → pass the list as-is
+                resolved[p.name] = model_list
+            else:
+                # Single model parameter → first match or None
+                resolved[p.name] = model_list[0] if model_list else None
+        else:
+            # Non-model parameter (or no registry): pass through
+            resolved[p.name] = val
+
+    return resolved
+
+
 def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
     """Iterate over a function signature's parameters, skipping 'self'/'cls'.
 
@@ -256,13 +328,13 @@ def create_plan_spec(
     params: list[ParamDescription] = []
 
     for name, param in iterate_signature(sig):
-        raw_ann: Any = type_hints.get(name, param.annotation)
+        raw_ann: type[Any] = type_hints.get(name, param.annotation)
         if raw_ann is _empty:
             raw_ann = Any
 
-        actions_meta: Actions | None = None
+        actions_meta: ActionList | None = None
 
-        # Peel Annotated[..., Actions(...)] if present
+        # peel Annotated[..., ActionList(...)] if present
         if get_origin(raw_ann) is Annotated:
             args = get_args(raw_ann)
             if args:
@@ -277,27 +349,32 @@ def create_plan_spec(
             if len(extras) > 1:
                 base_ann = Any
                 extras = ()
-            elif isinstance(extras[0], Actions):
+            elif isinstance(extras[0], ActionList):
                 actions_meta = extras[0]
+                if param.default is not _empty and isinstance(
+                    param.default, cabc.Sequence
+                ):
+                    # override the contents of ActionList with default value
+                    actions_meta.names = list(param.default)
             ann = base_ann
         else:
             ann = raw_ann
 
-        # If we have Actions metadata, enforce the underlying type
+        # If we have ActionList metadata, enforce the underlying type
         # to be Sequence[str]
         elem_ann: Any
         if actions_meta:
             _validate_action_names(name, actions_meta.names)
             if not issequence(ann):
                 raise TypeError(
-                    f"Parameter {name!r} uses Actions metadata but is not "
+                    f"Parameter {name!r} uses ActionList metadata but is not "
                     f"annotated as a Sequence[...] type; got {ann!r}"
                 )
             elem_args = get_args(ann)
             elem_ann = elem_args[0] if elem_args else Any
             if elem_ann is not str:
                 raise TypeError(
-                    f"Parameter {name!r} uses Actions metadata but its element "
+                    f"Parameter {name!r} uses ActionList metadata but its element "
                     f"type is not str; got {elem_ann!r}"
                 )
 
@@ -362,11 +439,11 @@ def create_plan_spec(
 def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
     if not isinstance(names, cabc.Sequence) or isinstance(names, (str, bytes)):
         raise TypeError(
-            f"Actions for parameter {param_name!r} must be a non-string sequence of str; "
+            f"ActionList for parameter {param_name!r} must be a non-string sequence of str; "
             f"got {type(names)!r}"
         )
     if not all(isinstance(x, str) for x in names):
         raise TypeError(
-            f"All entries in Actions for parameter {param_name!r} must be str; "
+            f"All entries in ActionList for parameter {param_name!r} must be str; "
             f"got {names!r}"
         )

@@ -11,8 +11,8 @@ from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
+from redsun_mimir.actions import ActionList
 from redsun_mimir.common import PlanSpec  # noqa: TC001
-from redsun_mimir.common.actions import Actions
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
 if TYPE_CHECKING:
@@ -99,6 +99,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
+    sigActionRequest = Signal(str)
 
     def __init__(
         self,
@@ -186,13 +187,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
             param_widgets: dict[str, mgw.bases.ValueWidget[Any]] = {}
 
-            # Regular parameters (exclude Actions-typed params)
+            # Regular parameters (exclude ActionList-typed params)
             for p in spec.parameters:
                 if p.hidden:
                     # do nothing
                     continue
-                if p.actions is not None or p.annotation is Actions:
-                    # Don't generate parameter widgets for Actions params.
+                if p.actions is not None or p.annotation is ActionList:
+                    # Don't generate parameter widgets for ActionList params.
                     continue
                 # Skip var-keyword (**kwargs): no sane generic widget yet.
                 if p.kind.name == "VAR_KEYWORD":
@@ -230,7 +231,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             run_container.setLayout(run_layout)
             page_layout.addWidget(run_container)
 
-            # Actions group (for parameters typed as Actions with a default)
+            # ActionList group (for parameters typed as ActionList with a default)
             actions_group_box: QtW.QGroupBox | None = None
             actions_params = [p for p in spec.parameters if p.actions is not None]
 

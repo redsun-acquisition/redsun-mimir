@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+from typing import Annotated as Ann
 
 import bluesky.plan_stubs as bps
 import in_n_out as ino
@@ -11,14 +12,18 @@ from sunflare.log import Loggable
 from sunflare.presenter import PPresenter
 from sunflare.virtual import Signal, VirtualBus
 
+import redsun_mimir.actions as plan_actions
+import redsun_mimir.plan_stubs as rps
+from redsun_mimir.actions import ActionList, actioned
 from redsun_mimir.common import (
     PlanSpec,
     collect_arguments,
     create_plan_spec,
+    register_bound_command,
+    resolve_arguments,
+    wait_for_any,
 )
-from redsun_mimir.common.actions import Actions, actioned
-from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
-from redsun_mimir.utils import get_choice_list, issequence
+from redsun_mimir.protocols import DetectorProtocol, MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -65,12 +70,14 @@ class AcquisitionController(PPresenter, Loggable):
         self.virtual_bus = virtual_bus
         self.models = models
         self.engine = RunEngine()
+        register_bound_command(self.engine, wait_for_any)
 
         self.futures: set[Future[Any]] = set()
         self.discard_by_pause = False
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "live_count": self.live_count,
+            "live_square_scan": self.live_square_scan,
             "snap": self.snap,
         }
         self.plan_specs: dict[str, PlanSpec] = {
@@ -126,9 +133,9 @@ class AcquisitionController(PPresenter, Loggable):
 
         Parameters
         ----------
-        - detectors : ``Sequence[DetectorProtocol]``
+        - detectors: ``Sequence[DetectorProtocol]``
             - The detectors to take a snapshot from.
-        - frames : ``int``, optional
+        - frames: ``int``, optional
             - The number of snapshots to take for each detector.
             Must be a non-zero, positive integer.
             Default is 1.
@@ -144,6 +151,95 @@ class AcquisitionController(PPresenter, Loggable):
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
+    def live_square_scan(
+        self,
+        detectors: Sequence[DetectorProtocol],
+        motor: MotorProtocol,
+        step: float = 1.0,
+        step_egu: Literal["μm", "mm", "nm"] = "μm",
+        frames: int = 100,
+        direction: Literal["xy", "yx"] = "xy",
+        /,
+        actions: Ann[list[str], ActionList()] = ["scan"],
+    ) -> MsgGenerator[None]:
+        """Perform live data collection with optional, triggerable square scan movement.
+
+        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
+        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
+        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
+        movement step, a frame is collected from each detector. After completing the square scan,
+        the plan will resume live acquisition.
+
+        Parameters
+        ----------
+        - detectors: ``Sequence[DetectorProtocol]``
+            - The detectors to use for data collection.
+        - motor: ``MotorProtocol``
+            - The motor to use for the scan movement.
+            - It must provide two axes of movement ("X" and "Y").
+        - step: ``float``, optional
+            The step size for motor movement. Default is 1.0.
+        - step_egu: ``Literal["μm", "mm", "nm"]``, optional
+            - The engineering unit for the step size.
+            - Default is "μm".
+        - frames: ``int``, optional
+            - The number of frames to collect for median filtering.
+            - The rectangular movement will be divided into four sides,
+            each side collecting `frames / 4` frames, one frame per motor step.
+            - Default is 100 (resulting in 25 frames per side).
+        - direction: ``Literal["xy", "yx"]``, optional
+            - The order of motor movement.
+            - `xy`: move along X axis first, then Y axis.
+            - `yx`: move along Y axis first, then X axis.
+
+        Raises
+        ------
+        - ``TypeError``
+            - If `motor` does not provide both "X" and "Y" axis of movement.
+        """
+        if len(motor.model_info.axis) < 2 or not all(
+            ax in motor.model_info.axis for ax in ["X", "Y"]
+        ):
+            raise TypeError(
+                "The provided motor must have both 'X' and 'Y' axes of movement."
+                f" Available axes: {motor.model_info.axis}"
+            )
+
+        events = plan_actions.create_events(actions)
+        frames_per_side = frames // 4
+        axis: tuple[str, str]
+        if direction == "xy":
+            axis = "X", "Y"
+        else:
+            axis = "Y", "X"
+
+        yield from bps.open_run()
+        yield from bps.stage_all(*detectors)
+
+        live_stream = "live"
+        scan_stream = "square_scan"
+
+        while True:
+            # keep a checkpoint in case of pause/resume
+            yield from bps.checkpoint()
+            # live acquisition; wait for scan action
+            yield from rps.trigger_and_read_while_waiting(
+                detectors,
+                events,
+                live_stream,  # type: ignore[arg-type]
+            )
+            # if scan action was triggered, perform square scan;
+            # set a checkpoint before starting the scan
+            yield from bps.checkpoint()
+            for idx in range(2):
+                # first scan on the positive direction...
+                ax = axis[idx]
+                # ... set the axis direction and the step size ...
+                yield from rps.set_proprerty(motor, ax, propr="axis")
+                for _ in range(frames_per_side):
+                    # ... take a snapshot and move one step ...
+                    yield from bps.trigger_and_read(detectors, scan_stream)
+
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
 
@@ -158,52 +254,7 @@ class AcquisitionController(PPresenter, Loggable):
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
-        # start with values coming from the view
-        values: dict[str, Any] = dict(param_values)
-
-        # For Actions-typed parameters that have metadata but no GUI input,
-        # inject the Actions instance so the function can always be called.
-        for p in spec.parameters:
-            if (
-                p.annotation is Actions
-                and p.actions is not None
-                and p.name not in values
-            ):
-                values[p.name] = p.actions
-
-        resolved: dict[str, Any] = {}
-
-        # For Actions-typed parameters that have metadata but no GUI input,
-        # inject the Actions instance so the function can always be called.
-        for p in spec.parameters:
-            if p.name not in values:
-                continue
-            val = values[p.name]
-            models: list[PModel] = []
-
-            # Model-backed parameter: indicated by presence of choices
-            if p.choices is not None:
-                # Coerce widget value into a list of string labels
-                if isinstance(val, str):
-                    labels = [val]
-                elif isinstance(val, Sequence) and not isinstance(val, (str, bytes)):
-                    labels = [str(v) for v in val]
-                else:
-                    labels = [str(val)]
-                proto: type[PModel] | None = p.model_proto
-                if proto:
-                    models = get_choice_list(self.models, proto, labels)
-
-                if p.kind.name == "VAR_POSITIONAL" or issequence(p.annotation):
-                    # Sequence[...] or *detectors → pass the list as-is
-                    resolved[p.name] = models
-                else:
-                    # Single model parameter → first match or None
-                    resolved[p.name] = models[0] if models else None
-            else:
-                # Non-model parameter (or no registry): pass through
-                resolved[p.name] = val
-
+        resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)

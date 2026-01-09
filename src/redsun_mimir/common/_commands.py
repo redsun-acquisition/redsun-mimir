@@ -30,7 +30,7 @@ async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] |
 
         Msg("wait_for_any", events, timeout=timeout)
 
-        If timeout is not provided, a default value of 0.001 seconds is used.
+        If timeout is not provided, a default value of 0.01 seconds is used.
 
     Returns
     -------
@@ -39,7 +39,7 @@ async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] |
         None if timeout occurred before any event was set.
     """
     event_map: Mapping[str, asyncio.Event] = msg.args[0]
-    timeout: float = msg.kwargs.get("timeout", 0.001)
+    timeout: float = msg.kwargs.get("timeout", 0.01)
 
     # Create a mapping to track which task corresponds to which event
     event_tasks = {
@@ -65,7 +65,6 @@ async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] |
 
 def register_bound_command(
     engine: RunEngine,
-    command_name: str,
     command: Callable[[RunEngine, Msg], Any],
 ) -> None:
     """Register a custom command in the given run engine.
@@ -77,12 +76,10 @@ def register_bound_command(
     ----------
     engine: RunEngine
         The run engine to register the command in.
-    command_name: str
-        The name of the command to register.
-        It must match the string used in the `Msg` object.
     command: Callable[[RunEngine, Msg], Any]
         The command function to register.
         The function must accept a `RunEngine` instance and a `Msg` object as input.
     """
     bound_command = partial(command, engine)
+    command_name = command.__name__
     engine.register_command(command_name, bound_command)
