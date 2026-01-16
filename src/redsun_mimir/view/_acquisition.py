@@ -155,6 +155,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             self.stack_widget.setCurrentIndex
         )
         self.setLayout(self.root_layout)
+        self.plans_actions_buttons: dict[str, dict[str, QtW.QPushButton]] = {}
 
         ino.Store.get_store("plan_specs").inject(self.setup_ui)()
 
@@ -211,7 +212,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             run_layout = QtW.QHBoxLayout()
             run_container = QtW.QWidget(self)
 
-            # Run button
+            # run button
             run_button = QtW.QPushButton("Run")
             if spec.togglable:
                 run_button.setCheckable(True)
@@ -236,16 +237,22 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             actions_params = [p for p in spec.parameters if p.actions is not None]
 
             if actions_params:
+                self.plans_actions_buttons[func_name] = {}
                 actions_group_box = QtW.QGroupBox("Actions")
                 actions_layout = QtW.QHBoxLayout(actions_group_box)
+
+                # initially actions are disabled; they can be
+                # enabled when the plan is running
+                actions_group_box.setEnabled(False)
 
                 for p in actions_params:
                     act = p.actions
                     if act is None:
                         continue
                     for name_str in act.names:
-                        btn = QtW.QPushButton(str(name_str))
-                        # No wiring for now; user can extend this.
+                        btn = QtW.QPushButton(name_str.capitalize())
+                        btn.clicked.connect(lambda _: self._on_action_clicked(name_str))
+                        self.plans_actions_buttons[func_name][name_str] = btn
                         actions_layout.addWidget(btn)
 
                 page_layout.addWidget(actions_group_box)
@@ -269,14 +276,22 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.virtual_bus.signals["AcquisitionController"]["sigPlanDone"].connect(
             self._on_plan_done
         )
+        self.virtual_bus.signals["AcquisitionController"]["sigActionDone"].connect(
+            self._on_action_done, thread="main"
+        )
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
         self.plan_widgets[plan].toggle(toggled)
+        actions = self.plan_widgets[plan].actions_group
         if toggled:
             parameters = self.plan_widgets[plan].parameters
+            if actions:
+                actions.setEnabled(True)
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
+            if actions:
+                actions.setEnabled(False)
             self.sigStopPlanRequest.emit()
 
     def _on_plan_maybe_paused(self, paused: bool) -> None:
@@ -291,8 +306,25 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plan_widgets[plan].setEnabled(False)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
+    def _on_action_clicked(self, action_name: str) -> None:
+        plan = self.plans_combobox.currentText()
+        group = self.plan_widgets[plan].actions_group
+        if group:
+            group.setEnabled(False)
+        self.sigActionRequest.emit(action_name)
+
+    def _on_action_done(self, _: str) -> None:
+        plan = self.plans_combobox.currentText()
+        group = self.plan_widgets[plan].actions_group
+        if group:
+            group.setEnabled(True)
+
     def _on_plan_done(self) -> None:
-        self.plan_widgets[self.plans_combobox.currentText()].setEnabled(True)
+        plan = self.plans_combobox.currentText()
+        actions = self.plan_widgets[plan].actions_group
+        self.plan_widgets[plan].toggle(True)
+        if actions:
+            actions.setEnabled(False)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]

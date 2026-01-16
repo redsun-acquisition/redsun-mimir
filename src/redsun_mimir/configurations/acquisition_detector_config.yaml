@@ -17,6 +17,16 @@ models:
     plugin_id: test
     sensor_shape: [512, 512]
     pixel_size: [1, 1]
+  motor-mock:
+    plugin_name: test
+    plugin_id: test
+    egu: mm
+    axis:
+      - X
+      - Y
+    step_sizes:
+      X: 0.1
+      Y: 0.1
 controllers:
   AcquisitionController:
     plugin_name: test

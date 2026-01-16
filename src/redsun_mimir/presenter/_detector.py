@@ -86,6 +86,12 @@ class DetectorController(DocumentRouter, Loggable):
         info_store.register_provider(self.models_info)
         config_store.register_provider(self.models_configuration)
 
+        # data stream name,
+        # extracted from the incoming
+        # descriptor document
+        # whenever a new stream is declared
+        self.current_stream = ""
+
     def models_info(self) -> dict[str, DetectorModelInfo]:
         """Get the models information.
 

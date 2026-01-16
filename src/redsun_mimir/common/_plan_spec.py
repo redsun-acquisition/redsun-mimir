@@ -8,6 +8,7 @@ from inspect import Parameter, _empty, signature
 from typing import (
     Annotated,
     Any,
+    Literal,
     Mapping,
     Sequence,
     get_args,
@@ -18,7 +19,7 @@ from typing import (
 from sunflare.model import PModel
 
 from redsun_mimir.actions import ActionedPlan, ActionList
-from redsun_mimir.utils import get_choice_list, issequence
+from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence, issequence
 
 
 class ParamKind(IntEnum):
@@ -232,8 +233,8 @@ def resolve_arguments(
             if proto:
                 model_list = get_choice_list(models, proto, labels)
 
-            if p.kind.name == "VAR_POSITIONAL" or issequence(p.annotation):
-                # Sequence[...] or *detectors → pass the list as-is
+            if p.kind.name == "VAR_POSITIONAL" or ismodelsequence(p.annotation):
+                # Sequence[...] or *models → pass the list as-is
                 resolved[p.name] = model_list
             else:
                 # Single model parameter → first match or None
@@ -296,6 +297,9 @@ def create_plan_spec(
         or if the return type is not a `MsgGenerator`.
 
     """
+    # TODO: this whole function is pretty complex and currently
+    # very spaghetti; it should be refactored to more easily handle
+    # all possible parameter annotation cases, within reason.
     # in case plan is a method, get the underlying function object
     func_obj: cabc.Callable[..., cabc.Generator[Any, Any, Any]] = getattr(
         plan, "__func__", plan
@@ -365,7 +369,10 @@ def create_plan_spec(
         elem_ann: Any
         if actions_meta:
             _validate_action_names(name, actions_meta.names)
-            if not issequence(ann):
+            origin = get_origin(ann)
+            if not issequence(ann) and not (
+                origin or issubclass(origin, cabc.Sequence)
+            ):
                 raise TypeError(
                     f"Parameter {name!r} uses ActionList metadata but is not "
                     f"annotated as a Sequence[...] type; got {ann!r}"
@@ -378,30 +385,30 @@ def create_plan_spec(
                     f"type is not str; got {elem_ann!r}"
                 )
 
-        # Now figure out if this is a sequence for other purposes
-        if issequence(ann):
-            elem_args = get_args(ann)
-            elem_ann = elem_args[0] if elem_args else Any
-        else:
-            elem_ann = ann
-
         # Compute choices from model_registry using isinstance on actual objects
         choices: list[str] | None = None
         model_proto: type[PModel] | None = None
-
         matching: list[str] = []
-        for key, obj in models.items():
-            try:
+
+        # Now figure out if this is a sequence for other purposes
+        ann_origin = get_origin(ann)
+        # TODO: this special case for typing.Literal
+        # should be removed...
+        if (ann_origin and ann_origin is not Literal) or ismodel(ann):
+            if ann_origin and issubclass(ann_origin, cabc.Sequence):
+                elem_args = get_args(ann)
+                elem_ann = elem_args[0] if elem_args else Any
+            else:
+                elem_ann = ann
+
+            for key, obj in models.items():
                 if isinstance(obj, elem_ann):
                     matching.append(key)
-            except TypeError:
-                # elem_ann might not be suitable as second arg to isinstance
-                continue
-        if matching:
-            choices = matching
-            # If elem_ann is a proper subclass of PModel, keep proto
-            if isinstance(elem_ann, type) and isinstance(elem_ann, PModel):
-                model_proto = elem_ann  # type: ignore[assignment]
+            if matching:
+                choices = matching
+                # If elem_ann is a proper subclass of PModel, keep proto
+                if isinstance(elem_ann, type) and isinstance(elem_ann, PModel):
+                    model_proto = elem_ann  # type: ignore
 
         # Map inspect.Parameter.kind to our ParamKind
         pkind = _PARAM_KIND_MAP.get(param.kind)

@@ -1,4 +1,4 @@
-from ._commands import register_bound_command, wait_for_any
+from ._commands import register_bound_command, wait_for_actions
 from ._plan_spec import (
     ParamDescription,
     PlanSpec,
@@ -16,5 +16,5 @@ __all__ = [
     "create_plan_spec",
     "resolve_arguments",
     "register_bound_command",
-    "wait_for_any",
+    "wait_for_actions",
 ]

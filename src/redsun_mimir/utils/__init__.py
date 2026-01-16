@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, TypeVar, get_origin
+from typing import Any, TypeVar, get_args, get_origin
 
 from sunflare.model import PModel
 from typing_extensions import TypeIs
@@ -71,4 +71,20 @@ def issequence(ann: Any) -> TypeIs[Sequence[Any]]:
     origin = get_origin(ann)
     if origin is None:
         return False
-    return isinstance(origin, Sequence) or issubclass(origin, Sequence)
+    return isinstance(origin, Sequence)
+
+
+def ismodelsequence(ann: Any) -> TypeIs[Sequence[PModel]]:
+    """Return True if annotation looks like a Sequence[...] of PModel generic."""
+    origin = get_origin(ann)
+    if origin is None:
+        return False
+    args = get_args(ann)
+    if len(args) != 1:
+        return False
+    return issubclass(origin, Sequence) and isinstance(args[0], PModel)
+
+
+def ismodel(ann: Any) -> TypeIs[PModel]:
+    """Return True if annotation looks like a PModel generic."""
+    return isinstance(ann, PModel)

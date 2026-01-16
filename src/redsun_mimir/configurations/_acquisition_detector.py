@@ -9,7 +9,7 @@ from qtpy import QtCore, QtWidgets
 from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import DetectorModelInfo
+from redsun_mimir.model import DetectorModelInfo, MockMotorModel, MotorModelInfo
 from redsun_mimir.model.microscope import SimulatedCameraModel
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.presenter import (
@@ -52,6 +52,8 @@ def acquisition_detector_widget() -> None:
             models_info[name] = MMCoreCameraModelInfo(**values)
         elif "microscope" in name:
             models_info[name] = DetectorModelInfo(**values)
+        elif "motor" in name:
+            models_info[name] = MotorModelInfo(**values)
         else:
             raise ValueError(f"Unknown model name: {name}")
     ctrl_info: dict[str, PPresenterInfo] = {}
@@ -83,6 +85,8 @@ def acquisition_detector_widget() -> None:
             mock_models[name] = MMCoreCameraModel(name, model_info)  # type: ignore
         elif "microscope" in name:
             mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
+        elif "motor" in name:
+            mock_models[name] = MockMotorModel(name, model_info)  # type: ignore
         else:
             raise ValueError(f"Unknown model name: {name}")
 

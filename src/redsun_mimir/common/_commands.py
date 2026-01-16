@@ -11,26 +11,23 @@ if TYPE_CHECKING:
     from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
-__all__ = ["wait_for_any", "register_bound_command"]
+__all__ = ["wait_for_actions", "register_bound_command"]
 
 
-async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] | None:
+async def wait_for_actions(
+    self: RunEngine, msg: Msg
+) -> tuple[str, asyncio.Event] | None:
     """Instruct the run engine to wait for any of the given events to be set.
 
     Parameters
     ----------
     msg: Msg
         The message containing the events to wait for.
-        Packs an iterable of asyncio.Event in `msg.args` and a timeout in `msg.kwargs`.
-
-        - `events`: Mapping[str, asyncio.Event]
-        - `timeout`: float
+        Packs a map of asyncio.Event in `msg.args` and a timeout in `msg.kwargs`.
 
         Expected message format:
 
-        Msg("wait_for_any", events, timeout=timeout)
-
-        If timeout is not provided, a default value of 0.01 seconds is used.
+        Msg("wait_for_actions", None, events, timeout=timeout)
 
     Returns
     -------
@@ -38,13 +35,13 @@ async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] |
         A tuple containing the name and the event that was set to unblock the plan;
         None if timeout occurred before any event was set.
     """
-    event_map: Mapping[str, asyncio.Event] = msg.args[0]
-    timeout: float = msg.kwargs.get("timeout", 0.01)
+    future_map: Mapping[str, asyncio.Event] = msg.args[0]
+    timeout: float | None = msg.kwargs.get("timeout", None)
 
     # Create a mapping to track which task corresponds to which event
     event_tasks = {
         asyncio.create_task(event.wait(), name=name)
-        for name, event in event_map.items()
+        for name, event in future_map.items()
     }
 
     done, pending = await asyncio.wait(
@@ -60,7 +57,7 @@ async def wait_for_any(self: RunEngine, msg: Msg) -> tuple[str, asyncio.Event] |
         return None
     completed_task = done.pop()
     task_name = completed_task.get_name()
-    return task_name, event_map[task_name]
+    return task_name, future_map[task_name]
 
 
 def register_bound_command(

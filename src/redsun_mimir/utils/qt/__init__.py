@@ -7,7 +7,7 @@ from magicgui import widgets as mgw
 from qtpy import QtWidgets
 
 from redsun_mimir.common._plan_spec import ParamKind
-from redsun_mimir.utils import issequence
+from redsun_mimir.utils import ismodel, ismodelsequence, issequence
 
 from ._treeview import DescriptorTreeView
 
@@ -54,28 +54,33 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
         return mgw.LineEdit(name=param.name)
 
     if param.choices is not None:
-        if param.kind == ParamKind.VAR_POSITIONAL or issequence(param.annotation):
-            # Multi-select
+        is_ann_model = ismodel(param.annotation)
+        is_ann_model_seq = (
+            ismodelsequence(param.annotation)
+            or param.kind == ParamKind.VAR_POSITIONAL
+            and is_ann_model
+        )
+        allow_multiple = is_ann_model_seq
+        if is_ann_model or is_ann_model_seq:
             w = mgw.Select(
                 name=param.name,
                 choices=param.choices,
-                allow_multiple=True,
+                allow_multiple=allow_multiple,
                 annotation=param.annotation,
                 value=param.default if param.has_default else param.choices[0],
             )
+
             # the inner native widget is a QListWidget, we can manipulate it
             # to have a better user experience and make the selection widget
             # resize it properly to the content and scrollable if too many items
             # are present
             inner_w: QtWidgets.QListWidget = w.native
 
-            # adjust size based on number of items;
-            # the +5 for width is to make it a little less tight
-            inner_w.setFixedSize(
-                inner_w.sizeHintForColumn(0) + inner_w.frameWidth() * 2 + 5,
-                inner_w.sizeHintForRow(0) * inner_w.count() + 2 * inner_w.frameWidth(),
+            # adjust width size based on number of items;
+            # the +5 is to make it a little less tight
+            inner_w.setFixedWidth(
+                inner_w.sizeHintForColumn(0) + inner_w.frameWidth() * 2 + 5
             )
-
         else:
             w = mgw.ComboBox(
                 name=param.name,

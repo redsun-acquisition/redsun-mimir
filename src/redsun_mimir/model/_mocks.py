@@ -147,7 +147,11 @@ class MockMotorModel(MotorProtocol, Loggable):
         """
         s = Status()
         s.add_callback(self._update_readback)
-        propr = kwargs.get("prop", None)
+
+        # TODO: this should be "propr" and not "prop";
+        # in general though this whole section should be moved
+        # to a separate, customized bluesky verb
+        propr = kwargs.get("prop", None) or kwargs.get("propr", None)
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):

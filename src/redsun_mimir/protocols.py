@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from bluesky.protocols import Flyable, Readable, Stageable
 from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from bluesky.protocols import Descriptor, Location, Reading
     from sunflare.engine import Status
 
@@ -171,7 +170,7 @@ class LightProtocol(PModel, Settable, Protocol):
 
 
 @runtime_checkable
-class DetectorProtocol(PModel, Settable, Protocol):
+class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Flyable, Protocol):
     """Protocol for detector models.
 
     Implements the following protocols:
@@ -194,70 +193,6 @@ class DetectorProtocol(PModel, Settable, Protocol):
     """
 
     roi: tuple[int, int, int, int]
-
-    def stage(self) -> Status:
-        """Prepare the detector for acquisition.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-
-        """
-        ...
-
-    def unstage(self) -> Status:
-        """Stop the detector acquisition.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-
-        """
-        ...
-
-    def kickoff(self) -> Status:
-        """Kick off an asynchronous acquisition.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-        """
-        ...
-
-    def complete(self) -> Status:
-        """Complete an asynchronous acquisition.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-        """
-        ...
-
-    def describe(
-        self,
-    ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
-        """Describe the a reading from a detector.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            A dictionary describing the reading from the detector.
-        """
-        ...
-
-    def read(self) -> dict[str, Reading[Any]]:
-        """Read data from the detector.
-
-        Returns
-        -------
-        dict[str, Reading[Any]]
-            A dictionary containing the readings from the detector.
-        """
-        ...
 
     @property
     def model_info(self) -> DetectorModelInfo:  # noqa: D102
