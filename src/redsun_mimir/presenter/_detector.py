@@ -199,7 +199,7 @@ class DetectorController(DocumentRouter, Loggable):
             Mapping of configuration parameters to their descriptors.
 
         """
-        return asyncio.run(self._read_config_async(detector))
+        return asyncio.run(self._describe_config_async(detector))
 
     def event(self, doc: Event) -> Event:
         """Process new event documents.
