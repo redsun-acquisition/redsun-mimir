@@ -4,7 +4,6 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import in_n_out as ino
-from bluesky.run_engine import get_bluesky_event_loop
 from bluesky.utils import maybe_await
 from event_model import DocumentRouter
 from sunflare.log import Loggable
@@ -80,8 +79,6 @@ class DetectorController(DocumentRouter, Loggable):
         self.detectors = filter_models(models, DetectorProtocol)
 
         self.hints = ["buffer", "roi"]
-
-        self._loop: asyncio.AbstractEventLoop = get_bluesky_event_loop()
 
         info_store.register_provider(self.models_info)
         config_store.register_provider(self.models_configuration)
@@ -186,9 +183,7 @@ class DetectorController(DocumentRouter, Loggable):
         dict[str, Reading[Any]]
             Mapping of configuration parameters to their readings.
         """
-        return asyncio.run_coroutine_threadsafe(
-            self._read_config_async(detector), self._loop
-        ).result()
+        return asyncio.run(self._read_config_async(detector))
 
     def describe_configuration(self, detector: str) -> dict[str, Descriptor]:
         """Read the configuration description of a detector.
@@ -204,9 +199,7 @@ class DetectorController(DocumentRouter, Loggable):
             Mapping of configuration parameters to their descriptors.
 
         """
-        return asyncio.run_coroutine_threadsafe(
-            self._describe_config_async(detector), self._loop
-        ).result()
+        return asyncio.run(self._read_config_async(detector))
 
     def event(self, doc: Event) -> Event:
         """Process new event documents.
