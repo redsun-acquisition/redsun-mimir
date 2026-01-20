@@ -1,4 +1,4 @@
-# mypy: disable-error-code="union-attr"
+# mypy: disable-error-code="union-attr,attr-defined"
 from __future__ import annotations
 
 import logging
@@ -128,6 +128,9 @@ class TreeNode:
         self._data = data
         self._descriptor = descriptor
         self._readonly = readonly
+        self._full_key: str | None = (
+            None  # Store full key for settings with device prefix
+        )
 
     def appendChild(self, child: TreeNode) -> None:
         """Add a child to this item.
@@ -512,35 +515,44 @@ class DescriptorModel(QtCore.QAbstractItemModel):
 
         """
         # Group settings by source
-        # {source: [(setting_name, setting_data), ...]}
-        groups: dict[str, list[tuple[str, Descriptor]]] = {}
+        # {source: [(full_key, clean_name, descriptor), ...]}
+        groups: dict[str, list[tuple[str, str, Descriptor]]] = {}
         readonly_flags: dict[str, bool] = {}
-        for setting_name, setting_data in device_descriptor.items():
-            group_tokens = setting_data["source"].split("/")
-            group_name = setting_data["source"] = group_tokens[0]
+
+        for full_key, descriptor in device_descriptor.items():
+            # Parse device prefix from key if present
+            if ":" in full_key:
+                _, clean_name = full_key.split(":", 1)
+            else:
+                clean_name = full_key
+
+            # Extract source and readonly flag
+            group_tokens = descriptor["source"].split("/")
+            source = descriptor["source"] = group_tokens[0]
             if len(group_tokens) > 1 and group_tokens[1] == "readonly":
-                readonly_flags[setting_name] = True
+                readonly_flags[full_key] = True
 
-            if group_name not in groups:
-                groups.update({group_name: []})
-            groups[group_name].append((setting_name, setting_data))
+            # Build nested structure by source
+            if source not in groups:
+                groups[source] = []
+            groups[source].append((full_key, clean_name, descriptor))
 
-        # Add groups and their settings
-        for group_name, settings in groups.items():
-            group_item = TreeNode(group_name, self._root_item, NodeType.GROUP)
+        # Build tree: Group (source) → Setting (clean name)
+        for source, settings in groups.items():
+            group_item = TreeNode(source, self._root_item, NodeType.GROUP)
             self._root_item.appendChild(group_item)
-            for setting_name, setting_data in settings:
-                try:
-                    readonly = readonly_flags[setting_name]
-                except KeyError:
-                    readonly = False
+
+            for full_key, clean_name, descriptor in settings:
+                readonly = readonly_flags.get(full_key, False)
                 setting_item = TreeNode(
-                    setting_name,
+                    clean_name,
                     group_item,
                     NodeType.SETTING,
-                    descriptor=setting_data,
+                    descriptor=descriptor,
                     readonly=readonly,
                 )
+                # Store the full key for lookups
+                setting_item._full_key = full_key
                 group_item.appendChild(setting_item)
 
     def update_structure(self, descriptor: dict[str, Descriptor]) -> None:
@@ -627,7 +639,8 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         Parameters
         ----------
         setting_name : ``str``
-            Name of the setting to find
+            Name of the setting to find (can be full key like "camera:exposure"
+            or clean name like "exposure")
 
         Returns
         -------
@@ -635,13 +648,14 @@ class DescriptorModel(QtCore.QAbstractItemModel):
             The setting item if found, otherwise None
 
         """
-        # Check all groups
+        # Traverse Group → Setting hierarchy
         for group_idx in range(self._root_item.childCount()):
             group_item = self._root_item.child(group_idx)
-            # Check all settings in this group
             for setting_idx in range(group_item.childCount()):
                 setting_item = group_item.child(setting_idx)
-                if setting_item.name == setting_name:
+                # Match by full key if available, otherwise by clean name
+                full_key = getattr(setting_item, "_full_key", setting_item.name)
+                if full_key == setting_name or setting_item.name == setting_name:
                     return setting_item
         return None
 
@@ -710,7 +724,6 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         column = index.column()
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            # Display data based on column and node type
             node_type = item.node_type
 
             if column == Column.GROUP:
@@ -719,22 +732,21 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                 return item.name if node_type == NodeType.SETTING else ""
             elif column == Column.VALUE:
                 if node_type == NodeType.SETTING:
-                    setting_name = item.name
-
-                    # Try to get the value from the values dictionary
-                    if setting_name in self._readings:
-                        # Get the value and format it with units if available
-                        value = self._readings[setting_name]
-
-                        # Get units from the item's metadata
+                    # Use full key for lookups
+                    full_key = getattr(item, "_full_key", item.name)
+                    if full_key in self._readings:
+                        value = self._readings[full_key]
                         units = ""
-                        metadata = item.descriptor
-                        if metadata and "units" in metadata:
-                            units = f" {metadata['units']}"
-
+                        if item.descriptor and "units" in item.descriptor:
+                            units = f" {item.descriptor['units']}"
                         return f"{value}{units}"
                     return ""
                 return ""
+
+        elif role == QtCore.Qt.ItemDataRole.EditRole:
+            if column == Column.VALUE and item.node_type == NodeType.SETTING:
+                full_key = getattr(item, "_full_key", item.name)
+                return self._readings.get(full_key, None)
 
         elif role == NodeTypeRole:
             return item.node_type
@@ -891,15 +903,16 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         item: TreeNode = index.internalPointer()
 
         if index.column() == Column.VALUE and item.node_type == NodeType.SETTING:
-            setting_name = item.name
+            # Use full key for lookups
+            full_key = getattr(item, "_full_key", item.name)
 
-            if setting_name not in self._readings:
-                self._logger.error(f"Setting '{setting_name}' not found in the model.")
+            if full_key not in self._readings:
+                self._logger.error(f"Setting '{full_key}' not found in the model.")
                 return False
 
             # Store the pending change
-            old_value = self._readings[setting_name]
-            self._pending_changes[setting_name] = {
+            old_value = self._readings[full_key]
+            self._pending_changes[full_key] = {
                 "old_value": old_value,
                 "new_value": value,
                 "index": index,
@@ -907,13 +920,13 @@ class DescriptorModel(QtCore.QAbstractItemModel):
 
             # Update the value temporarily
             try:
-                self._readings[setting_name] = value
+                self._readings[full_key] = value
                 self.dataChanged.emit(
                     index, index, [QtCore.Qt.ItemDataRole.DisplayRole]
                 )
 
-                # Emit the property change signal for the presenter to handle
-                self.sigPropertyChanged.emit(setting_name, value)
+                # Emit the property change signal with full key for the presenter to handle
+                self.sigPropertyChanged.emit(full_key, value)
                 return True
             except Exception as e:
                 self._logger.exception(f"Error updating setting value: {e}")

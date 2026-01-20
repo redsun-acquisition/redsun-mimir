@@ -7,7 +7,7 @@ import numpy as np
 from bluesky.protocols import Descriptor  # noqa: TC002
 from napari.components import ViewerModel
 from napari.window import Window
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
@@ -133,11 +133,25 @@ class DetectorWidget(BaseQtWidget, Loggable):
             show=False,
         )
 
-        layout = QtWidgets.QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self.viewer_window._qt_window)
-        self.setLayout(layout)
+        # Create a tab widget for settings controls
+        self.settings_tab_widget = QtWidgets.QTabWidget()
+        self.settings_tab_widget.setMinimumWidth(300)
+
+        # Create a splitter to allow resizing between napari viewer and settings
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        splitter.addWidget(self.viewer_window._qt_window)
+        splitter.addWidget(self.settings_tab_widget)
+        # Set initial sizes: 75% for viewer, 25% for settings
+        splitter.setSizes([750, 250])
+        # Allow the splitter to be collapsed
+        splitter.setChildrenCollapsible(True)
+
+        # Create horizontal layout with the splitter
+        main_layout = QtWidgets.QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(splitter)
+        self.setLayout(main_layout)
 
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
@@ -157,9 +171,14 @@ class DetectorWidget(BaseQtWidget, Loggable):
         self.virtual_bus.signals["DetectorController"]["sigNewData"].connect(
             self._update_layers, thread="main"
         )
-        self.virtual_bus.signals["MedianPresenter"]["sigNewData"].connect(
-            self._update_layers, thread="main"
-        )
+        try:
+            self.virtual_bus.signals["MedianPresenter"]["sigNewData"].connect(
+                self._update_layers, thread="main"
+            )
+        except KeyError:
+            self.logger.debug(
+                "MedianPresenter not found in virtual bus; skipping median data connection."
+            )
 
     def setup_ui(self, models_info: dict[str, DetectorModelInfo]) -> None:
         """Initialize the user interface.
@@ -212,20 +231,18 @@ class DetectorWidget(BaseQtWidget, Loggable):
             self.settings_controls[detector].tree_view.model().update_readings(
                 config_reading
             )
+            # Capture detector name by value using default argument to avoid closure issue
             self.settings_controls[
                 detector
             ].tree_view.model().sigPropertyChanged.connect(
-                lambda setting, value: self.sigPropertyChanged.emit(
-                    detector, {setting: value}
+                lambda setting, value, det=detector: self.sigPropertyChanged.emit(
+                    det, {setting: value}
                 )
             )
 
-            self.viewer_window.add_dock_widget(
+            self.settings_tab_widget.addTab(
                 self.settings_controls[detector],
-                name=f"{detector}",
-                allowed_areas=["right"],
-                area="right",
-                tabify=True,
+                f"{detector}",
             )
 
     def _handle_configuration_result(
