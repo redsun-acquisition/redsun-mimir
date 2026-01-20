@@ -4,6 +4,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import in_n_out as ino
+from bluesky.protocols import Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
 from event_model import DocumentRouter
 from sunflare.log import Loggable
@@ -17,7 +18,7 @@ from redsun_mimir.utils import filter_models
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from bluesky.protocols import Descriptor, Reading
+    from bluesky.protocols import Reading
     from event_model import Event
     from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 info_store = ino.Store.create("detector_info")
 config_store = ino.Store.create("detector_configuration")
+reading_store = ino.Store.create("detector_reading_description")
 
 
 class DetectorController(DocumentRouter, Loggable):
@@ -64,7 +66,7 @@ class DetectorController(DocumentRouter, Loggable):
 
     sigNewConfiguration = Signal(str, dict[str, object])
     sigConfigurationConfirmed = Signal(str, str, bool)
-    sigNewData = Signal(str, object)
+    sigNewData = Signal(object)
 
     def __init__(
         self,
@@ -80,16 +82,18 @@ class DetectorController(DocumentRouter, Loggable):
 
         self.hints = ["buffer", "roi"]
 
-        info_store.register_provider(self.models_info)
-        config_store.register_provider(self.models_configuration)
+        info_store.register_provider(self.get_models_info)
+        config_store.register_provider(self.get_models_configuration)
+        reading_store.register_provider(self.get_models_description)
 
         # data stream name,
         # extracted from the incoming
         # descriptor document
         # whenever a new stream is declared
         self.current_stream = ""
+        self.packet: dict[str, dict[str, Any]] = {}
 
-    def models_info(self) -> dict[str, DetectorModelInfo]:
+    def get_models_info(self) -> dict[str, DetectorModelInfo]:
         """Get the models information.
 
         Returns
@@ -108,7 +112,7 @@ class DetectorController(DocumentRouter, Loggable):
             self.configure
         )
 
-    def models_configuration(self) -> ConfigurationDict:
+    def get_models_configuration(self) -> ConfigurationDict:
         """Get the configuration of all detectors."""
         descriptors = {
             name: self.describe_configuration(name) for name in self.detectors.keys()
@@ -123,6 +127,13 @@ class DetectorController(DocumentRouter, Loggable):
         }
 
         return config
+
+    def get_models_description(self) -> dict[str, dict[str, Descriptor]]:
+        """Get reading descriptions of all detectors."""
+        descriptions = {
+            name: detector.describe() for name, detector in self.detectors.items()
+        }
+        return descriptions  # type: ignore
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         """Configure a detector with confirmation feedback.
@@ -209,12 +220,10 @@ class DetectorController(DocumentRouter, Loggable):
         doc : ``Event``
             The event document.
         """
-        packet: dict[str, Any] = {}
         for key, value in doc["data"].items():
-            detector_name, data_key = key.split(":")
-            if detector_name in self.detectors and data_key in self.hints:
-                if detector_name not in packet:
-                    packet[detector_name] = {}
-                packet[detector_name][data_key] = value
-                self.sigNewData.emit(packet)
+            obj_name, data_key = key.split(":")
+            if data_key in self.hints:
+                self.packet.setdefault(obj_name, {})
+                self.packet[obj_name][data_key] = value
+        self.sigNewData.emit(self.packet)
         return doc

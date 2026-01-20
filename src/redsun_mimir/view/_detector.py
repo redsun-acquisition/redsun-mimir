@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import in_n_out as ino
 import numpy as np
+from bluesky.protocols import Descriptor  # noqa: TC002
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
@@ -23,6 +24,7 @@ from redsun_mimir.utils.qt import DescriptorTreeView
 if TYPE_CHECKING:
     from typing import Any
 
+    import numpy.typing as npt
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
 
@@ -30,6 +32,7 @@ if TYPE_CHECKING:
 
 info_store = ino.Store.get_store("detector_info")
 config_store = ino.Store.get_store("detector_configuration")
+reading_store = ino.Store.get_store("detector_reading_description")
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -142,6 +145,8 @@ class DetectorWidget(BaseQtWidget, Loggable):
         info_store.inject(self.setup_ui)()
         self.logger.info("Initialized")
 
+        self.buffer_key = "buffer"
+
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
 
@@ -150,6 +155,9 @@ class DetectorWidget(BaseQtWidget, Loggable):
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
         self.virtual_bus.signals["DetectorController"]["sigNewData"].connect(
+            self._update_layers, thread="main"
+        )
+        self.virtual_bus.signals["MedianPresenter"]["sigNewData"].connect(
             self._update_layers, thread="main"
         )
 
@@ -168,16 +176,24 @@ class DetectorWidget(BaseQtWidget, Loggable):
             """Inject the configuration data from the presenter."""
             return config
 
-        config = config_store.inject(_get_configuration)()
+        def _get_reading(
+            reading: dict[str, dict[str, Descriptor]],
+        ) -> dict[str, dict[str, Descriptor]]:
+            """Inject the reading data from the presenter."""
+            return reading
+
+        model_config = config_store.inject(_get_configuration)()
+        model_reading = reading_store.inject(_get_reading)()
 
         for detector, info in self._detectors_info.items():
-            # TODO: how to handle different data types?
-            # the information is provided by the descriptor
-            # but only in the "describe", not "describe_configuration"
-            descriptor = config["descriptors"][detector]
-            reading = config["readings"][detector]
+            config_descriptor = model_config["descriptors"][detector]
+            config_reading = model_config["readings"][detector]
+            dtype = model_reading[detector][f"{detector}:buffer"].get(
+                "dtype_numpy", "uint8"
+            )
+
             layer = self.viewer_model.add_image(
-                np.zeros(shape=info.sensor_shape, dtype=np.uint8),
+                np.zeros(shape=info.sensor_shape, dtype=dtype),
                 name=detector,
             )
             layer._overlays.update(
@@ -191,9 +207,11 @@ class DetectorWidget(BaseQtWidget, Loggable):
             layer.mouse_move_callbacks.append(highlight_roi_box_handles)
             self.settings_controls[detector] = SettingsControlWidget(layer)
             self.settings_controls[detector].tree_view.model().update_structure(
-                descriptor
+                config_descriptor
             )
-            self.settings_controls[detector].tree_view.model().update_readings(reading)
+            self.settings_controls[detector].tree_view.model().update_readings(
+                config_reading
+            )
             self.settings_controls[
                 detector
             ].tree_view.model().sigPropertyChanged.connect(
@@ -236,14 +254,22 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
         Parameters
         ----------
-        data : dict[str, dict[str, Any]]
+        data: dict[str, dict[str, Any]]
             Nested dictionary where the outer key is the detector name,
             and the inner dictionary contains keys 'buffer' and 'roi'.
             'buffer' is the raw data array, and 'roi' is a 4-tuple defining
             the region of interest (x_start, x_end, y_start, y_end).
         """
-        for detector_name, packet in data.items():
-            if detector_name in self.settings_controls:
-                layer = self.viewer_model.layers[detector_name]
-                if "buffer" in packet:
-                    layer.data = packet["buffer"]
+        # TODO: this is very basic... needs improvement;
+        # the type hint of the input should be a typed dictionary
+        for obj_name, packet in data.items():
+            if obj_name not in self.viewer_model.layers:
+                self.logger.debug(f"Adding new layer for {obj_name}")
+                buffer: npt.NDArray[Any] = packet[self.buffer_key]
+                layer = self.viewer_model.add_image(
+                    name=obj_name,
+                    data=buffer,
+                )
+            else:
+                layer = self.viewer_model.layers[obj_name]
+                layer.data = packet[self.buffer_key]

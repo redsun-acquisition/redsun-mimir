@@ -4,9 +4,11 @@ from ._config import (
     DetectorControllerInfo,
     LightControllerInfo,
     MotorControllerInfo,
+    RendererControllerInfo,
 )
 from ._detector import DetectorController
 from ._light import LightController
+from ._median import MedianPresenter
 from ._motor import MotorController
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "MotorControllerInfo",
     "LightController",
     "LightControllerInfo",
+    "MedianPresenter",
+    "RendererControllerInfo",
 ]

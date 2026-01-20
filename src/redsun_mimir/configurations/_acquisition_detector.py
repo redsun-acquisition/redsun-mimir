@@ -17,6 +17,8 @@ from redsun_mimir.presenter import (
     AcquisitionControllerInfo,
     DetectorController,
     DetectorControllerInfo,
+    MedianPresenter,
+    RendererControllerInfo,
 )
 from redsun_mimir.view import (
     AcquisitionWidget,
@@ -64,6 +66,8 @@ def acquisition_detector_widget() -> None:
             ctrl_info[name] = DetectorControllerInfo(**values)
         elif name == "AcquisitionController":
             ctrl_info[name] = AcquisitionControllerInfo(**values)
+        elif name == "MedianPresenter":
+            ctrl_info[name] = RendererControllerInfo(**values)
 
     for name, values in config_dict["views"].items():
         if name == "DetectorWidget":
@@ -108,15 +112,23 @@ def acquisition_detector_widget() -> None:
 
     det_widget = DetectorWidget(config.views["DetectorWidget"], bus)  # type: ignore
 
-    acq_ctrl.registration_phase()
-    det_ctrl.registration_phase()
-    acq_widget.registration_phase()
-    det_widget.registration_phase()
+    median_ctrl = MedianPresenter(
+        config.controllers["MedianPresenter"],  # type: ignore
+        mock_models,
+        bus,
+    )
 
-    acq_ctrl.connection_phase()
-    det_ctrl.connection_phase()
-    acq_widget.connection_phase()
-    det_widget.connection_phase()
+    for ctrl in (median_ctrl, det_ctrl, acq_ctrl):
+        ctrl.registration_phase()
+
+    for widget in (acq_widget, det_widget):
+        widget.registration_phase()
+
+    for ctrl in (det_ctrl, acq_ctrl):
+        ctrl.connection_phase()
+
+    for widget in (acq_widget, det_widget):
+        widget.connection_phase()
 
     window = QtWidgets.QMainWindow()
     window.setCentralWidget(acq_widget)

@@ -114,6 +114,7 @@ class AcquisitionController(PPresenter, Loggable):
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, asyncio.Event] = {}
         self.discard_by_pause = False
+        self.expected_presenters = frozenset(["DetectorController", "MedianPresenter"])
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "live_count": self.live_count,
@@ -143,8 +144,9 @@ class AcquisitionController(PPresenter, Loggable):
             self.set_action_event
         )
 
-        for callback in self.virtual_bus.callbacks.values():
-            self.engine.subscribe(callback)
+        for name, callback in self.virtual_bus.callbacks.items():
+            if name in self.expected_presenters:
+                self.engine.subscribe(callback)
 
     def plans_specificiers(self) -> set[PlanSpec]:
         return set(self.plan_specs.values())

@@ -36,6 +36,9 @@ controllers:
     plugin_name: test
     plugin_id: test
     timeout: 5.0
+  MedianPresenter:
+    plugin_name: test
+    plugin_id: test
 views:
   AcquisitionWidget:
     plugin_name: test
