@@ -38,20 +38,19 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, TypeVar, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
+import numpy.typing as npt
 from psygnal import Signal
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, SupportsIndex
+    from typing import Callable, SupportsIndex
 
-    import numpy.typing as npt
-
-T = TypeVar("T")
+__all__ = ["RingBuffer"]
 
 
-class RingBuffer(Sequence[T]):
+class RingBuffer(Sequence[npt.NDArray[Any]]):
     """Ring buffer structure with a given capacity and element type.
 
     Parameters
@@ -67,10 +66,10 @@ class RingBuffer(Sequence[T]):
             - a `(fixed_dtype, shape)` tuple (e.g. `('uint16', (512, 512))`)
     allow_overwrite: bool
         If false, throw an IndexError when trying to append to an already full
-        buffer.
+        buffer. Defaults to True.
     create_buffer: Callable[[int, npt.DTypeLike], npt.NDArray]
         A callable that creates the underlying array.
-        May be used to customize the initialization of the array.  Defaults to
+        May be used to customize the initialization of the array. Defaults to
         `np.empty`.
 
     Notes
@@ -111,6 +110,11 @@ class RingBuffer(Sequence[T]):
     def shape(self) -> tuple[int, ...]:
         """Return the shape of the valid buffer (excluding unused space)."""
         return (len(self), *self._arr.shape[1:])
+
+    @property
+    def itemshape(self) -> tuple[int, int]:
+        """Return the shape of individual items in the buffer."""
+        return self._arr.shape[1], self._arr.shape[2]
 
     # these mirror methods from deque
     @property
@@ -275,7 +279,7 @@ class RingBuffer(Sequence[T]):
         # for everything else, get it right at the expense of efficiency
         return self._unwrap()[key]
 
-    def __iter__(self) -> Iterator[Any]:  # noqa: D105
+    def __iter__(self) -> Iterator[npt.NDArray[Any]]:  # noqa: D105
         # this is comparable in speed to using itertools.chain
         return iter(self._unwrap())
 
