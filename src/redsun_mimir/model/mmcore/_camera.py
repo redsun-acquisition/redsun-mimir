@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from bluesky.protocols import Descriptor, Pausable
 from pymmcore_plus import CMMCorePlus as Core
@@ -31,6 +31,13 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     # class variable to track initialization status;
     # multiple instances are not supported
     initialized: ClassVar[bool] = False
+
+    # Define which properties to expose in configuration
+    EXPOSED_PROPERTIES: ClassVar[set[str]] = {
+        "Exposure",
+        "DisplayImageNumber",
+        "PixelType",
+    }
 
     def __init__(self, name: str, model_info: MMCoreCameraModelInfo) -> None:
         self._name = name
@@ -87,9 +94,11 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         """
         s = Status()
         propr = kwargs.get("propr", None)
-        if not propr:
+        if propr:
+            propr = cast("str", propr).split(":")[1]
+        else:
             s.set_exception(ValueError("No property specified."))
-        elif propr in self._device_schema["properties"]:
+        if propr in self._device_schema["properties"]:
             self._core.setProperty(self.name, propr, value)
             s.set_finished()
             self.logger.debug(f"Set {propr} to {value}.")
@@ -99,12 +108,18 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             self.roi = tuple(value)
             s.set_finished()
             self.logger.debug(f"Set ROI to {value}.")
+        else:
+            s.set_exception(ValueError(f"Property '{propr}' not found."))
         return s
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         schema = self._device.schema()
         config_descriptor: dict[str, Descriptor] = {}
         for key, value in schema["properties"].items():
+            # Filter to only include exposed properties
+            if key not in self.EXPOSED_PROPERTIES:
+                continue
+
             descriptor_key = f"{self.name}:{key}"
             config_descriptor[descriptor_key] = {
                 "source": "properties",
@@ -122,13 +137,19 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
                         "high": value["maximum"],
                     }
                 }
-        config_descriptor.update(self.model_info.describe_configuration())
+        config_descriptor.update(
+            self.model_info.describe_configuration(source="model_info/readonly")
+        )
         return config_descriptor
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
         config = self.model_info.read_configuration(timestamp)
         for prop in self._device.properties:
+            # Filter to only include exposed properties
+            if prop.name not in self.EXPOSED_PROPERTIES:
+                continue
+
             config[f"{self.name}:{prop.name}"] = {
                 "value": prop.value,
                 "timestamp": timestamp,
