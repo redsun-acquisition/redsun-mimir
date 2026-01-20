@@ -162,12 +162,10 @@ class DetectorController(DocumentRouter, Loggable):
 
                 if success:
                     self.sigNewConfiguration.emit(detector, {key: value})
-                    self.logger.debug(f"Successfully configured '{key}' of {detector}")
                 else:
                     self.logger.error(
                         f"Failed to configure '{key}' of {detector}: {s.exception()}"
                     )
-
                 # Emit confirmation for each setting
                 self.sigConfigurationConfirmed.emit(detector, key, success)
 
