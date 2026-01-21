@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import threading
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
@@ -46,6 +46,7 @@ import numpy.typing as npt
 from psygnal import Signal
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from typing import Callable, SupportsIndex
 
 __all__ = ["RingBuffer"]
@@ -133,11 +134,7 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
     # -------------------- Methods --------------------
 
     def append(self, value: npt.ArrayLike) -> None:
-        """Append a value to the right end of the buffer.
-
-        Thread-safe for single producer scenarios. The lock is only held
-        during index manipulation, not during the array write.
-        """
+        """Append a value to the right end of the buffer."""
         # Determine the write index and update state atomically
         with self._lock:
             was_full = len(self) == self._capacity
@@ -163,11 +160,7 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
             self.resized.emit(len(self))
 
     def appendleft(self, value: npt.ArrayLike) -> None:
-        """Append a value to the left end of the buffer.
-
-        Thread-safe for producer scenarios. The lock is only held
-        during index manipulation, not during the array write.
-        """
+        """Append a value to the left end of the buffer."""
         # Determine the write index and update state atomically
         with self._lock:
             was_full = len(self) == self._capacity
@@ -193,11 +186,7 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
             self.resized.emit(len(self))
 
     def pop(self) -> npt.NDArray[Any]:
-        """Pop a value from the right end of the buffer.
-
-        Thread-safe for consumer scenarios. The lock is only held during
-        index manipulation, array copy happens outside the lock.
-        """
+        """Pop a value from the right end of the buffer."""
         # Atomically get the read index and update state
         with self._lock:
             if len(self) == 0:
@@ -207,19 +196,12 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
             read_index = self._right_index % self._capacity
             new_len = len(self)
 
-        # Copy the array data outside the lock
         res: npt.NDArray[Any] = self._arr[read_index].copy()
-
-        # Emit signal outside the lock
         self.resized.emit(new_len)
         return res
 
     def popleft(self) -> npt.NDArray[Any]:
-        """Pop a value from the left end of the buffer.
-
-        Thread-safe for consumer scenarios. The lock is only held during
-        index manipulation, array copy happens outside the lock.
-        """
+        """Pop a value from the left end of the buffer."""
         # Atomically get the read index and update state
         with self._lock:
             if len(self) == 0:
@@ -229,20 +211,12 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
             self._fix_indices()
             new_len = len(self)
 
-        # Copy the array data outside the lock
         res: npt.NDArray[Any] = self._arr[read_index].copy()
-
-        # Emit signal outside the lock
         self.resized.emit(new_len)
         return res
 
     def peek(self) -> npt.NDArray[Any]:
-        """Peek at the value at the right end of the buffer without removing it.
-
-        Thread-safe for visualization scenarios. The lock is only held to
-        calculate the read index, array copy happens outside the lock.
-        This minimizes blocking for periodic visualization access.
-        """
+        """Peek at the value at the right end of the buffer without removing it."""
         # Atomically get the read index
         with self._lock:
             if len(self) == 0:
@@ -267,7 +241,7 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
                 elif not len(self):
                     return
             if lv >= self._capacity:
-                # wipe the entire array! - now threadsafe with lock
+                # wipe the entire array!
                 self._arr[...] = values[-self._capacity :]
                 self._right_index = self._capacity
                 self._left_index = 0
