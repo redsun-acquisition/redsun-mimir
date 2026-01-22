@@ -33,6 +33,7 @@ dependencies = [
     "in-n-out>=0.2.1",
     "superqt>=0.7.4",
     "msgspec>=0.20.0",
+    "acquire-zarr>=0.6.0",
 ]
 
 [dependency-groups]
