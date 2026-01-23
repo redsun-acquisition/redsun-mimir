@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
-    from event_model.documents import Event, EventDescriptor
+    from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.model import PModel
     from sunflare.virtual import VirtualBus
 
@@ -72,6 +72,17 @@ class MedianPresenter(PPresenter, DocumentRouter, Loggable):
         """Register the presenter on the virtual bus."""
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
+
+    def start(self, doc: RunStart) -> RunStart | None:
+        """Process a new start document.
+
+        Clear the local cache.
+        """
+        self.median_stacks.clear()
+        self.medians.clear()
+        self.packet.clear()
+        self.previous_stream = ""
+        return doc
 
     def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
         """Process new descriptor documents.

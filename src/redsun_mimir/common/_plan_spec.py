@@ -18,8 +18,8 @@ from typing import (
 
 from sunflare.model import PModel
 
-from redsun_mimir.actions import ActionedPlan, ActionList
-from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence, issequence
+from redsun_mimir.actions import Action, ContinousPlan
+from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
 
 
 class ParamKind(IntEnum):
@@ -67,8 +67,8 @@ class ParamDescription:
         If True, this parameter allows multiple selections (for PModel types).
     hidden : bool
         If True, this parameter should not be exposed as a normal input widget.
-    actions : ActionList | None
-        If this parameter is annotated as `ActionList`, this holds the associated action object.
+    actions : Sequence[Action] | Action | None
+        If this parameter is annotated with `Action` metadata, this holds the associated action object(s).
     model_proto : type[PModel] | None
         If this parameter is associated with a PModel type,
         this holds the actual type.
@@ -81,7 +81,7 @@ class ParamDescription:
     choices: list[str] | None = None
     multiselect: bool = False
     hidden: bool = False
-    actions: ActionList | None = None
+    actions: Sequence[Action] | Action | None = None
     model_proto: type[PModel] | None = None
 
     @property
@@ -200,20 +200,14 @@ def resolve_arguments(
     # start with values coming from the view
     values: dict[str, Any] = dict(param_values)
 
-    # For ActionList-typed parameters that have metadata but no GUI input,
-    # inject the ActionList instance so the function can always be called.
+    # For Action-typed parameters that have metadata but no GUI input,
+    # inject the Action metadata so the function can always be called.
     for p in spec.parameters:
-        if (
-            isinstance(p.annotation, ActionList)
-            and p.actions is not None
-            and p.name not in values
-        ):
+        if p.actions is not None and p.name not in values:
             values[p.name] = p.actions
 
     resolved: dict[str, Any] = {}
 
-    # For ActionList-typed parameters that have metadata but no GUI input,
-    # inject the ActionList instance so the function can always be called.
     for p in spec.parameters:
         if p.name not in values:
             continue
@@ -326,7 +320,7 @@ def create_plan_spec(
 
     togglable = False
 
-    if isinstance(func_obj, ActionedPlan):
+    if isinstance(func_obj, ContinousPlan):
         togglable = func_obj.__togglable__
 
     params: list[ParamDescription] = []
@@ -336,53 +330,63 @@ def create_plan_spec(
         if raw_ann is _empty:
             raw_ann = Any
 
-        actions_meta: ActionList | None = None
+        actions_meta: Sequence[Action] | Action | None = None
 
-        # peel Annotated[..., ActionList(...)] if present
+        # Extract Action instances from default value if present
+        if param.default is not _empty:
+            if isinstance(param.default, Action):
+                actions_meta = param.default
+            elif isinstance(param.default, cabc.Sequence) and all(
+                isinstance(a, Action) for a in param.default
+            ):
+                actions_meta = list(param.default)
+
+        # Handle Annotated types (for other metadata, not for Actions)
         if get_origin(raw_ann) is Annotated:
             args = get_args(raw_ann)
             if args:
-                base_ann = args[0]
-                extras = args[1:]
+                ann = args[0]
             else:
-                base_ann = Any
-                extras = ()
-            # TODO: for now, discard multiple extras;
-            # we might add more metadata types later
-            # or throw if there are unknown extras
-            if len(extras) > 1:
-                base_ann = Any
-                extras = ()
-            elif isinstance(extras[0], ActionList):
-                actions_meta = extras[0]
-                if param.default is not _empty and isinstance(
-                    param.default, cabc.Sequence
-                ):
-                    # override the contents of ActionList with default value
-                    actions_meta.names = list(param.default)
-            ann = base_ann
+                ann = Any
         else:
             ann = raw_ann
 
-        # If we have ActionList metadata, enforce the underlying type
-        # to be Sequence[str]
-        elem_ann: Any
-        if actions_meta:
-            _validate_action_names(name, actions_meta.names)
+        # If we have Action metadata, validate the underlying type
+        if actions_meta is not None:
             origin = get_origin(ann)
-            if not issequence(ann) and not (
-                origin or issubclass(origin, cabc.Sequence)
-            ):
-                raise TypeError(
-                    f"Parameter {name!r} uses ActionList metadata but is not "
-                    f"annotated as a Sequence[...] type; got {ann!r}"
+            # Accept both Sequence[Action] and Action as valid types
+            is_action_type = ann is Action or (
+                isinstance(ann, type) and issubclass(ann, Action)
+            )
+            is_sequence_action = origin and (
+                issubclass(origin, cabc.Sequence)
+                and get_args(ann)
+                and (
+                    get_args(ann)[0] is Action
+                    or (
+                        isinstance(get_args(ann)[0], type)
+                        and issubclass(get_args(ann)[0], Action)
+                    )
                 )
-            elem_args = get_args(ann)
-            elem_ann = elem_args[0] if elem_args else Any
-            if elem_ann is not str:
+            )
+            is_union_type = (
+                origin
+                and hasattr(origin, "__origin__")
+                or (
+                    get_args(ann)
+                    and any(
+                        arg is Action
+                        or (isinstance(arg, type) and issubclass(arg, Action))
+                        for arg in get_args(ann)
+                        if arg is not type(None)
+                    )
+                )
+            )
+
+            if not (is_action_type or is_sequence_action or is_union_type):
                 raise TypeError(
-                    f"Parameter {name!r} uses ActionList metadata but its element "
-                    f"type is not str; got {elem_ann!r}"
+                    f"Parameter {name!r} has Action instances in default value but is not "
+                    f"annotated as Action, Sequence[Action], or a union containing Action; got {ann!r}"
                 )
 
         # Compute choices from model_registry using isinstance on actual objects
@@ -410,7 +414,6 @@ def create_plan_spec(
                 if isinstance(elem_ann, type) and isinstance(elem_ann, PModel):
                     model_proto = elem_ann  # type: ignore
 
-        # Map inspect.Parameter.kind to our ParamKind
         pkind = _PARAM_KIND_MAP.get(param.kind)
         if pkind is None:
             raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
@@ -441,16 +444,3 @@ def create_plan_spec(
         togglable=togglable,
         pausable=pausable,
     )
-
-
-def _validate_action_names(param_name: str, names: cabc.Sequence[str]) -> None:
-    if not isinstance(names, cabc.Sequence) or isinstance(names, (str, bytes)):
-        raise TypeError(
-            f"ActionList for parameter {param_name!r} must be a non-string sequence of str; "
-            f"got {type(names)!r}"
-        )
-    if not all(isinstance(x, str) for x in names):
-        raise TypeError(
-            f"All entries in ActionList for parameter {param_name!r} must be str; "
-            f"got {names!r}"
-        )

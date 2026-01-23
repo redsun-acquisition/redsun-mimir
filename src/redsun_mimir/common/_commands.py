@@ -6,58 +6,65 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-    from typing import Any
+    from typing import Any, Literal
 
     from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
+    from redsun_mimir.actions import SRLatch
+
 __all__ = ["wait_for_actions", "register_bound_command"]
 
 
-async def wait_for_actions(
-    self: RunEngine, msg: Msg
-) -> tuple[str, asyncio.Event] | None:
-    """Instruct the run engine to wait for any of the given events to be set.
+async def wait_for_actions(self: RunEngine, msg: Msg) -> tuple[str, SRLatch] | None:
+    """Instruct the run engine to wait for any of the given latches to be set or reset.
 
     Parameters
     ----------
     msg: Msg
-        The message containing the events to wait for.
-        Packs a map of asyncio.Event in `msg.args` and a timeout in `msg.kwargs`.
+        The message containing the latches to wait for.
+        Packs a map of SRLatch in `msg.args` and a timeout in `msg.kwargs`.
 
         Expected message format:
 
-        Msg("wait_for_actions", None, events, timeout=timeout)
+        Msg("wait_for_actions", None, latches, timeout=timeout, wait_for="set")
 
     Returns
     -------
-    tuple[str, asyncio.Event] | None
-        A tuple containing the name and the event that was set to unblock the plan;
-        None if timeout occurred before any event was set.
+    tuple[str, SRLatch] | None
+        A tuple containing the name and the latch that was set/reset to unblock the plan;
+        None if timeout occurred before any latch changed state.
     """
-    future_map: Mapping[str, asyncio.Event] = msg.args[0]
+    latch_map: Mapping[str, SRLatch] = msg.args[0]
     timeout: float | None = msg.kwargs.get("timeout", None)
+    wait_for: Literal["set", "reset"] = msg.kwargs.get("wait_for", "set")
 
-    # Create a mapping to track which task corresponds to which event
-    event_tasks = {
-        asyncio.create_task(event.wait(), name=name)
-        for name, event in future_map.items()
-    }
+    # Create a mapping to track which task corresponds to which latch
+    if wait_for == "set":
+        latch_tasks = {
+            asyncio.create_task(latch.wait_for_set(), name=name)
+            for name, latch in latch_map.items()
+        }
+    else:
+        latch_tasks = {
+            asyncio.create_task(latch.wait_for_reset(), name=name)
+            for name, latch in latch_map.items()
+        }
 
     done, pending = await asyncio.wait(
-        event_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
+        latch_tasks, return_when=asyncio.FIRST_COMPLETED, timeout=timeout
     )
 
     # Cancel all pending tasks
     for task in pending:
         task.cancel()
 
-    # Return the event that was set
+    # Return the latch that changed state
     if not done:
         return None
     completed_task = done.pop()
     task_name = completed_task.get_name()
-    return task_name, future_map[task_name]
+    return task_name, latch_map[task_name]
 
 
 def register_bound_command(

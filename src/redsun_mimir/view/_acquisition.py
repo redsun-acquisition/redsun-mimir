@@ -11,7 +11,7 @@ from sunflare.log import Loggable
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.actions import ActionList
+from redsun_mimir.actions import Action
 from redsun_mimir.common import PlanSpec  # noqa: TC001
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
@@ -20,6 +20,47 @@ if TYPE_CHECKING:
 
     from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
+
+
+class ActionButton(QtW.QPushButton):
+    """A QPushButton subclass that encapsulates Action metadata.
+
+    This button automatically updates its text based on the toggle state
+    using the action's toggle_states attribute.
+
+    Parameters
+    ----------
+    action : ``Action``
+        The action metadata to associate with this button.
+    parent : ``QtWidgets.QWidget | None``, optional
+        The parent widget. Default is None.
+
+    Attributes
+    ----------
+    action : ``Action``
+        The action metadata associated with this button.
+    """
+
+    def __init__(self, action: Action, parent: QtW.QWidget | None = None) -> None:
+        self.name_capital = action.name.capitalize()
+        super().__init__(self.name_capital, parent)
+        self.action = action
+
+        if action.description:
+            self.setToolTip(action.description)
+
+        if action.togglable:
+            self.setCheckable(True)
+            self.toggled.connect(self._update_text)
+            # initialize text based on default state (unchecked)
+            self._update_text(False)
+
+    def _update_text(self, checked: bool) -> None:
+        """Update button text based on toggle state."""
+        state_text = (
+            self.action.toggle_states[1] if checked else self.action.toggle_states[0]
+        )
+        self.setText(f"{self.name_capital} ({state_text})")
 
 
 @dataclass(frozen=True)
@@ -99,7 +140,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
     sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
-    sigActionRequest = Signal(str)
+    sigActionRequest = Signal(str, bool)
 
     def __init__(
         self,
@@ -155,7 +196,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             self.stack_widget.setCurrentIndex
         )
         self.setLayout(self.root_layout)
-        self.plans_actions_buttons: dict[str, dict[str, QtW.QPushButton]] = {}
+        self.plans_actions_buttons: dict[str, dict[str, ActionButton]] = {}
 
         ino.Store.get_store("plan_specs").inject(self.setup_ui)()
 
@@ -188,13 +229,13 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
             param_widgets: dict[str, mgw.bases.ValueWidget[Any]] = {}
 
-            # Regular parameters (exclude ActionList-typed params)
+            # Regular parameters (exclude Action-typed params)
             for p in spec.parameters:
                 if p.hidden:
                     # do nothing
                     continue
-                if p.actions is not None or p.annotation is ActionList:
-                    # Don't generate parameter widgets for ActionList params.
+                if p.actions is not None:
+                    # Don't generate parameter widgets for Action params.
                     continue
                 # Skip var-keyword (**kwargs): no sane generic widget yet.
                 if p.kind.name == "VAR_KEYWORD":
@@ -232,8 +273,6 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             run_container.setLayout(run_layout)
             page_layout.addWidget(run_container)
 
-            # ActionList group (for parameters typed as ActionList with a default)
-            actions_group_box: QtW.QGroupBox | None = None
             actions_params = [p for p in spec.parameters if p.actions is not None]
 
             if actions_params:
@@ -244,19 +283,32 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                 # initially actions are disabled; they can be
                 # enabled when the plan is running
                 actions_group_box.setEnabled(False)
-
                 for p in actions_params:
-                    act = p.actions
-                    if act is None:
+                    actions_meta = p.actions
+                    if actions_meta is None:
                         continue
-                    for name_str in act.names:
-                        btn = QtW.QPushButton(name_str.capitalize())
-                        btn.clicked.connect(lambda _: self._on_action_clicked(name_str))
-                        self.plans_actions_buttons[func_name][name_str] = btn
+                    # Handle both single Action and Sequence[Action]
+                    action_list = (
+                        [actions_meta]
+                        if isinstance(actions_meta, Action)
+                        else actions_meta
+                    )
+                    for action in action_list:
+                        btn = ActionButton(action)
+                        if action.togglable:
+                            btn.toggled.connect(
+                                lambda checked,
+                                name=action.name: self._on_action_toggled(checked, name)
+                            )
+                        else:
+                            btn.clicked.connect(
+                                lambda _, name=action.name: self._on_action_clicked(
+                                    name
+                                )
+                            )
+                        self.plans_actions_buttons[func_name][action.name] = btn
                         actions_layout.addWidget(btn)
-
                 page_layout.addWidget(actions_group_box)
-
             self.stack_widget.addWidget(page)
             self.plan_widgets[func_name] = PlanWidget(
                 spec=spec,
@@ -279,6 +331,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.virtual_bus.signals["AcquisitionController"]["sigActionDone"].connect(
             self._on_action_done, thread="main"
         )
+        self.stack_widget.setCurrentIndex(0)
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
@@ -311,7 +364,10 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         group = self.plan_widgets[plan].actions_group
         if group:
             group.setEnabled(False)
-        self.sigActionRequest.emit(action_name)
+        self.sigActionRequest.emit(action_name, True)
+
+    def _on_action_toggled(self, checked: bool, action_name: str) -> None:
+        self.sigActionRequest.emit(action_name, checked)
 
     def _on_action_done(self, _: str) -> None:
         plan = self.plans_combobox.currentText()

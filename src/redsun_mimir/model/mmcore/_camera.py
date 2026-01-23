@@ -1,22 +1,38 @@
 from __future__ import annotations
 
+import threading as th
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypedDict, cast
 
+from acquire_zarr import (
+    ArraySettings,
+    Dimension,
+    DimensionType,
+    StreamSettings,
+    ZarrStream,
+)
 from bluesky.protocols import Descriptor, Pausable
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import DeviceType
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
+from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import Any, ClassVar
 
     from bluesky.protocols import Descriptor, Reading
+    from typing_extensions import NotRequired
 
     from ._config import MMCoreCameraModelInfo
+
+
+class PrepareKwargs(TypedDict):
+    capacity: NotRequired[int]
+    store_path: Path
 
 
 class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
@@ -32,12 +48,31 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     # multiple instances are not supported
     initialized: ClassVar[bool] = False
 
-    # Define which properties to expose in configuration
-    EXPOSED_PROPERTIES: ClassVar[set[str]] = {
+    # TODO: temporary helpers for development;
+    # will need to be moved to the model info class,
+    # and initialized at instance level rather than class level
+
+    #: properties to expose in configuration/reading
+    exposed_properties: ClassVar[set[str]] = {
         "Exposure",
         "DisplayImageNumber",
         "PixelType",
     }
+
+    #: enumerated values per property
+    enum_per_property: ClassVar[dict[str, set[str]]] = {
+        "PixelType": {"8bit", "16bit", "32bit"},
+    }
+
+    #: mapping from pixel type to numpy dtype
+    pixeltype_to_numpy: ClassVar[dict[str, str]] = {
+        "8bit": "uint8",
+        "16bit": "uint16",
+        "32bit": "uint32",
+    }
+
+    #: name of the pixel type property
+    pixeltype_name: ClassVar[str] = "PixelType"
 
     def __init__(self, name: str, model_info: MMCoreCameraModelInfo) -> None:
         self._name = name
@@ -49,9 +84,8 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
                     "MMCoreCameraModel has already been initialized once; "
                     "multiple instances are not supported."
                 )
-
             self._core.loadDevice(name, model_info.adapter, model_info.device)
-            self._core.initializeAllDevices()
+            self._core.initializeDevice(name)
 
             # use device object for property manipulation
             self._device = self._core.getDeviceObject(
@@ -76,6 +110,11 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         self._device_schema = self._device.schema()
         self._buffer_key = f"{self.name}:buffer"
         self._roi_key = f"{self.name}:roi"
+        self._stream_settings = StreamSettings()
+        self._array_settings: list[ArraySettings] = []
+        self._fly_start = th.Event()
+        self._fly_stop = th.Event()
+        self._isflying = False
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -101,13 +140,11 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         if propr in self._device_schema["properties"]:
             self._core.setProperty(self.name, propr, value)
             s.set_finished()
-            self.logger.debug(f"Set {propr} to {value}.")
         elif propr == "roi":
             # TODO: should we validate the ROI here?
             self._core.setROI(self.name, *value)
             self.roi = tuple(value)
             s.set_finished()
-            self.logger.debug(f"Set ROI to {value}.")
         else:
             s.set_exception(ValueError(f"Property '{propr}' not found."))
         return s
@@ -117,8 +154,14 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         config_descriptor: dict[str, Descriptor] = {}
         for key, value in schema["properties"].items():
             # Filter to only include exposed properties
-            if key not in self.EXPOSED_PROPERTIES:
+            if key not in self.exposed_properties:
                 continue
+
+            choices: list[str] = []
+            if key in self.enum_per_property:
+                choices = list(self.enum_per_property[key])
+            elif value["type"] == "string":
+                choices = value.get("enum", [])
 
             descriptor_key = f"{self.name}:{key}"
             config_descriptor[descriptor_key] = {
@@ -127,10 +170,11 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
                 # so we can skip the type check here
                 "dtype": value["type"],  # type: ignore[typeddict-item]
                 "shape": [],
+                "choices": choices,
             }
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
-            if maximum is not None and minimum is not None:
+            if maximum and minimum:
                 config_descriptor[descriptor_key]["limits"] = {
                     "control": {
                         "low": value["minimum"],
@@ -147,7 +191,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         config = self.model_info.read_configuration(timestamp)
         for prop in self._device.properties:
             # Filter to only include exposed properties
-            if prop.name not in self.EXPOSED_PROPERTIES:
+            if prop.name not in self.exposed_properties:
                 continue
 
             config[f"{self.name}:{prop.name}"] = {
@@ -159,42 +203,155 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     def stage(self) -> Status:
         s = Status()
         try:
-            if not self._core.isSequenceRunning():
-                self._core.startContinuousSequenceAcquisition()
-                self.logger.debug(f"Staged {self.name}.")
+            self._core.setCameraDevice(self.name)
+            self._core.startContinuousSequenceAcquisition()
+            self.logger.debug(f"Staged {self.name}.")
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to stage {self.name}: {e}")
             s.set_exception(e)
         return s
 
     def unstage(self) -> Status:
         s = Status()
         try:
-            if self._core.isSequenceRunning():
-                self._core.stopSequenceAcquisition(self.name)
-                self.logger.debug(f"Unstaged {self.name}.")
+            self._core.stopSequenceAcquisition(self.name)
+            self.logger.debug(f"Unstaged {self.name}.")
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to unstage {self.name}: {e}")
             s.set_exception(e)
+        return s
+
+    def prepare(self, kwargs: PrepareKwargs) -> Status:
+        """Prepare the detector for acquisition.
+
+        Parameters
+        ----------
+        kwargs: PrepareKwargs
+            path: Path | None
+                The path to store the acquired images. If None, images
+
+        """
+        s = Status()
+        width, height = self._core.getImageWidth(), self._core.getImageHeight()
+        dtype = self.pixeltype_to_numpy[
+            self._core.getProperty(self.name, self.pixeltype_name)
+        ]
+        capacity = kwargs.get("capacity", 0)
+        store_path = str(kwargs.get("store_path"))
+        time = Dimension(
+            name="t",
+            kind=DimensionType.TIME,
+            array_size_px=capacity,  # if 0, unlimited
+            chunk_size_px=5,
+            shard_chunk_size=2,
+        )
+        y = Dimension(
+            name="y",
+            kind=DimensionType.SPACE,
+            array_size_px=height,
+            chunk_size_px=height // 4,
+            shard_chunk_size=1,
+        )
+        x = Dimension(
+            name="x",
+            kind=DimensionType.SPACE,
+            array_size_px=width,
+            chunk_size_px=width // 4,
+            shard_chunk_size=2,
+        )
+        self._array_settings = [ArraySettings(dimensions=[time, y, x], dtype=dtype)]
+
+        # create 1 frame ring buffer to
+        # allow reading to continue while streaming
+        self._read_buffer = RingBuffer(max_capacity=1, dtype=(dtype, (height, width)))
+
+        self._stream_settings.store_path = store_path
+        self._stream_settings.arrays = self._array_settings
+        self._stream = ZarrStream(self._stream_settings)
+        self._thread = th.Thread(
+            target=stream_to_disk,
+            args=(
+                self._core,
+                self._stream,
+                self._read_buffer,
+                self._fly_start,
+                self._fly_stop,
+            ),
+        )
+        self._thread.start()
         return s
 
     def kickoff(self) -> Status:
         """Kickoff a continuous acquisition.
 
-        For micro-manager, this is equivalent to staging the detector,
-        as acquisition doesn't block the main thread.
+        Starts a background thread that continously
+        streams images from the internal ring buffer
+        into disk.
+
+        Kickoff requires that stage() has been called
+        to arm the device and prepare() has been called
+        to create the storage backend.
+
+        Otherwise, the status will report an exception.
+
+        Returns
+        -------
+        Status
+            Status of the operation.
         """
-        return self.stage()
+        s = Status()
+        if not self._core.isSequenceRunning():
+            s.set_exception(
+                RuntimeError(
+                    "Acquisition is not running (stage() should be called first). "
+                )
+            )
+        if not self._thread:
+            s.set_exception(
+                RuntimeError(
+                    "Storage backend is not prepared (prepare() should be called first). "
+                )
+            )
+        else:
+            # acquisition is already running
+            # and ring buffer is ready, spin the
+            # thread to stream data to disk
+            self._fly_start.set()
+            self._isflying = True
+            s.set_finished()
+        return s
 
     def complete(self) -> Status:
         """Complete the continuous acquisition.
 
-        For micro-manager, this is equivalent to unstaging the detector,
-        as acquisition doesn't block the main thread.
+        Stops the background thread that streams images
+        from the internal ring buffer into disk and
+        closes the storage backend.
+
+        If kickoff() was not called before, the status
+        will report an exception.
+
+        Returns
+        -------
+        Status
+            Status of the operation.
         """
-        return self.unstage()
+        s = Status()
+        if not self._isflying:
+            s.set_exception(
+                RuntimeError("Not flying; kickoff() must be called first. ")
+            )
+            return s
+        self._fly_stop.set()
+        self._thread.join()
+        # thread is joined; clear both
+        # events
+        self._fly_start.clear()
+        self._fly_stop.clear()
+        self._isflying = False
+        self._stream.close()
+        s.set_finished()
+        return s
 
     def pause(self) -> None:
         """Pause the acquisition.
@@ -228,11 +385,15 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         # each acquired image, requires investigation
         if not self._core.isSequenceRunning():
             raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
-        while self._core.getRemainingImageCount() == 0:
-            # keep polling until an image is available;
-            # just wait a bit to avoid busy waiting;
-            time.sleep(0.001)
-        img = self._core.popNextImage()
+        if not self._isflying:
+            while self._core.getRemainingImageCount() == 0:
+                # keep polling until an image is available;
+                # just wait a bit to avoid busy waiting;
+                time.sleep(0.001)
+            img = self._core.popNextImage()
+        else:
+            # peek the ring buffer head
+            img = self._read_buffer.peek()
         stamp = time.time()
         return {
             self._buffer_key: {"value": img, "timestamp": stamp},
@@ -272,3 +433,45 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     @property
     def parent(self) -> None:
         return None
+
+
+def stream_to_disk(
+    core: Core,
+    stream: ZarrStream,
+    buffer: RingBuffer,
+    start: th.Event,
+    stop: th.Event,
+) -> None:
+    """Stream data from a ZarrStream to disk.
+
+    The thread is started in the camera's prepare() method,
+    kicked off in the kickoff() method, and stopped in the complete() method.
+
+    Parameters
+    ----------
+    core: pymmcore_plus.CMMCorePlus
+        The core instance to interact with the camera.
+    stream: acquire_zarr.ZarrStream
+        The ZarrStream to stream data from.
+    start: threading.Event
+        Event to signal the start of streaming.
+    stop: threading.Event
+        Event to signal the stop of streaming.
+    lock: threading.Lock
+        Lock to synchronize access to core image buffer.
+    """
+    # wait for kickoff to be set
+    start.wait()
+
+    while not stop.is_set():
+        while core.getRemainingImageCount() == 0:
+            # keep polling until an image is available;
+            # just wait a bit to avoid busy waiting;
+            time.sleep(0.001)
+        # this copy is unfortunately necessary
+        # but incredibly wasteful; it would be
+        # nice if we could access the camera
+        # image buffer directly instead
+        img = core.popNextImage()
+        buffer.append(img)
+        stream.append(img)

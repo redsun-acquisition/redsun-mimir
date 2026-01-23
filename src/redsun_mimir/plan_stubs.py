@@ -7,17 +7,18 @@ import bluesky.plan_stubs as bps
 from bluesky.utils import Msg
 
 if TYPE_CHECKING:
-    import asyncio
     from collections.abc import Mapping, Sequence
-    from typing import Any, Final
+    from typing import Any, Final, Literal
 
     from bluesky.protocols import Movable, Readable, Status
     from bluesky.utils import MsgGenerator
 
+    from redsun_mimir.actions import SRLatch
+
 SIXTY_FPS: Final[float] = 1.0 / 60.0
 
 
-def set_proprerty(
+def set_property(
     obj: Movable[Any],
     value: Any,
     /,
@@ -57,55 +58,65 @@ def set_proprerty(
 
 
 def wait_for_actions(
-    events: Mapping[str, asyncio.Event], timeout: float = 0.001
-) -> MsgGenerator[tuple[str, asyncio.Event] | None]:
-    """Wait for any of the given input events to be set.
+    events: Mapping[str, SRLatch],
+    timeout: float = 0.001,
+    wait_for: Literal["set", "reset"] = "set",
+) -> MsgGenerator[tuple[str, SRLatch] | None]:
+    """Wait for any of the given input latches to be set or reset.
 
-    Plan execution will be blocked until one of the events is set; but
+    Plan execution will be blocked until one of the latches changes state; but
     background tasks will proceed as usual.
 
     Parameters
     ----------
-    events: Mapping[str, asyncio.Event]
-        A mapping of event names to asyncio.Event objects to wait for.
+    events: Mapping[str, SRLatch]
+        A mapping of event names to SRLatch objects to wait for.
 
     timeout: float, optional
-        The maximum time (in seconds) to wait for an event to be set.
+        The maximum time (in seconds) to wait for a latch to change state.
         Default is 0.001 seconds.
+
+    wait_for: Literal["set", "reset"], optional
+        Whether to wait for the latch to be set or reset.
+        Default is "set".
 
     Returns
     -------
-    asyncio.Event | None
-        The event that was set to unblock the plan;
-        None if timeout occurred before any event was set.
+    tuple[str, SRLatch] | None
+        A tuple containing the name and latch that changed state to unblock the plan;
+        None if timeout occurred before any latch changed state.
     """
-    ret: tuple[str, asyncio.Event] | None = yield Msg(
-        "wait_for_actions", None, events, timeout=timeout
+    ret: tuple[str, SRLatch] | None = yield Msg(
+        "wait_for_actions", None, events, timeout=timeout, wait_for=wait_for
     )
     return ret
 
 
 def read_while_waiting(
     objs: Sequence[Readable[Any]],
-    events: Mapping[str, asyncio.Event],
+    events: Mapping[str, SRLatch],
     stream_name: str = "primary",
     refresh_period: float = SIXTY_FPS,
-) -> MsgGenerator[tuple[str, asyncio.Event]]:
+    wait_for: Literal["set", "reset"] = "set",
+) -> MsgGenerator[tuple[str, SRLatch]]:
     """Read a list of `Readable` objects while waiting for actions.
 
     Parameters
     ----------
     objs : ``Sequence[Readable[Any]]``
         The objects to trigger and read.
-    events : ``Mapping[str, asyncio.Event]``
-        A mapping of event names to asyncio.Event objects to wait for.
-        Each event represents an action that can unblock the plan.
+    events : ``Mapping[str, SRLatch]``
+        A mapping of event names to SRLatch objects to wait for.
+        Each latch represents an action that can unblock the plan.
     stream_name : ``str``, optional
         The name of the stream to collect data into.
         Default is "primary".
     refresh_period : ``float``, optional
         The period (in seconds) to refresh the triggering and reading.
         Default is 60 Hz (1/60 s).
+    wait_for : ``Literal["set", "reset"]``, optional
+        Whether to wait for the latch to be set or reset.
+        Default is "set".
 
     Yields
     ------
@@ -114,12 +125,14 @@ def read_while_waiting(
 
     Returns
     -------
-    tuple[str, asyncio.Event]
-        The event that was set to unblock the plan.
+    tuple[str, SRLatch]
+        The latch that changed state to unblock the plan.
     """
-    event: tuple[str, asyncio.Event] | None = None
+    event: tuple[str, SRLatch] | None = None
     while event is None:
         yield from bps.checkpoint()
-        event = yield from wait_for_actions(events, timeout=refresh_period)
+        event = yield from wait_for_actions(
+            events, timeout=refresh_period, wait_for=wait_for
+        )
         yield from bps.trigger_and_read(objs, name=stream_name)
     return event

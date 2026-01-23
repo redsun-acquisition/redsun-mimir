@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Flyable, Readable, Stageable
+from bluesky.protocols import Flyable, Movable, Preparable, Readable, Stageable
 from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
@@ -12,15 +12,9 @@ if TYPE_CHECKING:
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
-__all__ = [
-    "LightProtocol",
-    "MotorProtocol",
-    "DetectorProtocol",
-]
-
 
 @runtime_checkable
-class Settable(Protocol):
+class Settable(Movable[Any], Protocol):
     """Protocol for settable models.
 
     Reimplemented from the ``Movable`` bluesky protocol
@@ -170,15 +164,14 @@ class LightProtocol(PModel, Settable, Protocol):
 
 
 @runtime_checkable
-class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Flyable, Protocol):
+class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Protocol):
     """Protocol for detector models.
 
     Implements the following protocols:
 
     - ``Settable``
-    - ``Stageable``
-    - ``Flyable``
     - ``Readable``
+    - ``Stageable``
 
     Attributes
     ----------
@@ -197,3 +190,15 @@ class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Flyable, Prot
     @property
     def model_info(self) -> DetectorModelInfo:  # noqa: D102
         ...
+
+
+@runtime_checkable
+class ReadableFlyer(PModel, Readable[Any], Preparable, Flyable, Protocol):
+    """Protocol for objects that are both Readable and Flyable.
+
+    In order to be compatible with bluesky's flyer plans,
+    a device must implement the protocols:
+
+    - ``Flyable`` (kickoff() and complete() methods)
+    - ``Preparable`` (prepare() method)
+    """

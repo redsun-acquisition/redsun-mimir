@@ -8,6 +8,8 @@ from sunflare.config import PresenterInfo
 if TYPE_CHECKING:
     from typing import Any
 
+    from attrs import Attribute
+
 __all__ = ["MotorControllerInfo", "LightControllerInfo"]
 
 
@@ -65,6 +67,16 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
 
     debug: bool = field(default=False, validator=validators.instance_of(bool))
     metadata: dict[str, Any] = field(default={}, validator=validators.instance_of(dict))
+    callbacks: list[str] = field(
+        default=["DetectorWidget"], validator=validators.instance_of(list)
+    )
+
+    @callbacks.validator
+    def _validate_callbacks(
+        self, attribute: Attribute[list[str]], value: list[str]
+    ) -> None:
+        if any(not isinstance(item, str) for item in value):
+            raise ValueError(f"All items in {attribute.name} must be of type 'str'.")
 
 
 class ImageControllerInfo(_CommonControllerInfo):

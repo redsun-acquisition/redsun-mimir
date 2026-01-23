@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping, Sequence  # noqa: TC003
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
-from typing import Annotated as Ann
 
 import bluesky.plan_stubs as bps
 import in_n_out as ino
@@ -14,7 +13,7 @@ from sunflare.presenter import PPresenter
 from sunflare.virtual import Signal, VirtualBus
 
 import redsun_mimir.plan_stubs as rps
-from redsun_mimir.actions import ActionList, actioned
+from redsun_mimir.actions import Action, continous
 from redsun_mimir.common import (
     PlanSpec,
     collect_arguments,
@@ -23,17 +22,104 @@ from redsun_mimir.common import (
     resolve_arguments,
     wait_for_actions,
 )
-from redsun_mimir.protocols import DetectorProtocol, MotorProtocol  # noqa: TC001
+from redsun_mimir.protocols import (  # noqa: TC001
+    DetectorProtocol,
+    MotorProtocol,
+    ReadableFlyer,
+)
 
 if TYPE_CHECKING:
+    import pathlib
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
     from sunflare.model import PModel
 
+    from redsun_mimir.actions import SRLatch
+
     from ._config import AcquisitionControllerInfo
 
 store = ino.Store.create("plan_specs")
+
+
+@dataclass
+class ScanAction(Action):
+    """Action to trigger a scan during live acquisition.
+
+    This action can be used to trigger a scan movement
+    of a motor during a live acquisition plan.
+    """
+
+    name: str = "scan"
+    description: str = "Trigger a scan movement."
+
+
+@dataclass
+class StreamAction(Action):
+    """Action to trigger data streaming to disk during live acquisition.
+
+    This action can be used to trigger data streaming to a Zarr store
+    on disk during a live acquisition plan.
+
+    Attributes
+    ----------
+    frames : int
+        The number of frames to stream to disk.
+    """
+
+    name: str = "stream"
+    description: str = "Toggle data streaming to disk."
+    frames: int | None = 100
+    togglable: bool = True
+    toggle_states: tuple[str, str] = ("start", "stop")
+
+
+def square_scan(
+    detectors: Sequence[DetectorProtocol],
+    motor: MotorProtocol,
+    step: float,
+    frames_per_side: int,
+    axis: tuple[str, str],
+) -> MsgGenerator[None]:
+    """Perform a square scan movement with the specified motor and detectors.
+
+    Performs a square scan by moving the motor in a square pattern; before
+    each movement step, a reading is taken from the specified detectors.
+
+    Parameters
+    ----------
+    detectors : ``Sequence[DetectorProtocol]``
+        The detectors to use for data collection.
+    motor : ``MotorProtocol``
+        The motor to use for the scan movement.
+    step : ``float``
+        The step size for motor movement.
+    frames_per_side : ``int``
+        The number of frames to collect for each side of the square.
+    axis : ``tuple[str, str]``
+        The order of motor movement axes.
+
+    Yields
+    ------
+    ``MsgGenerator[None]``
+        A generator yielding Bluesky messages for the square scan.
+    """
+    # scan on the positive direction...
+    for idx in range(2):
+        ax = axis[idx]
+        # set the axis direction
+        yield from rps.set_property(motor, ax, propr="axis")
+        for _ in range(frames_per_side):
+            yield from bps.trigger_and_read(detectors, "square_scan")
+            yield from bps.mvr(motor, step)
+    # scan on the negative direction
+    for idx in range(2):
+        ax = axis[1 - idx]
+        # set the axis direction
+        yield from rps.set_property(motor, ax, propr="axis")
+        for _ in range(frames_per_side):
+            yield from bps.trigger_and_read(detectors, "square_scan")
+            yield from bps.mvr(motor, -step)
 
 
 # TODO: move this somewhere else
@@ -112,9 +198,9 @@ class AcquisitionController(PPresenter, Loggable):
         register_bound_command(self.engine, wait_for_actions)
 
         self.futures: set[Future[Any]] = set()
-        self.event_map: dict[str, asyncio.Event] = {}
+        self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
-        self.expected_presenters = frozenset(["DetectorController", "MedianPresenter"])
+        self.expected_presenters = frozenset(ctrl_info.callbacks)
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "live_count": self.live_count,
@@ -141,7 +227,7 @@ class AcquisitionController(PPresenter, Loggable):
             self.pause_or_resume_plan
         )
         self.virtual_bus.signals["AcquisitionWidget"]["sigActionRequest"].connect(
-            self.set_action_event
+            self.toggle_action_event
         )
 
         for name, callback in self.virtual_bus.callbacks.items():
@@ -151,7 +237,7 @@ class AcquisitionController(PPresenter, Loggable):
     def plans_specificiers(self) -> set[PlanSpec]:
         return set(self.plan_specs.values())
 
-    @actioned(togglable=True, pausable=True)
+    @continous(togglable=True, pausable=True)
     def live_count(
         self,
         detectors: Sequence[DetectorProtocol],
@@ -199,7 +285,7 @@ class AcquisitionController(PPresenter, Loggable):
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
-    @actioned(togglable=True)
+    @continous(togglable=True)
     def live_square_scan(
         self,
         detectors: Sequence[DetectorProtocol],
@@ -209,7 +295,7 @@ class AcquisitionController(PPresenter, Loggable):
         frames: int = 100,
         direction: Literal["xy", "yx"] = "xy",
         /,
-        actions: Ann[list[str], ActionList()] = ["scan"],
+        action: Action = ScanAction(),
     ) -> MsgGenerator[None]:
         """Perform live data collection with optional, triggerable square scan movement.
 
@@ -259,15 +345,12 @@ class AcquisitionController(PPresenter, Loggable):
             from_egu=step_egu,
             to_egu=motor.model_info.egu,
         )
-        self.event_map.update({name: asyncio.Event() for name in actions})
+        self.event_map.update(action.event_map)
         frames_per_side = frames // 4
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
-
-        live_stream = "live"
-        scan_stream = "square_scan"
 
         # main loop; it can only be interrupted when
         # a stop request is issued from the view and handled
@@ -277,35 +360,82 @@ class AcquisitionController(PPresenter, Loggable):
             name, event = yield from rps.read_while_waiting(
                 detectors,
                 self.event_map,
-                live_stream,
+                "live",
             )
             # if the plan has provided a different engineering unit
             # for the step size, set it accordingly
             if motor.model_info.egu != step_egu:
-                yield from rps.set_proprerty(motor, step, propr="step_size")
+                yield from rps.set_property(motor, step, propr="step_size")
 
-            # first scan on the positive direction...
-            for idx in range(2):
-                ax = axis[idx]
-                # ... set the axis direction and the step size ...
-                yield from rps.set_proprerty(motor, ax, propr="axis")
-                for _ in range(frames_per_side):
-                    # ... take a snapshot and move one step ...
-                    yield from bps.trigger_and_read(detectors, scan_stream)
-                    yield from bps.mvr(motor, step)
-            # ... then scan on the negative direction ...
-            for idx in range(2):
-                ax = axis[1 - idx]
-                yield from rps.set_proprerty(motor, ax, propr="axis")
-                for _ in range(frames_per_side):
-                    yield from bps.trigger_and_read(detectors, scan_stream)
-                    yield from bps.mvr(motor, -step)
-            # ... if needed, reset the step size ...
+            yield from square_scan(
+                detectors,
+                motor,
+                step,
+                frames_per_side,
+                axis,
+            )
+
             if step != old_step:
-                yield from rps.set_proprerty(motor, old_step, propr="step_size")
-            # ... clear the event and notify the action is done ...
+                yield from rps.set_property(motor, old_step, propr="step_size")
+            # clear the event and notify the action is done
             self.clear_and_notify(name, event)
-            # ... then resume live acquisition
+            # then resume live acquisition (go back to the top of the loop)
+
+    @continous(togglable=True)
+    def live_stream(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        store_path: pathlib.Path,
+        frames: int = 100,
+        /,
+        action: Action = StreamAction(),
+    ) -> MsgGenerator[None]:
+        """Perform live data collection and optionally store data to disk.
+
+        Provides an optional `stream` action that, when triggered from the UI,
+        starts streaming the acquired data to a Zarr store on disk on the
+        specified path, for a given number of `frames`.
+
+        While streaming is active, live visualization continues as normal.
+
+        Parameters
+        ----------
+        - detectors: ``Sequence[ReadableFlyer]``
+            - The detectors to use for data collection.
+            - Must implement the additional `Preparable` and `Flyable` protocols.
+        - path: ``pathlib.Path``
+            - The path on disk where to store the Zarr data.
+        - frames: ``int``, optional
+            - The number of frames to stream to disk.
+            - Default is 100.
+        """
+        live_stream = "live"
+        kwargs: dict[str, Any] = {"store_path": store_path, "capacity": frames}
+        yield from bps.open_run()
+        yield from bps.stage_all(*detectors)
+
+        self.event_map.update(action.event_map)
+        while True:
+            # live acquisition; wait for stream action
+            name, event = yield from rps.read_while_waiting(
+                detectors,
+                self.event_map,
+                live_stream,
+            )
+            # event triggered, start streaming to disk
+            for detector in detectors:
+                yield from bps.prepare(detector, **kwargs)
+                yield from bps.kickoff(detector)
+            name, event = yield from rps.read_while_waiting(
+                detectors,
+                self.event_map,
+                stream_name="streaming",
+            )
+            for detector in detectors:
+                yield from bps.complete(detector)
+            # we finished streaming;
+            # clear the event and notify the action is done
+            self.clear_and_notify(name, event)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
@@ -332,20 +462,27 @@ class AcquisitionController(PPresenter, Loggable):
 
         fut.add_done_callback(self._discard_future)
 
-    def clear_and_notify(self, name: str, event: asyncio.Event) -> None:
-        """Clear the given event and emit "action done" signal.
+    def clear_and_notify(self, name: str, event: SRLatch) -> None:
+        """Reset the given latch and emit "action done" signal.
 
         Parameters
         ----------
-        event : ``asyncio.Event``
-            The event to clear and notify.
+        name : ``str``
+            The name of the action.
+        event : ``SRLatch``
+            The latch to reset and notify.
         """
-        event.clear()
+        event.reset()
         self.sigActionDone.emit(name)
 
-    def set_action_event(self, action_name: str) -> None:
+    def toggle_action_event(
+        self, action_name: str, state: Literal["set", "reset"]
+    ) -> None:
         event = self.event_map[action_name]
-        self.engine.loop.call_soon_threadsafe(event.set)
+        if state == "set":
+            self.engine.loop.call_soon_threadsafe(event.set)
+        else:
+            self.engine.loop.call_soon_threadsafe(event.reset)
 
     def pause_or_resume_plan(self, pause: bool) -> None:
         """Pause or resume the running plan.

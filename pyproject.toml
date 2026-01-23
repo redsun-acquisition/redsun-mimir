@@ -112,8 +112,6 @@ files = "src/**/*.py"
 disable_error_code = [
     "import-untyped",
     "no-untyped-call",
-    # figure out TypeForm
-    # and then remove this exclusion
     "type-abstract"
 ]
 pretty = true
