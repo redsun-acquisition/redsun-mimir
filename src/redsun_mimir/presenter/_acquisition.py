@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib  # noqa: TC003
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
@@ -29,7 +30,6 @@ from redsun_mimir.protocols import (  # noqa: TC001
 )
 
 if TYPE_CHECKING:
-    import pathlib
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
@@ -203,9 +203,10 @@ class AcquisitionController(PPresenter, Loggable):
         self.expected_presenters = frozenset(ctrl_info.callbacks)
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
-            "live_count": self.live_count,
-            "live_square_scan": self.live_square_scan,
             "snap": self.snap,
+            "live_count": self.live_count,
+            "live_stream": self.live_stream,
+            "live_square_scan": self.live_square_scan,
         }
         self.plan_specs: dict[str, PlanSpec] = {
             name: create_plan_spec(plan, models) for name, plan in self.plans.items()
@@ -387,6 +388,7 @@ class AcquisitionController(PPresenter, Loggable):
         detectors: Sequence[ReadableFlyer],
         store_path: pathlib.Path,
         frames: int = 100,
+        write_forever: bool = False,
         /,
         action: Action = StreamAction(),
     ) -> MsgGenerator[None]:
@@ -410,7 +412,11 @@ class AcquisitionController(PPresenter, Loggable):
             - Default is 100.
         """
         live_stream = "live"
-        kwargs: dict[str, Any] = {"store_path": store_path, "capacity": frames}
+        kwargs: dict[str, Any] = {
+            "store_path": store_path,
+            "capacity": frames,
+            "write_forever": write_forever,
+        }
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
@@ -418,21 +424,22 @@ class AcquisitionController(PPresenter, Loggable):
         while True:
             # live acquisition; wait for stream action
             name, event = yield from rps.read_while_waiting(
-                detectors,
-                self.event_map,
-                live_stream,
+                detectors, self.event_map, stream_name=live_stream, wait_for="set"
             )
             # event triggered, start streaming to disk
             for detector in detectors:
                 yield from bps.prepare(detector, **kwargs)
                 yield from bps.kickoff(detector)
-            name, event = yield from rps.read_while_waiting(
-                detectors,
-                self.event_map,
-                stream_name="streaming",
-            )
-            for detector in detectors:
-                yield from bps.complete(detector)
+            if write_forever:
+                name, event = yield from rps.read_while_waiting(
+                    detectors, self.event_map, stream_name=live_stream, wait_for="reset"
+                )
+                yield from rps.read_while_completing(
+                    detectors,
+                    stream_name=live_stream,
+                )
+            else:
+                yield from bps.complete_all(*detectors)
             # we finished streaming;
             # clear the event and notify the action is done
             self.clear_and_notify(name, event)

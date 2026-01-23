@@ -25,14 +25,26 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar
 
     from bluesky.protocols import Descriptor, Reading
-    from typing_extensions import NotRequired
 
     from ._config import MMCoreCameraModelInfo
 
 
 class PrepareKwargs(TypedDict):
-    capacity: NotRequired[int]
+    capacity: int
     store_path: Path
+    write_forever: bool
+
+
+def wait_image_awailable(core: Core, timeout: float = 0.001) -> None:
+    """Wait until an image is available in the core buffer.
+
+    Wait for `timeout` seconds between polls to avoid busy waiting.
+    It should correspond to the exposure time of the camera.
+    """
+    while core.getRemainingImageCount() == 0:
+        # keep polling until an image is available;
+        # just wait a bit to avoid busy waiting;
+        time.sleep(timeout)
 
 
 class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
@@ -115,6 +127,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         self._fly_start = th.Event()
         self._fly_stop = th.Event()
         self._isflying = False
+        self._current_exposure: float = 0.0
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -202,6 +215,9 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
 
     def stage(self) -> Status:
         s = Status()
+
+        # get current exposure time in seconds
+        self._current_exposure = self._core.getExposure() / 1000.0
         try:
             self._core.setCameraDevice(self.name)
             self._core.startContinuousSequenceAcquisition()
@@ -227,9 +243,14 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         Parameters
         ----------
         kwargs: PrepareKwargs
-            path: Path | None
-                The path to store the acquired images. If None, images
-
+            Keyword arguments for preparation, including:
+            - capacity: int
+                The number of frames to store; if 0, unlimited.
+            - store_path: Path
+                The path to store the acquired data.
+            - write_forever: bool
+                If True, write data indefinitely until stopped.
+                Overrides `capacity`.
         """
         s = Status()
         width, height = self._core.getImageWidth(), self._core.getImageHeight()
@@ -238,10 +259,14 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         ]
         capacity = kwargs.get("capacity", 0)
         store_path = str(kwargs.get("store_path"))
+        write_forever = kwargs.get("write_forever")
+        if write_forever:
+            # override any previous setting
+            capacity = 0  # unlimited
         time = Dimension(
             name="t",
             kind=DimensionType.TIME,
-            array_size_px=capacity,  # if 0, unlimited
+            array_size_px=capacity,
             chunk_size_px=5,
             shard_chunk_size=2,
         )
@@ -272,6 +297,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             target=stream_to_disk,
             args=(
                 self._core,
+                self._current_exposure,
                 self._stream,
                 self._read_buffer,
                 self._fly_start,
@@ -386,10 +412,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         if not self._core.isSequenceRunning():
             raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
         if not self._isflying:
-            while self._core.getRemainingImageCount() == 0:
-                # keep polling until an image is available;
-                # just wait a bit to avoid busy waiting;
-                time.sleep(0.001)
+            wait_image_awailable(self._core, self._current_exposure)
             img = self._core.popNextImage()
         else:
             # peek the ring buffer head
@@ -437,6 +460,8 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
 
 def stream_to_disk(
     core: Core,
+    exposure: float,
+    frames: int,
     stream: ZarrStream,
     buffer: RingBuffer,
     start: th.Event,
@@ -451,6 +476,10 @@ def stream_to_disk(
     ----------
     core: pymmcore_plus.CMMCorePlus
         The core instance to interact with the camera.
+    exposure: float
+        The exposure time in seconds; used to poll for new images.
+    frames: int
+        The number of frames to stream; if 0, stream indefinitely.
     stream: acquire_zarr.ZarrStream
         The ZarrStream to stream data from.
     start: threading.Event
@@ -463,15 +492,26 @@ def stream_to_disk(
     # wait for kickoff to be set
     start.wait()
 
-    while not stop.is_set():
-        while core.getRemainingImageCount() == 0:
-            # keep polling until an image is available;
-            # just wait a bit to avoid busy waiting;
-            time.sleep(0.001)
-        # this copy is unfortunately necessary
-        # but incredibly wasteful; it would be
-        # nice if we could access the camera
-        # image buffer directly instead
-        img = core.popNextImage()
-        buffer.append(img)
-        stream.append(img)
+    if frames > 0:
+        for _ in range(frames):
+            if stop.is_set():
+                break
+            wait_image_awailable(core, exposure)
+            # this copy is unfortunately necessary
+            # but incredibly wasteful; it would be
+            # nice if we could access the camera
+            # image buffer directly instead
+            img = core.popNextImage()
+            buffer.append(img)
+            stream.append(img)
+    else:
+        # write until stopped
+        while not stop.is_set():
+            wait_image_awailable(core, exposure)
+            # this copy is unfortunately necessary
+            # but incredibly wasteful; it would be
+            # nice if we could access the camera
+            # image buffer directly instead
+            img = core.popNextImage()
+            buffer.append(img)
+            stream.append(img)

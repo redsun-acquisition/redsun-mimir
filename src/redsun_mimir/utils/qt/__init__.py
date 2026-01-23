@@ -1,9 +1,11 @@
 # mypy: disable-error-code="union-attr"
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args
 
 from magicgui import widgets as mgw
+from platformdirs import user_documents_dir
 from qtpy import QtWidgets
 
 from redsun_mimir.common._plan_spec import ParamKind
@@ -20,6 +22,8 @@ __all__ = [
     "collect_arguments",
     "create_param_widget",
 ]
+
+app_name = "redsun-mimir"
 
 
 def create_param_widget(param: ParamDescription) -> mgw.Widget:
@@ -114,12 +118,25 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
     # fallback to regular widget creation
     # for normal parameters
     try:
+        options: dict[str, Any] = {}
+        if issubclass(param.annotation, Path):
+            # default to dialog mode
+            options.update({"mode": "d"})
         w = mgw.create_widget(
             annotation=param.annotation,
             name=param.name,
             param_kind=param.kind.name,
             value=param.default if param.has_default else None,
+            options=options,
         )
+        if isinstance(w, mgw.FileEdit):
+            # set a more user-friendly starting directory
+            filepath = Path(user_documents_dir()) / app_name
+            filepath.mkdir(parents=True, exist_ok=True)
+            w.filter = "*.zarr"
+            w.value = filepath
+            w.line_edit.enabled = False
+
     except (TypeError, ValueError):
         # If magicgui doesn't know this annotation, fall back to a LineEdit.
         # TODO: improve this with more sophisticated handling?

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from bluesky.utils import MsgGenerator
 
     from redsun_mimir.actions import SRLatch
+    from redsun_mimir.protocols import ReadableFlyer
 
 SIXTY_FPS: Final[float] = 1.0 / 60.0
 
@@ -136,3 +137,36 @@ def read_while_waiting(
         )
         yield from bps.trigger_and_read(objs, name=stream_name)
     return event
+
+
+def read_while_completing(
+    objs: Sequence[ReadableFlyer],
+    stream_name: str = "primary",
+    refresh_period: float = SIXTY_FPS,
+) -> MsgGenerator[None]:
+    """Instruct a sequence of objects to complete() the operation.
+
+    While waiting for the completion, periodically trigger and read the objects,
+    until one of the given latches is reset.
+
+    Parameters
+    ----------
+    objs : ``Sequence[ReadableFlyer]``
+        The objects to complete.
+    events : ``Mapping[str, SRLatch]``
+        A mapping of event names to SRLatch objects to wait for.
+        Each latch represents an action that can unblock the plan.
+    refresh_period : ``float``, optional
+        The period (in seconds) to refresh the waiting.
+
+    Returns
+    -------
+    tuple[str, SRLatch]
+        The latch that changed state to unblock the plan.
+    """
+    group = str(uuid.uuid4())
+    yield from bps.complete_all(*objs, group=group, wait=False)
+    done = False
+    while not done:
+        done = bps.wait(group=group, timeout=refresh_period)
+        yield from bps.trigger_and_read(objs, name=stream_name)
