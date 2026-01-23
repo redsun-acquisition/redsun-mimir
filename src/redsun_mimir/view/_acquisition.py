@@ -273,6 +273,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             run_container.setLayout(run_layout)
             page_layout.addWidget(run_container)
 
+            actions_group_box: QtW.QGroupBox | None = None
             actions_params = [p for p in spec.parameters if p.actions is not None]
 
             if actions_params:
@@ -359,6 +360,19 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.plan_widgets[plan].setEnabled(False)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
+    def _on_plan_done(self) -> None:
+        plan = self.plans_combobox.currentText()
+        actions = self.plan_widgets[plan].actions_group
+        self.plan_widgets[plan].setEnabled(True)
+        if actions:
+            actions.setEnabled(False)
+
+    def _on_action_done(self, _: str) -> None:
+        plan = self.plans_combobox.currentText()
+        group = self.plan_widgets[plan].actions_group
+        if group:
+            group.setEnabled(True)
+
     def _on_action_clicked(self, action_name: str) -> None:
         plan = self.plans_combobox.currentText()
         group = self.plan_widgets[plan].actions_group
@@ -368,19 +382,6 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def _on_action_toggled(self, checked: bool, action_name: str) -> None:
         self.sigActionRequest.emit(action_name, checked)
-
-    def _on_action_done(self, _: str) -> None:
-        plan = self.plans_combobox.currentText()
-        group = self.plan_widgets[plan].actions_group
-        if group:
-            group.setEnabled(True)
-
-    def _on_plan_done(self) -> None:
-        plan = self.plans_combobox.currentText()
-        actions = self.plan_widgets[plan].actions_group
-        self.plan_widgets[plan].toggle(True)
-        if actions:
-            actions.setEnabled(False)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]

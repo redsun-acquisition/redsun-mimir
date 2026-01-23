@@ -68,7 +68,7 @@ class AcquisitionControllerInfo(_CommonControllerInfo):
     debug: bool = field(default=False, validator=validators.instance_of(bool))
     metadata: dict[str, Any] = field(default={}, validator=validators.instance_of(dict))
     callbacks: list[str] = field(
-        default=["DetectorWidget"], validator=validators.instance_of(list)
+        default=["DetectorController"], validator=validators.instance_of(list)
     )
 
     @callbacks.validator
