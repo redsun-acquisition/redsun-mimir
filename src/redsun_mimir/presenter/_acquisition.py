@@ -183,7 +183,7 @@ class AcquisitionController(PPresenter, Loggable):
     """
 
     sigPlanDone = Signal()
-    sigActionDone = Signal(str)
+    sigActionDone = Signal(str, str)
 
     def __init__(
         self,
@@ -387,7 +387,7 @@ class AcquisitionController(PPresenter, Loggable):
         self,
         detectors: Sequence[ReadableFlyer],
         store_path: pathlib.Path,
-        frames: int = 100,
+        frames: int = 10,
         write_forever: bool = False,
         /,
         action: Action = StreamAction(),
@@ -408,8 +408,13 @@ class AcquisitionController(PPresenter, Loggable):
         - path: ``pathlib.Path``
             - The path on disk where to store the Zarr data.
         - frames: ``int``, optional
-            - The number of frames to stream to disk.
-            - Default is 100.
+            - The number of images to stream to disk.
+            - Default is 10.
+        - write_forever: ``bool``, optional
+            - If True, the data will be streamed to disk until
+            the `stream` action is toggled off from the UI, disregarding
+            the `frames` parameter.
+            Default is False (only `frames` number of images will be streamed).
         """
         live_stream = "live"
         kwargs: dict[str, Any] = {
@@ -427,9 +432,10 @@ class AcquisitionController(PPresenter, Loggable):
                 detectors, self.event_map, stream_name=live_stream, wait_for="set"
             )
             # event triggered, start streaming to disk
+            self.logger.debug("Starting data streaming to disk...")
             for detector in detectors:
-                yield from bps.prepare(detector, **kwargs)
-                yield from bps.kickoff(detector)
+                yield from bps.prepare(detector, wait=True, **kwargs)
+                yield from bps.kickoff(detector, wait=True)
             if write_forever:
                 name, event = yield from rps.read_while_waiting(
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"
@@ -439,10 +445,11 @@ class AcquisitionController(PPresenter, Loggable):
                     stream_name=live_stream,
                 )
             else:
-                yield from bps.complete_all(*detectors)
+                yield from bps.complete_all(*detectors, wait=True)
             # we finished streaming;
             # clear the event and notify the action is done
             self.clear_and_notify(name, event)
+            self.logger.debug("Finished data streaming to disk.")
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
@@ -482,11 +489,9 @@ class AcquisitionController(PPresenter, Loggable):
         event.reset()
         self.sigActionDone.emit(name)
 
-    def toggle_action_event(
-        self, action_name: str, state: Literal["set", "reset"]
-    ) -> None:
+    def toggle_action_event(self, action_name: str, state: bool) -> None:
         event = self.event_map[action_name]
-        if state == "set":
+        if state:
             self.engine.loop.call_soon_threadsafe(event.set)
         else:
             self.engine.loop.call_soon_threadsafe(event.reset)

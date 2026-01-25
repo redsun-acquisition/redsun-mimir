@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import threading as th
 import time
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from acquire_zarr import (
     ArraySettings,
+    DataType,
     Dimension,
     DimensionType,
     StreamSettings,
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar
 
     from bluesky.protocols import Descriptor, Reading
+    from typing_extensions import Unpack
 
     from ._config import MMCoreCameraModelInfo
 
@@ -81,6 +84,11 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         "8bit": "uint8",
         "16bit": "uint16",
         "32bit": "uint32",
+    }
+    np_to_zarr_dtype: ClassVar[dict[str, DataType]] = {
+        "uint8": DataType.UINT8,
+        "uint16": DataType.UINT16,
+        "uint32": DataType.UINT32,
     }
 
     #: name of the pixel type property
@@ -237,7 +245,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             s.set_exception(e)
         return s
 
-    def prepare(self, kwargs: PrepareKwargs) -> Status:
+    def prepare(self, **kwargs: Unpack[PrepareKwargs]) -> Status:
         """Prepare the detector for acquisition.
 
         Parameters
@@ -253,58 +261,71 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
                 Overrides `capacity`.
         """
         s = Status()
-        width, height = self._core.getImageWidth(), self._core.getImageHeight()
-        dtype = self.pixeltype_to_numpy[
-            self._core.getProperty(self.name, self.pixeltype_name)
-        ]
-        capacity = kwargs.get("capacity", 0)
-        store_path = str(kwargs.get("store_path"))
-        write_forever = kwargs.get("write_forever")
-        if write_forever:
-            # override any previous setting
-            capacity = 0  # unlimited
-        time = Dimension(
-            name="t",
-            kind=DimensionType.TIME,
-            array_size_px=capacity,
-            chunk_size_px=5,
-            shard_chunk_size=2,
-        )
-        y = Dimension(
-            name="y",
-            kind=DimensionType.SPACE,
-            array_size_px=height,
-            chunk_size_px=height // 4,
-            shard_chunk_size=1,
-        )
-        x = Dimension(
-            name="x",
-            kind=DimensionType.SPACE,
-            array_size_px=width,
-            chunk_size_px=width // 4,
-            shard_chunk_size=2,
-        )
-        self._array_settings = [ArraySettings(dimensions=[time, y, x], dtype=dtype)]
+        try:
+            width, height = self._core.getImageWidth(), self._core.getImageHeight()
+            dtype = self.pixeltype_to_numpy[
+                self._core.getProperty(self.name, self.pixeltype_name)
+            ]
+            zarr_dtype = self.np_to_zarr_dtype[dtype]
+            capacity = kwargs.get("capacity", 0)
+            store_path = str(kwargs.get("store_path"))
+            write_forever = kwargs.get("write_forever")
+            if write_forever:
+                # override any previous setting
+                capacity = 0  # unlimited
+            t = Dimension(
+                name="t",
+                kind=DimensionType.TIME,
+                array_size_px=capacity,
+                chunk_size_px=1,
+                shard_size_chunks=2,
+            )
+            y = Dimension(
+                name="y",
+                kind=DimensionType.SPACE,
+                array_size_px=height,
+                chunk_size_px=height // 4,
+                shard_size_chunks=2,
+            )
+            x = Dimension(
+                name="x",
+                kind=DimensionType.SPACE,
+                array_size_px=width,
+                chunk_size_px=width // 4,
+                shard_size_chunks=2,
+            )
+            self._array_settings = [
+                ArraySettings(
+                    dimensions=[t, y, x], data_type=zarr_dtype, output_key=self.name
+                )
+            ]
 
-        # create 1 frame ring buffer to
-        # allow reading to continue while streaming
-        self._read_buffer = RingBuffer(max_capacity=1, dtype=(dtype, (height, width)))
+            # create 1 frame ring buffer to
+            # allow reading to continue while streaming
+            self._read_buffer = RingBuffer(
+                max_capacity=1, dtype=(dtype, (height, width))
+            )
 
-        self._stream_settings.store_path = store_path
-        self._stream_settings.arrays = self._array_settings
-        self._stream = ZarrStream(self._stream_settings)
-        self._thread = th.Thread(
-            target=stream_to_disk,
-            args=(
-                self._core,
-                self._current_exposure,
-                self._stream,
-                self._read_buffer,
-                self._fly_start,
-                self._fly_stop,
-            ),
-        )
-        self._thread.start()
+            self._stream_settings.store_path = store_path
+            self._stream_settings.arrays = self._array_settings
+            self._stream = ZarrStream(self._stream_settings)
+            self._thread = th.Thread(
+                target=stream_to_disk,
+                kwargs={
+                    "core": self._core,
+                    "exposure": self._current_exposure,
+                    "frames": capacity,
+                    "stream": self._stream,
+                    "buffer": self._read_buffer,
+                    "start": self._fly_start,
+                    "stop": self._fly_stop,
+                },
+            )
+            self._thread.start()
+        except Exception as e:
+            s.set_exception(e)
+        else:
+            s.set_finished()
         return s
 
     def kickoff(self) -> Status:
@@ -371,7 +392,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         self._fly_stop.set()
         self._thread.join()
         # thread is joined; clear both
-        # events
+        # events and close the stream
         self._fly_start.clear()
         self._fly_stop.clear()
         self._isflying = False
@@ -459,6 +480,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
 
 
 def stream_to_disk(
+    *,
     core: Core,
     exposure: float,
     frames: int,
@@ -486,21 +508,23 @@ def stream_to_disk(
         Event to signal the start of streaming.
     stop: threading.Event
         Event to signal the stop of streaming.
-    lock: threading.Lock
-        Lock to synchronize access to core image buffer.
     """
     # wait for kickoff to be set
+    logger = logging.getLogger("redsun")
     start.wait()
+    logger.debug("Starting streaming thread.")
 
+    # regardless of whether its
+    # a continous acquisition or not,
+    # there is an unfortunate extra copy
+    # to the internal ring buffer;
+    # it would be spared if we could
+    # access the camera image buffer directly
     if frames > 0:
         for _ in range(frames):
             if stop.is_set():
                 break
             wait_image_awailable(core, exposure)
-            # this copy is unfortunately necessary
-            # but incredibly wasteful; it would be
-            # nice if we could access the camera
-            # image buffer directly instead
             img = core.popNextImage()
             buffer.append(img)
             stream.append(img)
@@ -508,10 +532,8 @@ def stream_to_disk(
         # write until stopped
         while not stop.is_set():
             wait_image_awailable(core, exposure)
-            # this copy is unfortunately necessary
-            # but incredibly wasteful; it would be
-            # nice if we could access the camera
-            # image buffer directly instead
             img = core.popNextImage()
             buffer.append(img)
             stream.append(img)
+
+    logger.debug("Streaming concluded.")
