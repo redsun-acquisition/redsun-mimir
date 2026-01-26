@@ -37,18 +37,6 @@ class PrepareKwargs(TypedDict):
     write_forever: bool
 
 
-def wait_image_awailable(core: Core, timeout: float = 0.001) -> None:
-    """Wait until an image is available in the core buffer.
-
-    Wait for `timeout` seconds between polls to avoid busy waiting.
-    It should correspond to the exposure time of the camera.
-    """
-    while core.getRemainingImageCount() == 0:
-        # keep polling until an image is available;
-        # just wait a bit to avoid busy waiting;
-        time.sleep(timeout)
-
-
 class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
@@ -135,6 +123,22 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         self._fly_stop = th.Event()
         self._isflying = False
         self._current_exposure: float = 0.0
+
+    def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
+        """Wait until an image is available in the core buffer.
+
+        Wait for `timeout` seconds between polls to avoid busy waiting.
+        It should correspond to the exposure time of the camera.
+
+        Parameters
+        ----------
+        timeout: float
+            The timeout in seconds between polls.
+        """
+        while self._core.getRemainingImageCount() == 0:
+            # keep polling until an image is available;
+            # just wait a bit to avoid busy waiting;
+            time.sleep(timeout)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -426,7 +430,7 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         if not self._core.isSequenceRunning():
             raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
         if not self._isflying:
-            wait_image_awailable(self._core, self._current_exposure)
+            self._wait_image_awailable(timeout=self._current_exposure)
             img = self._core.popNextImage()
         else:
             # peek the ring buffer head
@@ -496,14 +500,14 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             for _ in range(frames):
                 if self._fly_stop.is_set():
                     break
-                wait_image_awailable(self._core, self._current_exposure)
+                self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._stream.append(img)
         else:
             # write until stopped
             while not self._fly_stop.is_set():
-                wait_image_awailable(self._core, self._current_exposure)
+                self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._stream.append(img)
