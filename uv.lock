@@ -3352,7 +3352,6 @@ dependencies = [
     { name = "in-n-out" },
     { name = "msgspec" },
     { name = "napari" },
-    { name = "platformdirs" },
     { name = "sunflare" },
     { name = "superqt" },
 ]
@@ -3408,7 +3407,6 @@ requires-dist = [
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
-    { name = "platformdirs", specifier = ">=4.5.1" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
