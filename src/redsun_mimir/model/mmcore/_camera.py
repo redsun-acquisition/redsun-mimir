@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading as th
 import time
+import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from acquire_zarr import (
@@ -12,7 +14,6 @@ from acquire_zarr import (
     StreamSettings,
     ZarrStream,
 )
-from bluesky.protocols import Descriptor, Pausable
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import DeviceType
 from sunflare.engine import Status
@@ -22,10 +23,10 @@ from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
-    from pathlib import Path
-    from typing import Any, ClassVar
+    from typing import Any, ClassVar, Iterator, Literal
 
     from bluesky.protocols import Descriptor, Reading
+    from event_model.documents import PartialResource
     from typing_extensions import Unpack
 
     from ._config import MMCoreCameraModelInfo
@@ -37,7 +38,7 @@ class PrepareKwargs(TypedDict):
     write_forever: bool
 
 
-class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
+class MMCoreCameraModel(DetectorProtocol, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
     This class is a hack because it will fail initialization if
@@ -117,28 +118,13 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
         self._device_schema = self._device.schema()
         self._buffer_key = f"{self.name}:buffer"
         self._roi_key = f"{self.name}:roi"
+        self._buffer_stream_key = f"{self.name}:buffer:stream"
         self._stream_settings = StreamSettings()
         self._array_settings: list[ArraySettings] = []
         self._fly_start = th.Event()
         self._fly_stop = th.Event()
         self._isflying = False
         self._current_exposure: float = 0.0
-
-    def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
-        """Wait until an image is available in the core buffer.
-
-        Wait for `timeout` seconds between polls to avoid busy waiting.
-        It should correspond to the exposure time of the camera.
-
-        Parameters
-        ----------
-        timeout: float
-            The timeout in seconds between polls.
-        """
-        while self._core.getRemainingImageCount() == 0:
-            # keep polling until an image is available;
-            # just wait a bit to avoid busy waiting;
-            time.sleep(timeout)
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -463,6 +449,44 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             },
         }
 
+    def describe_collect(self) -> dict[str, Descriptor]:
+        """Describe the data collected during acquisition.
+
+        Provides an overview of the final assets stored
+        on disk after flyer acquisition is complete.
+
+        Returns
+        -------
+        dict[str, Descriptor]
+            A dictionary describing the collected data.
+        """
+        desc: dict[str, Descriptor] = {
+            self._buffer_stream_key: {
+                "source": "stream",
+                "dtype": "array",
+                "shape": [None, *self.roi[3:4]],
+            }
+        }
+        return desc
+
+    def collect_asset_docs(
+        self,
+    ) -> Iterator[tuple[Literal["resource"], PartialResource]]:
+        """Collect the assets stored on disk."""
+        # split the store_path into the file name and the parent directory
+        store_path = Path(self._stream_settings.store_path)
+        group_name = store_path.name  # the final zarr folder name
+        parent_path = str(store_path.parent)  # the parent directory
+
+        ret: PartialResource = {
+            "resource_kwargs": {},
+            "resource_path": group_name,
+            "root": parent_path,
+            "spec": "zarr",
+            "uid": str(uuid.uuid4()),
+        }
+        yield ("resource", ret)
+
     @property
     def name(self) -> str:
         return self._name
@@ -513,3 +537,21 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
                 self._stream.append(img)
 
         self.logger.debug("Streaming concluded.")
+
+    def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
+        """Wait until an image is available in the core buffer.
+
+        Wait for `timeout` seconds between polls to avoid busy waiting.
+        It should correspond to the exposure time of the camera.
+
+        Parameters
+        ----------
+        timeout: float
+            The timeout in seconds between polls.
+            Default is 0.001 seconds.
+            The current exposure time is be a good value to use here.
+        """
+        while self._core.getRemainingImageCount() == 0:
+            # keep polling until an image is available;
+            # just wait a bit to avoid busy waiting;
+            time.sleep(timeout)

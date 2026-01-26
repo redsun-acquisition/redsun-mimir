@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Flyable, Movable, Preparable, Readable, Stageable
+from bluesky.protocols import (
+    Collectable,
+    Flyable,
+    Movable,
+    Preparable,
+    Readable,
+    Stageable,
+    WritesExternalAssets,
+)
 from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
@@ -193,12 +201,27 @@ class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Protocol):
 
 
 @runtime_checkable
-class ReadableFlyer(PModel, Readable[Any], Preparable, Flyable, Protocol):
+class ReadableFlyer(
+    PModel,
+    Readable[Any],
+    Preparable,
+    Flyable,
+    Protocol,
+    Collectable,
+    WritesExternalAssets,
+):
     """Protocol for objects that are both Readable and Flyable.
 
-    In order to be compatible with bluesky's flyer plans,
-    a device must implement the protocols:
+    A model compliant with this protocol is capable of being used
+    concurrently to read data continously while flying,
+    and provides the necessary methods to be able to retrieve
+    the filepath locations of where the data is stored.
 
+    The required protocols are:
+
+    - ``Readable`` (read() and describe() methods)
     - ``Flyable`` (kickoff() and complete() methods)
     - ``Preparable`` (prepare() method)
+    - ``Collectable`` (describe_collect() method)
+    - ``WritesExternalAssets`` (collect_asset_docs() method)
     """
