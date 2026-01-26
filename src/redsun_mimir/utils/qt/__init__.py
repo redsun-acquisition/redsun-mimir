@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args
 
 from magicgui import widgets as mgw
-from platformdirs import user_documents_dir
 from qtpy import QtWidgets
 
 from redsun_mimir.common._plan_spec import ParamKind
@@ -131,7 +130,7 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
         )
         if isinstance(w, mgw.FileEdit):
             # set a more user-friendly starting directory
-            filepath = Path(user_documents_dir()) / app_name
+            filepath = Path.home() / app_name / "storage"
             filepath.mkdir(parents=True, exist_ok=True)
             w.filter = "*.zarr"
             w.value = filepath
