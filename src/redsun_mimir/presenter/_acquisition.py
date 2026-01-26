@@ -3,6 +3,7 @@ from __future__ import annotations
 import pathlib  # noqa: TC003
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
@@ -180,10 +181,11 @@ class AcquisitionController(PPresenter, Loggable):
         Signal emitted when a plan is done.
     sigActionDone : ``Signal[str]``
         Signal emitted when an action is done.
+        - ``str``: The name of the action that is done.
     """
 
     sigPlanDone = Signal()
-    sigActionDone = Signal(str, str)
+    sigActionDone = Signal(str)
 
     def __init__(
         self,
@@ -405,8 +407,10 @@ class AcquisitionController(PPresenter, Loggable):
         - detectors: ``Sequence[ReadableFlyer]``
             - The detectors to use for data collection.
             - Must implement the additional `Preparable` and `Flyable` protocols.
-        - path: ``pathlib.Path``
-            - The path on disk where to store the Zarr data.
+        - store_path: ``pathlib.Path``
+            - The folder path on disk where to store the Zarr data.
+            - A Zarr subdirectory with a date-formatted name will be created
+            inside this folder for each streaming session.
         - frames: ``int``, optional
             - The number of images to stream to disk.
             - Default is 10.
@@ -417,8 +421,14 @@ class AcquisitionController(PPresenter, Loggable):
             Default is False (only `frames` number of images will be streamed).
         """
         live_stream = "live"
+
+        # Create subdirectory with date-formatted name: day-month-year_hour-minute
+        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M")
+        acquisition_path = store_path / f"{timestamp}.zarr"
+        acquisition_path.mkdir(parents=True, exist_ok=True)
+
         kwargs: dict[str, Any] = {
-            "store_path": store_path,
+            "store_path": acquisition_path,
             "capacity": frames,
             "write_forever": write_forever,
         }
