@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import threading as th
 import time
 from typing import TYPE_CHECKING, TypedDict, cast
@@ -310,15 +309,9 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
             self._stream_settings.arrays = self._array_settings
             self._stream = ZarrStream(self._stream_settings)
             self._thread = th.Thread(
-                target=stream_to_disk,
+                target=self._stream_to_disk,
                 kwargs={
-                    "core": self._core,
-                    "exposure": self._current_exposure,
                     "frames": capacity,
-                    "stream": self._stream,
-                    "buffer": self._read_buffer,
-                    "start": self._fly_start,
-                    "stop": self._fly_stop,
                 },
             )
             self._thread.start()
@@ -478,62 +471,41 @@ class MMCoreCameraModel(DetectorProtocol, Pausable, Loggable):
     def parent(self) -> None:
         return None
 
+    def _stream_to_disk(self, *, frames: int) -> None:
+        """Stream data from the camera to disk.
 
-def stream_to_disk(
-    *,
-    core: Core,
-    exposure: float,
-    frames: int,
-    stream: ZarrStream,
-    buffer: RingBuffer,
-    start: th.Event,
-    stop: th.Event,
-) -> None:
-    """Stream data from a ZarrStream to disk.
+        The thread is started in the camera's prepare() method,
+        kicked off in the kickoff() method, and stopped in the complete() method.
 
-    The thread is started in the camera's prepare() method,
-    kicked off in the kickoff() method, and stopped in the complete() method.
+        Parameters
+        ----------
+        frames: int
+            The number of frames to stream; if 0, stream indefinitely.
+        """
+        # wait for kickoff to be set
+        self._fly_start.wait()
+        self.logger.debug("Starting streaming thread.")
 
-    Parameters
-    ----------
-    core: pymmcore_plus.CMMCorePlus
-        The core instance to interact with the camera.
-    exposure: float
-        The exposure time in seconds; used to poll for new images.
-    frames: int
-        The number of frames to stream; if 0, stream indefinitely.
-    stream: acquire_zarr.ZarrStream
-        The ZarrStream to stream data from.
-    start: threading.Event
-        Event to signal the start of streaming.
-    stop: threading.Event
-        Event to signal the stop of streaming.
-    """
-    # wait for kickoff to be set
-    logger = logging.getLogger("redsun")
-    start.wait()
-    logger.debug("Starting streaming thread.")
+        # regardless of whether its
+        # a continous acquisition or not,
+        # there is an unfortunate extra copy
+        # to the internal ring buffer;
+        # it would be spared if we could
+        # access the camera image buffer directly
+        if frames > 0:
+            for _ in range(frames):
+                if self._fly_stop.is_set():
+                    break
+                wait_image_awailable(self._core, self._current_exposure)
+                img = self._core.popNextImage()
+                self._read_buffer.append(img)
+                self._stream.append(img)
+        else:
+            # write until stopped
+            while not self._fly_stop.is_set():
+                wait_image_awailable(self._core, self._current_exposure)
+                img = self._core.popNextImage()
+                self._read_buffer.append(img)
+                self._stream.append(img)
 
-    # regardless of whether its
-    # a continous acquisition or not,
-    # there is an unfortunate extra copy
-    # to the internal ring buffer;
-    # it would be spared if we could
-    # access the camera image buffer directly
-    if frames > 0:
-        for _ in range(frames):
-            if stop.is_set():
-                break
-            wait_image_awailable(core, exposure)
-            img = core.popNextImage()
-            buffer.append(img)
-            stream.append(img)
-    else:
-        # write until stopped
-        while not stop.is_set():
-            wait_image_awailable(core, exposure)
-            img = core.popNextImage()
-            buffer.append(img)
-            stream.append(img)
-
-    logger.debug("Streaming concluded.")
+        self.logger.debug("Streaming concluded.")
