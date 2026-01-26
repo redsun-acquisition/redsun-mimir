@@ -78,6 +78,10 @@ class PlanWidget:
         The button to run the plan.
     container : ``magicgui.widgets.Container[Any]``
         The container holding the parameter widgets.
+    action_buttons : ``dict[str, ActionButton]``
+        Mapping of action names to their buttons for direct access.
+    actions_group : ``QtWidgets.QGroupBox | None``
+        The group box containing action buttons (for group-level enable/disable).
     pause_button : ``QtWidgets.QPushButton | None``
         The button to pause the plan (if applicable).
     """
@@ -86,22 +90,53 @@ class PlanWidget:
     group_box: QtW.QGroupBox
     run_button: QtW.QPushButton
     container: mgw.Container[mgw.bases.ValueWidget[Any]]
+    action_buttons: dict[str, ActionButton]
     actions_group: QtW.QGroupBox | None = None
     pause_button: QtW.QPushButton | None = None
 
     def toggle(self, status: bool) -> None:
+        """Toggle the run button state and enable/disable pause button."""
         self.run_button.setText("Stop" if status else "Run")
         if self.pause_button:
             self.pause_button.setEnabled(status)
+        # Enable/disable actions group when plan is toggled
+        if self.actions_group:
+            self.actions_group.setEnabled(status)
 
     def pause(self, status: bool) -> None:
+        """Toggle the pause button state and enable/disable run button."""
         if self.pause_button:
             self.pause_button.setText("Resume" if status else "Pause")
             self.run_button.setEnabled(not status)
 
     def setEnabled(self, enabled: bool) -> None:
+        """Enable or disable the entire plan widget."""
         self.group_box.setEnabled(enabled)
         self.run_button.setEnabled(enabled)
+
+    def enable_actions(self, enabled: bool = True) -> None:
+        """Enable or disable all action buttons as a group."""
+        if self.actions_group:
+            self.actions_group.setEnabled(enabled)
+
+    def get_action_button(self, action_name: str) -> ActionButton | None:
+        """Get a specific action button by name.
+
+        Parameters
+        ----------
+        action_name : ``str``
+            The name of the action.
+
+        Returns
+        -------
+        ``ActionButton | None``
+            The action button if found, None otherwise.
+        """
+        return self.action_buttons.get(action_name)
+
+    def has_actions(self) -> bool:
+        """Check if this plan has any action buttons."""
+        return bool(self.action_buttons)
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -276,6 +311,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
             actions_group_box: QtW.QGroupBox | None = None
             actions_params = [p for p in spec.parameters if p.actions is not None]
 
+            action_buttons: dict[str, ActionButton] = {}
             if actions_params:
                 self.plans_actions_buttons[func_name] = {}
                 actions_group_box = QtW.QGroupBox("Actions")
@@ -308,6 +344,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                                 )
                             )
                         self.plans_actions_buttons[func_name][action.name] = btn
+                        action_buttons[action.name] = btn
                         actions_layout.addWidget(btn)
                 page_layout.addWidget(actions_group_box)
             self.stack_widget.addWidget(page)
@@ -318,6 +355,7 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                 pause_button=pause_button,
                 container=container,
                 actions_group=actions_group_box,
+                action_buttons=action_buttons,
             )
 
         self.stack_widget.setCurrentIndex(0)
@@ -336,16 +374,12 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
-        self.plan_widgets[plan].toggle(toggled)
-        actions = self.plan_widgets[plan].actions_group
+        plan_widget = self.plan_widgets[plan]
+        plan_widget.toggle(toggled)
         if toggled:
-            parameters = self.plan_widgets[plan].parameters
-            if actions:
-                actions.setEnabled(True)
+            parameters = plan_widget.parameters
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
-            if actions:
-                actions.setEnabled(False)
             self.sigStopPlanRequest.emit()
 
     def _on_plan_maybe_paused(self, paused: bool) -> None:
@@ -358,20 +392,29 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         plan = self.plans_combobox.currentText()
         parameters = self.plan_widgets[plan].parameters
         self.plan_widgets[plan].setEnabled(False)
+        self.plan_widgets[plan].enable_actions(False)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
     def _on_plan_done(self) -> None:
         plan = self.plans_combobox.currentText()
-        actions = self.plan_widgets[plan].actions_group
         self.plan_widgets[plan].setEnabled(True)
-        if actions:
-            actions.setEnabled(False)
+        self.plan_widgets[plan].enable_actions(False)
 
-    def _on_action_done(self, _: str) -> None:
+    def _on_action_done(self, action_name: str) -> None:
         plan = self.plans_combobox.currentText()
-        group = self.plan_widgets[plan].actions_group
-        if group:
-            group.setEnabled(True)
+        plan_widget = self.plan_widgets[plan]
+
+        # If the action is togglable and currently checked, uncheck it
+        action_button = plan_widget.get_action_button(action_name)
+        if (
+            action_button
+            and action_button.action.togglable
+            and action_button.isChecked()
+        ):
+            # Block signals temporarily to avoid triggering the toggled callback
+            action_button.blockSignals(True)
+            action_button.setChecked(False)
+            action_button.blockSignals(False)
 
     def _on_action_clicked(self, action_name: str) -> None:
         plan = self.plans_combobox.currentText()
