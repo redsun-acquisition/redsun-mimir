@@ -421,17 +421,8 @@ class AcquisitionController(PPresenter, Loggable):
             Default is False (only `frames` number of images will be streamed).
         """
         live_stream = "live"
+        stream_name = "stream"
 
-        # Create subdirectory with date-formatted name: day-month-year_hour-minute
-        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M")
-        acquisition_path = store_path / f"{timestamp}.zarr"
-        acquisition_path.mkdir(parents=True, exist_ok=True)
-
-        kwargs: dict[str, Any] = {
-            "store_path": acquisition_path,
-            "capacity": frames,
-            "write_forever": write_forever,
-        }
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
@@ -443,6 +434,21 @@ class AcquisitionController(PPresenter, Loggable):
             )
             # event triggered, start streaming to disk
             self.logger.debug("Starting data streaming to disk...")
+
+            # Create unique subdirectory for this streaming session
+            timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+            acquisition_path = store_path / f"{timestamp}.zarr"
+            acquisition_path.mkdir(parents=True, exist_ok=True)
+
+            kwargs: dict[str, Any] = {
+                "store_path": acquisition_path,
+                "capacity": frames,
+                "write_forever": write_forever,
+            }
+
+            # Declare a stream for the collected data (to avoid "should be pre-declared" error)
+            yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+
             for detector in detectors:
                 yield from bps.prepare(detector, wait=True, **kwargs)
                 yield from bps.kickoff(detector, wait=True)
@@ -450,12 +456,12 @@ class AcquisitionController(PPresenter, Loggable):
                 name, event = yield from rps.read_while_waiting(
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"
                 )
-                yield from rps.read_while_completing(
-                    detectors,
-                    stream_name=live_stream,
-                )
-            else:
-                yield from bps.complete_all(*detectors, wait=True)
+            # Complete the streaming (wait for background thread to finish)
+            yield from bps.complete_all(*detectors, wait=True)
+
+            # Explicitly collect the stream assets
+            yield from bps.collect(*detectors, name=stream_name)
+
             # we finished streaming;
             # clear the event and notify the action is done
             self.clear_and_notify(name, event)

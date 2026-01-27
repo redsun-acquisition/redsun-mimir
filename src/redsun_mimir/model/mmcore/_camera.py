@@ -126,6 +126,13 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._isflying = False
         self._current_exposure: float = 0.0
         self._frames_written = 0
+        self._collection_counter = (
+            0  # tracks frames already reported via collect_asset_docs
+        )
+        self._stream_resource_uid = (
+            ""  # persistent UID for StreamResource across collection calls
+        )
+        self._describe_cache: dict[str, Descriptor] = {}  # cache describe results
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -306,6 +313,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 },
             )
             self._thread.start()
+            # Reset collection state for new acquisition
+            self._collection_counter = 0
+            self._stream_resource_uid = str(uuid.uuid4())
         except Exception as e:
             s.set_exception(e)
         else:
@@ -438,7 +448,12 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         dict[str, dict[str, Descriptor]]
             A dictionary describing the data produced by the detector.
         """
-        return {
+        # Return cached result if available
+        if self._describe_cache:
+            return self._describe_cache
+
+        # Base description without stream assets (for live reads)
+        result: dict[str, Descriptor] = {
             self._buffer_key: {
                 "source": "data",
                 "dtype": "array",
@@ -449,13 +464,10 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 "dtype": "array",
                 "shape": [4],
             },
-            self._buffer_stream_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [None, *self.roi[3:4]],
-                "external": "STREAM:",
-            },
         }
+
+        self._describe_cache = result
+        return result
 
     def describe_collect(self) -> dict[str, Descriptor]:
         """Describe the data collected during acquisition.
@@ -480,31 +492,65 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
         """Collect the assets stored on disk.
 
+        This method is called by the RunEngine during backstop_collect when the run ends,
+        or can be called explicitly via bps.collect().
+
+        Only emits StreamResource and StreamDatum if there are frames written to disk
+        from a flying/streaming operation AND the flight has completed (not currently flying).
+
+        Parameters
+        ----------
+        index : int | None
+            If provided, only report frames up to this index.
+            If None, report all frames written so far.
+
         Yields
         ------
         StreamAsset
         - A tuple containing the stream resource information.
         - These are encapsulated into two separate elements:
-          - ("stream_resource", StreamResource)
-          - ("stream_datum", StreamDatum)
+          - ("stream_resource", StreamResource) - emitted only on first call
+          - ("stream_datum", StreamDatum) - emitted on each call with incremental indices
         """
-        resource_uid = str(uuid.uuid4())
-        stream_resource: StreamResource = {
-            "data_key": self._buffer_stream_key,
-            "mimetype": "application/acquire-zarr",
-            "parameters": {},  # TODO: add parameters if needed
-            "uid": resource_uid,
-            "uri": self._stream_settings.store_path,
-        }
+        # Only emit asset docs if we actually wrote frames to disk AND we're not currently flying
+        # This prevents emitting assets during read_while_waiting (while streaming is active)
+        # Assets should only be emitted after complete() is called
+        if self._frames_written == 0 or self._isflying:
+            return
+
+        # Determine how many frames to report
+        if index is not None:
+            frames_to_report = min(index, self._frames_written)
+        else:
+            frames_to_report = self._frames_written
+
+        # If we've already reported all frames, don't emit anything
+        if self._collection_counter >= frames_to_report:
+            return
+
+        # Only emit StreamResource on first call (when counter is 0)
+        if self._collection_counter == 0:
+            stream_resource: StreamResource = {
+                "data_key": self._buffer_stream_key,
+                "mimetype": "application/acquire-zarr",
+                "parameters": {},  # TODO: add parameters if needed
+                "uid": self._stream_resource_uid,
+                "uri": self._stream_settings.store_path,
+            }
+            yield ("stream_resource", stream_resource)
+
+        # Always emit StreamDatum with incremental indices
         stream_datum: StreamDatum = {
-            "descriptor": "",
-            "indices": {"start": 0, "stop": self._frames_written},
-            "seq_nums": {"start": 0, "stop": 0},
-            "stream_resource": resource_uid,
-            "uid": f"{resource_uid}/{self._buffer_stream_key}",
+            "descriptor": "",  # RunEngine fills this in
+            "indices": {"start": self._collection_counter, "stop": frames_to_report},
+            "seq_nums": {"start": 0, "stop": 0},  # RunEngine fills this in
+            "stream_resource": self._stream_resource_uid,
+            "uid": f"{self._stream_resource_uid}/{self._collection_counter}",
         }
-        yield ("stream_resource", stream_resource)
         yield ("stream_datum", stream_datum)
+
+        # Update counter to track how many frames we've reported
+        self._collection_counter = frames_to_report
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
