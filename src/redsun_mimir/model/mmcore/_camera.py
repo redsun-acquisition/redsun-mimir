@@ -2,22 +2,15 @@ from __future__ import annotations
 
 import threading as th
 import time
-import uuid
 from typing import TYPE_CHECKING, TypedDict, cast
 
-from acquire_zarr import (
-    ArraySettings,
-    DataType,
-    Dimension,
-    DimensionType,
-    StreamSettings,
-    ZarrStream,
-)
+from acquire_zarr import DataType
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import DeviceType
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
+from redsun_mimir.model.storage import ZarrWriter
 from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
 
@@ -26,7 +19,6 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, Iterator
 
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from event_model.documents import StreamDatum, StreamResource
     from typing_extensions import Unpack
 
     from ._config import MMCoreCameraModelInfo
@@ -119,20 +111,15 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._buffer_key = f"{self.name}:buffer"
         self._roi_key = f"{self.name}:roi"
         self._buffer_stream_key = f"{self.name}:buffer:stream"
-        self._stream_settings = StreamSettings()
-        self._array_settings: list[ArraySettings] = []
         self._fly_start = th.Event()
         self._fly_stop = th.Event()
         self._isflying = False
         self._current_exposure: float = 0.0
-        self._frames_written = 0
-        self._collection_counter = (
-            0  # tracks frames already reported via collect_asset_docs
-        )
-        self._stream_resource_uid = (
-            ""  # persistent UID for StreamResource across collection calls
-        )
         self._describe_cache: dict[str, Descriptor] = {}  # cache describe results
+
+        # Writer for storage
+        self._writer = ZarrWriter.get(f"{self.name}_writer")
+        self._stream_descriptors: dict[str, Descriptor] = {}
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -265,37 +252,22 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             ]
             zarr_dtype = self.np_to_zarr_dtype[dtype]
             capacity = kwargs.get("capacity", 0)
-            store_path = str(kwargs.get("store_path"))
+            store_path = kwargs.get("store_path")
             write_forever = kwargs.get("write_forever")
             if write_forever:
                 # override any previous setting
                 capacity = 0  # unlimited
-            t = Dimension(
-                name="t",
-                kind=DimensionType.TIME,
-                array_size_px=capacity,
-                chunk_size_px=1,
-                shard_size_chunks=2,
+
+            # Update source info for this camera
+            self._writer.update_source(
+                name=self.name,
+                dtype=zarr_dtype,
+                shape=(height, width),
             )
-            y = Dimension(
-                name="y",
-                kind=DimensionType.SPACE,
-                array_size_px=height,
-                chunk_size_px=height // 4,
-                shard_size_chunks=2,
+            self._stream_descriptors = self._writer.open(
+                store_path=store_path,
+                capacity=capacity,
             )
-            x = Dimension(
-                name="x",
-                kind=DimensionType.SPACE,
-                array_size_px=width,
-                chunk_size_px=width // 4,
-                shard_size_chunks=2,
-            )
-            self._array_settings = [
-                ArraySettings(
-                    dimensions=[t, y, x], data_type=zarr_dtype, output_key=self.name
-                )
-            ]
 
             # create 1 frame ring buffer to
             # allow reading to continue while streaming
@@ -303,9 +275,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 max_capacity=1, dtype=(dtype, (height, width))
             )
 
-            self._stream_settings.store_path = store_path
-            self._stream_settings.arrays = self._array_settings
-            self._stream = ZarrStream(self._stream_settings)
             self._thread = th.Thread(
                 target=self._stream_to_disk,
                 kwargs={
@@ -313,9 +282,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 },
             )
             self._thread.start()
-            # Reset collection state for new acquisition
-            self._collection_counter = 0
-            self._stream_resource_uid = str(uuid.uuid4())
         except Exception as e:
             s.set_exception(e)
         else:
@@ -356,9 +322,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         else:
             # acquisition is already running
             # and ring buffer is ready:
-            # reset the frame counter and
             # start the background thread
-            self._frames_written = 0
             self._fly_start.set()
             self._isflying = True
             s.set_finished()
@@ -388,11 +352,11 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._fly_stop.set()
         self._thread.join()
         # thread is joined; clear both
-        # events and close the stream
+        # events and close the writer
         self._fly_start.clear()
         self._fly_stop.clear()
         self._isflying = False
-        self._stream.close()
+        self._writer.close()
         s.set_finished()
         return s
 
@@ -480,14 +444,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         dict[str, Descriptor]
             A dictionary describing the collected data.
         """
-        return {
-            self._buffer_stream_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [None, *self.roi[3:4]],
-                "external": "STREAM:",
-            }
-        }
+        return self._stream_descriptors
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
         """Collect the assets stored on disk.
@@ -512,49 +469,28 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
           - ("stream_resource", StreamResource) - emitted only on first call
           - ("stream_datum", StreamDatum) - emitted on each call with incremental indices
         """
-        # Only emit asset docs if we actually wrote frames to disk AND we're not currently flying
+        # Only emit asset docs if we're not currently flying
         # This prevents emitting assets during read_while_waiting (while streaming is active)
         # Assets should only be emitted after complete() is called
-        if self._frames_written == 0 or self._isflying:
+        if self._isflying:
+            return
+
+        frames_written = self._writer.get_indices_written(self.name)
+        if frames_written == 0:
             return
 
         # Determine how many frames to report
         if index is not None:
-            frames_to_report = min(index, self._frames_written)
+            frames_to_report = min(index, frames_written)
         else:
-            frames_to_report = self._frames_written
+            frames_to_report = frames_written
 
-        # If we've already reported all frames, don't emit anything
-        if self._collection_counter >= frames_to_report:
-            return
-
-        # Only emit StreamResource on first call (when counter is 0)
-        if self._collection_counter == 0:
-            stream_resource: StreamResource = {
-                "data_key": self._buffer_stream_key,
-                "mimetype": "application/acquire-zarr",
-                "parameters": {},  # TODO: add parameters if needed
-                "uid": self._stream_resource_uid,
-                "uri": self._stream_settings.store_path,
-            }
-            yield ("stream_resource", stream_resource)
-
-        # Always emit StreamDatum with incremental indices
-        stream_datum: StreamDatum = {
-            "descriptor": "",  # RunEngine fills this in
-            "indices": {"start": self._collection_counter, "stop": frames_to_report},
-            "seq_nums": {"start": 0, "stop": 0},  # RunEngine fills this in
-            "stream_resource": self._stream_resource_uid,
-            "uid": f"{self._stream_resource_uid}/{self._collection_counter}",
-        }
-        yield ("stream_datum", stream_datum)
-
-        # Update counter to track how many frames we've reported
-        self._collection_counter = frames_to_report
+        # Delegate to writer
+        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        return self._frames_written
+        return self._writer.get_indices_written(self.name)
 
     @property
     def name(self) -> str:
@@ -589,25 +525,26 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # to the internal ring buffer;
         # it would be spared if we could
         # access the camera image buffer directly
+        frames_written = 0
         if frames > 0:
-            while self._frames_written < frames:
+            while frames_written < frames:
                 if self._fly_stop.is_set():
                     break
                 self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
-                self._stream.append(img)
-                self._frames_written += 1
+                self._writer.submit_frame(self.name, img)
+                frames_written += 1
         else:
             # write until stopped
             while not self._fly_stop.is_set():
                 self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
-                self._stream.append(img)
-                self._frames_written += 1
+                self._writer.submit_frame(self.name, img)
+                frames_written += 1
 
-        self.logger.debug("Streaming concluded.")
+        self.logger.debug(f"Streaming concluded ({frames_written} frames).")
 
     def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
         """Wait until an image is available in the core buffer.

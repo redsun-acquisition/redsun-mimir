@@ -423,10 +423,10 @@ class AcquisitionController(PPresenter, Loggable):
         live_stream = "live"
         stream_name = "stream"
 
+        self.event_map.update(action.event_map)
+
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
-
-        self.event_map.update(action.event_map)
         while True:
             # live acquisition; wait for stream action
             name, event = yield from rps.read_while_waiting(
