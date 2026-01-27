@@ -15,7 +15,7 @@ def test_mock_motor_model_info(config_path: Path) -> None:
 
     with open(motor_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
-        for _, values in config_dict["models"].items():
+        for values in config_dict["models"].values():
             config = MotorModelInfo(**values)
 
     assert config.axis == ["X", "Y", "Z"]
@@ -29,8 +29,8 @@ def test_mock_light_model_info(config_path: Path) -> None:
     light_config_path = str(config_path / "test_light_config.yaml")
     with open(light_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
-        for _, values in config_dict["models"].items():
-            container.append(LightModelInfo(**values))
+        for values in config_dict["models"].values():
+            container.extend([LightModelInfo(**values)])
 
     config = tuple(container)
 
@@ -55,6 +55,6 @@ def test_broken_light_model_info(config_path: Path) -> None:
 
     with open(light_config_path) as file:
         config_dict: dict[str, Any] = yaml.safe_load(file)
-        for _, values in config_dict["models"].items():
+        for values in config_dict["models"].values():
             with pytest.raises(AttributeError):
                 LightModelInfo(**values)

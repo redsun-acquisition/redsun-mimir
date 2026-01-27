@@ -136,10 +136,11 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 extend-select = [
-    "D",    # https://docs.astral.sh/ruff/rules/#pydocstyle-d
-    "I",    # https://docs.astral.sh/ruff/rules/#isort-i
-    "TC",   # https://docs.astral.sh/ruff/rules/#flake8-type-checking-tc
-    "FA102" # https://docs.astral.sh/ruff/rules/future-required-type-annotation/
+    "D",     # https://docs.astral.sh/ruff/rules/#pydocstyle-d
+    "I",     # https://docs.astral.sh/ruff/rules/#isort-i
+    "TC",    # https://docs.astral.sh/ruff/rules/#flake8-type-checking-tc
+    "FA102", # https://docs.astral.sh/ruff/rules/future-required-type-annotation/
+    "PERF",  # https://docs.astral.sh/ruff/rules/#perflint-perf
 ]
 ignore = [
     "D100", # https://docs.astral.sh/ruff/rules/undocumented-public-module/
