@@ -206,9 +206,9 @@ class ReadableFlyer(
     Readable[Any],
     Preparable,
     Flyable,
-    Protocol,
     Collectable,
     WritesStreamAssets,
+    Protocol,
 ):
     """Protocol for objects that are both Readable and Flyable.
 

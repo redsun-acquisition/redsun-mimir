@@ -3,7 +3,6 @@ from __future__ import annotations
 import threading as th
 import time
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from acquire_zarr import (
@@ -23,10 +22,11 @@ from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
-    from typing import Any, ClassVar, Iterator, Literal
+    from pathlib import Path
+    from typing import Any, ClassVar, Iterator
 
-    from bluesky.protocols import Descriptor, Reading
-    from event_model.documents import PartialResource
+    from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from event_model.documents import StreamDatum, StreamResource
     from typing_extensions import Unpack
 
     from ._config import MMCoreCameraModelInfo
@@ -125,6 +125,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._fly_stop = th.Event()
         self._isflying = False
         self._current_exposure: float = 0.0
+        self._frames_written = 0
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -344,8 +345,10 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             )
         else:
             # acquisition is already running
-            # and ring buffer is ready, spin the
-            # thread to stream data to disk
+            # and ring buffer is ready:
+            # reset the frame counter and
+            # start the background thread
+            self._frames_written = 0
             self._fly_start.set()
             self._isflying = True
             s.set_finished()
@@ -435,17 +438,22 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         dict[str, dict[str, Descriptor]]
             A dictionary describing the data produced by the detector.
         """
-        width, height = self._core.getImageWidth(), self._core.getImageHeight()
         return {
             self._buffer_key: {
                 "source": "data",
                 "dtype": "array",
-                "shape": [height, width],
+                "shape": [1, *self.roi[3:4]],
             },
             self._roi_key: {
                 "source": "data",
                 "dtype": "array",
                 "shape": [4],
+            },
+            self._buffer_stream_key: {
+                "source": "data",
+                "dtype": "array",
+                "shape": [None, *self.roi[3:4]],
+                "external": "STREAM:",
             },
         }
 
@@ -460,32 +468,47 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         dict[str, Descriptor]
             A dictionary describing the collected data.
         """
-        desc: dict[str, Descriptor] = {
+        return {
             self._buffer_stream_key: {
-                "source": "stream",
+                "source": "data",
                 "dtype": "array",
                 "shape": [None, *self.roi[3:4]],
+                "external": "STREAM:",
             }
         }
-        return desc
 
-    def collect_asset_docs(
-        self,
-    ) -> Iterator[tuple[Literal["resource"], PartialResource]]:
-        """Collect the assets stored on disk."""
-        # split the store_path into the file name and the parent directory
-        store_path = Path(self._stream_settings.store_path)
-        group_name = store_path.name  # the final zarr folder name
-        parent_path = str(store_path.parent)  # the parent directory
+    def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
+        """Collect the assets stored on disk.
 
-        ret: PartialResource = {
-            "resource_kwargs": {},
-            "resource_path": group_name,
-            "root": parent_path,
-            "spec": "zarr",
-            "uid": str(uuid.uuid4()),
+        Yields
+        ------
+        StreamAsset
+        - A tuple containing the stream resource information.
+        - These are encapsulated into two separate elements:
+          - ("stream_resource", StreamResource)
+          - ("stream_datum", StreamDatum)
+        """
+        resource_uid = str(uuid.uuid4())
+        stream_resource: StreamResource = {
+            "data_key": self._buffer_stream_key,
+            "mimetype": "application/acquire-zarr",
+            "parameters": {},  # TODO: add parameters if needed
+            "uid": resource_uid,
+            "uri": self._stream_settings.store_path,
         }
-        yield ("resource", ret)
+        stream_datum: StreamDatum = {
+            "descriptor": "",
+            "indices": {"start": 0, "stop": self._frames_written},
+            "seq_nums": {"start": 0, "stop": 0},
+            "stream_resource": resource_uid,
+            "uid": f"{resource_uid}/{self._buffer_stream_key}",
+        }
+        yield ("stream_resource", stream_resource)
+        yield ("stream_datum", stream_datum)
+
+    def get_index(self) -> int:
+        """Return the number of frames written since last flight."""
+        return self._frames_written
 
     @property
     def name(self) -> str:
@@ -521,13 +544,14 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # it would be spared if we could
         # access the camera image buffer directly
         if frames > 0:
-            for _ in range(frames):
+            while self._frames_written < frames:
                 if self._fly_stop.is_set():
                     break
                 self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._stream.append(img)
+                self._frames_written += 1
         else:
             # write until stopped
             while not self._fly_stop.is_set():
@@ -535,6 +559,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._stream.append(img)
+                self._frames_written += 1
 
         self.logger.debug("Streaming concluded.")
 
