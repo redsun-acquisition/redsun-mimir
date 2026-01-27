@@ -9,7 +9,7 @@ from bluesky.protocols import (
     Preparable,
     Readable,
     Stageable,
-    WritesExternalAssets,
+    WritesStreamAssets,
 )
 from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
@@ -208,7 +208,7 @@ class ReadableFlyer(
     Flyable,
     Protocol,
     Collectable,
-    WritesExternalAssets,
+    WritesStreamAssets,
 ):
     """Protocol for objects that are both Readable and Flyable.
 
@@ -223,5 +223,5 @@ class ReadableFlyer(
     - ``Flyable`` (kickoff() and complete() methods)
     - ``Preparable`` (prepare() method)
     - ``Collectable`` (describe_collect() method)
-    - ``WritesExternalAssets`` (collect_asset_docs() method)
+    - ``WritesStreamAssets`` (collect_asset_docs() method)
     """
