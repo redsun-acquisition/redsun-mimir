@@ -10,9 +10,9 @@ from pymmcore_plus import DeviceType
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
-from redsun_mimir.model.storage import ZarrWriter
 from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.storage import ZarrWriter
 
 if TYPE_CHECKING:
     from pathlib import Path

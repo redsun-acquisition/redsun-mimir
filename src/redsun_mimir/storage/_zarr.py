@@ -170,4 +170,4 @@ class ZarrWriter(WriterBase):
         if self._stream is None:
             raise RuntimeError("Stream is not initialized")
         # acquire-zarr uses output_key to route to the correct array
-        self._stream.append(frame, output_key=name)
+        self._stream.append(frame, key=name)
