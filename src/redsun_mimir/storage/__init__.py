@@ -1,4 +1,4 @@
 from ._zarr import ZarrWriter
-from .base import WriterBase
+from .base import Writer
 
-__all__ = ["WriterBase", "ZarrWriter"]
+__all__ = ["Writer", "ZarrWriter"]

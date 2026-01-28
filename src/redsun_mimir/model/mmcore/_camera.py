@@ -4,7 +4,7 @@ import threading as th
 import time
 from typing import TYPE_CHECKING, TypedDict, cast
 
-from acquire_zarr import DataType
+import numpy as np
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import DeviceType
 from sunflare.engine import Status
@@ -65,11 +65,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         "16bit": "uint16",
         "32bit": "uint32",
     }
-    np_to_zarr_dtype: ClassVar[dict[str, DataType]] = {
-        "uint8": DataType.UINT8,
-        "uint16": DataType.UINT16,
-        "uint32": DataType.UINT32,
-    }
 
     #: name of the pixel type property
     pixeltype_name: ClassVar[str] = "PixelType"
@@ -118,7 +113,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._describe_cache: dict[str, Descriptor] = {}  # cache describe results
 
         # Writer for storage
-        self._writer = ZarrWriter.get(f"{self.name}_writer")
+        self._writer = ZarrWriter.get("zarr-writer")
         self._stream_descriptors: dict[str, Descriptor] = {}
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -152,6 +147,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             s.set_finished()
         else:
             s.set_exception(ValueError(f"Property '{propr}' not found."))
+
         return s
 
     def describe_configuration(self) -> dict[str, Descriptor]:
@@ -250,7 +246,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             dtype = self.pixeltype_to_numpy[
                 self._core.getProperty(self.name, self.pixeltype_name)
             ]
-            zarr_dtype = self.np_to_zarr_dtype[dtype]
             capacity = kwargs.get("capacity", 0)
             store_path = kwargs.get("store_path")
             write_forever = kwargs.get("write_forever")
@@ -261,12 +256,11 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             # Update source info for this camera
             self._writer.update_source(
                 name=self.name,
-                dtype=zarr_dtype,
+                dtype=np.dtype(dtype),
                 shape=(height, width),
             )
-            self._stream_descriptors = self._writer.open(
-                store_path=store_path,
-                capacity=capacity,
+            self._frame_sink, self._stream_descriptors = self._writer.prepare(
+                self.name, store_path, capacity
             )
 
             # create 1 frame ring buffer to
@@ -323,6 +317,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
+            self._writer.kickoff()
             self._fly_start.set()
             self._isflying = True
             s.set_finished()
@@ -356,7 +351,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._fly_start.clear()
         self._fly_stop.clear()
         self._isflying = False
-        self._writer.close()
+        # Close frame sinks before closing writer
+        self._writer.complete(self.name)
         s.set_finished()
         return s
 
@@ -436,21 +432,16 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
     def describe_collect(self) -> dict[str, Descriptor]:
         """Describe the data collected during acquisition.
 
-        Provides an overview of the final assets stored
-        on disk after flyer acquisition is complete.
-
         Returns
         -------
         dict[str, Descriptor]
-            A dictionary describing the collected data.
+            A dictionary describing the collected data,
+            or empty dict if not yet prepared for streaming.
         """
         return self._stream_descriptors
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
         """Collect the assets stored on disk.
-
-        This method is called by the RunEngine during backstop_collect when the run ends,
-        or can be called explicitly via bps.collect().
 
         Only emits StreamResource and StreamDatum if there are frames written to disk
         from a flying/streaming operation AND the flight has completed (not currently flying).
@@ -475,7 +466,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if self._isflying:
             return
 
-        frames_written = self._writer.get_indices_written(self.name)
+        frames_written = self._writer.get_indices_written()
         if frames_written == 0:
             return
 
@@ -533,7 +524,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
-                self._writer.submit_frame(self.name, img)
+                self._frame_sink.send(img)
                 frames_written += 1
         else:
             # write until stopped
@@ -541,10 +532,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 self._wait_image_awailable(timeout=self._current_exposure)
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
-                self._writer.submit_frame(self.name, img)
+                self._frame_sink.send(img)
                 frames_written += 1
-
-        self.logger.debug(f"Streaming concluded ({frames_written} frames).")
 
     def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
         """Wait until an image is available in the core buffer.

@@ -446,12 +446,11 @@ class AcquisitionController(PPresenter, Loggable):
                 "write_forever": write_forever,
             }
 
-            # Declare a stream for the collected data (to avoid "should be pre-declared" error)
-            yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
-
             for detector in detectors:
                 yield from bps.prepare(detector, wait=True, **kwargs)
-                yield from bps.kickoff(detector, wait=True)
+
+            yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+            yield from bps.kickoff_all(*detectors)
             if write_forever:
                 name, event = yield from rps.read_while_waiting(
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"

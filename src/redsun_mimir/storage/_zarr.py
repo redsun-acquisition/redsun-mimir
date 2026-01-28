@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from acquire_zarr import (
@@ -9,8 +10,9 @@ from acquire_zarr import (
     StreamSettings,
     ZarrStream,
 )
+from bluesky.protocols import Descriptor
 
-from .base import WriterBase
+from .base import Writer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,9 +21,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor
 
+    from redsun_mimir.storage.base import SinkGenerator
 
-class ZarrWriter(WriterBase):
-    """Zarr-based implementation of WriterBase.
+
+class ZarrWriter(Writer):
+    """Zarr-based implementation of a Writer.
 
     This class handles writing detector frames to Zarr storage using
     the acquire-zarr library. It supports **multiple data sources**
@@ -39,7 +43,6 @@ class ZarrWriter(WriterBase):
 
     Example
     -------
-    ::
 
         # Get shared writer (creates if doesn't exist)
         writer = ZarrWriter.get("scan_writer")
@@ -64,98 +67,68 @@ class ZarrWriter(WriterBase):
 
     def __init__(self, name: str) -> None:
         super().__init__(name)
-        self._stream: ZarrStream | None = None
         self._stream_settings = StreamSettings()
+        self._dimensions: dict[str, list[Dimension]] = {}
+        self._array_settings: dict[str, ArraySettings] = {}
+        self._store_path_set: bool = False
 
-    def _get_mimetype(self) -> str:
+    @property
+    def mimetype(self) -> str:
         """Return the MIME type for Zarr storage."""
         return "application/x-zarr"
 
-    def open(
-        self,
-        *,
-        store_path: str | Path,
-        capacity: int = 0,
-    ) -> dict[str, Descriptor]:
-        """Open Zarr storage and prepare for writing frames.
+    def prepare(
+        self, name: str, store_path: str | Path, capacity: int = 0
+    ) -> tuple[SinkGenerator, dict[str, Descriptor]]:
+        if not self._store_path_set:
+            self._stream_settings.store_path = str(store_path)
+            self._store_path_set = True
 
-        Creates arrays for all registered sources.
-
-        Parameters
-        ----------
-        store_path : str | Path
-            Path to the Zarr store directory.
-        capacity : int
-            Maximum number of frames per source (0 for unlimited).
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            Combined descriptor dict for all sources.
-        """
-        # Common validation and setup
-        self._prepare_open(store_path, capacity)
-
-        # Create ArraySettings for each source
-        array_settings_list: list[ArraySettings] = []
-        for source in self._sources.values():
-            height, width = source.shape
-            t = Dimension(
+        source = self._sources[name]
+        height, width = source.shape
+        dimensions = [
+            Dimension(
                 name="t",
                 kind=DimensionType.TIME,
-                array_size_px=self._capacity,  # 0 = unlimited
+                array_size_px=capacity,  # 0 = unlimited
                 chunk_size_px=1,
                 shard_size_chunks=2,
-            )
-            y = Dimension(
+            ),
+            Dimension(
                 name="y",
                 kind=DimensionType.SPACE,
                 array_size_px=height,
                 chunk_size_px=max(1, height // 4),
                 shard_size_chunks=2,
-            )
-            x = Dimension(
+            ),
+            Dimension(
                 name="x",
                 kind=DimensionType.SPACE,
                 array_size_px=width,
                 chunk_size_px=max(1, width // 4),
                 shard_size_chunks=2,
-            )
-            array_settings_list.append(
-                ArraySettings(
-                    dimensions=[t, y, x],
-                    data_type=source.dtype,
-                    output_key=source.name,
-                )
-            )
-
-        self._stream_settings.store_path = self._store_path
-        self._stream_settings.arrays = array_settings_list
-        self._stream = ZarrStream(self._stream_settings)
-        self._is_open = True
-
-        self.logger.debug(
-            f"Opened Zarr writer at {self._store_path} "
-            f"with {len(self._sources)} source(s): {list(self._sources.keys())}"
+            ),
+        ]
+        self._dimensions[name] = dimensions
+        self._array_settings[name] = ArraySettings(
+            dimensions=dimensions,
+            data_type=source.dtype,
+            output_key=source.name,
         )
 
-        return self._build_descriptors()
+        return super().prepare(name, store_path, capacity)
 
-    def close(self) -> None:
-        """Close the Zarr storage file and finalize writing.
+    def kickoff(self) -> None:
+        if self.is_open:
+            return
 
-        Safe to call multiple times.
-        """
-        with self._lock:
-            if self._stream is not None:
-                self._stream.close()
-                self._stream = None
-                total_frames = sum(s.frames_written for s in self._sources.values())
-                self.logger.debug(
-                    f"Closed Zarr writer ({total_frames} total frames "
-                    f"across {len(self._sources)} source(s))"
-                )
-            self._is_open = False
+        self._stream_settings.arrays = list(self._array_settings.values())
+        self._stream = ZarrStream(self._stream_settings)
+
+        return super().kickoff()
+
+    def _finalize(self) -> None:
+        self._stream.close()
 
     def _write_frame(self, name: str, frame: npt.NDArray[np.generic]) -> None:
         """Write a frame to the Zarr stream.
@@ -164,10 +137,8 @@ class ZarrWriter(WriterBase):
         ----------
         name : str
             Source name.
+            Routes the zarr write to the correct chunk.
         frame : np.ndarray
             Frame data to write.
         """
-        if self._stream is None:
-            raise RuntimeError("Stream is not initialized")
-        # acquire-zarr uses output_key to route to the correct array
         self._stream.append(frame, key=name)
