@@ -214,8 +214,8 @@ def resolve_arguments(
         val = values[p.name]
         model_list: list[PModel] = []
 
-        # Model-backed parameter: indicated by presence of choices
-        if p.choices is not None:
+        # Model-backed parameter: indicated by presence of choices AND model_proto
+        if p.choices is not None and p.model_proto is not None:
             # Coerce widget value into a list of string labels
             if isinstance(val, str):
                 labels = [val]
@@ -234,7 +234,7 @@ def resolve_arguments(
                 # Single model parameter → first match or None
                 resolved[p.name] = model_list[0] if model_list else None
         else:
-            # Non-model parameter (or no registry): pass through
+            # Non-model parameter (Literal types, or no registry): pass through
             resolved[p.name] = val
 
     return resolved
@@ -396,9 +396,13 @@ def create_plan_spec(
 
         # Now figure out if this is a sequence for other purposes
         ann_origin = get_origin(ann)
-        # TODO: this special case for typing.Literal
-        # should be removed...
-        if (ann_origin and ann_origin is not Literal) or ismodel(ann):
+
+        # Handle Literal types by extracting their values as choices
+        if ann_origin is Literal:
+            literal_args = get_args(ann)
+            if literal_args:
+                choices = [str(arg) for arg in literal_args]
+        elif (ann_origin and ann_origin is not Literal) or ismodel(ann):
             if ann_origin and issubclass(ann_origin, cabc.Sequence):
                 elem_args = get_args(ann)
                 elem_ann = elem_args[0] if elem_args else Any
