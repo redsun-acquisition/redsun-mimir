@@ -249,6 +249,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             capacity = kwargs.get("capacity", 0)
             store_path = kwargs.get("store_path")
             write_forever = kwargs.get("write_forever")
+
             if write_forever:
                 # override any previous setting
                 capacity = 0  # unlimited
@@ -259,9 +260,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 dtype=np.dtype(dtype),
                 shape=(height, width),
             )
-            self._frame_sink, self._stream_descriptors = self._writer.prepare(
-                self.name, store_path, capacity
-            )
+            self._frame_sink = self._writer.prepare(self.name, store_path, capacity)
 
             # create 1 frame ring buffer to
             # allow reading to continue while streaming
@@ -429,16 +428,25 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._describe_cache = result
         return result
 
-    def describe_collect(self) -> dict[str, Descriptor]:
+    def describe_collect(
+        self,
+    ) -> dict[str, Descriptor]:
         """Describe the data collected during acquisition.
 
         Returns
         -------
         dict[str, Descriptor]
-            A dictionary describing the collected data,
-            or empty dict if not yet prepared for streaming.
+            A dictionary describing the data collected during acquisition.
         """
-        return self._stream_descriptors
+        width, height = self._core.getImageWidth(), self._core.getImageHeight()
+        return {
+            self._buffer_stream_key: {
+                "source": "data",
+                "dtype": "array",
+                "shape": [None, width, height],
+                "external": "STREAM:",
+            }
+        }
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
         """Collect the assets stored on disk.

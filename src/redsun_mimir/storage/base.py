@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     import numpy as np
     import numpy.typing as npt
-    from bluesky.protocols import Descriptor, StreamAsset
+    from bluesky.protocols import StreamAsset
     from event_model.documents import StreamDatum, StreamResource
     from typing_extensions import Self
 
@@ -310,7 +310,7 @@ class Writer(abc.ABC, Loggable):
     @abc.abstractmethod
     def prepare(
         self, name: str, store_path: str | Path, capacity: int = 0
-    ) -> tuple[SinkGenerator, dict[str, Descriptor]]:
+    ) -> SinkGenerator:
         """Prepare storage for writing frames from a specific detector.
 
         Initializes a generator with send-only interface for writing frames
@@ -333,10 +333,8 @@ class Writer(abc.ABC, Loggable):
 
         Returns
         -------
-        tuple[SinkGenerator, dict[str, Descriptor]]
-            A tuple containing:
-            - A primed frame sink generator for writing frames.
-            - A dictionary of Bluesky Descriptors for the source data.
+        SinkGenerator
+            A primed frame sink generator for writing frames.
         """
         source = self._sources[name]
         source.frames_written = 0
@@ -348,18 +346,7 @@ class Writer(abc.ABC, Loggable):
             next(sink)
             self._frame_sinks[name] = sink
 
-        # TODO: source key should be customizable...
-        # ... right?
-        descriptor_collect: dict[str, Descriptor] = {
-            source.data_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [None, *source.shape],
-                "external": "STREAM:",
-            }
-        }
-
-        return self._frame_sinks[name], descriptor_collect
+        return self._frame_sinks[name]
 
     def complete(self, name: str) -> None:
         """Mark the current collection as complete for a source.

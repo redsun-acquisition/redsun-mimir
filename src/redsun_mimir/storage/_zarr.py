@@ -10,7 +10,6 @@ from acquire_zarr import (
     StreamSettings,
     ZarrStream,
 )
-from bluesky.protocols import Descriptor
 
 from .base import Writer
 
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
 
     import numpy as np
     import numpy.typing as npt
-    from bluesky.protocols import Descriptor
 
     from redsun_mimir.storage.base import SinkGenerator
 
@@ -70,7 +68,6 @@ class ZarrWriter(Writer):
         self._stream_settings = StreamSettings()
         self._dimensions: dict[str, list[Dimension]] = {}
         self._array_settings: dict[str, ArraySettings] = {}
-        self._store_path_set: bool = False
 
     @property
     def mimetype(self) -> str:
@@ -79,10 +76,8 @@ class ZarrWriter(Writer):
 
     def prepare(
         self, name: str, store_path: str | Path, capacity: int = 0
-    ) -> tuple[SinkGenerator, dict[str, Descriptor]]:
-        if not self._store_path_set:
-            self._stream_settings.store_path = str(store_path)
-            self._store_path_set = True
+    ) -> SinkGenerator:
+        self._stream_settings.store_path = str(store_path)
 
         source = self._sources[name]
         height, width = source.shape
