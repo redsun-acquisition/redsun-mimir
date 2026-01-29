@@ -408,17 +408,17 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         plan = self.plans_combobox.currentText()
         plan_widget = self.plan_widgets[plan]
 
-        # If the action is togglable and currently checked, uncheck it
         action_button = plan_widget.get_action_button(action_name)
-        if (
-            action_button
-            and action_button.action.togglable
-            and action_button.isChecked()
-        ):
-            # Block signals temporarily to avoid triggering the toggled callback
-            action_button.blockSignals(True)
-            action_button.setChecked(False)
-            action_button.blockSignals(False)
+        if action_button and action_button.action.togglable:
+            # Re-enable the button (in case it was disabled during processing)
+            action_button.setEnabled(True)
+
+            # If currently checked, uncheck it
+            if action_button.isChecked():
+                # Block signals temporarily to avoid triggering the toggled callback
+                action_button.blockSignals(True)
+                action_button.setChecked(False)
+                action_button.blockSignals(False)
 
     def _on_action_clicked(self, action_name: str) -> None:
         plan = self.plans_combobox.currentText()
@@ -428,6 +428,15 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         self.sigActionRequest.emit(action_name, True)
 
     def _on_action_toggled(self, checked: bool, action_name: str) -> None:
+        # If unchecking (stopping a write_forever operation), disable the button
+        # to prevent accidental clicks during completion/cleanup
+        if not checked:
+            plan = self.plans_combobox.currentText()
+            plan_widget = self.plan_widgets[plan]
+            action_button = plan_widget.get_action_button(action_name)
+            if action_button:
+                action_button.setEnabled(False)
+
         self.sigActionRequest.emit(action_name, checked)
 
     def _on_info_clicked(self) -> None:
