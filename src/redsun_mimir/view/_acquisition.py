@@ -102,6 +102,8 @@ class PlanWidget:
         # Enable/disable actions group when plan is toggled
         if self.actions_group:
             self.actions_group.setEnabled(status)
+        # Disable parameter widgets when plan is running
+        self.container.enabled = not status
 
     def pause(self, status: bool) -> None:
         """Toggle the pause button state and enable/disable run button."""
@@ -113,6 +115,8 @@ class PlanWidget:
         """Enable or disable the entire plan widget."""
         self.group_box.setEnabled(enabled)
         self.run_button.setEnabled(enabled)
+        # Explicitly enable/disable parameter widgets
+        self.container.enabled = enabled
 
     def enable_actions(self, enabled: bool = True) -> None:
         """Enable or disable all action buttons as a group."""
