@@ -9,13 +9,15 @@ from bluesky.protocols import (
     Preparable,
     Readable,
     Stageable,
+    T,
+    Triggerable,
     WritesStreamAssets,
 )
 from sunflare.model import PModel
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Location, Reading, SyncOrAsync
     from sunflare.engine import Status
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
@@ -76,6 +78,60 @@ class Settable(Movable[Any], Protocol):
 
         """
         ...
+
+
+@runtime_checkable
+class CanCompute(Readable[T], Triggerable, Protocol):
+    """Indicates that the model can perform computations.
+
+    Implements the `stash()` method to stash data
+    for computation.
+
+    When `trigger()` is called, the model will perform
+    the computation using the stashed data and
+    make the result available through `read()`.
+    """
+
+    def stash(self, value: dict[str, Reading[T]]) -> SyncOrAsync[None]:
+        """Stash data for computation.
+
+        This method can be both synchronous or asynchronous.
+
+        Parameters
+        ----------
+        value : ``dict[str, Reading[T]]``
+            Data to be stashed for computation.
+            Should be provided from device that has
+            collected a reading through `read()`.
+
+        """
+        ...
+
+    def clear(self) -> SyncOrAsync[None]:
+        """Clear all stashed data.
+
+        This method can be both synchronous or asynchronous.
+        """
+        ...
+
+
+# TODO: this should be moved to sunflare as a general protocol for pseudo-models
+@runtime_checkable
+class PseudoModelProtocol(PModel, CanCompute[Any], Protocol):
+    """Protocol for pseudo-models.
+
+    Pseudo-models can be used to represent computational models
+    to be included in a data acquisition plan in order to process
+    data on-the-fly.
+
+    A pseudo-model implements the following protocols:
+
+    - ``Readable`` (to read data from the model)
+    - ``Triggerable`` (to trigger the computation)
+    - ``CanCompute`` (to stash data for computation)
+    """
+
+    ...
 
 
 @runtime_checkable
