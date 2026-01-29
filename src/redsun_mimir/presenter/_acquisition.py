@@ -422,6 +422,7 @@ class AcquisitionController(PPresenter, Loggable):
         """
         live_stream = "live"
         stream_name = "stream"
+        stream_declared = False
 
         self.event_map.update(action.event_map)
 
@@ -433,7 +434,7 @@ class AcquisitionController(PPresenter, Loggable):
                 detectors, self.event_map, stream_name=live_stream, wait_for="set"
             )
             # event triggered, start streaming to disk
-            self.logger.debug("Starting data streaming to disk...")
+            self.logger.debug("Starting data streaming to disk")
 
             # Create unique subdirectory for this streaming session
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
@@ -449,14 +450,20 @@ class AcquisitionController(PPresenter, Loggable):
             for detector in detectors:
                 yield from bps.prepare(detector, wait=True, **kwargs)
 
-            yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+            if not stream_declared:
+                yield from bps.declare_stream(
+                    *detectors, name=stream_name, collect=True
+                )
             yield from bps.kickoff_all(*detectors)
             if write_forever:
+                self.logger.debug("Writing forever.")
                 name, event = yield from rps.read_while_waiting(
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"
                 )
+                self.logger.debug("Done. Stopping streaming.")
             # Complete the streaming (wait for background thread to finish)
             yield from bps.complete_all(*detectors, wait=True)
+            self.logger.debug("Flight complete.")
 
             # Explicitly collect the stream assets
             yield from bps.collect(*detectors, name=stream_name)
