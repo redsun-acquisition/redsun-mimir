@@ -108,7 +108,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._buffer_stream_key = f"{self.name}:buffer:stream"
         self._fly_start = th.Event()
         self._fly_stop = th.Event()
-        self._isflying = False
         self._current_exposure: float = 0.0
         self._describe_cache: dict[str, Descriptor] = {}  # cache describe results
 
@@ -241,6 +240,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 Overrides `capacity`.
         """
         s = Status()
+        self._fly_start.clear()
+        self._fly_stop.clear()
         try:
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
             dtype = self.pixeltype_to_numpy[
@@ -273,6 +274,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 kwargs={
                     "frames": capacity,
                 },
+                daemon=True,
             )
             self._thread.start()
         except Exception as e:
@@ -318,7 +320,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             # start the background thread
             self._writer.kickoff()
             self._fly_start.set()
-            self._isflying = True
             s.set_finished()
         return s
 
@@ -337,23 +338,24 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         Status
             Status of the operation.
         """
-        s = Status()
-        if not self._isflying:
-            s.set_exception(
+
+        def _clear_flags(_: Status) -> None:
+            """Clear the flying flags when done."""
+            self._fly_start.clear()
+            self._fly_stop.clear()
+
+        self._complete_status = Status()
+        if not self._fly_start.is_set():
+            self._complete_status.set_exception(
                 RuntimeError("Not flying; kickoff() must be called first. ")
             )
-            return s
+            return self._complete_status
+        # stop the streaming thread;
+        # this will also set the status
+        # to finished when done
+        self._complete_status.add_callback(_clear_flags)
         self._fly_stop.set()
-        self._thread.join()
-        # thread is joined; clear both
-        # events and close the writer
-        self._fly_start.clear()
-        self._fly_stop.clear()
-        self._isflying = False
-        # Close frame sinks before closing writer
-        self._writer.complete(self.name)
-        s.set_finished()
-        return s
+        return self._complete_status
 
     def pause(self) -> None:
         """Pause the acquisition.
@@ -387,7 +389,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # each acquired image, requires investigation
         if not self._core.isSequenceRunning():
             raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
-        if not self._isflying:
+        if not self._fly_start.is_set():
+            # not flying; read the latest image from core buffer
             self._wait_image_awailable(timeout=self._current_exposure)
             img = self._core.popNextImage()
         else:
@@ -407,10 +410,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         dict[str, dict[str, Descriptor]]
             A dictionary describing the data produced by the detector.
         """
-        # Return cached result if available
-        if self._describe_cache:
-            return self._describe_cache
-
         # Base description without stream assets (for live reads)
         result: dict[str, Descriptor] = {
             self._buffer_key: {
@@ -424,7 +423,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 "shape": [4],
             },
         }
-
         self._describe_cache = result
         return result
 
@@ -471,7 +469,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # Only emit asset docs if we're not currently flying
         # This prevents emitting assets during read_while_waiting (while streaming is active)
         # Assets should only be emitted after complete() is called
-        if self._isflying:
+        if self._fly_start.is_set():
             return
 
         frames_written = self._writer.get_indices_written()
@@ -542,6 +540,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 self._read_buffer.append(img)
                 self._frame_sink.send(img)
                 frames_written += 1
+        self._writer.complete(self.name)
+        self._complete_status.set_finished()
 
     def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
         """Wait until an image is available in the core buffer.
