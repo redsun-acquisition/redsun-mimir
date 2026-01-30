@@ -19,15 +19,21 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, Iterator
 
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from typing_extensions import Unpack
 
     from ._config import MMCoreCameraModelInfo
 
 
 class PrepareKwargs(TypedDict):
+    """Keyword arguments for preparing the model for flight."""
+
     capacity: int
+    """The number of frames to store; if 0, unlimited."""
+
     store_path: Path
+    """The path to store the acquired data."""
+
     write_forever: bool
+    """When True, write data indefinitely until stopped. Overrides `capacity`."""
 
 
 class MMCoreCameraModel(DetectorProtocol, Loggable):
@@ -224,12 +230,12 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             s.set_exception(e)
         return s
 
-    def prepare(self, **kwargs: Unpack[PrepareKwargs]) -> Status:
+    def prepare(self, value: PrepareKwargs) -> Status:
         """Prepare the detector for acquisition.
 
         Parameters
         ----------
-        kwargs: PrepareKwargs
+        value: PrepareKwargs
             Keyword arguments for preparation, including:
             - capacity: int
                 The number of frames to store; if 0, unlimited.
@@ -247,9 +253,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             dtype = self.pixeltype_to_numpy[
                 self._core.getProperty(self.name, self.pixeltype_name)
             ]
-            capacity = kwargs.get("capacity", 0)
-            store_path = kwargs.get("store_path")
-            write_forever = kwargs.get("write_forever")
+            capacity = value.get("capacity", 0)
+            store_path = value.get("store_path")
+            write_forever = value.get("write_forever")
 
             if write_forever:
                 # override any previous setting
@@ -302,6 +308,15 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             Status of the operation.
         """
         s = Status()
+
+        def _clear_flags(_: Status) -> None:
+            """Clear the flying flags when done."""
+            self._fly_start.clear()
+            self._fly_stop.clear()
+
+        # we also prepare a status for complete()
+        self._complete_status = Status()
+        self._complete_status.add_callback(_clear_flags)
         if not self._core.isSequenceRunning():
             s.set_exception(
                 RuntimeError(
@@ -338,13 +353,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         Status
             Status of the operation.
         """
-
-        def _clear_flags(_: Status) -> None:
-            """Clear the flying flags when done."""
-            self._fly_start.clear()
-            self._fly_stop.clear()
-
-        self._complete_status = Status()
         if not self._fly_start.is_set():
             self._complete_status.set_exception(
                 RuntimeError("Not flying; kickoff() must be called first. ")
@@ -353,7 +361,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # stop the streaming thread;
         # this will also set the status
         # to finished when done
-        self._complete_status.add_callback(_clear_flags)
         self._fly_stop.set()
         return self._complete_status
 

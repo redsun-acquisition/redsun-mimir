@@ -117,7 +117,7 @@ class CanCompute(Readable[T], Triggerable, Protocol):
 
 # TODO: this should be moved to sunflare as a general protocol for pseudo-models
 @runtime_checkable
-class PseudoModelProtocol(PModel, CanCompute[Any], Protocol):
+class PseudoModelProtocol(PModel, CanCompute[Any], Preparable, Protocol):
     """Protocol for pseudo-models.
 
     Pseudo-models can be used to represent computational models

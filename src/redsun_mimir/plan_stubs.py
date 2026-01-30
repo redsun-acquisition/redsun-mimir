@@ -4,13 +4,13 @@ import uuid
 from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
-from bluesky.utils import Msg
+from bluesky.utils import Msg, maybe_await
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Any, Final, Literal
 
-    from bluesky.protocols import Movable, Readable, Status
+    from bluesky.protocols import Descriptor, Movable, Readable, Status
     from bluesky.utils import MsgGenerator
 
     from redsun_mimir.actions import SRLatch
@@ -136,3 +136,29 @@ def read_while_waiting(
         )
         yield from bps.trigger_and_read(objs, name=stream_name)
     return event
+
+
+def describe(
+    objs: Sequence[Readable[Any]],
+) -> MsgGenerator[list[dict[str, Descriptor]]]:
+    """Gather descriptors from multiple Readable devices.
+
+    Parameters
+    ----------
+    objs : Sequence[Readable[Any]]
+        A sequence of Readable devices to describe.
+
+    Returns
+    -------
+    list[dict[str, Descriptor]]
+        A list of descriptors from each device.
+    """
+
+    # Wrap in a coroutine so we can handle both sync and async devices
+    async def _describe(obj: Readable[Any]) -> dict[str, Descriptor]:
+        return await maybe_await(obj.describe())
+
+    result: list[dict[str, Descriptor]] = yield from bps.wait_for(
+        [_describe(obj) for obj in objs]
+    )
+    return result

@@ -441,14 +441,14 @@ class AcquisitionController(PPresenter, Loggable):
             acquisition_path = store_path / f"{timestamp}.zarr"
             acquisition_path.mkdir(parents=True, exist_ok=True)
 
-            kwargs: dict[str, Any] = {
+            prepare_values: dict[str, Any] = {
                 "store_path": acquisition_path,
                 "capacity": frames,
                 "write_forever": write_forever,
             }
 
             for detector in detectors:
-                yield from bps.prepare(detector, wait=True, **kwargs)
+                yield from bps.prepare(detector, prepare_values, wait=True)
 
             if not stream_declared:
                 yield from bps.declare_stream(
