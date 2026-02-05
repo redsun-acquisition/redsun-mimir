@@ -4,10 +4,13 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING
 
+from redsun_mimir.protocols import HasCache
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from typing import Any, Literal
 
+    from bluesky.protocols import Status
     from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
@@ -65,6 +68,75 @@ async def wait_for_actions(self: RunEngine, msg: Msg) -> tuple[str, SRLatch] | N
     completed_task = done.pop()
     task_name = completed_task.get_name()
     return task_name, latch_map[task_name]
+
+
+async def stash(self: RunEngine, msg: Msg) -> Status:
+    """Instruct the run engine to stash the given readings in the model cache.
+
+    Parameters
+    ----------
+    self: RunEngine
+        The run engine instance.
+    msg: Msg
+        The message containing the readings to stash.
+        Expected message format:
+
+        Msg("stash", obj, name, readings)
+
+        - obj: the model object to stash the readings for (implements `HasCache` protocol).
+        - name: the device name associated with the readings.
+        - readings: a dict of readings to stash in the model cache.
+    """
+    obj = msg.obj
+    if not isinstance(obj, HasCache):
+        raise TypeError(
+            f"Object {obj} does not support caching. It must implement the HasCache protocol."
+        )
+    if len(msg.args) != 2:
+        raise RuntimeError(
+            "Expected exactly two positional arguments in the message: name and readings."
+        )
+    name: str = msg.args[0]
+    readings: dict[str, Any] = msg.args[1]
+    group: str | None = dict(msg.kwargs).get("group", None)
+    if not group:
+        raise RuntimeError("Expected a 'group' keyword argument in the message.")
+    status = obj.stash(name, readings)
+
+    self._add_status_to_group(obj, status, group, action="stash")
+
+    return status
+
+
+async def clear_cache(self: RunEngine, msg: Msg) -> Status:
+    """Instruct the run engine to clear the model cache.
+
+    Parameters
+    ----------
+    self: RunEngine
+        The run engine instance.
+    msg: Msg
+        The message containing the object whose cache to clear.
+        Expected message format:
+
+        Msg("clear_cache", obj, name)
+
+        - obj: the model object to clear the cache for (implements `HasCache` protocol).
+        - name: the device name associated with the cache to clear.
+    """
+    obj = msg.obj
+    if not isinstance(obj, HasCache):
+        raise TypeError(
+            f"Object {obj} does not support caching. It must implement the HasCache protocol."
+        )
+    group: str | None = dict(msg.kwargs).get("group", None)
+    if not group:
+        raise RuntimeError("Expected a 'group' keyword argument in the message.")
+    status = obj.clear()
+
+    self._add_status_to_group(obj, status, group, action="clear")
+
+    return status
 
 
 def register_bound_command(

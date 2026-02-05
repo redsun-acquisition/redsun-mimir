@@ -4,16 +4,18 @@ import uuid
 from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
-from bluesky.utils import Msg, maybe_await
+from bluesky.protocols import Triggerable
+from bluesky.utils import Msg, maybe_await, short_uid
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Any, Final, Literal
 
-    from bluesky.protocols import Descriptor, Movable, Readable, Status
+    from bluesky.protocols import Descriptor, Movable, Readable, Reading, Status
     from bluesky.utils import MsgGenerator
 
     from redsun_mimir.actions import SRLatch
+    from redsun_mimir.protocols import HasCache
 
 SIXTY_FPS: Final[float] = 1.0 / 60.0
 
@@ -136,6 +138,108 @@ def read_while_waiting(
         )
         yield from bps.trigger_and_read(objs, name=stream_name)
     return event
+
+
+def read_and_stash(
+    objs: Sequence[Readable[Any]],
+    cache_obj: HasCache,
+    *,
+    stream: str = "primary",
+    group: str | None = None,
+    wait: bool = False,
+) -> MsgGenerator[dict[str, Reading[Any]]]:
+    """Take a reading from one or more Readable devices and stash the readings.
+
+    Parameters
+    ----------
+    objs: Sequence[Readable[Any]]
+        The Readable devices to read from.
+    cache_obj: HasCache
+        The cache object to stash the readings into.
+    stream: str, optional
+        The name of the stream to collect data into.
+        Default is "primary".
+    group: str | None, optional
+        An optional identifier for the stash operation.
+        If None, a unique identifier will be generated for each call.
+    wait: bool, optional
+        Whether to wait for the stashing operation to complete.
+        Default is False.
+    """
+
+    def inner_trigger() -> MsgGenerator[None]:
+        grp = short_uid("trigger")
+        no_wait = True
+        for obj in objs:
+            if isinstance(obj, Triggerable):
+                no_wait = False
+                yield from bps.trigger(obj, group=grp)
+        # Skip 'wait' if none of the devices implemented a trigger method.
+        if not no_wait:
+            yield from bps.wait(group=grp)
+
+    ret: dict[str, Reading[Any]] = {}
+
+    if any(isinstance(obj, Triggerable) for obj in objs):
+        yield from inner_trigger()
+
+    yield from bps.create(stream)
+    for obj in objs:
+        reading = yield from bps.read(obj)
+        yield from stash(cache_obj, obj.name, reading, group=group, wait=wait)
+        ret.update(reading)
+
+    yield from bps.save()
+    return ret
+
+
+def stash(
+    obj: HasCache,
+    name: str,
+    reading: dict[str, Reading[Any]],
+    *,
+    group: str | None,
+    wait: bool,
+) -> MsgGenerator[None]:
+    """Take a reading from a Readable device and stash the reading.
+
+    Parameters
+    ----------
+    obj: HasCache
+        The cache object to stash the reading into.
+    name: str
+        Name of the device associated with the reading (accessible via `obj.name`).
+    reading: dict[str, Reading[Any]]
+        The reading to stash, typically obtained from a call to `bps.read()`.
+    stash: HasCache
+        The cache object to stash the reading into.
+    group: str | None
+        An optional identifier for the stash operation.
+        If None, a unique identifier will be generated for each call.
+    wait: bool
+        Whether to wait for the stashing operation to complete.
+    """
+    yield from Msg("stash", obj, name, reading, group=group)
+    if wait:
+        yield from bps.wait(group=group)
+
+
+def clear_cache(obj: HasCache, *, group: str | None, wait: bool) -> MsgGenerator[None]:
+    """Clear the cache of a HasCache object.
+
+    Parameters
+    ----------
+    obj: HasCache
+        The cache object to clear.
+    group: str | None
+        An optional identifier for the clear operation.
+        If None, a unique identifier will be generated for each call.
+    wait: bool
+        Whether to wait for the clear operation to complete.
+    """
+    yield from Msg("clear_cache", obj, group=group)
+    if wait:
+        yield from bps.wait(group=group)
 
 
 def describe(

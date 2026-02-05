@@ -24,6 +24,7 @@ from redsun_mimir.common import (
     resolve_arguments,
     wait_for_actions,
 )
+from redsun_mimir.model.pseudo import MedianPseudoModel
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,
@@ -120,6 +121,62 @@ def square_scan(
         yield from rps.set_property(motor, ax, propr="axis")
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
+            yield from bps.mvr(motor, -step)
+
+
+def scan_and_stash(
+    detectors: Sequence[DetectorProtocol],
+    motor: MotorProtocol,
+    cache: MedianPseudoModel,
+    step: float,
+    frames_per_side: int,
+    axis: tuple[str, str],
+) -> MsgGenerator[None]:
+    """Perform a square scan movement with the specified motor and detectors.
+
+    Performs a square scan by moving the motor in a square pattern; before
+    each movement step, a reading is taken from the specified detectors
+    and stashed into the cache model.
+
+    Parameters
+    ----------
+    detectors : ``Sequence[DetectorProtocol]``
+        The detectors to use for data collection.
+    motor : ``MotorProtocol``
+        The motor to use for the scan movement.
+    cache : ``MedianPseudoModel``
+        The cache model to stash readings into.
+    step : ``float``
+        The step size for motor movement.
+    frames_per_side : ``int``
+        The number of frames to collect for each side of the square.
+    axis : ``tuple[str, str]``
+        The order of motor movement axes.
+
+    Yields
+    ------
+    ``MsgGenerator[None]``
+        A generator yielding Bluesky messages for the square scan.
+    """
+    # scan on the positive direction
+    for idx in range(2):
+        ax = axis[idx]
+        # set the axis direction
+        yield from rps.set_property(motor, ax, propr="axis")
+        for _ in range(frames_per_side):
+            yield from rps.read_and_stash(
+                detectors, cache, group="stash", stream="square_scan", wait=True
+            )
+            yield from bps.mvr(motor, step)
+    # scan on the negative direction
+    for idx in range(2):
+        ax = axis[1 - idx]
+        # set the axis direction
+        yield from rps.set_property(motor, ax, propr="axis")
+        for _ in range(frames_per_side):
+            yield from rps.read_and_stash(
+                detectors, cache, group="stash", stream="square_scan", wait=True
+            )
             yield from bps.mvr(motor, -step)
 
 
@@ -383,6 +440,98 @@ class AcquisitionController(PPresenter, Loggable):
             # clear the event and notify the action is done
             self.clear_and_notify(name, event)
             # then resume live acquisition (go back to the top of the loop)
+
+    @continous(togglable=True)
+    def live_median_scan(
+        self,
+        detectors: Sequence[DetectorProtocol],
+        motor: MotorProtocol,
+        step: float = 1.0,
+        step_egu: Literal["μm", "mm", "nm"] = "μm",
+        frames: int = 100,
+        direction: Literal["xy", "yx"] = "xy",
+        /,
+        scan: Action = ScanAction(),
+        stream: Action = StreamAction(),
+    ) -> MsgGenerator[None]:
+        """Perform live data collection with median filtering.
+
+        Similar to the `live_square_scan` plan, but additionally
+        a pseudo-model dedicated with computing the median
+        value of the acquired frames is used to provide a pre-computed
+        median value for each detector involved in the scan.
+
+        Parameters
+        ----------
+        - detectors: ``Sequence[DetectorProtocol]``
+            - The detectors to use for data collection.
+        - motor: ``MotorProtocol``
+            - The motor to use for the scan movement.
+            - It must provide two axes of movement ("X" and "Y").
+        - step: ``float``, optional
+            The step size for motor movement. Default is 1.0.
+        - step_egu: ``Literal["μm", "mm", "nm"]`, optional
+            - The engineering unit for the step size.
+            - Default is "μm".
+        - frames: ``int``, optional
+            - The number of frames to collect for median filtering.
+            - The rectangular movement will be divided into four sides,
+            each side collecting `frames / 4` frames, one frame per motor step.
+            - Default is 100 (resulting in 25 frames per side).
+        - direction: ``Literal["xy", "yx"]``, optional
+            - The order of motor movement.
+            - `xy`: move along X axis first, then Y axis.
+            - `yx`: move along Y axis first, then X axis.
+            - Default is "xy".
+
+        Raises
+        ------
+        - ``TypeError``
+            - If `motor` does not provide both "X" and "Y" axis of movement.
+        """
+        if len(motor.model_info.axis) < 2 or not all(
+            ax in motor.model_info.axis for ax in ["X", "Y"]
+        ):
+            raise TypeError(
+                "The provided motor must have both 'X' and 'Y' axes of movement."
+                f" Available axes: {motor.model_info.axis}"
+            )
+
+        median = MedianPseudoModel(detectors, target="buffer")
+        axis = ("X", "Y") if direction == "xy" else ("Y", "X")
+        self.event_map.update(**scan.event_map, **stream.event_map)
+        old_step, step = convert_to_target_egu(
+            step,
+            from_egu=step_egu,
+            to_egu=motor.model_info.egu,
+        )
+
+        yield from bps.open_run()
+        yield from bps.stage_all(*detectors)
+
+        while True:
+            name, event = yield from rps.read_while_waiting(
+                detectors,
+                self.event_map,
+                "live",
+            )
+            if name == scan.name:
+                if motor.model_info.egu != step_egu:
+                    yield from rps.set_property(motor, step, propr="step_size")
+
+                yield from scan_and_stash(
+                    detectors,
+                    motor,
+                    median,
+                    step,
+                    frames // 4,
+                    axis,
+                )
+
+                if step != old_step:
+                    yield from rps.set_property(motor, old_step, propr="step_size")
+
+            self.clear_and_notify(name, event)
 
     @continous(togglable=True)
     def live_stream(

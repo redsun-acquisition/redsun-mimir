@@ -75,7 +75,7 @@ class SRLatch:
 
 
 def continous(
-    togglable: bool = False,
+    togglable: bool = True,
     pausable: bool = False,
 ) -> Callable[[Callable[P, R_co]], ContinousPlan[P, R_co]]:
     """Mark a plan as continous.

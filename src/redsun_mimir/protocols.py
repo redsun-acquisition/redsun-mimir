@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from bluesky.protocols import (
     Collectable,
@@ -12,13 +12,25 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from sunflare.model import PModel
-from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
     from sunflare.engine import Status
 
     from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
+
+
+@runtime_checkable
+class HasCache(Protocol):
+    """Protocol for models that can cache values while inside a plan."""
+
+    def stash(self, name: str, values: dict[str, Reading[Any]]) -> Status:
+        """Stash the readings associated with the given object name in the model cache."""
+        ...
+
+    def clear(self) -> Status:
+        """Clear the model cache."""
+        ...
 
 
 @runtime_checkable
