@@ -237,3 +237,16 @@ class ReadableFlyer(
     - ``Collectable`` (describe_collect() method)
     - ``WritesStreamAssets`` (collect_asset_docs() method)
     """
+
+
+@runtime_checkable
+class PseudoCacheFlyer(
+    Readable[Any],
+    HasCache,
+    Preparable,
+    Flyable,
+    Collectable,
+    WritesStreamAssets,
+    Protocol,
+):
+    """A protocol for a pseudo-model flyer."""

@@ -1,76 +1,135 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
-from bluesky.protocols import Readable, Triggerable
+from bluesky.protocols import Reading, Triggerable
 from bluesky.run_engine import call_in_bluesky_event_loop
 from bluesky.utils import maybe_await
 from sunflare.engine import Status
 
-from redsun_mimir.protocols import HasCache
+from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
+from redsun_mimir.storage import ZarrWriter
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from pathlib import Path
+    from typing import Iterator
 
-    from bluesky.protocols import Descriptor, Reading
+    import numpy.typing as npt
+    from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from typing_extensions import TypeIs
 
 
-class MedianPseudoModel(Readable[Any], Triggerable, HasCache):
+def is_nested_dict(
+    d: dict[str, Descriptor] | dict[str, dict[str, Descriptor]],
+) -> TypeIs[dict[str, dict[str, Descriptor]]]:
+    """Type guard to check if a dictionary is nested (i.e., dict[str, dict[str, Descriptor]])."""
+    first_value = next(iter(d.values()), None)
+    return isinstance(first_value, dict)
+
+
+class PrepareKwargs(TypedDict):
+    """Keyword arguments for the `prepare` method of the `MedianPseudoModel`."""
+
+    store_path: Path
+    """Path where the median readings are to be stored."""
+
+
+class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
     """A pseudo-model representing a median processor.
 
     The pseudo-model is intended to be created inside a plan before
-    the run is opened.
+    the run is opened. There should be one instance of
+    the pseudo-model per each detector that is being monitored for median computation.
 
     Parameters
     ----------
-    readers: Sequence[Readable[Any]]
-        The list of reader objects whose readings will be used
-        to compute the median.
+    reader: ReadableFlyer
+        Reader object used to pull readings over which the median will be computed.
+        It must implement both the `Readable` and `Flyer` protocols.
     target: str, optional
         The target key substring to look for in the detector readings.
     """
 
     def __init__(
-        self, readers: Sequence[Readable[Any]], target: str = "buffer"
+        self,
+        reader: ReadableFlyer,
+        describe_target: str = "buffer",
+        collect_target: str = "buffer:stream",
     ) -> None:
-        async def describe_inner(
-            readers: Sequence[Readable[Any]],
-        ) -> list[dict[str, Descriptor]]:
-            return [await maybe_await(det.describe()) for det in readers]
+        async def describe(
+            reader: ReadableFlyer,
+        ) -> dict[str, Descriptor]:
+            return await maybe_await(reader.describe())
 
-        self._name = "PSEUDO:median"
+        async def describe_collect(
+            reader: ReadableFlyer,
+        ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
+            return await maybe_await(reader.describe_collect())
+
+        self._name = f"{reader.name}/median"
+        self._describe_target_key = f"{reader.name}:{describe_target}"
+        self._collect_target_key = f"{reader.name}:{collect_target}"
+        self._reading_key = f"{self._describe_target_key}/median"
         self._valid_readings = False
-        self._readings: dict[str, Reading[Any]] = {}
-        descriptor_list = call_in_bluesky_event_loop(describe_inner(readers))
-        # modify the descriptor keys in-place by changing the names
-        # from whatever they were to include a '[median]' suffix
-        self._keys_to_watch: list[str] = []
-        for desc in descriptor_list:
-            for key in list(desc.keys()):
-                if target in key:
-                    self._keys_to_watch.append(key)
-                    new_key = f"{key}[median]"
-                    desc[new_key] = desc.pop(key)
-                    desc[new_key]["source"] = "median-computed"
-                else:
-                    # remove other keys
-                    desc.pop(key)
+        self._median: dict[str, Reading[Any]] = {}
+        describe_descriptor = call_in_bluesky_event_loop(describe(reader))
+        full_collect_descriptor = call_in_bluesky_event_loop(describe_collect(reader))
+        collect_descriptor: dict[str, Descriptor] = {}
 
-        # merge all descriptors into one
-        self._descriptor: dict[str, Descriptor] = {}
-        for desc in descriptor_list:
-            self._descriptor.update(desc)
+        if is_nested_dict(full_collect_descriptor):
+            collect_descriptor = full_collect_descriptor[reader.name]
+        else:
+            collect_descriptor = full_collect_descriptor
+
+        self._describe_descriptor = {
+            key.replace(self._describe_target_key, self._reading_key): value
+            for key, value in describe_descriptor.items()
+            if self._describe_target_key in key
+        }
+        self._collect_descriptor = {
+            key.replace(self._collect_target_key, self._reading_key): value
+            for key, value in collect_descriptor.items()
+            if self._collect_target_key in key
+        }
+
+        old_describe_source = describe_descriptor[self._describe_target_key]["source"]
+        new_describe_source = f"{old_describe_source}/median"
+        self._describe_descriptor[self._reading_key]["source"] = new_describe_source
+
+        old_collect_source = collect_descriptor[self._collect_target_key]["source"]
+        new_collect_source = f"{old_collect_source}/median"
+        self._collect_descriptor[self._reading_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists
-        self._cache: dict[str, list[dict[str, Reading[Any]]]] = {
-            det.name: [] for det in readers
-        }
+        self._cache: list[dict[str, Reading[Any]]] = []
+
+        self._writer = ZarrWriter.get("zarr-writer")
+
+    def describe_configuration(self) -> dict[str, Descriptor]:
+        """Return the configuration descriptor.
+
+        Since the median pseudo model does not have any configuration parameters,
+        returns an empty dictionary.
+        """
+        return {}
 
     def describe(self) -> dict[str, Descriptor]:
         """Return the descriptor for the median pseudo model."""
-        return self._descriptor
+        return self._describe_descriptor
+
+    def describe_collect(self) -> dict[str, Descriptor]:
+        """Return the collect descriptor for the median pseudo model."""
+        return self._collect_descriptor
+
+    def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Return the current configuration readings.
+
+        Since the median pseudo model does not have any configuration parameters,
+        returns an empty dictionary.
+        """
+        return {}
 
     def read(self) -> dict[str, Reading[Any]]:
         """Read the current value of the pseudo model.
@@ -81,14 +140,12 @@ class MedianPseudoModel(Readable[Any], Triggerable, HasCache):
             # return an empty dict
             return {}
 
-        return self._readings
+        return self._median
 
     def stash(self, name: str, values: dict[str, Reading[Any]]) -> Status:
         """Store readings in the cache."""
         s = Status()
-        # find the keys to watch and store only those readings
-        self._cache.setdefault(name, [])
-        self._cache[name].append(values)
+        self._cache.append(values)
         s.set_finished()
         return s
 
@@ -103,29 +160,79 @@ class MedianPseudoModel(Readable[Any], Triggerable, HasCache):
     def trigger(self) -> Status:
         """Compute the median of the cached readings."""
         s = Status()
-        # for each device key in the cache, compute the median
-        # and store each median reading in self._readings with
-        # the key being the reading key with the [median] suffix
-        for readings_list in self._cache.values():
-            if not readings_list:
-                continue
-            # for each key in the readings, compute the median
-            keys = readings_list[0].keys()
-            for key in keys:
-                values = [
-                    reading_set[key]["value"]
-                    for reading_set in readings_list
-                    if key in reading_set
-                ]
-                if not values:
-                    continue
-                median_value = np.median(values)
-                self._readings[f"{key}[median]"] = {
-                    "value": median_value,
-                    "timestamp": time.time(),
-                }
-        self._valid_readings = True
+        # compute the median for the target key and store it in the _median dict
+        values = [
+            reading[self._describe_target_key]["value"]
+            for reading in self._cache
+            if self._describe_target_key in reading
+        ]
+        if values:
+            median_value: npt.NDArray[np.generic] = np.median(
+                np.stack(values, axis=0), axis=0
+            )
+            shape = median_value.shape[1:]
+            dtype = median_value.dtype
+            self._writer.update_source(self.name, dtype, shape)
+            median_key = self._describe_target_key.replace(
+                self._describe_target_key, self._reading_key
+            )
+            self._median[median_key] = {"value": median_value, "timestamp": time.time()}
+            self._valid_readings = True
+        s.set_finished()
         return s
+
+    def prepare(self, value: PrepareKwargs) -> Status:
+        """Prepare the pseudo model for flight by writing the median readings to disk."""
+        s = Status()
+        if self._valid_readings:
+            store_path = value.get("store_path")
+            self._frame_sink = self._writer.prepare(self.name, store_path, capacity=1)
+        s.set_finished()
+        return s
+
+    def kickoff(self) -> Status:
+        """Start flying.
+
+        Writes the single median reading to disk;
+        it does not imply the existance of a data stream,
+        but for consistency with other flyers, this method is provided.
+        """
+        s = Status()
+        if self._valid_readings:
+            self._frame_sink.send(self._median[self._reading_key]["value"])
+        s.set_finished()
+        return s
+
+    def complete(self) -> Status:
+        """Complete the flying process.
+
+        Tells the writer that no more data will be sent for this pseudo model;
+        this will close the frame sink.
+        """
+        s = Status()
+        if self._valid_readings:
+            self._writer.complete(self.name)
+        s.set_finished()
+        return s
+
+    def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
+        if not self._valid_readings:
+            return
+
+        frames_written = self._writer.get_indices_written()
+        if frames_written == 0:
+            return
+
+        # Determine how many frames to report
+        frames_to_report = min(index, frames_written) if index else frames_written
+
+        # Delegate to writer
+        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
+
+    def get_index(self) -> int:
+        if not self._valid_readings:
+            return 0
+        return self._writer.get_indices_written(self.name)
 
     @property
     def name(self) -> str:

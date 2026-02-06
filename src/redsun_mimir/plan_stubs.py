@@ -142,7 +142,7 @@ def read_while_waiting(
 
 def read_and_stash(
     objs: Sequence[Readable[Any]],
-    cache_obj: HasCache,
+    cache_objs: Sequence[HasCache],
     *,
     stream: str = "primary",
     group: str | None = None,
@@ -184,7 +184,7 @@ def read_and_stash(
         yield from inner_trigger()
 
     yield from bps.create(stream)
-    for obj in objs:
+    for obj, cache_obj in zip(objs, cache_objs):
         reading = yield from bps.read(obj)
         yield from stash(cache_obj, obj.name, reading, group=group, wait=wait)
         ret.update(reading)
@@ -219,17 +219,22 @@ def stash(
     wait: bool
         Whether to wait for the stashing operation to complete.
     """
+    if not group:
+        group = short_uid("stash")
+
     yield from Msg("stash", obj, name, reading, group=group)
     if wait:
         yield from bps.wait(group=group)
 
 
-def clear_cache(obj: HasCache, *, group: str | None, wait: bool) -> MsgGenerator[None]:
-    """Clear the cache of a HasCache object.
+def clear_cache(
+    obj: HasCache, *, group: str | None = None, wait: bool = False
+) -> MsgGenerator[None]:
+    """Clear the cache of a `HasCache` object.
 
     Parameters
     ----------
-    obj: HasCache
+    obj: `HasCache`
         The cache object to clear.
     group: str | None
         An optional identifier for the clear operation.
@@ -237,6 +242,9 @@ def clear_cache(obj: HasCache, *, group: str | None, wait: bool) -> MsgGenerator
     wait: bool
         Whether to wait for the clear operation to complete.
     """
+    if not group:
+        group = short_uid("clear_cache")
+
     yield from Msg("clear_cache", obj, group=group)
     if wait:
         yield from bps.wait(group=group)

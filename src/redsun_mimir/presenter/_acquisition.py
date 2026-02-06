@@ -14,15 +14,14 @@ from sunflare.log import Loggable
 from sunflare.presenter import PPresenter
 from sunflare.virtual import Signal, VirtualBus
 
+import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
 from redsun_mimir.actions import Action, continous
 from redsun_mimir.common import (
     PlanSpec,
     collect_arguments,
     create_plan_spec,
-    register_bound_command,
     resolve_arguments,
-    wait_for_actions,
 )
 from redsun_mimir.model.pseudo import MedianPseudoModel
 from redsun_mimir.protocols import (  # noqa: TC001
@@ -35,6 +34,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
+    from bluesky.protocols import Readable
     from sunflare.model import PModel
 
     from redsun_mimir.actions import SRLatch
@@ -125,9 +125,9 @@ def square_scan(
 
 
 def scan_and_stash(
-    detectors: Sequence[DetectorProtocol],
+    detectors: Sequence[ReadableFlyer],
     motor: MotorProtocol,
-    cache: MedianPseudoModel,
+    cache: Sequence[MedianPseudoModel],
     step: float,
     frames_per_side: int,
     axis: tuple[str, str],
@@ -254,7 +254,9 @@ class AcquisitionController(PPresenter, Loggable):
         self.virtual_bus = virtual_bus
         self.models = models
         self.engine = RunEngine()
-        register_bound_command(self.engine, wait_for_actions)
+
+        for command in [cmds.wait_for_actions, cmds.stash]:
+            cmds.register_bound_command(self.engine, command)
 
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
@@ -266,6 +268,7 @@ class AcquisitionController(PPresenter, Loggable):
             "live_count": self.live_count,
             "live_stream": self.live_stream,
             "live_square_scan": self.live_square_scan,
+            "live_median_scan": self.live_median_scan,
         }
         self.plan_specs: dict[str, PlanSpec] = {
             name: create_plan_spec(plan, models) for name, plan in self.plans.items()
@@ -444,22 +447,28 @@ class AcquisitionController(PPresenter, Loggable):
     @continous(togglable=True)
     def live_median_scan(
         self,
-        detectors: Sequence[DetectorProtocol],
+        detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
+        store_path: pathlib.Path,
         step: float = 1.0,
         step_egu: Literal["μm", "mm", "nm"] = "μm",
-        frames: int = 100,
+        scan_frames: int = 100,
         direction: Literal["xy", "yx"] = "xy",
+        stream_frames: int = 10,
         /,
         scan: Action = ScanAction(),
-        stream: Action = StreamAction(),
+        stream: Action = StreamAction(togglable=False),
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
-        Similar to the `live_square_scan` plan, but additionally
-        a pseudo-model dedicated with computing the median
-        value of the acquired frames is used to provide a pre-computed
-        median value for each detector involved in the scan.
+        The plan combines the square scan movement in `live_square_scan`
+        with the live streaming to disk in `live_stream`.
+        Additionally, each detector will have a corresponding
+        pseudo-model object that will compute the median
+        of the frames collected during the square scan, making
+        them available as stashed readings during the stream action,
+        so that the computed medians are stored for post-processing and visualization
+        by third-party tools.
 
         Parameters
         ----------
@@ -468,12 +477,16 @@ class AcquisitionController(PPresenter, Loggable):
         - motor: ``MotorProtocol``
             - The motor to use for the scan movement.
             - It must provide two axes of movement ("X" and "Y").
+        - store_path: ``pathlib.Path``
+            - The folder path on disk where to store the median frames.
+            - A Zarr subdirectory with a date-formatted name will be created
+            inside this folder for each stream.
         - step: ``float``, optional
             The step size for motor movement. Default is 1.0.
         - step_egu: ``Literal["μm", "mm", "nm"]`, optional
             - The engineering unit for the step size.
             - Default is "μm".
-        - frames: ``int``, optional
+        - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
             - The rectangular movement will be divided into four sides,
             each side collecting `frames / 4` frames, one frame per motor step.
@@ -483,6 +496,9 @@ class AcquisitionController(PPresenter, Loggable):
             - `xy`: move along X axis first, then Y axis.
             - `yx`: move along Y axis first, then X axis.
             - Default is "xy".
+        - stream_frames: ``int``, optional
+            - The number of frames to stream to disk when the stream action is triggered.
+            - Default is 10.
 
         Raises
         ------
@@ -497,7 +513,7 @@ class AcquisitionController(PPresenter, Loggable):
                 f" Available axes: {motor.model_info.axis}"
             )
 
-        median = MedianPseudoModel(detectors, target="buffer")
+        medians = set([MedianPseudoModel(detector) for detector in detectors])
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
         old_step, step = convert_to_target_egu(
@@ -506,6 +522,10 @@ class AcquisitionController(PPresenter, Loggable):
             to_egu=motor.model_info.egu,
         )
 
+        live_stream = "live"
+        stream_name = "stream"
+        stream_declared = False
+
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
@@ -513,23 +533,57 @@ class AcquisitionController(PPresenter, Loggable):
             name, event = yield from rps.read_while_waiting(
                 detectors,
                 self.event_map,
-                "live",
+                live_stream,
             )
             if name == scan.name:
+                # make sure to clear the cache at each scan, to avoid stale data
+                for median in medians:
+                    yield from rps.clear_cache(median, wait=True)
                 if motor.model_info.egu != step_egu:
                     yield from rps.set_property(motor, step, propr="step_size")
-
                 yield from scan_and_stash(
                     detectors,
                     motor,
-                    median,
+                    medians,  # type: ignore[arg-type]
                     step,
-                    frames // 4,
+                    scan_frames // 4,
                     axis,
                 )
-
                 if step != old_step:
                     yield from rps.set_property(motor, old_step, propr="step_size")
+
+            elif name == stream.name:
+                # update the set of detectors to include the median models,
+                # so that the stream action can use the pre-computed median values
+                # event triggered, start streaming to disk
+                self.logger.debug("Starting data streaming to disk")
+
+                # Create unique subdirectory for this streaming session
+                timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+                acquisition_path = store_path / f"{timestamp}.zarr"
+                acquisition_path.mkdir(parents=True, exist_ok=True)
+
+                prepare_values: dict[str, Any] = {
+                    "store_path": acquisition_path,
+                    "capacity": stream_frames,
+                    "write_forever": False,
+                }
+
+                objs: list[Readable[Any]] = [*detectors, *medians]
+
+                for obj in objs:
+                    yield from bps.prepare(obj, prepare_values, wait=True)
+
+                if not stream_declared:
+                    yield from bps.declare_stream(*objs, name=stream_name, collect=True)
+                yield from bps.kickoff_all(*objs, wait=True)
+
+                # complete the streaming
+                yield from bps.complete_all(*objs, wait=True)
+                self.logger.debug("Flight complete.")
+
+                # Explicitly collect the stream assets
+                yield from bps.collect(*detectors, name=stream_name)
 
             self.clear_and_notify(name, event)
 
