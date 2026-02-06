@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
-from bluesky.run_engine import call_in_bluesky_event_loop
-from bluesky.utils import maybe_await
 from sunflare.engine import Status
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
@@ -21,12 +19,15 @@ if TYPE_CHECKING:
     from typing_extensions import TypeIs
 
 
-def is_nested_dict(
+def is_flat_descriptor(
     d: dict[str, Descriptor] | dict[str, dict[str, Descriptor]],
-) -> TypeIs[dict[str, dict[str, Descriptor]]]:
-    """Type guard to check if a dictionary is nested (i.e., dict[str, dict[str, Descriptor]])."""
-    first_value = next(iter(d.values()), None)
-    return isinstance(first_value, dict)
+) -> TypeIs[dict[str, Descriptor]]:
+    """Check if the given descriptor dictionary is flat."""
+    first_value = next(iter(d.values()))
+    has_descriptor_keys = isinstance(first_value, dict) and all(
+        key in first_value for key in ("source", "dtype", "shape")
+    )
+    return has_descriptor_keys
 
 
 class PrepareKwargs(TypedDict):
@@ -55,33 +56,24 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
     def __init__(
         self,
         reader: ReadableFlyer,
+        describe: dict[str, Descriptor],
+        collect: dict[str, Descriptor] | dict[str, dict[str, Descriptor]],
         describe_target: str = "buffer",
         collect_target: str = "buffer:stream",
     ) -> None:
-        async def describe(
-            reader: ReadableFlyer,
-        ) -> dict[str, Descriptor]:
-            return await maybe_await(reader.describe())
-
-        async def describe_collect(
-            reader: ReadableFlyer,
-        ) -> dict[str, Descriptor] | dict[str, dict[str, Descriptor]]:
-            return await maybe_await(reader.describe_collect())
-
         self._name = f"{reader.name}/median"
         self._describe_target_key = f"{reader.name}:{describe_target}"
         self._collect_target_key = f"{reader.name}:{collect_target}"
         self._reading_key = f"{self._describe_target_key}/median"
         self._valid_readings = False
         self._median: dict[str, Reading[Any]] = {}
-        describe_descriptor = call_in_bluesky_event_loop(describe(reader))
-        full_collect_descriptor = call_in_bluesky_event_loop(describe_collect(reader))
+        describe_descriptor = describe
         collect_descriptor: dict[str, Descriptor] = {}
 
-        if is_nested_dict(full_collect_descriptor):
-            collect_descriptor = full_collect_descriptor[reader.name]
+        if is_flat_descriptor(collect):
+            collect_descriptor = collect
         else:
-            collect_descriptor = full_collect_descriptor
+            collect_descriptor = collect[self._collect_target_key]
 
         self._describe_descriptor = {
             key.replace(self._describe_target_key, self._reading_key): value

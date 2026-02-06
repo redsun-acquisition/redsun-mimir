@@ -8,10 +8,18 @@ from bluesky.protocols import Triggerable
 from bluesky.utils import Msg, maybe_await, short_uid
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import Mapping, Sequence
     from typing import Any, Final, Literal
 
-    from bluesky.protocols import Descriptor, Movable, Readable, Reading, Status
+    from bluesky.protocols import (
+        Collectable,
+        Descriptor,
+        Movable,
+        Readable,
+        Reading,
+        Status,
+    )
     from bluesky.utils import MsgGenerator
 
     from redsun_mimir.actions import SRLatch
@@ -222,7 +230,7 @@ def stash(
     if not group:
         group = short_uid("stash")
 
-    yield from Msg("stash", obj, name, reading, group=group)
+    yield Msg("stash", obj, name, reading, group=group)
     if wait:
         yield from bps.wait(group=group)
 
@@ -245,20 +253,20 @@ def clear_cache(
     if not group:
         group = short_uid("clear_cache")
 
-    yield from Msg("clear_cache", obj, group=group)
+    yield Msg("clear_cache", obj, group=group)
     if wait:
         yield from bps.wait(group=group)
 
 
 def describe(
-    objs: Sequence[Readable[Any]],
-) -> MsgGenerator[list[dict[str, Descriptor]]]:
-    """Gather descriptors from multiple Readable devices.
+    obj: Readable[Any],
+) -> MsgGenerator[dict[str, Descriptor]]:
+    """Gather the descriptor from a Readable object.
 
     Parameters
     ----------
-    objs : Sequence[Readable[Any]]
-        A sequence of Readable devices to describe.
+    objs : Readable[Any]
+        Object to describe.
 
     Returns
     -------
@@ -266,11 +274,40 @@ def describe(
         A list of descriptors from each device.
     """
 
-    # Wrap in a coroutine so we can handle both sync and async devices
-    async def _describe(obj: Readable[Any]) -> dict[str, Descriptor]:
+    async def _describe() -> dict[str, Descriptor]:
         return await maybe_await(obj.describe())
 
-    result: list[dict[str, Descriptor]] = yield from bps.wait_for(
-        [_describe(obj) for obj in objs]
+    task: list[asyncio.Task[dict[str, Descriptor]]] = yield from bps.wait_for(
+        [_describe]
     )
+    result = task[0].result()
+    return result
+
+
+def describe_collect(
+    obj: Collectable,
+) -> MsgGenerator[dict[str, Descriptor] | dict[str, dict[str, Descriptor]]]:
+    """Gather descriptors from a Collectable object.
+
+    Parameters
+    ----------
+    obj : Collectable
+        Object to describe.
+
+    Returns
+    -------
+    dict[str, Descriptor]
+        A dictionary of descriptors from the Collectable object.
+    """
+
+    async def _describe_collect() -> (
+        dict[str, Descriptor] | dict[str, dict[str, Descriptor]]
+    ):
+        return await maybe_await(obj.describe_collect())
+
+    task: list[
+        asyncio.Task[dict[str, Descriptor] | dict[str, dict[str, Descriptor]]]
+    ] = yield from bps.wait_for([_describe_collect])
+    result = task[0].result()
+
     return result

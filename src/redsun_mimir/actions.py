@@ -3,7 +3,15 @@ from __future__ import annotations
 import asyncio
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    cast,
+    overload,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,10 +82,28 @@ class SRLatch:
         await self._reset_event.wait()
 
 
+@overload
 def continous(
+    func: Callable[P, R_co],
+    /,
+) -> ContinousPlan[P, R_co]: ...
+
+
+@overload
+def continous(
+    *,
     togglable: bool = True,
     pausable: bool = False,
-) -> Callable[[Callable[P, R_co]], ContinousPlan[P, R_co]]:
+) -> Callable[[Callable[P, R_co]], ContinousPlan[P, R_co]]: ...
+
+
+def continous(
+    func: Callable[P, R_co] | None = None,
+    /,
+    *,
+    togglable: bool = True,
+    pausable: bool = False,
+) -> Callable[[Callable[P, R_co]], ContinousPlan[P, R_co]] | ContinousPlan[P, R_co]:
     """Mark a plan as continous.
 
     A "continous" plan informs the view to provide UI elements
@@ -116,7 +142,10 @@ def continous(
 
         return cast("ContinousPlan[P, R_co]", func)
 
-    return decorator
+    if func is None:
+        return decorator
+
+    return decorator(func)
 
 
 @dataclass(kw_only=True)

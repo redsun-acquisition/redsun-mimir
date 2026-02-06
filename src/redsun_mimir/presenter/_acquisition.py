@@ -444,7 +444,7 @@ class AcquisitionController(PPresenter, Loggable):
             self.clear_and_notify(name, event)
             # then resume live acquisition (go back to the top of the loop)
 
-    @continous(togglable=True)
+    @continous
     def live_median_scan(
         self,
         detectors: Sequence[ReadableFlyer],
@@ -470,6 +470,10 @@ class AcquisitionController(PPresenter, Loggable):
         so that the computed medians are stored for post-processing and visualization
         by third-party tools.
 
+        If the "stream" action is triggered before the "scan", there will be
+        no median values available for streaming, but the plan will still stream
+        the raw readings from the detectors.
+
         Parameters
         ----------
         - detectors: ``Sequence[DetectorProtocol]``
@@ -482,7 +486,7 @@ class AcquisitionController(PPresenter, Loggable):
             - A Zarr subdirectory with a date-formatted name will be created
             inside this folder for each stream.
         - step: ``float``, optional
-            The step size for motor movement. Default is 1.0.
+            - The step size for motor movement. Default is 1.0.
         - step_egu: ``Literal["μm", "mm", "nm"]`, optional
             - The engineering unit for the step size.
             - Default is "μm".
@@ -513,7 +517,12 @@ class AcquisitionController(PPresenter, Loggable):
                 f" Available axes: {motor.model_info.axis}"
             )
 
-        medians = set([MedianPseudoModel(detector) for detector in detectors])
+        medians: set[MedianPseudoModel] = set()
+        for det in detectors:
+            describe = yield from rps.describe(det)
+            collect = yield from rps.describe_collect(det)
+            medians.add(MedianPseudoModel(det, describe, collect))
+
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
         old_step, step = convert_to_target_egu(
