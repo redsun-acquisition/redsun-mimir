@@ -255,7 +255,7 @@ class AcquisitionController(PPresenter, Loggable):
         self.models = models
         self.engine = RunEngine()
 
-        for command in [cmds.wait_for_actions, cmds.stash]:
+        for command in [cmds.wait_for_actions, cmds.stash, cmds.clear_cache]:
             cmds.register_bound_command(self.engine, command)
 
         self.futures: set[Future[Any]] = set()
