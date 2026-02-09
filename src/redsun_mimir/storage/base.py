@@ -31,7 +31,7 @@ class SourceInfo:
     dtype: np.dtype[np.generic]
     shape: tuple[int, ...]
     data_key: str
-    mimetype: str = "application/octet-stream"
+    mimetype: str = "application\octet-stream"
     frames_written: int = 0
     collection_counter: int = 0
     stream_resource_uid: str = field(default_factory=lambda: str(uuid.uuid4()))

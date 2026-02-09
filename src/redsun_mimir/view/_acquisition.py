@@ -409,16 +409,21 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
         plan_widget = self.plan_widgets[plan]
 
         action_button = plan_widget.get_action_button(action_name)
-        if action_button and action_button.action.togglable:
-            # Re-enable the button (in case it was disabled during processing)
-            action_button.setEnabled(True)
+        if action_button:
+            if action_button.action.togglable:
+                # Re-enable the button (in case it was disabled during processing)
+                action_button.setEnabled(True)
 
-            # If currently checked, uncheck it
-            if action_button.isChecked():
-                # Block signals temporarily to avoid triggering the toggled callback
-                action_button.blockSignals(True)
-                action_button.setChecked(False)
-                action_button.blockSignals(False)
+                # If currently checked, uncheck it
+                if action_button.isChecked():
+                    # Block signals temporarily to avoid triggering the toggled callback
+                    action_button.blockSignals(True)
+                    action_button.setChecked(False)
+                    action_button.blockSignals(False)
+            else:
+                # For non-togglable actions, re-enable the entire actions group
+                if plan_widget.actions_group:
+                    plan_widget.actions_group.setEnabled(True)
 
     def _on_action_clicked(self, action_name: str) -> None:
         plan = self.plans_combobox.currentText()

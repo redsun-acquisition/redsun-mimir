@@ -535,6 +535,12 @@ class AcquisitionController(PPresenter, Loggable):
         stream_name = "stream"
         stream_declared = False
 
+        # when streaming, we include the median
+        # models in the set of objects to stage, kickoff, complete and collect,
+        # so that the median values are included in the stream assets if
+        # a previous scan action has been triggered
+        objs: list[Readable[Any]] = [*detectors, *medians]
+
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
@@ -558,6 +564,10 @@ class AcquisitionController(PPresenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
+                for median in medians:
+                    # we have a stash of collected frames;
+                    # call trigger to perform median calculation
+                    yield from bps.trigger(median)
                 if step != old_step:
                     yield from rps.set_property(motor, old_step, propr="step_size")
 
@@ -578,22 +588,20 @@ class AcquisitionController(PPresenter, Loggable):
                     "write_forever": False,
                 }
 
-                objs: list[Readable[Any]] = [*detectors, *medians]
-
                 for obj in objs:
                     yield from bps.prepare(obj, prepare_values, wait=True)
 
                 if not stream_declared:
                     yield from bps.declare_stream(*objs, name=stream_name, collect=True)
-                yield from bps.kickoff_all(*objs, wait=True)
+                    stream_declared = True
+                yield from bps.kickoff_all(*objs)
 
                 # complete the streaming
                 yield from bps.complete_all(*objs, wait=True)
                 self.logger.debug("Flight complete.")
 
-                # Explicitly collect the stream assets
-                yield from bps.collect(*detectors, name=stream_name)
-
+                # Explicitly collect the stream assets from all objects
+                yield from bps.collect(*objs, name=stream_name)
             self.clear_and_notify(name, event)
 
     @continous(togglable=True)
@@ -666,7 +674,7 @@ class AcquisitionController(PPresenter, Loggable):
                 yield from bps.declare_stream(
                     *detectors, name=stream_name, collect=True
                 )
-            yield from bps.kickoff_all(*detectors)
+            yield from bps.kickoff_all(*detectors, wait=True)
             if write_forever:
                 self.logger.debug("Writing forever.")
                 name, event = yield from rps.read_while_waiting(
@@ -679,6 +687,9 @@ class AcquisitionController(PPresenter, Loggable):
 
             # Explicitly collect the stream assets
             yield from bps.collect(*detectors, name=stream_name)
+
+            # Mark stream as declared so future declarations skip
+            stream_declared = True
 
             # we finished streaming;
             # clear the event and notify the action is done

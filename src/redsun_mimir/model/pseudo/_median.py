@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
 from sunflare.engine import Status
+from sunflare.log import Loggable
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
 from redsun_mimir.storage import ZarrWriter
@@ -37,7 +38,7 @@ class PrepareKwargs(TypedDict):
     """Path where the median readings are to be stored."""
 
 
-class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
+class MedianPseudoModel(PseudoCacheFlyer, Triggerable, Loggable):
     """A pseudo-model representing a median processor.
 
     The pseudo-model is intended to be created inside a plan before
@@ -61,10 +62,11 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
         describe_target: str = "buffer",
         collect_target: str = "buffer:stream",
     ) -> None:
-        self._name = f"{reader.name}/median"
+        self._name = f"{reader.name}_median"
         self._describe_target_key = f"{reader.name}:{describe_target}"
         self._collect_target_key = f"{reader.name}:{collect_target}"
-        self._reading_key = f"{self._describe_target_key}/median"
+        self._reading_key = f"{self.name}:{describe_target}"
+        self._collect_key = f"{self.name}:{collect_target}"
         self._valid_readings = False
         self._median: dict[str, Reading[Any]] = {}
         describe_descriptor = describe
@@ -81,18 +83,18 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
             if self._describe_target_key in key
         }
         self._collect_descriptor = {
-            key.replace(self._collect_target_key, self._reading_key): value
+            key.replace(self._collect_target_key, self._collect_key): value
             for key, value in collect_descriptor.items()
             if self._collect_target_key in key
         }
 
         old_describe_source = describe_descriptor[self._describe_target_key]["source"]
-        new_describe_source = f"{old_describe_source}/median"
+        new_describe_source = f"{old_describe_source}\median"
         self._describe_descriptor[self._reading_key]["source"] = new_describe_source
 
         old_collect_source = collect_descriptor[self._collect_target_key]["source"]
-        new_collect_source = f"{old_collect_source}/median"
-        self._collect_descriptor[self._reading_key]["source"] = new_collect_source
+        new_collect_source = f"{old_collect_source}\median"
+        self._collect_descriptor[self._collect_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists
         self._cache: list[dict[str, Reading[Any]]] = []
@@ -162,7 +164,7 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
             median_value: npt.NDArray[np.generic] = np.median(
                 np.stack(values, axis=0), axis=0
             )
-            shape = median_value.shape[1:]
+            shape = median_value.shape
             dtype = median_value.dtype
             self._writer.update_source(self.name, dtype, shape)
             median_key = self._describe_target_key.replace(
@@ -177,6 +179,7 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable):
         """Prepare the pseudo model for flight by writing the median readings to disk."""
         s = Status()
         if self._valid_readings:
+            self.logger.debug(f"Valid median for {self.name}, preparing for flight.")
             store_path = value.get("store_path")
             self._frame_sink = self._writer.prepare(self.name, store_path, capacity=1)
         s.set_finished()

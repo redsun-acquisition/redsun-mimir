@@ -121,6 +121,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._writer = ZarrWriter.get("zarr-writer")
         self._stream_descriptors: dict[str, Descriptor] = {}
 
+        self._complete_status = Status()
+        self._assets_collected = False  # Track if stream assets have been collected
+
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
 
@@ -315,8 +318,14 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             self._fly_stop.clear()
 
         # we also prepare a status for complete()
-        self._complete_status = Status()
+        if self._complete_status.done:
+            # recreate the status if it's already done
+            self._complete_status = Status()
         self._complete_status.add_callback(_clear_flags)
+
+        # Reset the assets collected flag for this new flight
+        self._assets_collected = False
+
         if not self._core.isSequenceRunning():
             s.set_exception(
                 RuntimeError(
@@ -353,6 +362,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         Status
             Status of the operation.
         """
+        if self._complete_status.done:
+            return self._complete_status
+
         if not self._fly_start.is_set():
             self._complete_status.set_exception(
                 RuntimeError("Not flying; kickoff() must be called first. ")
@@ -479,7 +491,14 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if self._fly_start.is_set():
             return
 
-        frames_written = self._writer.get_indices_written()
+        if not self._complete_status.done:
+            return
+
+        # Don't emit assets if they've already been collected
+        if self._assets_collected:
+            return
+
+        frames_written = self._writer.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -488,6 +507,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             frames_to_report = min(index, frames_written)
         else:
             frames_to_report = frames_written
+
+        # Mark that we're collecting assets
+        self._assets_collected = True
 
         # Delegate to writer
         yield from self._writer.collect_stream_docs(self.name, frames_to_report)
