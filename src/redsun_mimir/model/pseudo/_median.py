@@ -97,7 +97,7 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable, Loggable):
         self._collect_descriptor[self._collect_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists
-        self._cache: list[dict[str, Reading[Any]]] = []
+        self._cache: list[npt.NDArray[np.generic]] = []
 
         self._writer = ZarrWriter.get("zarr-writer")
 
@@ -136,10 +136,10 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable, Loggable):
 
         return self._median
 
-    def stash(self, name: str, values: dict[str, Reading[Any]]) -> Status:
+    def stash(self, value: dict[str, Reading[Any]]) -> Status:
         """Store readings in the cache."""
         s = Status()
-        self._cache.append(values)
+        self._cache.append(value[self._describe_target_key]["value"])
         s.set_finished()
         return s
 
@@ -155,14 +155,9 @@ class MedianPseudoModel(PseudoCacheFlyer, Triggerable, Loggable):
         """Compute the median of the cached readings."""
         s = Status()
         # compute the median for the target key and store it in the _median dict
-        values = [
-            reading[self._describe_target_key]["value"]
-            for reading in self._cache
-            if self._describe_target_key in reading
-        ]
-        if values:
+        if self._cache:
             median_value: npt.NDArray[np.generic] = np.median(
-                np.stack(values, axis=0), axis=0
+                np.stack(self._cache, axis=0), axis=0
             )
             shape = median_value.shape
             dtype = median_value.dtype
