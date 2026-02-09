@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class HasCache(Protocol):
     """Protocol for models that can cache values while inside a plan."""
 
-    def stash(self, name: str, values: dict[str, Reading[Any]]) -> Status:
+    def stash(self, values: dict[str, Reading[Any]]) -> Status:
         """Stash the readings associated with the given object name in the model cache."""
         ...
 

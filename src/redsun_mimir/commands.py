@@ -81,10 +81,9 @@ async def stash(self: RunEngine, msg: Msg) -> Status:
         The message containing the readings to stash.
         Expected message format:
 
-        Msg("stash", obj, name, readings)
+        Msg("stash", obj, readings)
 
         - obj: the model object to stash the readings for (implements `HasCache` protocol).
-        - name: the device name associated with the readings.
         - readings: a dict of readings to stash in the model cache.
     """
     obj = msg.obj
@@ -92,16 +91,15 @@ async def stash(self: RunEngine, msg: Msg) -> Status:
         raise TypeError(
             f"Object {obj} does not support caching. It must implement the HasCache protocol."
         )
-    if len(msg.args) != 2:
+    if len(msg.args) != 1:
         raise RuntimeError(
-            "Expected exactly two positional arguments in the message: name and readings."
+            "Expected only one positional argument in the message after the object."
         )
-    name: str = msg.args[0]
     readings: dict[str, Any] = msg.args[1]
     group: str | None = dict(msg.kwargs).get("group", None)
     if not group:
         raise RuntimeError("Expected a 'group' keyword argument in the message.")
-    status = obj.stash(name, readings)
+    status = obj.stash(readings)
 
     self._add_status_to_group(obj, status, group, action="stash")
 

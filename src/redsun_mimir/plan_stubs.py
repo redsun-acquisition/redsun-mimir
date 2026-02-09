@@ -194,7 +194,7 @@ def read_and_stash(
     yield from bps.create(stream)
     for obj, cache_obj in zip(objs, cache_objs):
         reading = yield from bps.read(obj)
-        yield from stash(cache_obj, obj.name, reading, group=group, wait=wait)
+        yield from stash(cache_obj, reading, group=group, wait=wait)
         ret.update(reading)
 
     yield from bps.save()
@@ -203,7 +203,6 @@ def read_and_stash(
 
 def stash(
     obj: HasCache,
-    name: str,
     reading: dict[str, Reading[Any]],
     *,
     group: str | None,
@@ -230,7 +229,7 @@ def stash(
     if not group:
         group = short_uid("stash")
 
-    yield Msg("stash", obj, name, reading, group=group)
+    yield Msg("stash", obj, reading, group=group)
     if wait:
         yield from bps.wait(group=group)
 
