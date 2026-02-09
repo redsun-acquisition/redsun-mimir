@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from typing import Any, Literal
 
-    from bluesky.protocols import Status
+    from bluesky.protocols import Reading, Status
     from bluesky.utils import Msg
     from sunflare.engine import RunEngine
 
@@ -95,7 +95,7 @@ async def stash(self: RunEngine, msg: Msg) -> Status:
         raise RuntimeError(
             "Expected only one positional argument in the message after the object."
         )
-    readings: dict[str, Any] = msg.args[1]
+    readings: dict[str, Reading[Any]] = msg.args[0]
     group: str | None = dict(msg.kwargs).get("group", None)
     if not group:
         raise RuntimeError("Expected a 'group' keyword argument in the message.")

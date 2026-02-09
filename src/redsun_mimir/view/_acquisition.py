@@ -338,8 +338,9 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
                         btn = ActionButton(action)
                         if action.togglable:
                             btn.toggled.connect(
-                                lambda checked,
-                                name=action.name: self._on_action_toggled(checked, name)
+                                lambda checked, name=action.name: (
+                                    self._on_action_toggled(checked, name)
+                                )
                             )
                         else:
                             btn.clicked.connect(
