@@ -183,7 +183,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             }
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
-            if maximum and minimum:
+            if maximum is not None and minimum is not None:
                 config_descriptor[descriptor_key]["limits"] = {
                     "control": {
                         "low": value["minimum"],
