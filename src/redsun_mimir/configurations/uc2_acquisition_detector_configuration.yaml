@@ -1,0 +1,44 @@
+session: redsun-mimir
+engine: bluesky
+frontend: pyqt
+models:
+  iSCAT:
+    plugin_name: test
+    plugin_id: test
+    sensor_shape: [1920, 1200]
+    pixel_size: [5.86, 5.86]
+  motor-mock:
+    plugin_name: test
+    plugin_id: test
+    egu: mm
+    axis:
+      - X
+      - Y
+    step_sizes:
+      X: 0.1
+      Y: 0.1
+controllers:
+  AcquisitionController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+  DetectorController:
+    plugin_name: test
+    plugin_id: test
+    timeout: 5.0
+  MedianPresenter:
+    plugin_name: test
+    plugin_id: test
+views:
+  AcquisitionWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center
+  DetectorWidget:
+    plugin_name: test
+    plugin_id: test
+    # doesn't have any effect;
+    # used locally for testing
+    position: center

@@ -9,8 +9,7 @@ from qtpy import QtCore, QtWidgets
 from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import DetectorModelInfo, MockMotorModel, MotorModelInfo
-from redsun_mimir.model.microscope import SimulatedCameraModel
+from redsun_mimir.model import MockMotorModel, MotorModelInfo
 from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
 from redsun_mimir.presenter import (
     AcquisitionController,
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
     from sunflare.model import PModel
 
 
-def acquisition_detector_widget() -> None:
+def acquisition_detector_widget_uc2() -> None:
     """Run a local mock example.
 
     Launches a Qt ``AcquisitionWidget`` app
@@ -45,15 +44,13 @@ def acquisition_detector_widget() -> None:
 
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "acquisition_detector_configuration.yaml"
+    config_path = Path(__file__).parent / "uc2_acquisition_detector_configuration.yaml"
     config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
     models_info: dict[str, PModelInfo] = {}
 
     for name, values in config_dict["models"].items():
-        if "mmcore" in name:
+        if "iSCAT" in name:
             models_info[name] = MMCoreCameraModelInfo(**values)
-        elif "microscope" in name:
-            models_info[name] = DetectorModelInfo(**values)
         elif "motor" in name:
             models_info[name] = MotorModelInfo(**values)
         else:
@@ -85,10 +82,8 @@ def acquisition_detector_widget() -> None:
 
     mock_models: dict[str, PModel] = {}
     for name, model_info in models_info.items():
-        if "mmcore" in name:
+        if "iSCAT" in name:
             mock_models[name] = MMCoreCameraModel(name, model_info)  # type: ignore
-        elif "microscope" in name:
-            mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
         elif "motor" in name:
             mock_models[name] = MockMotorModel(name, model_info)  # type: ignore
         else:

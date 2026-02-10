@@ -25,6 +25,10 @@ def main() -> None:
         "acquisition-detector",
         help="Run the acquisition widget with background detector controller",
     )
+    subparsers.add_parser(
+        "acquisition-detector-uc2",
+        help="Run the acquisition widget with background detector controller and UC2 devices",
+    )
 
     options = parser.parse_args(namespace=Options())
     if options.command == "stage":
@@ -45,6 +49,8 @@ def main() -> None:
         configurations.acquisition_widget_uc2()
     elif options.command == "acquisition-detector":
         configurations.acquisition_detector_widget()
+    elif options.command == "acquisition-detector-uc2":
+        configurations.acquisition_detector_widget_uc2()
     else:
         parser.print_help()
 
