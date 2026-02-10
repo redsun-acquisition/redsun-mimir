@@ -93,6 +93,15 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if model_info.sensor_shape[0:] != tuple(self._device.getROI()[2:]):
             self._device.setROI(0, 0, *model_info.sensor_shape[0:])
 
+        if model_info.defaults:
+            for prop, value in model_info.defaults.items():
+                # if the property is not in the allowed properties, skip it
+                if prop not in model_info.allowed_properties:
+                    continue
+                self._core.setProperty(name, prop, value)
+
+        self._core.setExposure(self.name, model_info.starting_exposure)
+
         self.roi = (0, 0, *self.model_info.sensor_shape)
         self._device_schema = self._device.schema()
         self._buffer_key = f"{self.name}:buffer"
@@ -100,6 +109,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._buffer_stream_key = f"{self.name}:buffer:stream"
         self._fly_start = th.Event()
         self._fly_stop = th.Event()
+        self._staged = th.Event()
         self._current_exposure: float = 0.0
 
         # Writer for storage
@@ -108,6 +118,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
 
         self._complete_status = Status()
         self._assets_collected = False  # Track if stream assets have been collected
+
+        self.logger.debug(f"Initialized {model_info.adapter}\{model_info.device}")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -132,6 +144,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             s.set_exception(ValueError("No property specified."))
         if propr in self._device_schema["properties"]:
             self._core.setProperty(self.name, propr, value)
+            s.set_finished()
+        elif propr == "exposure (ms)":
+            self._core.setExposure(self.name, value)
             s.set_finished()
         elif propr == "roi":
             # TODO: should we validate the ROI here?
@@ -181,6 +196,22 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         config_descriptor.pop("allowed_properties", None)
         config_descriptor.pop("enum_map", None)
         config_descriptor.pop("numpy_dtype", None)
+        config_descriptor.pop("defaults", None)
+        config_descriptor.pop("starting_exposure", None)
+        config_descriptor.pop("exposure_limits", None)
+
+        config_descriptor[f"{self.name}:exposure (ms)"] = {
+            "source": "settings",
+            "dtype": "number",
+            "shape": [],
+            "limits": {
+                "control": {
+                    "low": self.model_info.exposure_limits[0],
+                    "high": self.model_info.exposure_limits[1],
+                }
+            },
+        }
+
         return config_descriptor
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -194,6 +225,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         config.pop("allowed_properties", None)
         config.pop("enum_map", None)
         config.pop("numpy_dtype", None)
+        config.pop("defaults", None)
+        config.pop("starting_exposure", None)
+        config.pop("exposure_limits", None)
 
         for prop in self._device.properties:
             # Filter to only include exposed properties
@@ -204,6 +238,10 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 "value": prop.value,
                 "timestamp": timestamp,
             }
+        config[f"{self.name}:exposure (ms)"] = {
+            "value": self._device.getExposure(),
+            "timestamp": timestamp,
+        }
         return config
 
     def stage(self) -> Status:
@@ -213,7 +251,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # for use in the streaming thread and the image availability wait
         self._current_exposure = self._core.getExposure() / 1000.0
         try:
-            self._core.startContinuousSequenceAcquisition()
+            self._core.startContinuousSequenceAcquisition(self._current_exposure * 1000)
             self.logger.debug(f"Staged {self.name}.")
             s.set_finished()
         except Exception as e:
@@ -410,7 +448,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
         if not self._fly_start.is_set():
             # not flying; read the latest image from core buffer
-            self._wait_image_awailable(timeout=self._current_exposure)
+            self._wait_image_awailable()
             img = self._core.popNextImage()
         else:
             # peek the ring buffer head
@@ -555,7 +593,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             while frames_written < frames:
                 if self._fly_stop.is_set():
                     break
-                self._wait_image_awailable(timeout=self._current_exposure)
+                self._wait_image_awailable()
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._frame_sink.send(img)
@@ -563,7 +601,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         else:
             # write until stopped
             while not self._fly_stop.is_set():
-                self._wait_image_awailable(timeout=self._current_exposure)
+                self._wait_image_awailable()
                 img = self._core.popNextImage()
                 self._read_buffer.append(img)
                 self._frame_sink.send(img)
@@ -571,7 +609,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._writer.complete(self.name)
         self._complete_status.set_finished()
 
-    def _wait_image_awailable(self, *, timeout: float = 0.001) -> None:
+    def _wait_image_awailable(self) -> None:
         """Wait until an image is available in the core buffer.
 
         Wait for `timeout` seconds between polls to avoid busy waiting.
@@ -582,9 +620,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         timeout: float
             The timeout in seconds between polls.
             Default is 0.001 seconds.
-            The current exposure time is be a good value to use here.
+            The current exposure time is a good value to use here.
         """
-        while self._core.getRemainingImageCount() == 0:
+        while self._core.getRemainingImageCount() < 1:
             # keep polling until an image is available;
             # just wait a bit to avoid busy waiting;
-            time.sleep(timeout)
+            time.sleep(self._current_exposure)

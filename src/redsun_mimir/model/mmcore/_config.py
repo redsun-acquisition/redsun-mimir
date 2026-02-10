@@ -7,6 +7,8 @@ from attrs import define, field, validators
 from .._config import DetectorModelInfo
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from attrs import Attribute
 
 
@@ -70,9 +72,31 @@ class MMCoreCameraModelInfo(DetectorModelInfo):
     """The Micro-Manager device available for the specified ``adapter``. Default is "DCam"."""
 
     allowed_properties: list[str] = field(
-        default=["Exposure", "PixelType"],
+        default=["PixelType"],
     )
     """Set of allowed Micro-Manager properties for the camera."""
+
+    defaults: dict[str, Any] = field(factory=dict)
+    """
+    Map of default values for the allowed properties.
+
+    The keys must match the values in ``allowed_properties``.
+
+    Defaults to an empty dictionary (the built-in defaults of the camera will be used).
+    """
+
+    starting_exposure: float = field(
+        validator=validators.instance_of(float),
+        default=100.0,
+    )
+    """Starting exposure time in milliseconds for the camera. Default is 100 ms."""
+
+    exposure_limits: tuple[float, float] = field(
+        converter=tuple,
+        validator=validators.instance_of(tuple),
+        default=(0.0, 10000.0),
+    )
+    """Mimum and maximum exposure time in milliseconds for the camera. Default is (0.0, 10000.0) ms."""
 
     enum_map: dict[str, list[str]] = field(
         converter=freeze_dict,
