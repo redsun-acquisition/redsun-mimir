@@ -1,3 +1,3 @@
-from ._median import MedianPseudoModel
+from ._models import MedianPseudoModel
 
 __all__ = ["MedianPseudoModel"]
