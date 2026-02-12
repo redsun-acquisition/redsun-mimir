@@ -9,12 +9,12 @@ models:
     device: DahengCamera
     allowed_properties:
       - PixelType
-    defaults:
-      PixelType: Mono10
     enum_map:
       PixelType:
         - Mono8
         - Mono10
+    defaults:
+      PixelType: Mono10
     numpy_dtype:
       PixelType:
         Mono8: uint8

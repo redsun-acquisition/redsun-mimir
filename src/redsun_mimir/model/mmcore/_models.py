@@ -6,11 +6,9 @@ from typing import TYPE_CHECKING, TypedDict, cast
 
 import numpy as np
 from pymmcore_plus import CMMCorePlus as Core
-from pymmcore_plus import DeviceType
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
-from redsun_mimir.model.utils import RingBuffer
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.storage import ZarrWriter
 
@@ -18,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Any, ClassVar, Iterator
 
+    import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
 
     from ._config import MMCoreCameraModelInfo
@@ -66,10 +65,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             self._core.initializeDevice(name)
             self._core.setCameraDevice(name)
 
-            # use device object for property manipulation
-            self._device = self._core.getDeviceObject(
-                name, device_type=DeviceType.Camera
-            )
             MMCoreCameraModel.initialized = True
         except Exception as e:
             self.logger.error(f"Failed to initialize device {name}")
@@ -79,7 +74,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # on initialization; if the input specifies a smaller ROI,
         # update it
         self._core.clearROI()
-        full_frame = self._device.getROI()[2:]
+        full_frame = self._core.getROI()[2:]
 
         if (
             model_info.sensor_shape[0] > full_frame[0]
@@ -90,8 +85,8 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 f"full frame size {full_frame[0]}x{full_frame[1]} of the camera."
             )
 
-        if model_info.sensor_shape[0:] != tuple(self._device.getROI()[2:]):
-            self._device.setROI(0, 0, *model_info.sensor_shape[0:])
+        if model_info.sensor_shape[0:] != tuple(full_frame):
+            self._core.setROI(0, 0, *model_info.sensor_shape[0:])
 
         if model_info.defaults:
             for prop, value in model_info.defaults.items():
@@ -103,11 +98,16 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._core.setExposure(self.name, model_info.starting_exposure)
 
         self.roi = (0, 0, *self.model_info.sensor_shape)
-        self._device_schema = self._device.schema()
+        self._properties = {
+            propr_name: self._core.getPropertyObject(name, propr_name)
+            for propr_name in model_info.allowed_properties
+        }
+
+        self._device_schema = self._core.getDeviceSchema(name)
         self._buffer_key = f"{self.name}:buffer"
         self._roi_key = f"{self.name}:roi"
         self._buffer_stream_key = f"{self.name}:buffer:stream"
-        self._fly_start = th.Event()
+        self._fly_permit = th.Event()
         self._fly_stop = th.Event()
         self._staged = th.Event()
         self._current_exposure: float = 0.0
@@ -120,6 +120,19 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._assets_collected = False  # Track if stream assets have been collected
 
         self.logger.debug(f"Initialized {model_info.adapter}\{model_info.device}")
+
+        self._read_buffer: npt.NDArray[Any] = np.zeros(
+            (self.roi[2], self.roi[3]), dtype=self.dtype
+        )
+
+    @property
+    def dtype(self) -> str:
+        """The currently active pixel data type of the camera, as a numpy dtype string."""
+        # TODO: this is horrible; we need a better way
+        # to manage the mapping from camera properties to numpy dtypes
+        return self._model_info.numpy_dtype[self._pixelprop][
+            self._core.getProperty(self.name, self._pixelprop)
+        ]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set a property of the detector.
@@ -137,31 +150,40 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             Status of the operation.
         """
         s = Status()
-        propr = kwargs.get("propr", None)
-        if propr:
-            propr = cast("str", propr).split(":")[1]
+        try:
+            propr = kwargs.get("propr", None)
+            if propr:
+                propr = cast("str", propr).split(":")[1]
+            else:
+                raise ValueError(
+                    "Property name must be specified via 'propr' keyword argument."
+                )
+            if propr in self._properties.keys():
+                self._properties[propr].value = value
+                # in case we updated the pixel type
+                self._read_buffer = np.zeros(
+                    (self.roi[2], self.roi[3]), dtype=self.dtype
+                )
+            elif propr == "exposure":
+                self._core.setExposure(self.name, value)
+            elif propr == "roi":
+                # TODO: should we validate the ROI here?
+                self._core.setROI(self.name, *value)
+                self._read_buffer = np.zeros(
+                    (self.roi[2], self.roi[3]), dtype=self.dtype
+                )
+                self.roi = tuple(value)
+            else:
+                raise ValueError(f"Property '{propr}' not found.")
+        except Exception as e:
+            s.set_exception(e)
         else:
-            s.set_exception(ValueError("No property specified."))
-        if propr in self._device_schema["properties"]:
-            self._core.setProperty(self.name, propr, value)
             s.set_finished()
-        elif propr == "exposure (ms)":
-            self._core.setExposure(self.name, value)
-            s.set_finished()
-        elif propr == "roi":
-            # TODO: should we validate the ROI here?
-            self._core.setROI(self.name, *value)
-            self.roi = tuple(value)
-            s.set_finished()
-        else:
-            s.set_exception(ValueError(f"Property '{propr}' not found."))
-
         return s
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        schema = self._device.schema()
         config_descriptor: dict[str, Descriptor] = {}
-        for key, value in schema["properties"].items():
+        for key, value in self._device_schema["properties"].items():
             # Filter to only include exposed properties
             if key not in self.model_info.allowed_properties:
                 continue
@@ -200,7 +222,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         config_descriptor.pop("starting_exposure", None)
         config_descriptor.pop("exposure_limits", None)
 
-        config_descriptor[f"{self.name}:exposure (ms)"] = {
+        config_descriptor[f"{self.name}:exposure"] = {
             "source": "settings",
             "dtype": "number",
             "shape": [],
@@ -208,8 +230,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 "control": {
                     "low": self.model_info.exposure_limits[0],
                     "high": self.model_info.exposure_limits[1],
-                }
+                },
             },
+            "units": "ms",
         }
 
         return config_descriptor
@@ -229,7 +252,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         config.pop("starting_exposure", None)
         config.pop("exposure_limits", None)
 
-        for prop in self._device.properties:
+        for prop in self._properties.values():
             # Filter to only include exposed properties
             if prop.name not in self.model_info.allowed_properties:
                 continue
@@ -238,34 +261,53 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 "value": prop.value,
                 "timestamp": timestamp,
             }
-        config[f"{self.name}:exposure (ms)"] = {
-            "value": self._device.getExposure(),
+        config[f"{self.name}:exposure"] = {
+            "value": self._core.getExposure(),
             "timestamp": timestamp,
         }
         return config
 
     def stage(self) -> Status:
-        s = Status()
+        """Stage the detector for acquisition.
 
-        # convert the exposure time from milliseconds to seconds
-        # for use in the streaming thread and the image availability wait
-        self._current_exposure = self._core.getExposure() / 1000.0
+        Sets the current model as active
+        camera for the core and initializes
+        the circular buffer (although
+        it should not be necessary).
+        """
+        s = Status()
+        exp_in_ms = self._core.getExposure()
+        self._current_exposure = exp_in_ms / 1000.0
         try:
-            self._core.startContinuousSequenceAcquisition(self._current_exposure * 1000)
-            self.logger.debug(f"Staged {self.name}.")
+            self._core.setCameraDevice(self.name)
+            self._core.initializeCircularBuffer()
+            self.logger.debug(
+                f"Staged (exposure: {exp_in_ms} ms, capacity: {self._core.getBufferFreeCapacity()} frames)"
+            )
             s.set_finished()
         except Exception as e:
             s.set_exception(e)
         return s
 
     def unstage(self) -> Status:
+        """Unstage the detector.
+
+        No-op for this model; implemented
+        to be compliant with the protocol.
+        """
         s = Status()
-        try:
-            self._core.stopSequenceAcquisition(self.name)
-            self.logger.debug(f"Unstaged {self.name}.")
-            s.set_finished()
-        except Exception as e:
-            s.set_exception(e)
+        self.logger.debug("Unstaged")
+        s.set_finished()
+        return s
+
+    def trigger(self) -> Status:
+        """Trigger a reading from the detector."""
+        s = Status()
+        # if we're not flying,
+        # take a new image and store it in the read buffer;
+        if not self._fly_permit.is_set():
+            self._read_buffer = self._core.snap()
+        s.set_finished()
         return s
 
     def prepare(self, value: PrepareKwargs) -> Status:
@@ -284,16 +326,10 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                 Overrides `capacity`.
         """
         s = Status()
-        self._fly_start.clear()
+        self._fly_permit.clear()
         self._fly_stop.clear()
         try:
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
-
-            # TODO: this is horrible; we need a better way
-            # to manage the mapping from camera properties to numpy dtypes
-            dtype = self._numpy_dtype = self.model_info.numpy_dtype[self._pixelprop][
-                self._core.getProperty(self.name, self._pixelprop)
-            ]
             capacity = value.get("capacity", 0)
             store_path = value.get("store_path")
             write_forever = value.get("write_forever")
@@ -305,16 +341,10 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             # Update source info for this camera
             self._writer.update_source(
                 name=self.name,
-                dtype=np.dtype(dtype),
+                dtype=np.dtype(self.dtype),
                 shape=(height, width),
             )
             self._frame_sink = self._writer.prepare(self.name, store_path, capacity)
-
-            # create 1 frame ring buffer to
-            # allow reading to continue while streaming
-            self._read_buffer = RingBuffer(
-                max_capacity=1, dtype=(dtype, (height, width))
-            )
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
@@ -352,7 +382,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
 
         def _clear_flags(_: Status) -> None:
             """Clear the flying flags when done."""
-            self._fly_start.clear()
+            self._fly_permit.clear()
             self._fly_stop.clear()
 
         # we also prepare a status for complete()
@@ -363,25 +393,19 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
 
         # Reset the assets collected flag for this new flight
         self._assets_collected = False
-
-        if not self._core.isSequenceRunning():
-            s.set_exception(
-                RuntimeError(
-                    "Acquisition is not running (stage() should be called first). "
-                )
-            )
         if not self._thread:
             s.set_exception(
                 RuntimeError(
                     "Storage backend is not prepared (prepare() should be called first). "
                 )
             )
+            return s
         else:
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
             self._writer.kickoff()
-            self._fly_start.set()
+            self._fly_permit.set()
             s.set_finished()
         return s
 
@@ -403,7 +427,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if self._complete_status.done:
             return self._complete_status
 
-        if not self._fly_start.is_set():
+        if not self._fly_permit.is_set():
             self._complete_status.set_exception(
                 RuntimeError("Not flying; kickoff() must be called first. ")
             )
@@ -413,20 +437,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # to finished when done
         self._fly_stop.set()
         return self._complete_status
-
-    def pause(self) -> None:
-        """Pause the acquisition.
-
-        This translates to stopping the sequence acquisition.
-        """
-        self._core.stopSequenceAcquisition(self.name)
-
-    def resume(self) -> None:
-        """Resume the acquisition.
-
-        This translates to starting the sequence acquisition.
-        """
-        self._core.startContinuousSequenceAcquisition()
 
     def read(self) -> dict[str, Reading[Any]]:
         """Read an acquired image.
@@ -441,21 +451,9 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         RuntimeError
             If acquisition is not running.
         """
-        # there are no clear information
-        # about the metadata associated with
-        # each acquired image, requires investigation
-        if not self._core.isSequenceRunning():
-            raise RuntimeError(f"Acquisition is not running for detector {self.name}.")
-        if not self._fly_start.is_set():
-            # not flying; read the latest image from core buffer
-            self._wait_image_awailable()
-            img = self._core.popNextImage()
-        else:
-            # peek the ring buffer head
-            img = self._read_buffer.peek()
         stamp = time.time()
         return {
-            self._buffer_key: {"value": img, "timestamp": stamp},
+            self._buffer_key: {"value": self._read_buffer, "timestamp": stamp},
             self._roi_key: {"value": self.roi, "timestamp": stamp},
         }
 
@@ -525,7 +523,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # Only emit asset docs if we're not currently flying
         # This prevents emitting assets during read_while_waiting (while streaming is active)
         # Assets should only be emitted after complete() is called
-        if self._fly_start.is_set():
+        if self._fly_permit.is_set():
             return
 
         if not self._complete_status.done:
@@ -579,7 +577,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             The number of frames to stream; if 0, stream indefinitely.
         """
         # wait for kickoff to be set
-        self._fly_start.wait()
+        self._fly_permit.wait()
         self.logger.debug("Starting streaming thread.")
 
         # regardless of whether its
@@ -590,39 +588,34 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         # access the camera image buffer directly
         frames_written = 0
         if frames > 0:
+            self._core.startSequenceAcquisition(frames, self._current_exposure, False)
             while frames_written < frames:
                 if self._fly_stop.is_set():
+                    self._core.stopSequenceAcquisition()
                     break
-                self._wait_image_awailable()
+                self._wait_for_buffer()
                 img = self._core.popNextImage()
-                self._read_buffer.append(img)
+                np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
         else:
             # write until stopped
+            self._core.startContinuousSequenceAcquisition(self._current_exposure)
             while not self._fly_stop.is_set():
-                self._wait_image_awailable()
+                self._wait_for_buffer()
                 img = self._core.popNextImage()
-                self._read_buffer.append(img)
+                np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
+            self._core.stopSequenceAcquisition()
         self._writer.complete(self.name)
         self._complete_status.set_finished()
 
-    def _wait_image_awailable(self) -> None:
+    def _wait_for_buffer(self) -> None:
         """Wait until an image is available in the core buffer.
 
-        Wait for `timeout` seconds between polls to avoid busy waiting.
-        It should correspond to the exposure time of the camera.
-
-        Parameters
-        ----------
-        timeout: float
-            The timeout in seconds between polls.
-            Default is 0.001 seconds.
-            The current exposure time is a good value to use here.
+        Polls getRemainingImageCount() until an image is available.
+        Uses a short sleep between polls to avoid busy-waiting.
         """
         while self._core.getRemainingImageCount() < 1:
-            # keep polling until an image is available;
-            # just wait a bit to avoid busy waiting;
             time.sleep(self._current_exposure)
