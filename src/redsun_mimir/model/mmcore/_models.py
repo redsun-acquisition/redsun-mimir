@@ -590,26 +590,29 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         if frames > 0:
             self._core.startSequenceAcquisition(frames, self._current_exposure, False)
             while frames_written < frames:
-                if self._fly_stop.is_set():
-                    self._core.stopSequenceAcquisition()
-                    break
                 self._wait_for_buffer()
-                img = self._core.popNextImage()
+                img, md = self._core.popNextImageAndMD()
+                last_frame = md["ImageNumber"]
                 np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
+            self._core.stopSequenceAcquisition()
         else:
             # write until stopped
             self._core.startContinuousSequenceAcquisition(self._current_exposure)
             while not self._fly_stop.is_set():
                 self._wait_for_buffer()
-                img = self._core.popNextImage()
+                img, md = self._core.popNextImageAndMD()
+                last_frame = md["ImageNumber"]
                 np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
             self._core.stopSequenceAcquisition()
         self._writer.complete(self.name)
         self._complete_status.set_finished()
+        self.logger.debug(f"Streaming completed. Wrote {frames_written}.")
+        if (last_frame + 1) > frames_written:
+            self.logger.warning(f"Lost {(last_frame + 1) - frames_written} frames.")
 
     def _wait_for_buffer(self) -> None:
         """Wait until an image is available in the core buffer.
