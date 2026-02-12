@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import threading
 import warnings
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
@@ -52,7 +51,7 @@ if TYPE_CHECKING:
 __all__ = ["RingBuffer"]
 
 
-class RingBuffer(Sequence[npt.NDArray[Any]]):
+class RingBuffer:
     """Ring buffer structure with a given capacity and element type.
 
     Parameters
@@ -326,7 +325,7 @@ class RingBuffer(Sequence[npt.NDArray[Any]]):
         """Return the number of valid elements in the buffer."""
         return self._right_index - self._left_index
 
-    @overload  # type: ignore [override]
+    @overload
     def __getitem__(self, key: SupportsIndex) -> Any: ...
     @overload
     def __getitem__(self, key: Any, /) -> npt.NDArray[Any]: ...
