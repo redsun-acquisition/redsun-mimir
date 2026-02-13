@@ -199,7 +199,7 @@ def convert_to_target_egu(
 
     Returns
     -------
-    ``tulpe[float, float]``
+    ``tuple[float, float]``
         A tuple with two values, in the following order:
         - The original step value in the source engineering unit.
         - The converted step value in the target engineering unit.
@@ -210,14 +210,14 @@ def convert_to_target_egu(
 
     to_meters = {
         "nm": 1e-9,
-        "μm": 1e-6,
+        "um": 1e-6,
         "mm": 1e-3,
     }
 
     # convert to meters first, then to target egu
     new_step = step * to_meters[from_egu] / to_meters[to_egu]
 
-    return new_step, old_step
+    return old_step, new_step
 
 
 class AcquisitionController(PPresenter, Loggable):
@@ -354,8 +354,8 @@ class AcquisitionController(PPresenter, Loggable):
         detectors: Sequence[DetectorProtocol],
         motor: MotorProtocol,
         step: float = 1.0,
-        step_egu: Literal["μm", "mm", "nm"] = "μm",
-        frames: int = 100,
+        step_egu: Literal["um", "mm", "nm"] = "um",
+        frames: int = 20,
         direction: Literal["xy", "yx"] = "xy",
         /,
         action: Action = ScanAction(),
@@ -377,14 +377,14 @@ class AcquisitionController(PPresenter, Loggable):
             - It must provide two axes of movement ("X" and "Y").
         - step: ``float``, optional
             The step size for motor movement. Default is 1.0.
-        - step_egu: ``Literal["μm", "mm", "nm"]``, optional
+        - step_egu: ``Literal["um", "mm", "nm"]``, optional
             - The engineering unit for the step size.
-            - Default is "μm".
+            - Default is "um".
         - frames: ``int``, optional
             - The number of frames to collect for median filtering.
             - The rectangular movement will be divided into four sides,
             each side collecting `frames / 4` frames, one frame per motor step.
-            - Default is 100 (resulting in 25 frames per side).
+            - Default is 20 (resulting in 4 frames per side).
         - direction: ``Literal["xy", "yx"]``, optional
             - The order of motor movement.
             - `xy`: move along X axis first, then Y axis.
@@ -451,8 +451,8 @@ class AcquisitionController(PPresenter, Loggable):
         motor: MotorProtocol,
         store_path: pathlib.Path,
         step: float = 1.0,
-        step_egu: Literal["μm", "mm", "nm"] = "μm",
-        scan_frames: int = 100,
+        step_egu: Literal["um", "mm", "nm"] = "um",
+        scan_frames: int = 20,
         direction: Literal["xy", "yx"] = "xy",
         stream_frames: int = 10,
         /,
@@ -487,14 +487,14 @@ class AcquisitionController(PPresenter, Loggable):
             inside this folder for each stream.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
-        - step_egu: ``Literal["μm", "mm", "nm"]`, optional
+        - step_egu: ``Literal["um", "mm", "nm"]``, optional
             - The engineering unit for the step size.
-            - Default is "μm".
+            - Default is "um".
         - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
             - The rectangular movement will be divided into four sides,
             each side collecting `frames / 4` frames, one frame per motor step.
-            - Default is 100 (resulting in 25 frames per side).
+            - Default is 20 (resulting in 4 frames per side).
         - direction: ``Literal["xy", "yx"]``, optional
             - The order of motor movement.
             - `xy`: move along X axis first, then Y axis.

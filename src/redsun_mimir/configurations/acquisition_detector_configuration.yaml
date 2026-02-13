@@ -20,13 +20,13 @@ models:
   motor-mock:
     plugin_name: test
     plugin_id: test
-    egu: mm
+    egu: um
     axis:
       - X
       - Y
     step_sizes:
-      X: 0.1
-      Y: 0.1
+      X: 10.0
+      Y: 10.0
 controllers:
   AcquisitionController:
     plugin_name: test
