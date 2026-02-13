@@ -592,7 +592,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             while frames_written < frames:
                 self._wait_for_buffer()
                 img, md = self._core.popNextImageAndMD()
-                last_frame = md["ImageNumber"]
+                last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
@@ -603,7 +603,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
             while not self._fly_stop.is_set():
                 self._wait_for_buffer()
                 img, md = self._core.popNextImageAndMD()
-                last_frame = md["ImageNumber"]
+                last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
                 self._frame_sink.send(img)
                 frames_written += 1
