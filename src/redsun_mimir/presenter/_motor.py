@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
+    from bluesky.protocols import Descriptor, Reading
     from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
 
@@ -114,6 +115,30 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
         """
         return dict(self._motors)
 
+    def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
+        """Get the current configuration readings of all motor devices.
+
+        Returns
+        -------
+        dict[str, dict[str, Reading[Any]]]
+            Mapping of motor names to their current configuration readings.
+        """
+        return {
+            name: motor.read_configuration() for name, motor in self._motors.items()
+        }
+
+    def models_description(self) -> dict[str, dict[str, Descriptor]]:
+        """Get the configuration descriptors of all motor devices.
+
+        Returns
+        -------
+        dict[str, dict[str, Descriptor]]
+            Mapping of motor names to their configuration descriptors.
+        """
+        return {
+            name: motor.describe_configuration() for name, motor in self._motors.items()
+        }
+
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
 
@@ -172,6 +197,8 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
     def register_providers(self, container: DynamicContainer) -> None:
         """Register motor model info as a provider in the DI container."""
         container.motor_models = providers.Object(self.models_info())
+        container.motor_configuration = providers.Object(self.models_configuration())
+        container.motor_description = providers.Object(self.models_description())
         self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:

@@ -59,7 +59,10 @@ class TestMotorWidget:
         self, widget: MotorWidget, motor: MockMotorDevice
     ) -> None:
         """inject_dependencies() populates group boxes, labels, and buttons."""
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         assert "stage" in widget._groups
@@ -72,7 +75,10 @@ class TestMotorWidget:
         self, widget: MotorWidget, motor: MockMotorDevice
     ) -> None:
         """Step size line edits are seeded from device step_sizes."""
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         assert widget._line_edits["edit:stage:X"].text() == "1.0"
@@ -82,7 +88,10 @@ class TestMotorWidget:
         self, widget: MotorWidget, motor: MockMotorDevice
     ) -> None:
         """_update_position() refreshes the position label text."""
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         widget._update_position("stage", "X", 7.5)
@@ -92,7 +101,10 @@ class TestMotorWidget:
         self, widget: MotorWidget, motor: MockMotorDevice
     ) -> None:
         """Clicking the '+' button emits sigMotorMove with position + step."""
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, str, float]] = []
@@ -106,7 +118,10 @@ class TestMotorWidget:
         self, widget: MotorWidget, motor: MockMotorDevice
     ) -> None:
         """Clicking the '-' button emits sigMotorMove with position - step."""
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, str, float]] = []
@@ -122,7 +137,10 @@ class TestMotorWidget:
         """connect_to_virtual() registers the widget's signals on the bus."""
         from redsun_mimir.presenter._motor import MotorController
 
-        container = _make_container(motor_models={"stage": motor})
+        container = _make_container(
+            motor_configuration={"stage": motor.read_configuration()},
+            motor_description={"stage": motor.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         # The presenter must be registered first so its signals exist on the bus
@@ -167,7 +185,10 @@ class TestLightWidget:
         self, widget: LightWidget, led: MockLightDevice
     ) -> None:
         """Binary device gets only an ON/OFF button, no slider."""
-        container = _make_container(light_models={"led": led})
+        container = _make_container(
+            light_configuration={"led": led.read_configuration()},
+            light_description={"led": led.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         assert "led" in widget._groups
@@ -178,7 +199,10 @@ class TestLightWidget:
         self, widget: LightWidget, laser: MockLightDevice
     ) -> None:
         """Continuous device gets both a button and an intensity slider."""
-        container = _make_container(light_models={"laser": laser})
+        container = _make_container(
+            light_configuration={"laser": laser.read_configuration()},
+            light_description={"laser": laser.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         assert "laser" in widget._groups
@@ -189,7 +213,10 @@ class TestLightWidget:
         self, widget: LightWidget, led: MockLightDevice
     ) -> None:
         """Clicking the ON button emits sigToggleLightRequest with the device name."""
-        container = _make_container(light_models={"led": led})
+        container = _make_container(
+            light_configuration={"led": led.read_configuration()},
+            light_description={"led": led.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         received: list[str] = []
@@ -202,7 +229,10 @@ class TestLightWidget:
         self, widget: LightWidget, led: MockLightDevice
     ) -> None:
         """Toggle button label switches between ON and OFF."""
-        container = _make_container(light_models={"led": led})
+        container = _make_container(
+            light_configuration={"led": led.read_configuration()},
+            light_description={"led": led.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         btn = widget._buttons["on:led"]
@@ -218,7 +248,10 @@ class TestLightWidget:
         self, widget: LightWidget, laser: MockLightDevice
     ) -> None:
         """Moving the intensity slider emits sigIntensityRequest."""
-        container = _make_container(light_models={"laser": laser})
+        container = _make_container(
+            light_configuration={"laser": laser.read_configuration()},
+            light_description={"laser": laser.describe_configuration()},
+        )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, Any]] = []
@@ -233,7 +266,10 @@ class TestLightWidget:
         self, widget: LightWidget, led: MockLightDevice, virtual_bus: VirtualBus
     ) -> None:
         """connect_to_virtual() registers the widget's signals on the bus."""
-        container = _make_container(light_models={"led": led})
+        container = _make_container(
+            light_configuration={"led": led.read_configuration()},
+            light_description={"led": led.describe_configuration()},
+        )
         widget.inject_dependencies(container)
         widget.connect_to_virtual()
 

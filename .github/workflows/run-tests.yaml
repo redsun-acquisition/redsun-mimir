@@ -1,0 +1,123 @@
+name: Run tests
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+      event_name:
+        required: true
+        type: string
+    secrets:
+      codecov_token:
+        required: false
+
+env:
+  PROJECT_NAME: redsun-mimir
+
+jobs:
+  test:
+    name: ${{ matrix.os }} py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libdbus-1-3 libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
+            libxcb-xinput0 libxcb-xfixes0 x11-utils libxcb-cursor0 \
+            libopengl0
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests with coverage (Linux)
+        if: runner.os == 'Linux'
+        run: uv run coverage run -p -m pytest --color=yes --log-cli-level=DEBUG
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Run tests with coverage (non-Linux)
+        if: runner.os != 'Linux'
+        run: uv run coverage run -p -m pytest --color=yes --log-cli-level=DEBUG
+
+      - name: Generate UUID
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            echo "UUID=$(powershell -Command '[guid]::NewGuid().ToString()')" >> $GITHUB_ENV
+          else
+            echo "UUID=$(uuidgen)" >> $GITHUB_ENV
+          fi
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: covreport-${{ matrix.os }}-py${{ matrix.python-version }}-${{ env.UUID }}
+          path: ./.coverage*
+          include-hidden-files: true
+
+  upload_coverage:
+    name: Upload coverage
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: covreport-*
+          path: covreports
+          merge-multiple: true
+
+      - name: Combine coverage data
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          echo "[paths]" > ci_coveragerc
+          echo "source =" >> ci_coveragerc
+          echo "    ${GITHUB_WORKSPACE}/src" >> ci_coveragerc
+          echo "    D:\\a\\$REPO_NAME\\$REPO_NAME\\src" >> ci_coveragerc
+          echo "    /home/runner/work/$REPO_NAME/$REPO_NAME/src" >> ci_coveragerc
+          echo "    /Users/runner/work/$REPO_NAME/$REPO_NAME/src" >> ci_coveragerc
+          echo "    */site-packages/" >> ci_coveragerc
+          cat ci_coveragerc
+          uv run coverage combine --rcfile=ci_coveragerc covreports
+          uv run coverage xml -o coverage.xml
+          uv run coverage report
+          uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          verbose: true
+          token: ${{ secrets.codecov_token }}
