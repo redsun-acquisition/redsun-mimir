@@ -51,24 +51,14 @@ class TestMotorController:
         """Controller initialises and identifies motor devices."""
         assert "stage" in controller._motors
 
-    def test_models_info(
-        self,
-        controller: MotorController,
-        mock_motor: MockMotorDevice,
-    ) -> None:
-        """models_info() returns a mapping of motor names to device instances."""
-        info = controller.models_info()
-        assert "stage" in info
-        assert info["stage"] is mock_motor
-
     def test_register_providers(
         self, controller: MotorController, virtual_bus: VirtualBus
     ) -> None:
-        """register_providers() populates motor_models on the container."""
+        """register_providers() populates motor_configuration on the container."""
         container = _make_di_container()
         controller.register_providers(container)
-        assert hasattr(container, "motor_models")
-        assert "stage" in container.motor_models()
+        assert hasattr(container, "motor_configuration")
+        assert "stage" in container.motor_configuration()
 
     def test_move_updates_position(
         self, controller: MotorController, mock_motor: MockMotorDevice
@@ -129,25 +119,14 @@ class TestLightController:
         assert "led" in controller._lights
         assert "laser" in controller._lights
 
-    def test_models_info(
-        self,
-        controller: LightController,
-        mock_led: MockLightDevice,
-        mock_laser: MockLightDevice,
-    ) -> None:
-        """models_info() returns all light devices."""
-        info = controller.models_info()
-        assert info["led"] is mock_led
-        assert info["laser"] is mock_laser
-
     def test_register_providers(
         self, controller: LightController, virtual_bus: VirtualBus
     ) -> None:
-        """register_providers() populates light_models on the container."""
+        """register_providers() populates light_configuration on the container."""
         container = _make_di_container()
         controller.register_providers(container)
-        assert hasattr(container, "light_models")
-        assert "led" in container.light_models()
+        assert hasattr(container, "light_configuration")
+        assert "led" in container.light_configuration()
 
     def test_trigger_toggles_led(
         self, controller: LightController, mock_led: MockLightDevice

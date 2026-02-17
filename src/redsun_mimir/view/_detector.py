@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
-from bluesky.protocols import Descriptor  # noqa: TC002
+from bluesky.protocols import Descriptor, Reading  # noqa: TC002
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtCore, QtWidgets
@@ -13,7 +13,6 @@ from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
-from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -28,6 +27,21 @@ if TYPE_CHECKING:
     from dependency_injector.containers import DynamicContainer
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
+
+
+_T = TypeVar("_T")
+
+
+def _get_value(
+    readings: dict[str, Reading[Any]],
+    key: str,
+    default: _T,
+) -> _T:
+    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry."""
+    entry = readings.get(key)
+    if entry is None:
+        return default
+    return cast("_T", entry["value"])
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -147,13 +161,12 @@ class DetectorWidget(QtView, Loggable):
         self.buffer_key = "buffer"
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
-        """Inject detector info and configuration from the DI container."""
-        models_info: dict[str, DetectorProtocol] = container.detector_models()
+        """Inject detector configuration from the DI container."""
         model_config: ConfigurationDict = container.detector_configuration()
         model_reading: dict[str, dict[str, Descriptor]] = (
             container.detector_descriptions()
         )
-        self.setup_ui(models_info, model_config, model_reading)
+        self.setup_ui(model_config, model_reading)
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
@@ -175,7 +188,6 @@ class DetectorWidget(QtView, Loggable):
 
     def setup_ui(
         self,
-        models_info: dict[str, DetectorProtocol],
         model_config: ConfigurationDict,
         model_reading: dict[str, dict[str, Descriptor]],
     ) -> None:
@@ -183,24 +195,24 @@ class DetectorWidget(QtView, Loggable):
 
         Parameters
         ----------
-        models_info : ``dict[str, DetectorProtocol]``
-            Mapping of detector names to their device instances.
         model_config : ``ConfigurationDict``
             Configuration data from the presenter.
         model_reading : ``dict[str, dict[str, Descriptor]]``
             Reading description data from the presenter.
         """
-        self._detectors_info = models_info
-
-        for detector, info in self._detectors_info.items():
+        for detector in model_config["descriptors"]:
             config_descriptor = model_config["descriptors"][detector]
             config_reading = model_config["readings"][detector]
             dtype = model_reading[detector][f"{detector}:buffer"].get(
                 "dtype_numpy", "uint8"
             )
+            sensor_shape: tuple[int, int] = cast(
+                "tuple[int, int]",
+                tuple(_get_value(config_reading, f"{detector}:sensor_shape", [0, 0])),
+            )
 
             layer = self.viewer_model.add_image(
-                np.zeros(shape=info.sensor_shape, dtype=dtype),
+                np.zeros(shape=sensor_shape, dtype=dtype),
                 name=detector,
             )
             layer._overlays.update(

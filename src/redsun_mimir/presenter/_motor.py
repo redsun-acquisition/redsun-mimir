@@ -105,16 +105,6 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
 
         self.logger.info("Initialized")
 
-    def models_info(self) -> dict[str, MotorProtocol]:
-        """Get the motor devices.
-
-        Returns
-        -------
-        dict[str, MotorProtocol]
-            Mapping of motor names to motor device instances.
-        """
-        return dict(self._motors)
-
     def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
         """Get the current configuration readings of all motor devices.
 
@@ -196,7 +186,6 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     def register_providers(self, container: DynamicContainer) -> None:
         """Register motor model info as a provider in the DI container."""
-        container.motor_models = providers.Object(self.models_info())
         container.motor_configuration = providers.Object(self.models_configuration())
         container.motor_description = providers.Object(self.models_description())
         self.virtual_bus.register_signals(self)

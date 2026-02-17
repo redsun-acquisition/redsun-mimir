@@ -85,19 +85,8 @@ class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
         self.current_stream = ""
         self.packet: dict[str, dict[str, Any]] = {}
 
-    def get_models_info(self) -> dict[str, DetectorProtocol]:
-        """Get the detector devices.
-
-        Returns
-        -------
-        dict[str, DetectorProtocol]
-            Mapping of detector names to detector device instances.
-        """
-        return dict(self.detectors)
-
     def register_providers(self, container: DynamicContainer) -> None:
         """Register detector info as providers in the DI container."""
-        container.detector_models = providers.Object(self.get_models_info())
         container.detector_configuration = providers.Object(
             self.get_models_configuration()
         )
