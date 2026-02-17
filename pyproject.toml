@@ -28,7 +28,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "redsun>=0.5.1",
+    "redsun>=0.5.2",
     "sunflare>=0.9.0",
     "napari>=0.6.6",
     "superqt>=0.7.4",
@@ -121,12 +121,6 @@ strict = true
 warn_unreachable = true
 warn_no_return = true
 
-[[tool.mypy.overrides]]
-# AppContainerMeta uses @dataclass_transform but mypy doesn't fully understand
-# the metaclass field specifiers; suppress false-positive call-arg errors in
-# configuration modules that instantiate AppContainer subclasses.
-module = "redsun_mimir.configurations.*"
-disable_error_code = ["call-arg"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
