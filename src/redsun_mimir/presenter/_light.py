@@ -61,7 +61,7 @@ class LightController(Loggable, VirtualAware):
 
     def register_providers(self, container: DynamicContainer) -> None:
         """Register light model info as a provider in the DI container."""
-        container.light_models = providers.Object(self.models_info())  # type: ignore[attr-defined]
+        container.light_models = providers.Object(self.models_info())
         self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:

@@ -46,7 +46,7 @@ class LightWidget(QtView, Loggable):
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject light model info from the DI container and build the UI."""
-        lights_info: dict[str, LightProtocol] = container.light_models()  # type: ignore[attr-defined]
+        lights_info: dict[str, LightProtocol] = container.light_models()
         self.setup_ui(lights_info)
 
     def setup_ui(self, lights_info: dict[str, LightProtocol]) -> None:
@@ -83,7 +83,7 @@ class LightWidget(QtView, Loggable):
                     QtCore.Qt.Orientation.Horizontal
                 )
                 self._sliders[f"power:{name}"].setRange(*light.intensity_range)
-                self._sliders[f"power:{name}"].setSingleStep(light.step_size)
+                self._sliders[f"power:{name}"].setSingleStep(int(light.step_size))
                 self._sliders[f"power:{name}"].valueChanged.connect(
                     lambda value, name=name: self._on_slider_changed(value, name)
                 )

@@ -171,7 +171,7 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     def register_providers(self, container: DynamicContainer) -> None:
         """Register motor model info as a provider in the DI container."""
-        container.motor_models = providers.Object(self.models_info())  # type: ignore[attr-defined]
+        container.motor_models = providers.Object(self.models_info())
         self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
@@ -217,10 +217,14 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
         in the main thread; see the class docstring for an example.
 
         """
-        if axis != motor.axis:
-            ret = self.configure(motor.name, {"axis": axis})
-            if not ret:
-                return
+        if axis not in motor.axis:
+            self.logger.error(
+                f"Axis {axis!r} is not available for motor {motor.name!r}"
+            )
+            return
+        ret = self.configure(motor.name, {"axis": axis})
+        if not ret:
+            return
         s = motor.set(position)
         try:
             s.wait(self._timeout)

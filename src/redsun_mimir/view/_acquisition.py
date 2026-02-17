@@ -235,7 +235,7 @@ class AcquisitionWidget(QtView, Loggable):
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject plan specs from the DI container and build the UI."""
-        specs: set[PlanSpec] = container.plan_specs()  # type: ignore[attr-defined]
+        specs: set[PlanSpec] = container.plan_specs()
         self.setup_ui(specs)
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:

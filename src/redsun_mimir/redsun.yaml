@@ -1,11 +1,11 @@
 devices:
   # mimir models
   mimir-serial:
-    class: redsun_mimir.device.youseetoo:MimirSerialModel
+    class: redsun_mimir.device.youseetoo:MimirSerialDevice
   mimir-motor:
-    class: redsun_mimir.device.youseetoo:MimirMotorModel
+    class: redsun_mimir.device.youseetoo:MimirMotorDevice
   mimir-laser:
-    class: redsun_mimir.device.youseetoo:MimirLaserModel
+    class: redsun_mimir.device.youseetoo:MimirLaserDevice
     info: redsun_mimir.device:LaserModelInfo
 
   # microscope/mock models

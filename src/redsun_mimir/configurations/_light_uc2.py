@@ -5,7 +5,7 @@ from pathlib import Path
 
 from redsun.containers import AppContainer, component
 
-from redsun_mimir.device.youseetoo import MimirLaserModel, MimirSerialModel
+from redsun_mimir.device.youseetoo import MimirLaserDevice, MimirSerialDevice
 from redsun_mimir.presenter import LightController
 from redsun_mimir.view import LightWidget
 
@@ -13,8 +13,8 @@ _CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
 
 class _LightUC2App(AppContainer, config=_CONFIG):
-    serial: MimirSerialModel = component(layer="device", from_config="serial")
-    laser: MimirLaserModel = component(layer="device", from_config="laser")
+    serial: MimirSerialDevice = component(layer="device", from_config="serial")
+    laser: MimirLaserDevice = component(layer="device", from_config="laser")
     ctrl: LightController = component(layer="presenter", from_config="ctrl")
     widget: LightWidget = component(layer="view", from_config="widget")
 

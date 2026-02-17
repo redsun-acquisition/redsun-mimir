@@ -68,7 +68,7 @@ class MotorWidget(QtView):
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject motor model info from the DI container and build the UI."""
-        motors_info: dict[str, MotorProtocol] = container.motor_models()  # type: ignore[attr-defined]
+        motors_info: dict[str, MotorProtocol] = container.motor_models()
         self.setup_ui(motors_info)
 
     def setup_ui(self, motors_info: dict[str, MotorProtocol]) -> None:

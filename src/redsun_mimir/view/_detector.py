@@ -148,11 +148,11 @@ class DetectorWidget(QtView, Loggable):
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject detector info and configuration from the DI container."""
-        models_info: dict[str, DetectorProtocol] = container.detector_models()  # type: ignore[attr-defined]
-        model_config: ConfigurationDict = container.detector_configuration()  # type: ignore[attr-defined]
+        models_info: dict[str, DetectorProtocol] = container.detector_models()
+        model_config: ConfigurationDict = container.detector_configuration()
         model_reading: dict[str, dict[str, Descriptor]] = (
             container.detector_descriptions()
-        )  # type: ignore[attr-defined]
+        )
         self.setup_ui(models_info, model_config, model_reading)
 
     def connect_to_virtual(self) -> None:
