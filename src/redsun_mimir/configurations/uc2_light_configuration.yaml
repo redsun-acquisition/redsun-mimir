@@ -1,28 +1,22 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  Serial:
-    plugin_name: test-uc2
-    plugin_id: test-uc2-serial
+
+devices:
+  serial:
+    alias: Serial
     port: COM3
-  Laser 1:
-    plugin_name: test-uc2
-    plugin_id: test-uc2-laser
+  laser:
+    alias: Laser 1
     wavelength: 650
     egu: mW
     intensity_range: [0, 1023]
     step_size: 1
     id: 1
-controllers:
-  LightController:
-    plugin_name: test
-    plugin_id: test
+
+presenters:
+  ctrl:
     timeout: 5.0
+
 views:
-  LightWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  widget: {}

@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from redsun.containers.components import component
-from redsun.containers.qt_container import QtAppContainer
+from redsun.containers import AppContainer, component
 
 from redsun_mimir.device import MockMotorDevice
 from redsun_mimir.presenter import MotorController
 from redsun_mimir.view import MotorWidget
 
+_CONFIG = Path(__file__).parent / "mock_motor_configuration.yaml"
 
-class _MotorApp(QtAppContainer):
-    motor: MockMotorDevice = component(
-        layer="device",
-        alias="Mock motor",
-        axis=["X", "Y", "Z"],
-        step_sizes={"X": 100.0, "Y": 100.0, "Z": 100.0},
-        egu="um",
-    )
-    ctrl: MotorController = component(layer="presenter", timeout=5.0)
-    widget: MotorWidget = component(layer="view")
+
+class _MotorApp(AppContainer, config=_CONFIG):
+    motor: MockMotorDevice = component(layer="device", from_config="motor")
+    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
+    widget: MotorWidget = component(layer="view", from_config="widget")
 
 
 def stage_widget() -> None:
@@ -29,4 +25,4 @@ def stage_widget() -> None:
     with a mock device configuration.
     """
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _MotorApp(session="redsun-mimir").run()
+    _MotorApp().run()

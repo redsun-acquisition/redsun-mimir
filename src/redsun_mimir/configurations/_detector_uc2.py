@@ -1,23 +1,21 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from redsun.containers.components import component
-from redsun.containers.qt_container import QtAppContainer
+from redsun.containers import AppContainer, component
 
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
 from redsun_mimir.presenter import DetectorController
 from redsun_mimir.view import DetectorWidget
 
+_CONFIG = Path(__file__).parent / "uc2_image_configuration.yaml"
 
-class _DetectorUC2App(QtAppContainer):
-    camera: MMCoreCameraDevice = component(
-        layer="device",
-        alias="Mimir detector",
-        sensor_shape=(100, 100),
-    )
-    ctrl: DetectorController = component(layer="presenter", timeout=5.0)
-    widget: DetectorWidget = component(layer="view")
+
+class _DetectorUC2App(AppContainer, config=_CONFIG):
+    camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
+    ctrl: DetectorController = component(layer="presenter", from_config="ctrl")
+    widget: DetectorWidget = component(layer="view", from_config="widget")
 
 
 def detector_widget_uc2() -> None:
@@ -27,4 +25,4 @@ def detector_widget_uc2() -> None:
     with a UC2 device configuration.
     """
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _DetectorUC2App(session="redsun-mimir").run()
+    _DetectorUC2App().run()

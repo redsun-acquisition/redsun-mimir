@@ -1,21 +1,15 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  Mimir detector:
-    plugin_name: test
-    plugin_id: test
+
+devices:
+  camera:
+    alias: Mimir detector
     sensor_shape: [100, 100]
-    pixel_size: [1, 1]
-controllers:
-  DetectorController:
-    plugin_name: test
-    plugin_id: test
+
+presenters:
+  ctrl:
     timeout: 5.0
+
 views:
-  DetectorWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  widget: {}

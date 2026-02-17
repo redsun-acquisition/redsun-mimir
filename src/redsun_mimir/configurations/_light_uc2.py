@@ -1,32 +1,22 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from redsun.containers.components import component
-from redsun.containers.qt_container import QtAppContainer
+from redsun.containers import AppContainer, component
 
 from redsun_mimir.device.youseetoo import MimirLaserModel, MimirSerialModel
 from redsun_mimir.presenter import LightController
 from redsun_mimir.view import LightWidget
 
+_CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
-class _LightUC2App(QtAppContainer):
-    serial: MimirSerialModel = component(
-        layer="device",
-        alias="Serial",
-        port="COM3",
-    )
-    laser: MimirLaserModel = component(
-        layer="device",
-        alias="Laser 1",
-        wavelength=650,
-        egu="mW",
-        intensity_range=(0, 1023),
-        step_size=1,
-        id=1,
-    )
-    ctrl: LightController = component(layer="presenter", timeout=5.0)
-    widget: LightWidget = component(layer="view")
+
+class _LightUC2App(AppContainer, config=_CONFIG):
+    serial: MimirSerialModel = component(layer="device", from_config="serial")
+    laser: MimirLaserModel = component(layer="device", from_config="laser")
+    ctrl: LightController = component(layer="presenter", from_config="ctrl")
+    widget: LightWidget = component(layer="view", from_config="widget")
 
 
 def light_widget_uc2() -> None:
@@ -36,4 +26,4 @@ def light_widget_uc2() -> None:
     with a UC2 device configuration.
     """
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _LightUC2App(session="redsun-mimir").run()
+    _LightUC2App().run()

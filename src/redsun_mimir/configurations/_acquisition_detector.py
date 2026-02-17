@@ -1,47 +1,28 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from redsun.containers.components import component
-from redsun.containers.qt_container import QtAppContainer
+from redsun.containers import AppContainer, component
 
 from redsun_mimir.device import MockMotorDevice
 from redsun_mimir.device.microscope import SimulatedCameraDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import (
-    AcquisitionController,
-    DetectorController,
-    MedianPresenter,
-)
+from redsun_mimir.presenter import AcquisitionController, DetectorController, MedianPresenter
 from redsun_mimir.view import AcquisitionWidget, DetectorWidget
 
+_CONFIG = Path(__file__).parent / "acquisition_detector_configuration.yaml"
 
-class _AcquisitionDetectorApp(QtAppContainer):
-    camera1: MMCoreCameraDevice = component(
-        layer="device",
-        alias="Mock1",
-        sensor_shape=(100, 100),
-    )
-    camera2: SimulatedCameraDevice = component(
-        layer="device",
-        alias="Mock2",
-    )
-    motor: MockMotorDevice = component(
-        layer="device",
-        alias="Mock motor",
-        axis=["X", "Y", "Z"],
-        step_sizes={"X": 100.0, "Y": 100.0, "Z": 100.0},
-        egu="um",
-    )
-    median_ctrl: MedianPresenter = component(layer="presenter")
-    det_ctrl: DetectorController = component(layer="presenter", timeout=5.0)
-    acq_ctrl: AcquisitionController = component(
-        layer="presenter",
-        timeout=5.0,
-        callbacks=["DetectorController", "MedianPresenter"],
-    )
-    acq_widget: AcquisitionWidget = component(layer="view")
-    det_widget: DetectorWidget = component(layer="view")
+
+class _AcquisitionDetectorApp(AppContainer, config=_CONFIG):
+    camera1: MMCoreCameraDevice = component(layer="device", from_config="camera1")
+    camera2: SimulatedCameraDevice = component(layer="device", from_config="camera2")
+    motor: MockMotorDevice = component(layer="device", from_config="motor")
+    median_ctrl: MedianPresenter = component(layer="presenter", from_config="median_ctrl")
+    det_ctrl: DetectorController = component(layer="presenter", from_config="det_ctrl")
+    acq_ctrl: AcquisitionController = component(layer="presenter", from_config="acq_ctrl")
+    acq_widget: AcquisitionWidget = component(layer="view", from_config="acq_widget")
+    det_widget: DetectorWidget = component(layer="view", from_config="det_widget")
 
 
 def acquisition_detector_widget() -> None:
@@ -51,4 +32,4 @@ def acquisition_detector_widget() -> None:
     ``DetectorController`` and ``MedianPresenter``.
     """
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _AcquisitionDetectorApp(session="redsun-mimir").run()
+    _AcquisitionDetectorApp().run()

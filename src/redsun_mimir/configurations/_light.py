@@ -1,33 +1,22 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from redsun.containers.components import component
-from redsun.containers.qt_container import QtAppContainer
+from redsun.containers import AppContainer, component
 
 from redsun_mimir.device import MockLightDevice
 from redsun_mimir.presenter import LightController
 from redsun_mimir.view import LightWidget
 
+_CONFIG = Path(__file__).parent / "mock_light_configuration.yaml"
 
-class _LightApp(QtAppContainer):
-    led: MockLightDevice = component(
-        layer="device",
-        alias="Mock LED",
-        wavelength=300,
-        binary=True,
-        intensity_range=(0, 0),
-    )
-    laser: MockLightDevice = component(
-        layer="device",
-        alias="Mock laser",
-        wavelength=650,
-        egu="mW",
-        intensity_range=(0, 100),
-        step_size=1,
-    )
-    ctrl: LightController = component(layer="presenter", timeout=5.0)
-    widget: LightWidget = component(layer="view")
+
+class _LightApp(AppContainer, config=_CONFIG):
+    led: MockLightDevice = component(layer="device", from_config="led")
+    laser: MockLightDevice = component(layer="device", from_config="laser")
+    ctrl: LightController = component(layer="presenter", from_config="ctrl")
+    widget: LightWidget = component(layer="view", from_config="widget")
 
 
 def light_widget() -> None:
@@ -37,4 +26,4 @@ def light_widget() -> None:
     with mock device configurations.
     """
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _LightApp(session="redsun-mimir").run()
+    _LightApp().run()

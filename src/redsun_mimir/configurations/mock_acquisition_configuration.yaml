@@ -1,26 +1,17 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  Mock1:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [512, 512]
-    pixel_size: [1, 1]
-  Mock2:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [512, 512]
-    pixel_size: [1, 1]
-controllers:
-  AcquisitionController:
-    plugin_name: test
-    plugin_id: test
+
+devices:
+  camera1:
+    alias: Mock1
+    sensor_shape: [100, 100]
+  camera2:
+    alias: Mock2
+
+presenters:
+  ctrl:
     timeout: 5.0
+
 views:
-  AcquisitionWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  widget: {}
