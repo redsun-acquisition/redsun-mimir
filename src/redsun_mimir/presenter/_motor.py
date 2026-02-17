@@ -8,17 +8,13 @@ import in_n_out as ino
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
-from redsun_mimir.device import MotorModelInfo  # noqa: TC001
-
 from ..protocols import MotorProtocol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
-    from sunflare.model import PModel
-
-    from redsun_mimir.presenter import MotorControllerInfo
+    from sunflare.device import Device
 
 
 class MotorController(Loggable):
@@ -39,12 +35,13 @@ class MotorController(Loggable):
 
     Parameters
     ----------
-    ctrl_info : ``MotorControllerInfo``
-        Configuration for the stage presenter.
-    models : ``Mapping[str, PModel]``
-        Mapping of model names to model instances.
+    devices : ``Mapping[str, Device]``
+        Mapping of device names to device instances.
     virtual_bus : VirtualBus
         Virtual bus for the session.
+    **kwargs : Any
+        Additional keyword arguments.
+        - ``timeout`` (float | None): Timeout in seconds.
 
     Attributes
     ----------
@@ -85,17 +82,18 @@ class MotorController(Loggable):
 
     def __init__(
         self,
-        ctrl_info: MotorControllerInfo,
-        models: Mapping[str, PModel],
+        devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
+        /,
+        **kwargs: Any,
     ) -> None:
-        self._ctrl_info = ctrl_info
+        self._timeout: float | None = kwargs.get("timeout", None)
         self._virtual_bus = virtual_bus
         self._queue: Queue[tuple[str, str, float] | None] = Queue()
 
         self._motors = {
             name: model
-            for name, model in models.items()
+            for name, model in devices.items()
             if isinstance(model, MotorProtocol)
         }
 
@@ -104,19 +102,19 @@ class MotorController(Loggable):
 
         self.store = ino.Store.create("MotorModelInfo")
         self.store.register_provider(
-            self.models_info, type_hint=dict[str, MotorModelInfo]
+            self.models_info, type_hint=dict[str, MotorProtocol]
         )
         self.logger.info("Initialized")
 
-    def models_info(self) -> dict[str, MotorModelInfo]:
-        """Get the models information.
+    def models_info(self) -> dict[str, MotorProtocol]:
+        """Get the motor devices.
 
         Returns
         -------
-        dict[str, MotorModelInfo]
-            Mapping of model names to model information.
+        dict[str, MotorProtocol]
+            Mapping of motor names to motor device instances.
         """
-        return {name: model.model_info for name, model in self._motors.items()}
+        return dict(self._motors)
 
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
@@ -152,7 +150,7 @@ class MotorController(Loggable):
             self.logger.debug(f"Configuring {key} of {motor} to {value}")
             s = self._motors[motor].set(value, prop=key)
             try:
-                s.wait(self._ctrl_info.timeout)
+                s.wait(self._timeout)
             except Exception as e:
                 self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
             finally:
@@ -226,7 +224,7 @@ class MotorController(Loggable):
                 return
         s = motor.set(position)
         try:
-            s.wait(self._ctrl_info.timeout)
+            s.wait(self._timeout)
         except Exception as e:
             self.logger.exception(f"Failed to move {motor.name} to {position}: {e}")
         else:
@@ -251,7 +249,7 @@ class MotorController(Loggable):
         """
         s = motor.set(axis, prop="axis")
         try:
-            s.wait(self._ctrl_info.timeout)
+            s.wait(self._timeout)
         except Exception as e:
             self.logger.exception(f"Failed set axis on {motor.name}: {e}")
             s.set_exception(e)

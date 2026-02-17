@@ -9,11 +9,11 @@ from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtCore, QtWidgets
 from sunflare.log import Loggable
-from sunflare.view.qt import BaseQtWidget
+from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
-from redsun_mimir.device import DetectorModelInfo  # noqa: TC001
+from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -27,8 +27,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
-
-    from ._config import DetectorWidgetInfo
 
 info_store = ino.Store.get_store("detector_info")
 config_store = ino.Store.get_store("detector_configuration")
@@ -83,17 +81,13 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class DetectorWidget(BaseQtWidget, Loggable):
+class DetectorWidget(QtView, Loggable):
     """Widget for rendering acquired image data and control detector settings.
 
     Parameters
     ----------
-    config : ``RedSunSessionInfo``
-        Configuration information for the session.
     virtual_bus : ``VirtualBus``
         Reference to the virtual bus.
-    *args : ``Any``
-        Additional positional arguments.
     **kwargs : ``Any``
         Additional keyword arguments.
 
@@ -107,17 +101,11 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        view_info: DetectorWidgetInfo,
         virtual_bus: VirtualBus,
-        *args: Any,
+        /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(
-            view_info,
-            virtual_bus,
-            *args,
-            **kwargs,
-        )
+        super().__init__(virtual_bus, **kwargs)
 
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
@@ -155,7 +143,7 @@ class DetectorWidget(BaseQtWidget, Loggable):
 
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
-        # Inject the setup_ui method to fill the widget with light sources
+        # Inject the setup_ui method to fill the widget with detectors
         info_store.inject(self.setup_ui)()
         self.logger.info("Initialized")
 
@@ -180,13 +168,13 @@ class DetectorWidget(BaseQtWidget, Loggable):
                 "MedianPresenter not found in virtual bus; skipping median data connection."
             )
 
-    def setup_ui(self, models_info: dict[str, DetectorModelInfo]) -> None:
+    def setup_ui(self, models_info: dict[str, DetectorProtocol]) -> None:
         """Initialize the user interface.
 
         Parameters
         ----------
-        models_info : ``dict[str, DetectorModelInfo]``
-            Mapping of detector names to their model information.
+        models_info : ``dict[str, DetectorProtocol]``
+            Mapping of detector names to their device instances.
             Injected from the `DetectorController`.
         """
         self._detectors_info = models_info

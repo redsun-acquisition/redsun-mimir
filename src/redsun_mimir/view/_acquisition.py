@@ -8,7 +8,7 @@ import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from sunflare.log import Loggable
-from sunflare.view.qt import BaseQtWidget
+from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
 from redsun_mimir.actions import Action
@@ -18,7 +18,6 @@ from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 if TYPE_CHECKING:
     from typing import Any
 
-    from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
 
@@ -154,13 +153,11 @@ class PlanWidget:
 store = ino.Store.get_store("plan_specs")
 
 
-class AcquisitionWidget(BaseQtWidget, Loggable):
+class AcquisitionWidget(QtView, Loggable):
     """Widget for the acquisition settings.
 
     Parameters
     ----------
-    config : ``RedSunSessionInfo``
-        Reference to the session configuration.
     virtual_bus : ``VirtualBus``
         Reference to the virtual bus.
 
@@ -183,12 +180,11 @@ class AcquisitionWidget(BaseQtWidget, Loggable):
 
     def __init__(
         self,
-        view_info: PViewInfo,
         virtual_bus: VirtualBus,
-        *args: Any,
+        /,
         **kwargs: Any,
     ):
-        super().__init__(view_info, virtual_bus, *args, **kwargs)
+        super().__init__(virtual_bus, **kwargs)
         self.plans_info: dict[str, str] = {}
 
         # root layout

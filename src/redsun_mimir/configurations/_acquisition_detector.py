@@ -10,7 +10,7 @@ from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.device import DetectorModelInfo, MockMotorDevice, MotorModelInfo
-from redsun_mimir.device.microscope import SimulatedCameraModel
+from redsun_mimir.device.microscope import SimulatedCameraDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreCameraModelInfo
 from redsun_mimir.presenter import (
     AcquisitionController,
@@ -88,7 +88,7 @@ def acquisition_detector_widget() -> None:
         if "mmcore" in name:
             mock_models[name] = MMCoreCameraDevice(name, model_info)  # type: ignore
         elif "microscope" in name:
-            mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
+            mock_models[name] = SimulatedCameraDevice(name, model_info)  # type: ignore
         elif "motor" in name:
             mock_models[name] = MockMotorDevice(name, model_info)  # type: ignore
         else:

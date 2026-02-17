@@ -109,7 +109,7 @@ class MimirSerialDevice(Device, Loggable):
 
 
 @define(kw_only=True, init=False)
-class MimirLaserModel(Device, LightProtocol, Loggable):
+class MimirLaserDevice(Device, LightProtocol, Loggable):
     """Mimir interface for a laser source.
 
     Parameters
@@ -341,7 +341,7 @@ MM_TO_NM: Final[int] = 1_000_000
 
 
 @define(kw_only=True, init=False)
-class MimirMotorModel(Device, MotorProtocol, Loggable):
+class MimirMotorDevice(Device, MotorProtocol, Loggable):
     """Mimir interface for a motor stage.
 
     Parameters

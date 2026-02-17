@@ -11,7 +11,6 @@ from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
-from redsun_mimir.device import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.utils import filter_models
 
@@ -20,10 +19,8 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from event_model import Event
-    from sunflare.model import PModel
+    from sunflare.device import Device
     from sunflare.virtual import VirtualBus
-
-    from ._config import DetectorControllerInfo
 
 
 info_store = ino.Store.create("detector_info")
@@ -36,12 +33,13 @@ class DetectorController(DocumentRouter, Loggable):
 
     Parameters
     ----------
-    ctrl_info : ``DetectorControllerInfo``
-        Controller information.
-    models : ``Mapping[str, PModel]``
-        Mapping of model names to model instances.
+    devices : ``Mapping[str, Device]``
+        Mapping of device names to device instances.
     virtual_bus : ``VirtualBus``
         Reference to the virtual bus.
+    **kwargs : Any
+        Additional keyword arguments.
+        - ``timeout`` (float | None): Timeout in seconds.
 
     Attributes
     ----------
@@ -70,15 +68,16 @@ class DetectorController(DocumentRouter, Loggable):
 
     def __init__(
         self,
-        ctrl_info: DetectorControllerInfo,
-        models: Mapping[str, PModel],
+        devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
+        /,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
-        self.ctrl_info = ctrl_info
+        self._timeout: float | None = kwargs.get("timeout", None)
         self.virtual_bus = virtual_bus
 
-        self.detectors = filter_models(models, DetectorProtocol)
+        self.detectors = filter_models(devices, DetectorProtocol)
 
         self.hints = ["buffer", "roi"]
 
@@ -93,15 +92,15 @@ class DetectorController(DocumentRouter, Loggable):
         self.current_stream = ""
         self.packet: dict[str, dict[str, Any]] = {}
 
-    def get_models_info(self) -> dict[str, DetectorModelInfo]:
-        """Get the models information.
+    def get_models_info(self) -> dict[str, DetectorProtocol]:
+        """Get the detector devices.
 
         Returns
         -------
-        dict[str, DetectorModelInfo]
-            Mapping of model names to model information.
+        dict[str, DetectorProtocol]
+            Mapping of detector names to detector device instances.
         """
-        return {name: model.model_info for name, model in self.detectors.items()}
+        return dict(self.detectors)
 
     def registration_phase(self) -> None:
         self.virtual_bus.register_signals(self)
@@ -157,7 +156,7 @@ class DetectorController(DocumentRouter, Loggable):
             self.logger.debug(f"Configuring '{key}' of {detector} to {value}")
             s = self.detectors[detector].set(value, propr=key)
             try:
-                s.wait(self.ctrl_info.timeout)
+                s.wait(self._timeout)
                 success = s.success
 
                 if success:

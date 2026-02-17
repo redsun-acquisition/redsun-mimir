@@ -4,24 +4,21 @@ from typing import TYPE_CHECKING, Any
 
 import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
-from sunflare.view.qt import BaseQtWidget
+from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
-from redsun_mimir.device import MotorModelInfo  # noqa: TC001
+from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
 
-class MotorWidget(BaseQtWidget):
+class MotorWidget(QtView):
     """Motor widget for Redsun Mimir.
 
     Parameters
     ----------
-    config : ``PViewInfo``
-        View configuration information.
     virtual_bus : ``VirtualBus``
         Virtual bus for the session.
 
@@ -44,12 +41,11 @@ class MotorWidget(BaseQtWidget):
 
     def __init__(
         self,
-        config: PViewInfo,
         virtual_bus: VirtualBus,
-        *args: Any,
+        /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(config, virtual_bus, *args, **kwargs)
+        super().__init__(virtual_bus, **kwargs)
         self._description: dict[str, dict[str, Descriptor]] = {}
         self._configuration: dict[str, dict[str, Reading[Any]]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
@@ -67,10 +63,10 @@ class MotorWidget(BaseQtWidget):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-        self.store = ino.Store.get_store("MotorModelInfo")
+        self.store = ino.Store.get_store("MotorProtocol")
         self.store.inject(self.setup_ui)()
 
-    def setup_ui(self, motors_info: dict[str, MotorModelInfo]) -> None:
+    def setup_ui(self, motors_info: dict[str, MotorProtocol]) -> None:
         self._motors_info = motors_info
 
         # setup the layout and connect the signals

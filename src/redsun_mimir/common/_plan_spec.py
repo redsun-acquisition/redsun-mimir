@@ -16,7 +16,7 @@ from typing import (
     get_type_hints,
 )
 
-from sunflare.model import PModel
+from sunflare.device import PDevice
 
 from redsun_mimir.actions import Action, ContinousPlan
 from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
@@ -62,15 +62,15 @@ class ParamDescription:
     default : Any
         Default value of the parameter.
     choices : list[str] | None
-        Names of possible choices for this parameter (for PModel types).
+        Names of possible choices for this parameter (for PDevice types).
     multiselect : bool
-        If True, this parameter allows multiple selections (for PModel types).
+        If True, this parameter allows multiple selections (for PDevice types).
     hidden : bool
         If True, this parameter should not be exposed as a normal input widget.
     actions : Sequence[Action] | Action | None
         If this parameter is annotated with `Action` metadata, this holds the associated action object(s).
-    model_proto : type[PModel] | None
-        If this parameter is associated with a PModel type,
+    model_proto : type[PDevice] | None
+        If this parameter is associated with a PDevice type,
         this holds the actual type.
     """
 
@@ -82,7 +82,7 @@ class ParamDescription:
     multiselect: bool = False
     hidden: bool = False
     actions: Sequence[Action] | Action | None = None
-    model_proto: type[PModel] | None = None
+    model_proto: type[PDevice] | None = None
 
     @property
     def has_default(self) -> bool:
@@ -179,7 +179,7 @@ def collect_arguments(
 def resolve_arguments(
     spec: PlanSpec,
     param_values: Mapping[str, Any],
-    models: Mapping[str, PModel],
+    models: Mapping[str, PDevice],
 ) -> dict[str, Any]:
     """Resolve plan arguments from UI parameter values.
 
@@ -189,7 +189,7 @@ def resolve_arguments(
         The plan specification containing parameter metadata.
     param_values : ``Mapping[str, Any]``
         The parameter values from the UI.
-    models : ``Mapping[str, PModel]``
+    models : ``Mapping[str, PDevice]``
         The available models in the application.
 
     Returns
@@ -212,7 +212,7 @@ def resolve_arguments(
         if p.name not in values:
             continue
         val = values[p.name]
-        model_list: list[PModel] = []
+        model_list: list[PDevice] = []
 
         # Model-backed parameter: indicated by presence of choices AND model_proto
         if p.choices is not None and p.model_proto is not None:
@@ -223,7 +223,7 @@ def resolve_arguments(
                 labels = [str(v) for v in val]
             else:
                 labels = [str(val)]
-            proto: type[PModel] | None = p.model_proto
+            proto: type[PDevice] | None = p.model_proto
             if proto:
                 model_list = get_choice_list(models, proto, labels)
 
@@ -266,7 +266,7 @@ def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parame
 
 def create_plan_spec(
     plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
-    models: cabc.Mapping[str, PModel],
+    models: cabc.Mapping[str, PDevice],
 ) -> PlanSpec:
     """
     Inspect `plan` and return a PlanSpec with one ParamDescription per parameter.
@@ -275,9 +275,9 @@ def create_plan_spec(
     ----------
     plan : Callable[..., Any]
         The plan to inspect.
-    models : Mapping[str, PModel]
+    models : Mapping[str, PDevice]
         Registry of models for computing choices
-        of parameters annotated with a subclass of `PModel`.
+        of parameters annotated with a subclass of `PDevice`.
 
     Returns
     -------
@@ -391,7 +391,7 @@ def create_plan_spec(
 
         # Compute choices from model_registry using isinstance on actual objects
         choices: list[str] | None = None
-        model_proto: type[PModel] | None = None
+        model_proto: type[PDevice] | None = None
         matching: list[str] = []
 
         # Now figure out if this is a sequence for other purposes
@@ -414,8 +414,8 @@ def create_plan_spec(
                     matching.append(key)
             if matching:
                 choices = matching
-                # If elem_ann is a proper subclass of PModel, keep proto
-                if isinstance(elem_ann, type) and isinstance(elem_ann, PModel):
+                # If elem_ann is a proper subclass of PDevice, keep proto
+                if isinstance(elem_ann, type) and isinstance(elem_ann, PDevice):
                     model_proto = elem_ann  # type: ignore
 
         pkind = _PARAM_KIND_MAP.get(param.kind)

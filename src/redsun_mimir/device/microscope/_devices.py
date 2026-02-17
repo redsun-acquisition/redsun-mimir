@@ -7,12 +7,15 @@ from threading import Event
 from typing import TYPE_CHECKING
 
 import numpy as np
+from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
+from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
+import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
@@ -22,12 +25,10 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from redsun_mimir.device import DetectorModelInfo, LightModelInfo, MotorModelInfo
-
 
 class Factory:
     stage: ClassVar[SimulatedStageDevice | None]
-    light: ClassVar[SimulatedLightModel | None]
+    light: ClassVar[SimulatedLightDevice | None]
     pool: ClassVar[ThreadPoolExecutor]
     stage_ready: ClassVar[Event] = Event()
     light_ready: ClassVar[Event] = Event()
@@ -35,8 +36,8 @@ class Factory:
     @classmethod
     def fetch_devices(
         cls,
-    ) -> Future[tuple[SimulatedLightModel, SimulatedStageDevice]]:
-        def do_fetch() -> tuple[SimulatedLightModel, SimulatedStageDevice]:
+    ) -> Future[tuple[SimulatedLightDevice, SimulatedStageDevice]]:
+        def do_fetch() -> tuple[SimulatedLightDevice, SimulatedStageDevice]:
             cls.stage_ready.wait()
             cls.light_ready.wait()
             assert cls.light is not None and cls.stage is not None
@@ -52,26 +53,64 @@ class Factory:
         cls.stage_ready.set()
 
     @classmethod
-    def set_light(cls, light: SimulatedLightModel) -> None:
+    def set_light(cls, light: SimulatedLightDevice) -> None:
         cls.light = light
         cls.light_ready.set()
 
 
-class SimulatedStageDevice(MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
-    def __init__(self, name: str, model_info: MotorModelInfo) -> None:
-        self._name = name
-        self._model_info = model_info
-        if model_info.limits is None:
+@define(kw_only=True, init=False)
+class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
+    """Simulated stage device using the microscope library.
+
+    Parameters
+    ----------
+    name : str
+        Name of the device.
+    egu : str
+        Engineering units. Default is "mm".
+    axis : list[str]
+        Axis names.
+    step_sizes : dict[str, float]
+        Step sizes for each axis.
+    limits : dict[str, tuple[float, float]]
+        Position limits for each axis. Required for simulated stages.
+    """
+
+    name: str
+    egu: str = field(
+        default="mm",
+        validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
+        metadata={"description": "Engineering units."},
+    )
+    axis: list[str] = field(
+        validator=validators.instance_of(list),
+        on_setattr=setters.frozen,
+        metadata={"description": "Axis names."},
+    )
+    step_sizes: dict[str, float] = field(
+        validator=validators.instance_of(dict),
+        metadata={"description": "Step sizes for each axis."},
+    )
+    limits: dict[str, tuple[float, float]] | None = field(
+        default=None,
+        converter=utils.convert_limits,
+        metadata={"description": "Limits for each axis."},
+    )
+
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
+
+        if self.limits is None:
             raise ValueError(f"{self.__class__.__name__} requires limits to be set.")
-        limits = {
-            axis: AxisLimits(
-                lower=limit[0],
-                upper=limit[1],
-            )
-            for axis, limit in model_info.limits.items()
+
+        axis_limits = {
+            ax: AxisLimits(lower=lim[0], upper=lim[1])
+            for ax, lim in self.limits.items()
         }
-        super().__init__(limits)
-        self.axis = model_info.axis[0]
+        SimulatedStage.__init__(self, axis_limits)
+        self._active_axis = self.axis[0]
         Factory.set_stage(self)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
@@ -87,11 +126,11 @@ class SimulatedStageDevice(MotorProtocol, SimulatedStage, Loggable):  # type: ig
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):
-                self.axis = value
+                self._active_axis = value
                 s.set_finished()
                 return s
             elif propr == "step_size" and isinstance(value, int | float):
-                self.model_info.step_sizes[self.axis] = value
+                self.step_sizes[self._active_axis] = value
                 s.set_finished()
                 return s
             else:
@@ -101,32 +140,80 @@ class SimulatedStageDevice(MotorProtocol, SimulatedStage, Loggable):  # type: ig
             if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
-        step_size = self.step_sizes[self.axis]
+        step_size = self.step_sizes[self._active_axis]
         new_position = step_size * np.round(value / step_size)
-        self.move_to({self.axis: new_position})
+        self.move_to({self._active_axis: new_position})
         s.set_finished()
         return s
 
     def locate(self) -> Location[float]:
         return {
-            "setpoint": self.position[self.axis],
-            "readback": self.position[self.axis],
+            "setpoint": self.position[self._active_axis],
+            "readback": self.position[self._active_axis],
         }
 
 
-class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]
-    def __init__(self, name: str, model_info: LightModelInfo) -> None:
-        if model_info.binary:
+@define(kw_only=True, init=False)
+class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]
+    """Simulated light source using the microscope library.
+
+    Parameters
+    ----------
+    name : str
+        Name of the device.
+    binary : bool
+        Binary mode operation. Not supported for simulated lights.
+    wavelength : int
+        Wavelength in nm.
+    egu : str
+        Engineering units. Default is "mW".
+    intensity_range : tuple[int | float, ...]
+        Intensity range (min, max).
+    step_size : int
+        Step size for the intensity.
+    """
+
+    name: str
+    binary: bool = field(
+        default=False,
+        validator=validators.instance_of(bool),
+        metadata={"description": "Binary mode operation."},
+    )
+    wavelength: int = field(
+        default=0,
+        validator=validators.instance_of(int),
+        metadata={"description": "Wavelength in nm."},
+    )
+    egu: str = field(
+        default="mW",
+        validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
+        metadata={"description": "Engineering units."},
+    )
+    intensity_range: tuple[int | float, ...] = field(
+        default=None,
+        converter=utils.convert_to_tuple,
+        metadata={"description": "Intensity range (min, max)."},
+    )
+    step_size: int = field(
+        default=1,
+        validator=validators.instance_of(int),
+        metadata={"description": "Step size for the intensity."},
+    )
+
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
+
+        if self.binary:
             raise AttributeError(
                 f"{self.__class__.__name__} does not support binary light sources."
             )
-        if model_info.intensity_range == (0, 0):
+        if self.intensity_range == (0, 0) or self.intensity_range == (0.0, 0.0):
             raise AttributeError(
                 f"{self.__class__.__name__} requires intensity range to be set."
             )
-        self._name = name
-        self._model_info = model_info
-        super().__init__()
+        SimulatedLightSource.__init__(self)
         Factory.set_light(self)
 
     def describe(self) -> dict[str, Descriptor]:
@@ -135,11 +222,11 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
                 "source": self.name,
                 "dtype": "number",
                 "shape": [],
-                "units": self.model_info.egu,
+                "units": self.egu,
                 "limits": {
                     "control": {
-                        "low": self.model_info.intensity_range[0],
-                        "high": self.model_info.intensity_range[1],
+                        "low": self.intensity_range[0],
+                        "high": self.intensity_range[1],
                     }
                 },
             },
@@ -163,10 +250,10 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return self.model_info.describe_configuration()
+        return {}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return self.model_info.read_configuration()
+        return {}
 
     def trigger(self) -> Status:
         s = Status()
@@ -192,51 +279,42 @@ class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # typ
         self.intensity = value
 
         # the actual power is set as a percentage of the intensity range
-        self.power = (value - self.model_info.intensity_range[0]) / (
-            self.model_info.intensity_range[1] - self.model_info.intensity_range[0]
+        self.power = (value - self.intensity_range[0]) / (
+            self.intensity_range[1] - self.intensity_range[0]
         )
         s.set_finished()
         return s
 
-    @property
-    def name(self) -> str:
-        return self._name
 
-    @property
-    def model_info(self) -> LightModelInfo:
-        return self._model_info
-
-    @property
-    def parent(self) -> None:
-        return None
-
-
-class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
+@define(kw_only=True, init=False)
+class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
     """Simulated camera model implementing DetectorProtocol.
-
-    This class provides a complete detector interface by inheriting from:
-    - DetectorProtocol: Bluesky detector interface
-    - SimulatedCamera: Microscope library camera simulator
-    - Loggable: Logging capabilities
 
     Parameters
     ----------
     name : str
         Name of the detector model.
-    model_info : DetectorModelInfo
-        Configuration information for the detector.
+    sensor_shape : tuple[int, int]
+        Shape of the sensor (width, height).
     """
 
-    def __init__(self, name: str, model_info: DetectorModelInfo) -> None:
-        self._name = name
-        self._model_info = model_info
+    name: str
+    sensor_shape: tuple[int, int] = field(
+        default=(512, 512),
+        converter=utils.convert_shape,
+        metadata={"description": "Shape of the sensor (width, height)."},
+    )
 
-        # Initialize SimulatedCamera explicitly with the sensor shape from model_info
-        SimulatedCamera.__init__(self, sensor_shape=model_info.sensor_shape)
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
+
+        # Initialize SimulatedCamera explicitly with the sensor shape
+        SimulatedCamera.__init__(self, sensor_shape=self.sensor_shape)
         self.initialize()
 
         # Set initial ROI to full sensor
-        self.roi = (0, 0, *model_info.sensor_shape)
+        self.roi = (0, 0, *self.sensor_shape)
 
         self._queue: Queue[tuple[npt.NDArray[Any], float]] = Queue()
         self.set_client(self._queue)
@@ -246,12 +324,20 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe the detector configuration."""
-        return self.model_info.describe_configuration()
+        config: dict[str, Descriptor] = {}
+        settings = self.get_all_settings()
+        for setting_name in settings:
+            config[f"{self.name}:{setting_name}"] = {
+                "source": "settings",
+                "dtype": "string",
+                "shape": [],
+            }
+        return config
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read the detector configuration."""
         timestamp = time.time()
-        config = self.model_info.read_configuration(timestamp)
+        config: dict[str, Reading[Any]] = {}
 
         # Add current camera settings to configuration
         settings = self.get_all_settings()
@@ -383,7 +469,7 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
             self._buffer_key: {
                 "source": self.name,
                 "dtype": "array",
-                "shape": list(self.model_info.sensor_shape),
+                "shape": list(self.sensor_shape),
             },
             self._roi_key: {
                 "source": self.name,
@@ -419,18 +505,3 @@ class SimulatedCameraModel(DetectorProtocol, SimulatedCamera, Loggable):  # type
                 "timestamp": timestamp,
             },
         }
-
-    @property
-    def name(self) -> str:
-        """Name of the detector."""
-        return self._name
-
-    @property
-    def model_info(self) -> DetectorModelInfo:
-        """Configuration information for the detector."""
-        return self._model_info
-
-    @property
-    def parent(self) -> None:
-        """Parent device (None for top-level devices)."""
-        return None

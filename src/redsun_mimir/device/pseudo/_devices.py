@@ -32,13 +32,13 @@ def is_flat_descriptor(
 
 
 class PrepareKwargs(TypedDict):
-    """Keyword arguments for the `prepare` method of the `MedianPseudoModel`."""
+    """Keyword arguments for the `prepare` method of the `MedianPseudoDevice`."""
 
     store_path: Path
     """Path where the median readings are to be stored."""
 
 
-class MedianPseudoModel(PseudoCacheFlyer, Triggerable, Loggable):
+class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     """A pseudo-model representing a median processor.
 
     The pseudo-model is intended to be created inside a plan before

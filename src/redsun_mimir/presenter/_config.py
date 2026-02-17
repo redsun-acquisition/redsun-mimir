@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from attrs import define, field, validators
-from sunflare.config import PresenterInfo
 
 if TYPE_CHECKING:
     from typing import Any
@@ -14,7 +13,7 @@ __all__ = ["MotorControllerInfo", "LightControllerInfo"]
 
 
 @define
-class _CommonControllerInfo(PresenterInfo):
+class _CommonControllerInfo:
     """Common configuration class for controllers.
 
     Parameters

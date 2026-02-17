@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from attrs import define, field, setters
-from sunflare.config import ViewInfo
 
 
 @define
-class MotorWidgetInfo(ViewInfo):
+class MotorWidgetInfo:
     """Stage widget information.
 
     Currently provides no additional information.
@@ -15,7 +14,7 @@ class MotorWidgetInfo(ViewInfo):
 
 
 @define
-class LightWidgetInfo(ViewInfo):
+class LightWidgetInfo:
     """Light widget information.
 
     Currently provides no additional information.
@@ -25,7 +24,7 @@ class LightWidgetInfo(ViewInfo):
 
 
 @define
-class AcquisitionWidgetInfo(ViewInfo):
+class AcquisitionWidgetInfo:
     """Acquisition widget information.
 
     Currently provides no additional information.
@@ -35,7 +34,7 @@ class AcquisitionWidgetInfo(ViewInfo):
 
 
 @define
-class DetectorWidgetInfo(ViewInfo):
+class DetectorWidgetInfo:
     """Detector widget information.
 
     Parameters

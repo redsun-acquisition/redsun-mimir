@@ -103,9 +103,12 @@ class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
         It can be changed via
         ``set(<new_axis>, prop="axis")``.
 
+    egu : ``str``
+        Engineering units for the motor position.
     """
 
     axis: list[str]
+    egu: str
 
 
 @runtime_checkable

@@ -5,16 +5,14 @@ from typing import TYPE_CHECKING
 import in_n_out as ino
 from sunflare.log import Loggable
 
-from redsun_mimir.device import LightModelInfo
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import Any
 
-    from sunflare.model import PModel
+    from sunflare.device import Device
     from sunflare.virtual import VirtualBus
-
-    from ._config import LightControllerInfo
 
 store = ino.Store.create("LightModelInfo")
 
@@ -24,41 +22,43 @@ class LightController(Loggable):
 
     Parameters
     ----------
-    config : ``LightControllerInfo``
-        Configuration for the light presenter.
-    models : ``Mapping[str, PModel]``
-        Mapping of model names to model instances.
-    bus : ``VirtualBus``
+    devices : ``Mapping[str, Device]``
+        Mapping of device names to device instances.
+    virtual_bus : ``VirtualBus``
         The bus for communication.
+    **kwargs : Any
+        Additional keyword arguments.
+        - ``timeout`` (float | None): Timeout in seconds.
 
     """
 
     def __init__(
         self,
-        ctrl_info: LightControllerInfo,
-        models: Mapping[str, PModel],
+        devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
+        /,
+        **kwargs: Any,
     ) -> None:
-        self._ctrl_info = ctrl_info
+        self._timeout: float | None = kwargs.get("timeout", None)
         self._virtual_bus = virtual_bus
 
         self._lights = {
             name: model
-            for name, model in models.items()
+            for name, model in devices.items()
             if isinstance(model, LightProtocol)
         }
 
-        store.register_provider(self.models_info, type_hint=dict[str, LightModelInfo])
+        store.register_provider(self.models_info, type_hint=dict[str, LightProtocol])
 
-    def models_info(self) -> dict[str, LightModelInfo]:
-        """Get the models information.
+    def models_info(self) -> dict[str, LightProtocol]:
+        """Get the light devices.
 
         Returns
         -------
-        dict[str, LightModelInfo]
-            Mapping of model names to model information.
+        dict[str, LightProtocol]
+            Mapping of light names to light device instances.
         """
-        return {name: model.model_info for name, model in self._lights.items()}
+        return dict(self._lights)
 
     def registration_phase(self) -> None:
         """Register the presenter."""
@@ -84,7 +84,7 @@ class LightController(Loggable):
         """
         s = self._lights[name].trigger()
         try:
-            s.wait(self._ctrl_info.timeout)
+            s.wait(self._timeout)
         except Exception as e:
             self.logger.error(f"Failed toggle on {name}: {e}")
         else:
@@ -106,8 +106,8 @@ class LightController(Loggable):
         light = self._lights[name]
         s = light.set(intensity)
         try:
-            s.wait(self._ctrl_info.timeout)
+            s.wait(self._timeout)
         except Exception:
             self.logger.exception(
-                f"Timeout when setting {name} at {intensity} {light.model_info.egu}"
+                f"Timeout when setting {name} at {intensity} {light.egu}"
             )

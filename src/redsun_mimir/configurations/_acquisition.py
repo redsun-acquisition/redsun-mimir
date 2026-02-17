@@ -10,7 +10,7 @@ from sunflare.config import PModelInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.device import DetectorModelInfo
-from redsun_mimir.device.microscope import SimulatedCameraModel
+from redsun_mimir.device.microscope import SimulatedCameraDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreCameraModelInfo
 from redsun_mimir.presenter import AcquisitionController, AcquisitionControllerInfo
 from redsun_mimir.view import AcquisitionWidget, AcquisitionWidgetInfo
@@ -65,7 +65,7 @@ def acquisition_widget() -> None:
         if name == "Mock1":
             mock_models[name] = MMCoreCameraDevice(name, model_info)  # type: ignore
         elif name == "Mock2":
-            mock_models[name] = SimulatedCameraModel(name, model_info)  # type: ignore
+            mock_models[name] = SimulatedCameraDevice(name, model_info)  # type: ignore
         else:
             raise ValueError(f"Unknown model name: {name}")
 

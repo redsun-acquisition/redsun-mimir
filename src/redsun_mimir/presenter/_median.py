@@ -10,14 +10,13 @@ from sunflare.presenter import PPresenter
 from sunflare.virtual import Signal
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from typing import Any
 
     import numpy.typing as npt
     from event_model.documents import Event, EventDescriptor, RunStart
-    from sunflare.model import PModel
+    from sunflare.device import Device
     from sunflare.virtual import VirtualBus
-
-    from redsun_mimir.presenter import RendererControllerInfo
 
 
 class MedianPresenter(PPresenter, DocumentRouter, Loggable):
@@ -29,11 +28,8 @@ class MedianPresenter(PPresenter, DocumentRouter, Loggable):
 
     Parameters
     ----------
-    ctrl_info : ``PresenterInfo``
-        Controller information.
-        Unused in this presenter.
-    models : ``dict[str, PModel]``
-        Mapping of model names to model instances.
+    devices : ``Mapping[str, Device]``
+        Mapping of device names to device instances.
         Unused in this presenter.
     virtual_bus : ``VirtualBus``
         Reference to the virtual bus.
@@ -51,9 +47,10 @@ class MedianPresenter(PPresenter, DocumentRouter, Loggable):
 
     def __init__(
         self,
-        ctrl_info: RendererControllerInfo,
-        models: dict[str, PModel],
+        devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
+        /,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         self.virtual_bus = virtual_bus

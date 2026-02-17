@@ -1,9 +1,0 @@
-session: test
-frontend: pyqt
-engine: bluesky
-models:
-  Sim camera:
-    plugin_name: test
-    plugin_id: microscope
-    sensor_shape: [1024, 1024]
-    pixel_size: [6.5, 6.5]

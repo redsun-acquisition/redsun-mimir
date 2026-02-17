@@ -23,7 +23,7 @@ from redsun_mimir.common import (
     create_plan_spec,
     resolve_arguments,
 )
-from redsun_mimir.device.pseudo import MedianPseudoModel
+from redsun_mimir.device.pseudo import MedianPseudoDevice
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,
@@ -35,11 +35,9 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Mapping
 
     from bluesky.protocols import Readable
-    from sunflare.model import PModel
+    from sunflare.device import Device
 
     from redsun_mimir.actions import SRLatch
-
-    from ._config import AcquisitionControllerInfo
 
 store = ino.Store.create("plan_specs")
 
@@ -127,7 +125,7 @@ def square_scan(
 def scan_and_stash(
     detectors: Sequence[ReadableFlyer],
     motor: MotorProtocol,
-    cache: Sequence[MedianPseudoModel],
+    cache: Sequence[MedianPseudoDevice],
     step: float,
     frames_per_side: int,
     axis: tuple[str, str],
@@ -144,7 +142,7 @@ def scan_and_stash(
         The detectors to use for data collection.
     motor : ``MotorProtocol``
         The motor to use for the scan movement.
-    cache : ``MedianPseudoModel``
+    cache : ``MedianPseudoDevice``
         The cache model to stash readings into.
     step : ``float``
         The step size for motor movement.
@@ -246,13 +244,13 @@ class AcquisitionController(PPresenter, Loggable):
 
     def __init__(
         self,
-        ctrl_info: AcquisitionControllerInfo,
-        models: Mapping[str, PModel],
+        devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
+        /,
+        **kwargs: Any,
     ) -> None:
-        self.ctrl_info = ctrl_info
         self.virtual_bus = virtual_bus
-        self.models = models
+        self.models = devices
         self.engine = RunEngine()
 
         for command in [cmds.wait_for_actions, cmds.stash, cmds.clear_cache]:
@@ -261,7 +259,9 @@ class AcquisitionController(PPresenter, Loggable):
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
-        self.expected_presenters = frozenset(ctrl_info.callbacks)
+        self.expected_presenters = frozenset(
+            kwargs.get("callbacks", ["DetectorController"])
+        )
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "snap": self.snap,
@@ -271,7 +271,7 @@ class AcquisitionController(PPresenter, Loggable):
             "live_median_scan": self.live_median_scan,
         }
         self.plan_specs: dict[str, PlanSpec] = {
-            name: create_plan_spec(plan, models) for name, plan in self.plans.items()
+            name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
 
         store.register_provider(self.plans_specificiers)
@@ -395,18 +395,16 @@ class AcquisitionController(PPresenter, Loggable):
         - ``TypeError``
             - If `motor` does not provide both "X" and "Y" axis of movement.
         """
-        if len(motor.model_info.axis) < 2 or not all(
-            ax in motor.model_info.axis for ax in ["X", "Y"]
-        ):
+        if len(motor.axis) < 2 or not all(ax in motor.axis for ax in ["X", "Y"]):
             raise TypeError(
                 "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {motor.model_info.axis}"
+                f" Available axes: {motor.axis}"
             )
 
         old_step, step = convert_to_target_egu(
             step,
             from_egu=step_egu,
-            to_egu=motor.model_info.egu,
+            to_egu=motor.egu,
         )
         self.event_map.update(action.event_map)
         frames_per_side = frames // 4
@@ -427,7 +425,7 @@ class AcquisitionController(PPresenter, Loggable):
             )
             # if the plan has provided a different engineering unit
             # for the step size, set it accordingly
-            if motor.model_info.egu != step_egu:
+            if motor.egu != step_egu:
                 yield from rps.set_property(motor, step, propr="step_size")
 
             yield from square_scan(
@@ -509,26 +507,24 @@ class AcquisitionController(PPresenter, Loggable):
         - ``TypeError``
             - If `motor` does not provide both "X" and "Y" axis of movement.
         """
-        if len(motor.model_info.axis) < 2 or not all(
-            ax in motor.model_info.axis for ax in ["X", "Y"]
-        ):
+        if len(motor.axis) < 2 or not all(ax in motor.axis for ax in ["X", "Y"]):
             raise TypeError(
                 "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {motor.model_info.axis}"
+                f" Available axes: {motor.axis}"
             )
 
-        medians: set[MedianPseudoModel] = set()
+        medians: set[MedianPseudoDevice] = set()
         for det in detectors:
             describe = yield from rps.describe(det)
             collect = yield from rps.describe_collect(det)
-            medians.add(MedianPseudoModel(det, describe, collect))
+            medians.add(MedianPseudoDevice(det, describe, collect))
 
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
         old_step, step = convert_to_target_egu(
             step,
             from_egu=step_egu,
-            to_egu=motor.model_info.egu,
+            to_egu=motor.egu,
         )
 
         live_stream = "live"
@@ -554,7 +550,7 @@ class AcquisitionController(PPresenter, Loggable):
                 # make sure to clear the cache at each scan, to avoid stale data
                 for median in medians:
                     yield from rps.clear_cache(median, wait=True)
-                if motor.model_info.egu != step_egu:
+                if motor.egu != step_egu:
                     yield from rps.set_property(motor, step, propr="step_size")
                 yield from scan_and_stash(
                     detectors,

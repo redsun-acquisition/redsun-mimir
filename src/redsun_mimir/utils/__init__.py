@@ -1,16 +1,16 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, TypeVar, get_args, get_origin
 
-from sunflare.model import PModel
+from sunflare.device import PDevice
 from typing_extensions import TypeIs
 
 __all__ = ["filter_models", "get_choice_list", "issequence"]
 
-P = TypeVar("P", bound=PModel)
+P = TypeVar("P", bound=PDevice)
 
 
 def filter_models(
-    models: Mapping[str, PModel],
+    models: Mapping[str, PDevice],
     proto: type[P],
     choices: Sequence[str] | None = None,
 ) -> dict[str, P]:
@@ -18,7 +18,7 @@ def filter_models(
 
     Parameters
     ----------
-    models : ``Mapping[str, PModel]``
+    models : ``Mapping[str, PDevice]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.
@@ -41,13 +41,13 @@ def filter_models(
 
 
 def get_choice_list(
-    models: Mapping[str, PModel], proto: type[P], choices: Sequence[str]
+    models: Mapping[str, PDevice], proto: type[P], choices: Sequence[str]
 ) -> list[P]:
     """Get a list of model names that implement a specific protocol.
 
     Parameters
     ----------
-    models : ``Mapping[str, PModel]``
+    models : ``Mapping[str, PDevice]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.
@@ -74,17 +74,17 @@ def issequence(ann: Any) -> TypeIs[Sequence[Any]]:
     return isinstance(origin, Sequence)
 
 
-def ismodelsequence(ann: Any) -> TypeIs[Sequence[PModel]]:
-    """Return True if annotation looks like a Sequence[...] of PModel generic."""
+def ismodelsequence(ann: Any) -> TypeIs[Sequence[PDevice]]:
+    """Return True if annotation looks like a Sequence[...] of PDevice generic."""
     origin = get_origin(ann)
     if origin is None:
         return False
     args = get_args(ann)
     if len(args) != 1:
         return False
-    return issubclass(origin, Sequence) and isinstance(args[0], PModel)
+    return issubclass(origin, Sequence) and isinstance(args[0], PDevice)
 
 
-def ismodel(ann: Any) -> TypeIs[PModel]:
-    """Return True if annotation looks like a PModel generic."""
-    return isinstance(ann, PModel)
+def ismodel(ann: Any) -> TypeIs[PDevice]:
+    """Return True if annotation looks like a PDevice generic."""
+    return isinstance(ann, PDevice)

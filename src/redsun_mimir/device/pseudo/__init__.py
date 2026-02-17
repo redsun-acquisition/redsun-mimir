@@ -1,3 +1,3 @@
-from ._devices import MedianPseudoModel
+from ._devices import MedianPseudoDevice
 
-__all__ = ["MedianPseudoModel"]
+__all__ = ["MedianPseudoDevice"]

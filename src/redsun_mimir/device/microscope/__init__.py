@@ -1,3 +1,3 @@
-from ._devices import SimulatedCameraModel, SimulatedLightModel, SimulatedStageDevice
+from ._devices import SimulatedCameraDevice, SimulatedLightDevice, SimulatedStageDevice
 
-__all__ = ["SimulatedCameraModel", "SimulatedLightModel", "SimulatedStageDevice"]
+__all__ = ["SimulatedCameraDevice", "SimulatedLightDevice", "SimulatedStageDevice"]
