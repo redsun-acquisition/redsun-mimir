@@ -1,50 +1,37 @@
-models:
+devices:
   # mimir models
   mimir-serial:
-    class: redsun_mimir.model.youseetoo:MimirSerialModel
-    info: redsun_mimir.model.youseetoo:MimirSerialModelInfo
+    class: redsun_mimir.device.youseetoo:MimirSerialModel
   mimir-motor:
-    class: redsun_mimir.model.youseetoo:MimirMotorModel
-    info: redsun_mimir.model:MotorModelInfo
+    class: redsun_mimir.device.youseetoo:MimirMotorModel
   mimir-laser:
-    class: redsun_mimir.model.youseetoo:MimirLaserModel
-    info: redsun_mimir.model:LaserModelInfo
+    class: redsun_mimir.device.youseetoo:MimirLaserModel
+    info: redsun_mimir.device:LaserModelInfo
 
   # microscope/mock models
   mock-light:
-    class: redsun_mimir.model:MockLightModel
-    info: redsun_mimir.model:LightModelInfo
+    class: redsun_mimir.device:MockLightDevice
   mock-motor:
-    class: redsun_mimir.model:MockMotorModel
-    info: redsun_mimir.model:MotorModelInfo
+    class: redsun_mimir.device:MockMotorDevice
   mock-detector:
-    class: redsun_mimir.model.microscope:SimulatedCameraModel
-    info: redsun_mimir.model:DetectorModelInfo
+    class: redsun_mimir.device.microscope:SimulatedCameraModel
 
-controllers:
+presenters:
   acquisition:
     class: redsun_mimir.presenter:AcquisitionController
-    info: redsun_mimir.presenter:AcquisitionControllerInfo
   motor:
     class: redsun_mimir.presenter:MotorController
-    info: redsun_mimir.presenter:MotorControllerInfo
   light:
     class: redsun_mimir.presenter:LightController
-    info: redsun_mimir.presenter:LightControllerInfo
   detector:
     class: redsun_mimir.presenter:DetectorController
-    info: redsun_mimir.presenter:DetectorControllerInfo
 
 views:
   acquisition:
     class: redsun_mimir.view:AcquisitionWidget
-    info: redsun_mimir.view:AcquisitionWidgetInfo
   motor:
     class: redsun_mimir.view:MotorWidget
-    info: redsun_mimir.view:MotorWidgetInfo
   light:
     class: redsun_mimir.view:LightWidget
-    info: redsun_mimir.view:LightWidgetInfo
   detector:
     class: redsun_mimir.view:DetectorWidget
-    info: redsun_mimir.view:DetectorWidgetInfo

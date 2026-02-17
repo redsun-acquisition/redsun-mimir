@@ -7,7 +7,7 @@ import yaml
 from sunflare.engine import RunEngine
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
+from redsun_mimir.device import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
 
 @pytest.fixture

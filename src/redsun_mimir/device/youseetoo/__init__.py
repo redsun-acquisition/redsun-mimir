@@ -1,5 +1,5 @@
 from ._config import MimirLaserInfo, MimirSerialModelInfo
-from ._models import (
+from ._devices import (
     MimirLaserModel,
     MimirMotorModel,
     MimirSerialModel,

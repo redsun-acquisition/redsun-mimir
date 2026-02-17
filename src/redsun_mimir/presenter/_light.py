@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import in_n_out as ino
 from sunflare.log import Loggable
 
-from redsun_mimir.model import LightModelInfo
+from redsun_mimir.device import LightModelInfo
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:

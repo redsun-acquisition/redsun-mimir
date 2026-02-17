@@ -9,8 +9,8 @@ from qtpy import QtCore, QtWidgets
 from sunflare.config import PPresenterInfo, PViewInfo, RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import MockMotorModel, MotorModelInfo
-from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
+from redsun_mimir.device import MockMotorDevice, MotorModelInfo
+from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreCameraModelInfo
 from redsun_mimir.presenter import (
     AcquisitionController,
     AcquisitionControllerInfo,
@@ -83,9 +83,9 @@ def acquisition_detector_widget_uc2() -> None:
     mock_models: dict[str, PModel] = {}
     for name, model_info in models_info.items():
         if "iSCAT" in name:
-            mock_models[name] = MMCoreCameraModel(name, model_info)  # type: ignore
+            mock_models[name] = MMCoreCameraDevice(name, model_info)  # type: ignore
         elif "motor" in name:
-            mock_models[name] = MockMotorModel(name, model_info)  # type: ignore
+            mock_models[name] = MockMotorDevice(name, model_info)  # type: ignore
         else:
             raise ValueError(f"Unknown model name: {name}")
 

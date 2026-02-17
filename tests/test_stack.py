@@ -6,7 +6,7 @@ from pytestqt.qtbot import QtBot
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import MockMotorModel, MotorModelInfo
+from redsun_mimir.device import MockMotorDevice, MotorModelInfo
 from redsun_mimir.presenter import MotorController, MotorControllerInfo
 from redsun_mimir.view import MotorWidget
 
@@ -25,7 +25,7 @@ def test_stage_stack(config_path: Path, qtbot: QtBot, bus: VirtualBus) -> None:
 
     config = RedSunSessionInfo(**config_dict)
 
-    motors = {name: MockMotorModel(name, info) for name, info in config.models.items()}  # type: ignore
+    motors = {name: MockMotorDevice(name, info) for name, info in config.models.items()}  # type: ignore
 
     ctrl = MotorController(config.controllers["MotorController"], motors, bus)  # type: ignore
     widget = MotorWidget(config.views["MotorWidget"], bus)

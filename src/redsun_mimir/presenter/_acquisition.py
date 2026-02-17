@@ -23,7 +23,7 @@ from redsun_mimir.common import (
     create_plan_spec,
     resolve_arguments,
 )
-from redsun_mimir.model.pseudo import MedianPseudoModel
+from redsun_mimir.device.pseudo import MedianPseudoModel
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,

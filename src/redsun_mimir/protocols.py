@@ -5,19 +5,19 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from bluesky.protocols import (
     Collectable,
     Flyable,
+    Locatable,
     Movable,
     Preparable,
     Readable,
     Stageable,
+    Triggerable,
     WritesStreamAssets,
 )
-from sunflare.model import PModel
+from sunflare.device import PDevice
 
 if TYPE_CHECKING:
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Reading
     from sunflare.engine import Status
-
-    from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
 
 @runtime_checkable
@@ -91,7 +91,7 @@ class Settable(Movable[Any], Protocol):
 
 
 @runtime_checkable
-class MotorProtocol(PModel, Settable, Protocol):
+class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
     """Protocol for motor models.
 
     Implements the ``Locatable`` protocol.
@@ -105,29 +105,11 @@ class MotorProtocol(PModel, Settable, Protocol):
 
     """
 
-    axis: str
-
-    def locate(self) -> Location[Any]:
-        """Return the current motor position.
-
-        The returned ``Location`` is tied
-        to the last active axis.
-
-        Returns
-        -------
-        ``Location[Any]``
-            Location object.
-
-        """
-        ...
-
-    @property
-    def model_info(self) -> MotorModelInfo:  # noqa: D102
-        ...
+    axis: list[str]
 
 
 @runtime_checkable
-class LightProtocol(PModel, Settable, Protocol):
+class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
     """Protocol for light models.
 
     Implements the ``Readable`` protocol.
@@ -178,13 +160,9 @@ class LightProtocol(PModel, Settable, Protocol):
         """
         ...
 
-    @property
-    def model_info(self) -> LightModelInfo:  # noqa: D102
-        ...
-
 
 @runtime_checkable
-class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Protocol):
+class DetectorProtocol(PDevice, Settable, Readable[Any], Stageable, Protocol):
     """Protocol for detector models.
 
     Implements the following protocols:
@@ -207,14 +185,10 @@ class DetectorProtocol(PModel, Settable, Readable[Any], Stageable, Protocol):
 
     roi: tuple[int, int, int, int]
 
-    @property
-    def model_info(self) -> DetectorModelInfo:  # noqa: D102
-        ...
-
 
 @runtime_checkable
 class ReadableFlyer(
-    PModel,
+    PDevice,
     Readable[Any],
     Preparable,
     Flyable,

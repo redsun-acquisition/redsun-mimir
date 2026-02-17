@@ -9,13 +9,13 @@ from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
-from redsun_mimir.model import LightModelInfo  # noqa: TC001
+from redsun_mimir.device import LightModelInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from sunflare.config import PViewInfo
     from sunflare.virtual import VirtualBus
 
-    from redsun_mimir.model import LightModelInfo
+    from redsun_mimir.device import LightModelInfo
 
 store = ino.Store.get_store("LightModelInfo")
 

@@ -11,7 +11,7 @@ from sunflare.log import Loggable
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
-from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
+from redsun_mimir.device import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.utils import filter_models
 

@@ -9,7 +9,7 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model.mmcore import MMCoreCameraModel, MMCoreCameraModelInfo
+from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreCameraModelInfo
 from redsun_mimir.presenter import DetectorController, DetectorControllerInfo
 from redsun_mimir.view import DetectorWidget, DetectorWidgetInfo
 
@@ -48,8 +48,8 @@ def detector_widget_uc2() -> None:
         views=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, MMCoreCameraModel] = {
-        name: MMCoreCameraModel(name, model_info)
+    mock_models: dict[str, MMCoreCameraDevice] = {
+        name: MMCoreCameraDevice(name, model_info)
         for name, model_info in models_info.items()
     }
 

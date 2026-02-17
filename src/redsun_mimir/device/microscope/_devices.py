@@ -22,11 +22,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from redsun_mimir.model import DetectorModelInfo, LightModelInfo, MotorModelInfo
+    from redsun_mimir.device import DetectorModelInfo, LightModelInfo, MotorModelInfo
 
 
 class Factory:
-    stage: ClassVar[SimulatedStageModel | None]
+    stage: ClassVar[SimulatedStageDevice | None]
     light: ClassVar[SimulatedLightModel | None]
     pool: ClassVar[ThreadPoolExecutor]
     stage_ready: ClassVar[Event] = Event()
@@ -35,8 +35,8 @@ class Factory:
     @classmethod
     def fetch_devices(
         cls,
-    ) -> Future[tuple[SimulatedLightModel, SimulatedStageModel]]:
-        def do_fetch() -> tuple[SimulatedLightModel, SimulatedStageModel]:
+    ) -> Future[tuple[SimulatedLightModel, SimulatedStageDevice]]:
+        def do_fetch() -> tuple[SimulatedLightModel, SimulatedStageDevice]:
             cls.stage_ready.wait()
             cls.light_ready.wait()
             assert cls.light is not None and cls.stage is not None
@@ -47,7 +47,7 @@ class Factory:
         return future
 
     @classmethod
-    def set_stage(cls, stage: SimulatedStageModel) -> None:
+    def set_stage(cls, stage: SimulatedStageDevice) -> None:
         cls.stage = stage
         cls.stage_ready.set()
 
@@ -57,7 +57,7 @@ class Factory:
         cls.light_ready.set()
 
 
-class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
+class SimulatedStageDevice(MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
     def __init__(self, name: str, model_info: MotorModelInfo) -> None:
         self._name = name
         self._model_info = model_info
@@ -75,10 +75,10 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
         Factory.set_stage(self)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return self.model_info.describe_configuration()
+        return {}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return self.model_info.read_configuration()
+        return {}
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -101,7 +101,7 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
             if not isinstance(value, int | float):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
-        step_size = self.model_info.step_sizes[self.axis]
+        step_size = self.step_sizes[self.axis]
         new_position = step_size * np.round(value / step_size)
         self.move_to({self.axis: new_position})
         s.set_finished()
@@ -112,18 +112,6 @@ class SimulatedStageModel(MotorProtocol, SimulatedStage, Loggable):  # type: ign
             "setpoint": self.position[self.axis],
             "readback": self.position[self.axis],
         }
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def model_info(self) -> MotorModelInfo:
-        return self._model_info
-
-    @property
-    def parent(self) -> None:
-        return None
 
 
 class SimulatedLightModel(LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]

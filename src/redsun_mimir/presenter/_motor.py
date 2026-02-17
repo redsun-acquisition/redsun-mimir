@@ -8,7 +8,7 @@ import in_n_out as ino
 from sunflare.log import Loggable
 from sunflare.virtual import Signal, VirtualBus
 
-from redsun_mimir.model import MotorModelInfo  # noqa: TC001
+from redsun_mimir.device import MotorModelInfo  # noqa: TC001
 
 from ..protocols import MotorProtocol
 

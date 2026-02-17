@@ -6,15 +6,15 @@ from bluesky.protocols import Descriptor, Location, Reading
 from bluesky.utils import MsgGenerator
 from sunflare.engine import RunEngine
 
-from redsun_mimir.model import (
+from redsun_mimir.device import (
     LightModelInfo,
-    MockLightModel,
-    MockMotorModel,
+    MockLightDevice,
+    MockMotorDevice,
     MotorModelInfo,
 )
-from redsun_mimir.model.microscope import (
+from redsun_mimir.device.microscope import (
     SimulatedLightModel,
-    SimulatedStageModel,
+    SimulatedStageDevice,
 )
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
@@ -33,25 +33,25 @@ def test_motor_construction(motor_config: dict[str, MotorModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in motor_config.items():
         motor = (
-            MockMotorModel(name, info)
+            MockMotorDevice(name, info)
             if info.plugin_id == "test"
-            else SimulatedStageModel(name, info)
+            else SimulatedStageDevice(name, info)
         )
         assert isinstance(motor, MotorProtocol)
         assert motor.name == name
         assert motor.model_info.axis == info.axis
         assert motor.model_info.egu == info.egu
         assert motor.model_info.step_sizes == info.step_sizes
-        if isinstance(motor, SimulatedStageModel):
+        if isinstance(motor, SimulatedStageDevice):
             assert motor.limits == info.limits
 
 
 def test_motor_configurable_protocol(motor_config: dict[str, MotorModelInfo]) -> None:
     for name, info in motor_config.items():
         motor = (
-            MockMotorModel(name, info)
+            MockMotorDevice(name, info)
             if info.plugin_id == "test"
-            else SimulatedStageModel(name, info)
+            else SimulatedStageDevice(name, info)
         )
         cfg = get_descriptor_values(motor.read_configuration())
         truth = {
@@ -90,9 +90,9 @@ def test_motor_set_direct(motor_config: dict[str, MotorModelInfo]) -> None:
     """
     for name, info in motor_config.items():
         motor = (
-            MockMotorModel(name, info)
+            MockMotorDevice(name, info)
             if info.plugin_id == "test"
-            else SimulatedStageModel(name, info)
+            else SimulatedStageDevice(name, info)
         )
         # attempting to move a motor along an axis
         # that does not exist should raise an error
@@ -134,9 +134,9 @@ def test_motor_plan_absolute(
 
     motors = tuple(
         [
-            MockMotorModel(name, info)
+            MockMotorDevice(name, info)
             if info.plugin_id == "test"
-            else SimulatedStageModel(name, info)
+            else SimulatedStageDevice(name, info)
             for name, info in motor_config.items()
         ]
     )
@@ -165,9 +165,9 @@ def test_motor_plan_relative(
 
     motors = tuple(
         [
-            MockMotorModel(name, info)
+            MockMotorDevice(name, info)
             if info.plugin_id == "test"
-            else SimulatedStageModel(name, info)
+            else SimulatedStageDevice(name, info)
             for name, info in motor_config.items()
         ]
     )
@@ -178,7 +178,7 @@ def test_light_construction(light_config: dict[str, LightModelInfo]) -> None:
     """Test the motor object construction."""
     for name, info in light_config.items():
         light = (
-            MockLightModel(name, info)
+            MockLightDevice(name, info)
             if info.plugin_id == "test"
             else SimulatedLightModel(name, info)
         )
@@ -191,7 +191,7 @@ def test_light_construction(light_config: dict[str, LightModelInfo]) -> None:
 def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) -> None:
     for name, info in light_config.items():
         light = (
-            MockLightModel(name, info)
+            MockLightDevice(name, info)
             if info.plugin_id == "test"
             else SimulatedLightModel(name, info)
         )
@@ -223,7 +223,7 @@ def test_light_configurable_protocol(light_config: dict[str, LightModelInfo]) ->
 def test_light_set_direct(light_config: dict[str, LightModelInfo]) -> None:
     for name, info in light_config.items():
         light = (
-            MockLightModel(name, info)
+            MockLightDevice(name, info)
             if info.plugin_id == "test"
             else SimulatedLightModel(name, info)
         )
@@ -256,7 +256,7 @@ def test_light_plan(light_config: dict[str, LightModelInfo], RE: RunEngine) -> N
 
     lights = tuple(
         [
-            MockLightModel(name, info)
+            MockLightDevice(name, info)
             if info.plugin_id == "test"
             else SimulatedLightModel(name, info)
             for name, info in light_config.items()

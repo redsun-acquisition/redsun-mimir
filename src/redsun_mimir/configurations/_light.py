@@ -9,7 +9,7 @@ from qtpy import QtWidgets
 from sunflare.config import RedSunSessionInfo
 from sunflare.virtual import VirtualBus
 
-from redsun_mimir.model import LightModelInfo, MockLightModel
+from redsun_mimir.device import LightModelInfo, MockLightDevice
 from redsun_mimir.presenter import LightController, LightControllerInfo
 from redsun_mimir.view import LightWidget, LightWidgetInfo
 
@@ -46,8 +46,8 @@ def light_widget() -> None:
         views=widget_info,  # type: ignore
     )
 
-    mock_models: dict[str, MockLightModel] = {
-        name: MockLightModel(name, model_info)
+    mock_models: dict[str, MockLightDevice] = {
+        name: MockLightDevice(name, model_info)
         for name, model_info in models_info.items()
     }
 

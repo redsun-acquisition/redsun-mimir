@@ -6,10 +6,10 @@ from pytestqt.qtbot import QtBot
 from sunflare.presenter import PPresenter
 from sunflare.virtual import HasConnection, HasRegistration, VirtualBus
 
-from redsun_mimir.model import (
+from redsun_mimir.device import (
     LightModelInfo,
-    MockLightModel,
-    MockMotorModel,
+    MockLightDevice,
+    MockMotorDevice,
     MotorModelInfo,
 )
 from redsun_mimir.presenter import (
@@ -23,7 +23,7 @@ from redsun_mimir.presenter import (
 def test_stage_controller(
     bus: VirtualBus, motor_config: dict[str, MotorModelInfo], qtbot: QtBot
 ) -> None:
-    motors = {name: MockMotorModel(name, info) for name, info in motor_config.items()}
+    motors = {name: MockMotorDevice(name, info) for name, info in motor_config.items()}
 
     info = MotorControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = MotorController(info, motors, bus)
@@ -74,7 +74,7 @@ def test_stage_controller(
 def test_light_widget(
     bus: VirtualBus, light_config: dict[str, LightModelInfo], qtbot: QtBot
 ) -> None:
-    lights = {name: MockLightModel(name, info) for name, info in light_config.items()}
+    lights = {name: MockLightDevice(name, info) for name, info in light_config.items()}
 
     info = LightControllerInfo(plugin_name="test", plugin_id="test")
     ctrl = LightController(info, lights, bus)

@@ -13,7 +13,7 @@ from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
-from redsun_mimir.model import DetectorModelInfo  # noqa: TC001
+from redsun_mimir.device import DetectorModelInfo  # noqa: TC001
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,

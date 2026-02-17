@@ -4,9 +4,12 @@ import math
 import time
 from typing import TYPE_CHECKING
 
+from attrs import define, field, setters, validators
+from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
+import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
@@ -14,15 +17,57 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Location, Reading
 
-    from ._config import LightModelInfo, MotorModelInfo
 
-
-class MockLightModel(LightProtocol, Loggable):
+@define(kw_only=True, init=False)
+class MockLightDevice(Device, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
-    def __init__(self, name: str, model_info: LightModelInfo) -> None:
-        self._name = name
-        self._model_info = model_info
+    name: str
+    binary: bool = field(
+        default=False,
+        validator=validators.instance_of(bool),
+        metadata={"description": "Binary mode operation."},
+    )
+    wavelength: int = field(
+        default=0,
+        validator=validators.instance_of(int),
+        metadata={"description": "Wavelength in nm."},
+    )
+    egu: str = field(
+        default="mW",
+        validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
+        metadata={"description": "Engineering units."},
+    )
+    intensity_range: tuple[int | float, ...] = field(
+        default=None,
+        converter=utils.convert_to_tuple,
+        metadata={"description": "Intensity range (min, max)."},
+    )
+    step_size: int = field(
+        default=1,
+        validator=validators.instance_of(int),
+        metadata={"description": "Step size for the intensity."},
+    )
+
+    @intensity_range.validator
+    def _check_range(self, _: str, value: tuple[int | float, ...]) -> None:
+        if self.binary and value == (0.0, 0.0):
+            return
+        if len(value) != 2:
+            raise AttributeError(
+                f"Length of intensity range must be 2: {value} has length {len(value)}"
+            )
+        if not all(isinstance(val, (float, int)) for val in value):
+            raise AttributeError(
+                f"All values in the intensity range must be floats or ints: {value}"
+            )
+        if value[0] > value[1]:
+            raise AttributeError(f"Min value is greater than max value: {value}")
+
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
         self.enabled = False
         self.intensity = 0.0
         self.logger.info("Initialized")
@@ -71,10 +116,10 @@ class MockLightModel(LightProtocol, Loggable):
         }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return self.model_info.read_configuration()
+        return {}
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return self.model_info.describe_configuration()
+        return {}
 
     def shutdown(self) -> None: ...
 
@@ -85,33 +130,57 @@ class MockLightModel(LightProtocol, Loggable):
         s.set_finished()
         return s
 
-    @property
-    def name(self) -> str:
-        return self._name
 
-    @property
-    def parent(self) -> None:
-        return None
-
-    @property
-    def model_info(self) -> LightModelInfo:
-        return self._model_info
-
-
-class MockMotorModel(MotorProtocol, Loggable):
+@define(kw_only=True, init=False)
+class MockMotorDevice(Device, MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
-    def __init__(self, name: str, model_info: MotorModelInfo) -> None:
-        self._name = name
-        self._model_info = model_info
+    name: str
+    egu: str = field(
+        default="mm",
+        validator=validators.instance_of(str),
+        on_setattr=setters.frozen,
+        metadata={"description": "Engineering units."},
+    )
+    axis: list[str] = field(
+        validator=validators.instance_of(list),
+        on_setattr=setters.frozen,
+        metadata={"description": "Axis names."},
+    )
+    step_sizes: dict[str, float] = field(
+        validator=validators.instance_of(dict),
+        metadata={"description": "Step sizes for each axis."},
+    )
+    limits: dict[str, tuple[float, float]] | None = field(
+        default=None,
+        converter=utils.convert_limits,
+        metadata={"description": "Limits for each axis."},
+    )
+
+    @limits.validator
+    def _check_limits(
+        self, _: str, value: dict[str, tuple[float, float]] | None
+    ) -> None:
+        if value is None:
+            return
+        for axis, limits in value.items():
+            if len(limits) != 2:
+                raise AttributeError(
+                    f"Length of limits must be 2: {axis} has length {len(limits)}"
+                )
+            if limits[0] > limits[1]:
+                raise AttributeError(
+                    f"{axis} minimum limit is greater than the maximum limit: {limits}"
+                )
+
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
         self._positions: dict[str, Location[float]] = {
-            axis: {"setpoint": 0.0, "readback": 0.0} for axis in model_info.axis
+            axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
         }
 
-        # set the current axis to the first axis
-        self.axis = self._model_info.axis[0]
-
-        self._step_sizes = self._model_info.step_sizes
+        self._active_axis = self.axis[0]
 
         self.logger.info("Initialized")
 
@@ -155,11 +224,11 @@ class MockMotorModel(MotorProtocol, Loggable):
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):
-                self.axis = value
+                self._active_axis = value
                 s.set_finished()
                 return s
             elif propr == "step_size" and isinstance(value, int | float):
-                self._step_sizes[self.axis] = value
+                self.step_sizes[self._active_axis] = value
                 s.set_finished()
                 return s
             else:
@@ -170,37 +239,27 @@ class MockMotorModel(MotorProtocol, Loggable):
                 s.set_exception(ValueError("Value must be a float or int."))
                 return s
         steps = math.floor(
-            (value - self._positions[self.axis]["setpoint"])
-            / self._step_sizes[self.axis]
+            (value - self._positions[self._active_axis]["setpoint"])
+            / self.step_sizes[self._active_axis]
         )
         for _ in range(steps):
-            self._positions[self.axis]["setpoint"] += self._step_sizes[self.axis]
+            self._positions[self._active_axis]["setpoint"] += self.step_sizes[
+                self._active_axis
+            ]
         s.set_finished()
         return s
 
     def locate(self) -> Location[float]:
         """Locate mock model."""
-        return self._positions[self.axis]
+        return self._positions[self._active_axis]
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read mock configuration."""
-        return self.model_info.read_configuration()
+        return {}
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe mock configuration."""
-        return self.model_info.describe_configuration()
-
-    @property
-    def parent(self) -> None:
-        return None
-
-    @property
-    def name(self) -> str:  # noqa: D102
-        return self._name
-
-    @property
-    def model_info(self) -> MotorModelInfo:  # noqa: D102
-        return self._model_info
+        return {}
 
     def shutdown(self) -> None: ...
 
@@ -218,6 +277,6 @@ class MockMotorModel(MotorProtocol, Loggable):
             Axis name.
         """
         if status.success:
-            self._positions[self.axis]["readback"] = self._positions[self.axis][
-                "setpoint"
-            ]
+            self._positions[self._active_axis]["readback"] = self._positions[
+                self._active_axis
+            ]["setpoint"]

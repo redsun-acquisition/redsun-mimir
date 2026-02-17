@@ -5,10 +5,13 @@ import time
 from typing import TYPE_CHECKING, TypedDict, cast
 
 import numpy as np
+from attrs import define, field, validators
 from pymmcore_plus import CMMCorePlus as Core
+from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
 
+import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.storage import ZarrWriter
 
@@ -18,8 +21,6 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-
-    from ._config import MMCoreCameraModelInfo
 
 
 class PrepareKwargs(TypedDict):
@@ -35,7 +36,8 @@ class PrepareKwargs(TypedDict):
     """When True, write data indefinitely until stopped. Overrides `capacity`."""
 
 
-class MMCoreCameraModel(DetectorProtocol, Loggable):
+@define(kw_only=True, init=False)
+class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
     This class is a hack because it will fail initialization if
@@ -44,28 +46,92 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
     This is because  MMCore does not yet support multiple
     cameras without the `MultiCameraAdapter` integration,
     which introduces complexities that we are not ready to deal with yet.
+
+    Parameters
+    ----------
+    name: str
+        The name of the camera device.
+    adapter: str
+        The Micro-Manager adapter name for the camera. Default is "DemoCam".
+    device: str
+        The Micro-Manager device available for the specified ``adapter``. Default is "DCam".
+    allowed_properties: list[str]
+        Set of allowed Micro-Manager properties for the camera. Default is ["PixelType"].
+    defaults: dict[str, Any]
+        Map of default values for the allowed properties.
+        The keys must match the values in ``allowed_properties``.
+        Defaults to an empty dictionary (the built-in defaults of the camera will be used).
+    sensor_shape: tuple[int, int]
+        The (width, height) of the camera sensor in pixels.
+        Default is (512, 512) pixels.
+    starting_exposure: float
+        Starting exposure time in milliseconds for the camera. Default is 100 ms.
+    exposure_limits: tuple[float, float]
+        Mimum and maximum exposure time in milliseconds for the camera. Default is (0.0, 10000.0) ms.
+    enum_map: dict[str, list[str]]
+        A map of values for properties that support enumerated values. Default is {"PixelType": ["8bit", "16bit", "32bit"]}.
+    numpy_dtype: dict[str, dict[str, str]]
+        A nested dictionary where the first key is the property name
+        that provides data type information of the aquired images
+        and the nested dictionary maps the property values to corresponding NumPy data types.
     """
 
-    # class variable to track initialization status;
-    # multiple instances are not supported
+    name: str
+    adapter: str = field(validator=validators.instance_of(str), default="DemoCamera")
+    device: str = field(validator=validators.instance_of(str), default="DCam")
+    allowed_properties: list[str] = field(
+        default=["PixelType"],
+    )
+    defaults: dict[str, Any] = field(factory=dict)
+    sensor_shape: tuple[int, int] = field(
+        converter=utils.convert_shape,
+    )
+    starting_exposure: float = field(
+        validator=validators.instance_of(float),
+        default=100.0,
+    )
+    exposure_limits: tuple[float, float] = field(
+        converter=tuple,
+        validator=validators.instance_of(tuple),
+        default=(0.0, 10000.0),
+    )
+    enum_map: dict[str, list[str]] = field(
+        default={
+            "PixelType": ["8bit", "16bit", "32bit"],
+        },
+    )
+
+    numpy_dtype: dict[str, dict[str, str]] = field(
+        validator=utils.has_only_one_key,
+        default={
+            "PixelType": {
+                "8bit": "uint8",
+                "16bit": "uint16",
+                "32bit": "float32",
+            }
+        },
+    )
+
     initialized: ClassVar[bool] = False
 
-    def __init__(self, name: str, model_info: MMCoreCameraModelInfo) -> None:
+    def __init__(self, name: str, /, **kwargs: Any) -> None:
+        super().__init__(name, **kwargs)
+        self.__attrs_init__(name=name, **kwargs)
+
         self._name = name
-        self._model_info = model_info
         self._core = Core.instance()
-        self._pixelprop = list(model_info.numpy_dtype.keys())[0]
+        self._pixelprop = list(self.numpy_dtype.keys())[0]
         try:
-            if MMCoreCameraModel.initialized:
+            if MMCoreCameraDevice.initialized:
                 raise RuntimeError(
-                    "MMCoreCameraModel has already been initialized once; "
+                    "MMCoreCameraDevice has already been initialized once; "
                     "multiple instances are not supported."
                 )
-            self._core.loadDevice(name, model_info.adapter, model_info.device)
+            self._core.loadDevice(name, self.adapter, self.device)
             self._core.initializeDevice(name)
             self._core.setCameraDevice(name)
 
-            MMCoreCameraModel.initialized = True
+            MMCoreCameraDevice.initialized = True
         except Exception as e:
             self.logger.error(f"Failed to initialize device {name}")
             raise e
@@ -76,31 +142,28 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._core.clearROI()
         full_frame = self._core.getROI()[2:]
 
-        if (
-            model_info.sensor_shape[0] > full_frame[0]
-            or model_info.sensor_shape[1] > full_frame[1]
-        ):
+        if self.sensor_shape[0] > full_frame[0] or self.sensor_shape[1] > full_frame[1]:
             raise ValueError(
-                f"Requested sensor shape {model_info.sensor_shape[2:]} exceeds "
+                f"Requested sensor shape {self.sensor_shape} exceeds "
                 f"full frame size {full_frame[0]}x{full_frame[1]} of the camera."
             )
 
-        if model_info.sensor_shape[0:] != tuple(full_frame):
-            self._core.setROI(0, 0, *model_info.sensor_shape[0:])
+        if self.sensor_shape[0:] != tuple(full_frame):
+            self._core.setROI(0, 0, *self.sensor_shape)
 
-        if model_info.defaults:
-            for prop, value in model_info.defaults.items():
+        if self.defaults:
+            for prop, value in self.defaults.items():
                 # if the property is not in the allowed properties, skip it
-                if prop not in model_info.allowed_properties:
+                if prop not in self.allowed_properties:
                     continue
                 self._core.setProperty(name, prop, value)
 
-        self._core.setExposure(self.name, model_info.starting_exposure)
+        self._core.setExposure(self.name, self.starting_exposure)
 
-        self.roi = (0, 0, *self.model_info.sensor_shape)
+        self.roi = (0, 0, *self.sensor_shape)
         self._properties = {
             propr_name: self._core.getPropertyObject(name, propr_name)
-            for propr_name in model_info.allowed_properties
+            for propr_name in self.allowed_properties
         }
 
         self._device_schema = self._core.getDeviceSchema(name)
@@ -119,7 +182,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         self._complete_status = Status()
         self._assets_collected = False  # Track if stream assets have been collected
 
-        self.logger.debug(f"Initialized {model_info.adapter}\{model_info.device}")
+        self.logger.debug(f"Initialized {self.adapter}\{self.device}")
 
         self._read_buffer: npt.NDArray[Any] = np.zeros(
             (self.roi[2], self.roi[3]), dtype=self.dtype
@@ -130,7 +193,7 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         """The currently active pixel data type of the camera, as a numpy dtype string."""
         # TODO: this is horrible; we need a better way
         # to manage the mapping from camera properties to numpy dtypes
-        return self._model_info.numpy_dtype[self._pixelprop][
+        return self.numpy_dtype[self._pixelprop][
             self._core.getProperty(self.name, self._pixelprop)
         ]
 
@@ -185,12 +248,12 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
         config_descriptor: dict[str, Descriptor] = {}
         for key, value in self._device_schema["properties"].items():
             # Filter to only include exposed properties
-            if key not in self.model_info.allowed_properties:
+            if key not in self.allowed_properties:
                 continue
 
             choices: list[str] = []
-            if key in self.model_info.enum_map:
-                choices = list(self.model_info.enum_map[key])
+            if key in self.enum_map:
+                choices = list(self.enum_map[key])
             elif value["type"] == "string":
                 choices = value.get("enum", [])
 
@@ -212,24 +275,14 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
                         "high": value["maximum"],
                     }
                 }
-        config_descriptor.update(
-            self.model_info.describe_configuration(source="model_info/readonly")
-        )
-        config_descriptor.pop("allowed_properties", None)
-        config_descriptor.pop("enum_map", None)
-        config_descriptor.pop("numpy_dtype", None)
-        config_descriptor.pop("defaults", None)
-        config_descriptor.pop("starting_exposure", None)
-        config_descriptor.pop("exposure_limits", None)
-
         config_descriptor[f"{self.name}:exposure"] = {
             "source": "settings",
             "dtype": "number",
             "shape": [],
             "limits": {
                 "control": {
-                    "low": self.model_info.exposure_limits[0],
-                    "high": self.model_info.exposure_limits[1],
+                    "low": self.exposure_limits[0],
+                    "high": self.exposure_limits[1],
                 },
             },
             "units": "ms",
@@ -239,22 +292,11 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
-        config = self.model_info.read_configuration(timestamp)
-
-        # the following configuration parameters are redundant
-        # as they are already included in the properties schema,
-        # but model_info.read_configuration() will include them by default;
-        # in the future model_info will not exist
-        config.pop("allowed_properties", None)
-        config.pop("enum_map", None)
-        config.pop("numpy_dtype", None)
-        config.pop("defaults", None)
-        config.pop("starting_exposure", None)
-        config.pop("exposure_limits", None)
+        config: dict[str, Reading[Any]] = {}
 
         for prop in self._properties.values():
             # Filter to only include exposed properties
-            if prop.name not in self.model_info.allowed_properties:
+            if prop.name not in self.allowed_properties:
                 continue
 
             config[f"{self.name}:{prop.name}"] = {
@@ -552,18 +594,6 @@ class MMCoreCameraModel(DetectorProtocol, Loggable):
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
         return self._writer.get_indices_written(self.name)
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def model_info(self) -> MMCoreCameraModelInfo:
-        return self._model_info
-
-    @property
-    def parent(self) -> None:
-        return None
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.

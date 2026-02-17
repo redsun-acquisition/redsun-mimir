@@ -7,7 +7,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import BaseQtWidget
 from sunflare.virtual import Signal
 
-from redsun_mimir.model import MotorModelInfo  # noqa: TC001
+from redsun_mimir.device import MotorModelInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading

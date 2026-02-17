@@ -1,8 +1,9 @@
-"""Numpy Ring Buffer.
+"""Thread-safe implementation of a numpy ring buffer.
 
-Vendored from https://github.com/pyapp-kit/ndv
-and slightly adapted.
+Vendored from https://github.com/pyapp-kit/ndv and slightly adapted.
 January 20, 2026.
+
+License for the vendored `RingBuffer` code is included below.
 
 BSD 3-Clause License
 
@@ -47,8 +48,6 @@ from psygnal import Signal
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Callable, SupportsIndex
-
-__all__ = ["RingBuffer"]
 
 
 class RingBuffer:

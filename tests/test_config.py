@@ -4,11 +4,11 @@ from typing import Any
 import pytest
 import yaml
 
-from redsun_mimir.model import LightModelInfo, MotorModelInfo
+from redsun_mimir.device import LightModelInfo, MotorModelInfo
 
 
 def test_mock_motor_model_info(config_path: Path) -> None:
-    """Test the MockMotorModel information model."""
+    """Test the MockMotorDevice information model."""
     config: MotorModelInfo
 
     motor_config_path = str(config_path / "test_motor_config.yaml")
