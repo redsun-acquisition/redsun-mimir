@@ -6,7 +6,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
-from sunflare.virtual import IsInjectable, Signal
+from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-class LightWidget(QtView, IsInjectable, Loggable):
+class LightWidget(QtView, Loggable):
     sigToggleLightRequest = Signal(str)
     sigIntensityRequest = Signal(str, object)  # name, intensity
 

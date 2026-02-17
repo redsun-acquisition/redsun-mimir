@@ -10,7 +10,7 @@ from qtpy import QtCore, QtWidgets
 from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
-from sunflare.virtual import IsInjectable, Signal, VirtualAware
+from sunflare.virtual import Signal
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
@@ -78,7 +78,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class DetectorWidget(QtView, IsInjectable, VirtualAware, Loggable):
+class DetectorWidget(QtView, Loggable):
     """Widget for rendering acquired image data and control detector settings.
 
     Parameters

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.config import ViewPositionTypes
 from sunflare.view.qt import QtView
-from sunflare.virtual import IsInjectable, Signal, VirtualAware
+from sunflare.virtual import Signal
 
 from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-class MotorWidget(QtView, IsInjectable, VirtualAware):
+class MotorWidget(QtView):
     """Motor widget for Redsun Mimir.
 
     Parameters

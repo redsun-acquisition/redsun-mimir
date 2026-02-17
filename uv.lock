@@ -3407,13 +3407,26 @@ wheels = [
 ]
 
 [[package]]
+name = "redsun"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "platformdirs" },
+    { name = "sunflare" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/9f/089d1d98f4f7944936c81c3e90d0939cecf0b3a0a3ae985e69cae3759756/redsun-0.5.1.tar.gz", hash = "sha256:86eeaf7843962c230930e557be3a291b04dcecbb82478d8df11ebdb70e5bad3b", size = 147337, upload-time = "2026-02-17T21:17:48.407Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/d1/7a29bab73d89af7590f662856a4e231422e3c759760476fe1df404680374/redsun-0.5.1-py3-none-any.whl", hash = "sha256:f64a1163f9a349eb96dbc215f12884064c30b0bac8119ae33cdcbb521d1e498a", size = 21031, upload-time = "2026-02-17T21:17:47.219Z" },
+]
+
+[[package]]
 name = "redsun-mimir"
 source = { editable = "." }
 dependencies = [
     { name = "acquire-zarr" },
-    { name = "in-n-out" },
     { name = "msgspec" },
     { name = "napari" },
+    { name = "redsun" },
     { name = "sunflare" },
     { name = "superqt" },
 ]
@@ -3462,7 +3475,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "acquire-zarr", specifier = ">=0.6.0" },
-    { name = "in-n-out", specifier = ">=0.2.1" },
     { name = "microscope", marker = "extra == 'microscope'", specifier = ">=0.7.0" },
     { name = "microscope", marker = "extra == 'sim'", specifier = ">=0.7.0" },
     { name = "msgspec", specifier = ">=0.20.0" },
@@ -3472,6 +3484,7 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
+    { name = "redsun", specifier = ">=0.5.1" },
     { name = "sunflare", specifier = ">=0.9.0" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.9.0" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.9.0" },

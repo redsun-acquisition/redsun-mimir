@@ -9,7 +9,7 @@ from qtpy import QtWidgets as QtW
 from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
-from sunflare.virtual import IsInjectable, Signal, VirtualAware
+from sunflare.virtual import Signal
 
 from redsun_mimir.actions import Action
 from redsun_mimir.common import PlanSpec  # noqa: TC001
@@ -151,7 +151,7 @@ class PlanWidget:
         return {w.name: w.value for w in self.container}
 
 
-class AcquisitionWidget(QtView, IsInjectable, VirtualAware, Loggable):
+class AcquisitionWidget(QtView, Loggable):
     """Widget for the acquisition settings.
 
     Parameters

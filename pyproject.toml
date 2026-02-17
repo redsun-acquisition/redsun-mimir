@@ -88,7 +88,7 @@ redsun-mimir = "redsun.yaml"
 [tool.coverage.run]
 source = ["redsun_mimir"]
 omit = [
-    "src/redsun_mimir/tests/conftest.py"
+    "tests/conftest.py",
 ]
 
 [tool.coverage.report]
@@ -153,6 +153,8 @@ ignore = [
 # Component type annotations in AppContainer subclasses must be available
 # at runtime so AppContainerMeta can resolve them at class creation time.
 "src/redsun_mimir/configurations/*.py" = ["TC001"]
+# Test fixtures and helpers don't need docstrings; imports are runtime-required.
+"tests/*.py" = ["D102", "D103", "TC001", "TC002"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
