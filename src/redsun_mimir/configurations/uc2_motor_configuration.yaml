@@ -4,10 +4,8 @@ frontend: pyqt
 
 devices:
   serial:
-    alias: Serial
     port: COM3
   stage:
-    alias: Stage
     axis:
       - X
       - Y

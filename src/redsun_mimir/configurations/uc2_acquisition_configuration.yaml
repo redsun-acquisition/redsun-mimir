@@ -4,7 +4,6 @@ frontend: pyqt
 
 devices:
   camera:
-    alias: Mock1
     sensor_shape: [100, 100]
 
 presenters:

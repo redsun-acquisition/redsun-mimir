@@ -4,12 +4,10 @@ frontend: pyqt
 
 devices:
   led:
-    alias: Mock LED
     wavelength: 300
     binary: true
     intensity_range: [0, 0]
   laser:
-    alias: Mock laser
     wavelength: 650
     egu: mW
     intensity_range: [0, 100]

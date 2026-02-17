@@ -4,12 +4,9 @@ frontend: pyqt
 
 devices:
   camera1:
-    alias: Mock1
     sensor_shape: [100, 100]
   camera2:
-    alias: Mock2
   motor:
-    alias: Mock motor
     axis:
       - X
       - Y

@@ -4,7 +4,6 @@ frontend: pyqt
 
 devices:
   camera:
-    alias: Mimir detector
     sensor_shape: [100, 100]
 
 presenters:

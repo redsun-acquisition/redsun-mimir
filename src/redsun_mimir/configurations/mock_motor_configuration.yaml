@@ -4,7 +4,6 @@ frontend: pyqt
 
 devices:
   motor:
-    alias: Mock motor
     axis:
       - X
       - Y
