@@ -224,12 +224,14 @@ class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
 
     Parameters
     ----------
-    ctrl_info : ``AcquisitionControllerInfo``
-        The acquisition presenter configuration information.
-    models : ``Mapping[str, PModel]``
-        The available models in the application.
+    devices : ``Mapping[str, Device]``
+        The available devices in the application.
     virtual_bus : ``VirtualBus``
         The virtual bus to register signals on.
+    **kwargs : ``Any``
+        Additional keyword arguments.
+        - ``callbacks`` (list[str]): Names of presenters to wait for callbacks from.
+          Defaults to ``["DetectorController"]``.
 
     Attributes
     ----------
