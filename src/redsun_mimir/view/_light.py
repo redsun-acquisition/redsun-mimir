@@ -2,22 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from sunflare.virtual import IsInjectable, Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
+    from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
 
-store = ino.Store.get_store("LightModelInfo")
 
-
-class LightWidget(QtView, Loggable):
+class LightWidget(QtView, IsInjectable, Loggable):
     sigToggleLightRequest = Signal(str)
     sigIntensityRequest = Signal(str, object)  # name, intensity
 
@@ -43,9 +41,10 @@ class LightWidget(QtView, Loggable):
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
-        # Inject the setup_ui method to fill the widget with light sources
-        setup_ui = store.inject(self.setup_ui)
-        setup_ui()
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject light model info from the DI container and build the UI."""
+        lights_info: dict[str, LightProtocol] = container.light_models()  # type: ignore[attr-defined]
+        self.setup_ui(lights_info)
 
     def setup_ui(self, lights_info: dict[str, LightProtocol]) -> None:
         self._lights_info = lights_info
@@ -100,13 +99,9 @@ class LightWidget(QtView, Loggable):
 
         self.setLayout(self.main_layout)
 
-    def registration_phase(self) -> None:
-        """Register the widget."""
+    def connect_to_virtual(self) -> None:
+        """Register signals and connect to virtual bus."""
         self.virtual_bus.register_signals(self)
-
-    def connection_phase(self) -> None:
-        """Connect the widget."""
-        ...
 
     def _on_toggle_button_checked(self, name: str) -> None:
         """Toggle the light source."""

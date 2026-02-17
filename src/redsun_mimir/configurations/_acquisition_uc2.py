@@ -1,21 +1,29 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
 
 from psygnal.qt import start_emitting_from_queue
 from qtpy import QtWidgets
-from sunflare.config import RedSunSessionInfo
-from sunflare.virtual import VirtualBus
+from redsun.containers.qt_container import QtAppContainer
+from redsun.containers.components import component
 
-from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreCameraModelInfo
-from redsun_mimir.presenter import AcquisitionController, AcquisitionControllerInfo
-from redsun_mimir.view import AcquisitionWidget, AcquisitionWidgetInfo
+from redsun_mimir.device.mmcore import MMCoreCameraDevice
+from redsun_mimir.presenter import AcquisitionController
+from redsun_mimir.view import AcquisitionWidget
+
+
+class _AcquisitionUC2App(QtAppContainer):
+    camera: MMCoreCameraDevice = component(
+        layer="device",
+        alias="Mock1",
+        sensor_shape=(100, 100),
+    )
+    ctrl: AcquisitionController = component(layer="presenter", timeout=5.0)
+    widget: AcquisitionWidget = component(layer="view")
 
 
 def acquisition_widget_uc2() -> None:
-    """Run a local mock example.
+    """Run a local UC2 example.
 
     Launches a Qt ``AcquisitionWidget`` app
     with a UC2 device configuration.
@@ -25,55 +33,9 @@ def acquisition_widget_uc2() -> None:
 
     app = QtWidgets.QApplication([])
 
-    config_path = Path(__file__).parent / "uc2_acquisition_configuration.yaml"
-    config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, MMCoreCameraModelInfo] = {
-        name: MMCoreCameraModelInfo(**values)
-        for name, values in config_dict["models"].items()
-    }
-    ctrl_info: dict[str, AcquisitionControllerInfo] = {
-        name: AcquisitionControllerInfo(**values)
-        for name, values in config_dict["controllers"].items()
-        if name == "AcquisitionController"
-    }
-    widget_info: dict[str, AcquisitionWidgetInfo] = {
-        name: AcquisitionWidgetInfo(**values)
-        for name, values in config_dict["views"].items()
-        if name == "AcquisitionWidget"
-    }
-
-    config = RedSunSessionInfo(
-        session=config_dict["session"],
-        frontend=config_dict["frontend"],
-        models=models_info,  # type: ignore
-        controllers=ctrl_info,  # type: ignore
-        views=widget_info,  # type: ignore
-    )
-
-    mock_models: dict[str, MMCoreCameraDevice] = {
-        name: MMCoreCameraDevice(name, model_info)
-        for name, model_info in models_info.items()
-    }
-
-    bus = VirtualBus()
-
-    ctrl = AcquisitionController(
-        config.controllers["AcquisitionController"],  # type: ignore
-        mock_models,
-        bus,
-    )
-    widget = AcquisitionWidget(config.views["AcquisitionWidget"], bus)
-
-    ctrl.registration_phase()
-    widget.registration_phase()
-    ctrl.connection_phase()
-    widget.connection_phase()
-
-    window = QtWidgets.QMainWindow()
-    window.setCentralWidget(widget)
-    window.setWindowTitle("Detector Widget")
-    window.adjustSize()
-    window.show()
+    container = _AcquisitionUC2App(session="redsun-mimir")
+    container.build()
+    container.run()
 
     start_emitting_from_queue()
     app.exec()

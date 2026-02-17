@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import in_n_out as ino
 import numpy as np
 from bluesky.protocols import Descriptor  # noqa: TC002
 from napari.components import ViewerModel
@@ -10,7 +9,7 @@ from napari.window import Window
 from qtpy import QtCore, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from sunflare.virtual import IsInjectable, Signal, VirtualAware
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
@@ -25,12 +24,9 @@ if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
+    from dependency_injector.containers import DynamicContainer
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
-
-info_store = ino.Store.get_store("detector_info")
-config_store = ino.Store.get_store("detector_configuration")
-reading_store = ino.Store.get_store("detector_reading_description")
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -81,7 +77,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class DetectorWidget(QtView, Loggable):
+class DetectorWidget(QtView, IsInjectable, VirtualAware, Loggable):
     """Widget for rendering acquired image data and control detector settings.
 
     Parameters
@@ -143,16 +139,20 @@ class DetectorWidget(QtView, Loggable):
 
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
-        # Inject the setup_ui method to fill the widget with detectors
-        info_store.inject(self.setup_ui)()
         self.logger.info("Initialized")
 
         self.buffer_key = "buffer"
 
-    def registration_phase(self) -> None:
-        self.virtual_bus.register_signals(self)
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject detector info and configuration from the DI container."""
+        models_info: dict[str, DetectorProtocol] = container.detector_models()  # type: ignore[attr-defined]
+        model_config: ConfigurationDict = container.detector_configuration()  # type: ignore[attr-defined]
+        model_reading: dict[str, dict[str, Descriptor]] = container.detector_descriptions()  # type: ignore[attr-defined]
+        self.setup_ui(models_info, model_config, model_reading)
 
-    def connection_phase(self) -> None:
+    def connect_to_virtual(self) -> None:
+        """Register signals and connect to virtual bus."""
+        self.virtual_bus.register_signals(self)
         self.virtual_bus.signals["DetectorController"][
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
@@ -168,29 +168,24 @@ class DetectorWidget(QtView, Loggable):
                 "MedianPresenter not found in virtual bus; skipping median data connection."
             )
 
-    def setup_ui(self, models_info: dict[str, DetectorProtocol]) -> None:
+    def setup_ui(
+        self,
+        models_info: dict[str, DetectorProtocol],
+        model_config: ConfigurationDict,
+        model_reading: dict[str, dict[str, Descriptor]],
+    ) -> None:
         """Initialize the user interface.
 
         Parameters
         ----------
         models_info : ``dict[str, DetectorProtocol]``
             Mapping of detector names to their device instances.
-            Injected from the `DetectorController`.
+        model_config : ``ConfigurationDict``
+            Configuration data from the presenter.
+        model_reading : ``dict[str, dict[str, Descriptor]]``
+            Reading description data from the presenter.
         """
         self._detectors_info = models_info
-
-        def _get_configuration(config: ConfigurationDict) -> ConfigurationDict:
-            """Inject the configuration data from the presenter."""
-            return config
-
-        def _get_reading(
-            reading: dict[str, dict[str, Descriptor]],
-        ) -> dict[str, dict[str, Descriptor]]:
-            """Inject the reading data from the presenter."""
-            return reading
-
-        model_config = config_store.inject(_get_configuration)()
-        model_reading = reading_store.inject(_get_reading)()
 
         for detector, info in self._detectors_info.items():
             config_descriptor = model_config["descriptors"][detector]

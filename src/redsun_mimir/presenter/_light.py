@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import in_n_out as ino
+from dependency_injector import providers
 from sunflare.log import Loggable
+from sunflare.virtual import VirtualAware
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
@@ -11,13 +12,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
+    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
     from sunflare.virtual import VirtualBus
 
-store = ino.Store.create("LightModelInfo")
 
-
-class LightController(Loggable):
+class LightController(Loggable, VirtualAware):
     """Controller for the light model.
 
     Parameters
@@ -40,15 +40,14 @@ class LightController(Loggable):
         **kwargs: Any,
     ) -> None:
         self._timeout: float | None = kwargs.get("timeout", None)
-        self._virtual_bus = virtual_bus
+        self.virtual_bus = virtual_bus
+        self.devices = devices
 
         self._lights = {
             name: model
             for name, model in devices.items()
             if isinstance(model, LightProtocol)
         }
-
-        store.register_provider(self.models_info, type_hint=dict[str, LightProtocol])
 
     def models_info(self) -> dict[str, LightProtocol]:
         """Get the light devices.
@@ -60,16 +59,17 @@ class LightController(Loggable):
         """
         return dict(self._lights)
 
-    def registration_phase(self) -> None:
-        """Register the presenter."""
-        self._virtual_bus.register_signals(self)
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register light model info as a provider in the DI container."""
+        container.light_models = providers.Object(self.models_info())  # type: ignore[attr-defined]
+        self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None:
-        """Connect the presenter."""
-        self._virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
+    def connect_to_virtual(self) -> None:
+        """Connect to the virtual bus signals."""
+        self.virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
             self.trigger
         )
-        self._virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(
+        self.virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(
             self.set
         )
 

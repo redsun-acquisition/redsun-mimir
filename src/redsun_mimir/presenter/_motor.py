@@ -4,9 +4,9 @@ from queue import Queue
 from threading import Thread
 from typing import TYPE_CHECKING
 
-import in_n_out as ino
+from dependency_injector import providers
 from sunflare.log import Loggable
-from sunflare.virtual import Signal, VirtualBus
+from sunflare.virtual import HasShutdown, IsProvider, Signal, VirtualAware, VirtualBus
 
 from ..protocols import MotorProtocol
 
@@ -14,10 +14,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
+    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
 
 
-class MotorController(Loggable):
+class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
     """Motor stage presenter for Redsun Mimir.
 
     The presenter allows manual setting of stage positions;
@@ -68,10 +69,10 @@ class MotorController(Loggable):
                 # do something with the new position
                 ...
 
-            def connection_phase(self) -> None:
+            def connect_to_virtual(self) -> None:
                 # connect the signal to the slot;
                 # the slot will be invoked in the main thread
-                self._virtual_bus["MotorController"]["sigNewPosition"].connect(
+                self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
                     self.on_new_position, thread="main"
                 )
 
@@ -88,7 +89,8 @@ class MotorController(Loggable):
         **kwargs: Any,
     ) -> None:
         self._timeout: float | None = kwargs.get("timeout", None)
-        self._virtual_bus = virtual_bus
+        self.virtual_bus = virtual_bus
+        self.devices = devices
         self._queue: Queue[tuple[str, str, float] | None] = Queue()
 
         self._motors = {
@@ -100,10 +102,6 @@ class MotorController(Loggable):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self.store = ino.Store.create("MotorModelInfo")
-        self.store.register_provider(
-            self.models_info, type_hint=dict[str, MotorProtocol]
-        )
         self.logger.info("Initialized")
 
     def models_info(self) -> dict[str, MotorProtocol]:
@@ -171,14 +169,15 @@ class MotorController(Loggable):
         self._queue.put(None)
         self._queue.join()
 
-    def registration_phase(self) -> None:
-        """Register the presenter signals to the virtual bus."""
-        self._virtual_bus.register_signals(self)
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register motor model info as a provider in the DI container."""
+        container.motor_models = providers.Object(self.models_info())  # type: ignore[attr-defined]
+        self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None:
-        """Connect to other controllers/views in the active session."""
-        self._virtual_bus.signals["MotorWidget"]["sigMotorMove"].connect(self.move)
-        self._virtual_bus.signals["MotorWidget"]["sigConfigChanged"].connect(
+    def connect_to_virtual(self) -> None:
+        """Connect to the virtual bus signals."""
+        self.virtual_bus.signals["MotorWidget"]["sigMotorMove"].connect(self.move)
+        self.virtual_bus.signals["MotorWidget"]["sigConfigChanged"].connect(
             self.configure
         )
 

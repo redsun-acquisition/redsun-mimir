@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
 from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from sunflare.virtual import IsInjectable, Signal, VirtualAware
 
 from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
+    from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
 
 
-class MotorWidget(QtView):
+class MotorWidget(QtView, IsInjectable, VirtualAware):
     """Motor widget for Redsun Mimir.
 
     Parameters
@@ -63,8 +63,10 @@ class MotorWidget(QtView):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-        self.store = ino.Store.get_store("MotorProtocol")
-        self.store.inject(self.setup_ui)()
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject motor model info from the DI container and build the UI."""
+        motors_info: dict[str, MotorProtocol] = container.motor_models()  # type: ignore[attr-defined]
+        self.setup_ui(motors_info)
 
     def setup_ui(self, motors_info: dict[str, MotorProtocol]) -> None:
         self._motors_info = motors_info
@@ -121,17 +123,9 @@ class MotorWidget(QtView):
 
         self.setLayout(self.main_layout)
 
-    def registration_phase(self) -> None:
-        """Register your signals to the virtual bus."""
+    def connect_to_virtual(self) -> None:
+        """Register signals and connect to virtual bus."""
         self.virtual_bus.register_signals(self)
-
-    def connection_phase(self) -> None:
-        """Connect your signals to the virtual bus.
-
-        The presenter layer will be already built when this method is called.
-        We use it to directly build the GUI by retrieving a configuration of
-        the currently allocated motors to create the proper widget layout.
-        """
         self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
