@@ -10,6 +10,8 @@ from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal, VirtualAware
 
+from redsun.config import ViewPositionTypes
+
 from redsun_mimir.actions import Action
 from redsun_mimir.common import PlanSpec  # noqa: TC001
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
@@ -176,6 +178,8 @@ class AcquisitionWidget(QtView, IsInjectable, VirtualAware, Loggable):
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
     sigActionRequest = Signal(str, bool)
+
+    position = ViewPositionTypes.CENTER
 
     def __init__(
         self,

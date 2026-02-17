@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from psygnal.qt import start_emitting_from_queue
-from qtpy import QtCore, QtWidgets
-from redsun.containers.qt_container import QtAppContainer
 from redsun.containers.components import component
+from redsun.containers.qt_container import QtAppContainer
 
 from redsun_mimir.device import MockMotorDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
@@ -47,25 +45,5 @@ def acquisition_detector_widget_uc2() -> None:
     Launches a Qt ``AcquisitionWidget`` app with a background
     ``DetectorController`` and ``MedianPresenter``.
     """
-    logger = logging.getLogger("redsun")
-    logger.setLevel(logging.DEBUG)
-
-    app = QtWidgets.QApplication([])
-
-    container = _AcquisitionDetectorUC2App(session="redsun-mimir")
-    container.build()
-
-    acq_widget = container.views["acq_widget"]
-    det_widget = container.views["det_widget"]
-
-    window = QtWidgets.QMainWindow()
-    window.setCentralWidget(acq_widget)
-    det_widget_dock = QtWidgets.QDockWidget("Detector Control")
-    det_widget_dock.setWidget(det_widget)
-    window.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, det_widget_dock)
-    window.setWindowTitle("Acquisition widget")
-    window.adjustSize()
-    window.show()
-
-    start_emitting_from_queue()
-    app.exec()
+    logging.getLogger("redsun").setLevel(logging.DEBUG)
+    _AcquisitionDetectorUC2App(session="redsun-mimir").run()

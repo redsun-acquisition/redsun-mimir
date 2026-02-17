@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
 class LightWidget(QtView, IsInjectable, Loggable):
     sigToggleLightRequest = Signal(str)
     sigIntensityRequest = Signal(str, object)  # name, intensity
+
+    position = ViewPositionTypes.CENTER
 
     def __init__(
         self,

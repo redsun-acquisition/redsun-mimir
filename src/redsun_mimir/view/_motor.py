@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun.config import ViewPositionTypes
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal, VirtualAware
 
@@ -38,6 +39,8 @@ class MotorWidget(QtView, IsInjectable, VirtualAware):
 
     sigMotorMove = Signal(str, str, float)
     sigConfigChanged = Signal(str, dict[str, Any])
+
+    position = ViewPositionTypes.CENTER
 
     def __init__(
         self,

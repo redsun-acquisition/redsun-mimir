@@ -11,6 +11,8 @@ from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal, VirtualAware
 
+from redsun.config import ViewPositionTypes
+
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
 from redsun_mimir.utils.napari import (
@@ -94,6 +96,8 @@ class DetectorWidget(QtView, IsInjectable, VirtualAware, Loggable):
     """
 
     sigPropertyChanged = Signal(str, dict[str, object])
+
+    position = ViewPositionTypes.RIGHT
 
     def __init__(
         self,
