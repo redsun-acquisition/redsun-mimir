@@ -6,11 +6,10 @@ from typing import TYPE_CHECKING, cast
 import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
+from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal, VirtualAware
-
-from redsun.config import ViewPositionTypes
 
 from redsun_mimir.actions import Action
 from redsun_mimir.common import PlanSpec  # noqa: TC001
@@ -150,8 +149,6 @@ class PlanWidget:
         The presenter is in charge of sorting these into args and kwargs.
         """
         return {w.name: w.value for w in self.container}
-
-
 
 
 class AcquisitionWidget(QtView, IsInjectable, VirtualAware, Loggable):

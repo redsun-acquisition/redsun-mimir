@@ -98,8 +98,12 @@ class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
     def register_providers(self, container: DynamicContainer) -> None:
         """Register detector info as providers in the DI container."""
         container.detector_models = providers.Object(self.get_models_info())  # type: ignore[attr-defined]
-        container.detector_configuration = providers.Object(self.get_models_configuration())  # type: ignore[attr-defined]
-        container.detector_descriptions = providers.Object(self.get_models_description())  # type: ignore[attr-defined]
+        container.detector_configuration = providers.Object(
+            self.get_models_configuration()
+        )  # type: ignore[attr-defined]
+        container.detector_descriptions = providers.Object(
+            self.get_models_description()
+        )  # type: ignore[attr-defined]
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
 

@@ -69,9 +69,7 @@ class LightController(Loggable, VirtualAware):
         self.virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
             self.trigger
         )
-        self.virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(
-            self.set
-        )
+        self.virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(self.set)
 
     def trigger(self, name: str) -> None:
         """Toggle the light.

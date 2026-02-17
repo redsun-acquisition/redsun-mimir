@@ -7,11 +7,10 @@ from bluesky.protocols import Descriptor  # noqa: TC002
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtCore, QtWidgets
+from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import IsInjectable, Signal, VirtualAware
-
-from redsun.config import ViewPositionTypes
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
@@ -151,7 +150,9 @@ class DetectorWidget(QtView, IsInjectable, VirtualAware, Loggable):
         """Inject detector info and configuration from the DI container."""
         models_info: dict[str, DetectorProtocol] = container.detector_models()  # type: ignore[attr-defined]
         model_config: ConfigurationDict = container.detector_configuration()  # type: ignore[attr-defined]
-        model_reading: dict[str, dict[str, Descriptor]] = container.detector_descriptions()  # type: ignore[attr-defined]
+        model_reading: dict[str, dict[str, Descriptor]] = (
+            container.detector_descriptions()
+        )  # type: ignore[attr-defined]
         self.setup_ui(models_info, model_config, model_reading)
 
     def connect_to_virtual(self) -> None:

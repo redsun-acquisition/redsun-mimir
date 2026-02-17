@@ -41,8 +41,6 @@ if TYPE_CHECKING:
     from redsun_mimir.actions import SRLatch
 
 
-
-
 @dataclass
 class ScanAction(Action):
     """Action to trigger a scan during live acquisition.

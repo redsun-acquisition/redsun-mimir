@@ -7,7 +7,11 @@ from redsun.containers import AppContainer, component
 
 from redsun_mimir.device import MockMotorDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import AcquisitionController, DetectorController, MedianPresenter
+from redsun_mimir.presenter import (
+    AcquisitionController,
+    DetectorController,
+    MedianPresenter,
+)
 from redsun_mimir.view import AcquisitionWidget, DetectorWidget
 
 _CONFIG = Path(__file__).parent / "uc2_acquisition_detector_configuration.yaml"
@@ -16,9 +20,13 @@ _CONFIG = Path(__file__).parent / "uc2_acquisition_detector_configuration.yaml"
 class _AcquisitionDetectorUC2App(AppContainer, config=_CONFIG):
     camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
     motor: MockMotorDevice = component(layer="device", from_config="motor")
-    median_ctrl: MedianPresenter = component(layer="presenter", from_config="median_ctrl")
+    median_ctrl: MedianPresenter = component(
+        layer="presenter", from_config="median_ctrl"
+    )
     det_ctrl: DetectorController = component(layer="presenter", from_config="det_ctrl")
-    acq_ctrl: AcquisitionController = component(layer="presenter", from_config="acq_ctrl")
+    acq_ctrl: AcquisitionController = component(
+        layer="presenter", from_config="acq_ctrl"
+    )
     acq_widget: AcquisitionWidget = component(layer="view", from_config="acq_widget")
     det_widget: DetectorWidget = component(layer="view", from_config="det_widget")
 
