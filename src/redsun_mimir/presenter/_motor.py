@@ -19,64 +19,45 @@ if TYPE_CHECKING:
     from sunflare.device import Device
 
 
-class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
-    """Motor stage presenter for Redsun Mimir.
+class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
+    """Presenter for motor stage control.
 
-    The presenter allows manual setting of stage positions;
-    communication with the user interface is done via
-    signals exchanged with the ``MotorWidget`` accross
-    the virtual bus.
-
-    Whenever a new position is requested from ``MotorWidget``
-    via the ``sigMotorMove`` signal, the presenter will move the stage
-    to the requested position by launching a background thread
-    which will call the ``set`` method of the corresponding motor model.
-
-    When the movement is completed, the presenter will emit
-    the ``sigMotorMoved`` signal to notify the widget.
+    Allows manual stage positioning by forwarding movement requests from
+    [`MotorView`][redsun_mimir.view.MotorView] to the underlying motor
+    devices via a background thread. Emits position updates back to the
+    view once each move completes.
 
     Parameters
     ----------
-    devices : ``Mapping[str, Device]``
+    devices :
         Mapping of device names to device instances.
-    virtual_bus : VirtualBus
+    virtual_bus :
         Virtual bus for the session.
-    **kwargs : Any
+    **kwargs :
         Additional keyword arguments.
-        - ``timeout`` (float | None): Timeout in seconds.
+
+        - `timeout` (`float | None`): Status wait timeout in seconds.
 
     Attributes
     ----------
-    sigNewPosition : ``Signal[str, str, float]``
-        Signal emitted when a new position is set.
-        - ``str``: motor name
-        - ``str``: motor axis
-        - ``float``: new position
-    sigNewConfiguration : ``Signal[str, dict[str, bool]]``
-        Signal emitted when a configuration value is changed.
-        - ``str``: motor name
-        - ``dict[str, bool]``: mapping of configuration parameters to success status
+    sigNewPosition :
+        Emitted from the background move thread when a move completes.
+        Carries motor name (`str`), axis (`str`), and new position (`float`).
 
-    Notes
-    -----
-    ``sigNewPosition`` is emitted from a background thread;
-    when connecting to a slot, ensure that the callback
-    is invoked in the main thread as follows:
+        !!! warning
+            This signal is emitted from a background thread. Connect with
+            `thread="main"` to ensure the slot runs on the Qt main thread:
 
-    .. code-block:: python
+            ```python
+            virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
+                self.on_new_position, thread="main"
+            )
+            ```
 
-        class MyReceiver:
-            def on_new_position(self, motor: str, position: float) -> None:
-                # do something with the new position
-                ...
-
-            def connect_to_virtual(self) -> None:
-                # connect the signal to the slot;
-                # the slot will be invoked in the main thread
-                self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
-                    self.on_new_position, thread="main"
-                )
-
+    sigNewConfiguration :
+        Emitted after a configuration change attempt.
+        Carries motor name (`str`) and a mapping of parameter names
+        to success status (`dict[str, bool]`).
     """
 
     sigNewPosition = Signal(str, str, float)
@@ -192,8 +173,8 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["MotorWidget"]["sigMotorMove"].connect(self.move)
-        self.virtual_bus.signals["MotorWidget"]["sigConfigChanged"].connect(
+        self.virtual_bus.signals["MotorView"]["sigMotorMove"].connect(self.move)
+        self.virtual_bus.signals["MotorView"]["sigConfigChanged"].connect(
             self.configure
         )
 

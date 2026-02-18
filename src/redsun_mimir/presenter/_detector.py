@@ -24,38 +24,39 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
-    """Controller for detector configuration.
+class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
+    """Presenter for detector configuration and live data routing.
+
+    Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
+    event documents emitted by the run engine and forward new image data
+    to [`DetectorView`][redsun_mimir.view.DetectorView] via the virtual bus.
 
     Parameters
     ----------
-    devices : ``Mapping[str, Device]``
+    devices :
         Mapping of device names to device instances.
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Reference to the virtual bus.
-    **kwargs : Any
+    **kwargs :
         Additional keyword arguments.
-        - ``timeout`` (float | None): Timeout in seconds.
+
+        - `timeout` (`float | None`): Status wait timeout in seconds.
 
     Attributes
     ----------
-    sigNewConfiguration : ``Signal[str, dict[str, object]]``
-        Signal for new configuration.
-        - ``str``: detector name.
-        - ``dict[str, object]``: new configuration.
-    sigConfigurationConfirmed : ``Signal[str, str, bool]``
-        Signal for configuration confirmation.
-        - ``str``: detector name.
-        - ``str``: setting name.
-        - ``bool``: success status.
-    sigNewData : ``Signal[dict[str, dict[str, Any]]]``
-        Signal for new data; the presenter should actively
-        listen to new incoming data from a presenter equipped
-        with a run engine capable of emitting new documents.
-        - ``dict[str, dict[str, Any]]``: nested dictionary:
-            - outer key: detector name.
-            - inner keys: raw data buffer (`'buffer'`) and region of interest (`'roi'`).
-            - `roi` formatted as `(x_start, x_end, y_start, y_end)`.
+    sigNewConfiguration :
+        Emitted after a detector setting is successfully applied.
+        Carries the detector name (`str`) and a mapping of the
+        changed setting to its new value (`dict[str, object]`).
+    sigConfigurationConfirmed :
+        Emitted after each individual setting change attempt.
+        Carries detector name (`str`), setting name (`str`),
+        and success status (`bool`).
+    sigNewData :
+        Emitted on each incoming event document.
+        Carries a nested `dict` keyed by detector name, with inner
+        keys `buffer` (raw image array) and `roi`
+        (tuple `(x_start, x_end, y_start, y_end)`).
     """
 
     sigNewConfiguration = Signal(str, dict[str, object])
@@ -99,7 +100,7 @@ class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["DetectorWidget"]["sigPropertyChanged"].connect(
+        self.virtual_bus.signals["DetectorView"]["sigPropertyChanged"].connect(
             self.configure
         )
 

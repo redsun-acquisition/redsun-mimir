@@ -12,18 +12,18 @@ _CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
 def stage_widget_uc2() -> None:
     """Run a UC2 motor example.
 
-    Launches a Qt ``MotorWidget`` app with UC2 serial and motor devices.
+    Launches a Qt ``MotorView`` app with UC2 serial and motor devices.
     """
     from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
-    from redsun_mimir.presenter import MotorController
-    from redsun_mimir.view import MotorWidget
+    from redsun_mimir.presenter import MotorPresenter
+    from redsun_mimir.view import MotorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorUC2App(QtAppContainer, config=_CONFIG):
         serial = component(MimirSerialDevice, layer="device", from_config="serial")
         motor = component(MimirMotorDevice, layer="device", from_config="motor")
-        ctrl = component(MotorController, layer="presenter", from_config="ctrl")
-        widget = component(MotorWidget, layer="view", from_config="widget")
+        ctrl = component(MotorPresenter, layer="presenter", from_config="ctrl")
+        widget = component(MotorView, layer="view", from_config="widget")
 
     MotorUC2App().run()

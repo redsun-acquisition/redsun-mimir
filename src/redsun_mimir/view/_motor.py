@@ -42,26 +42,26 @@ def _get_value(
     return cast("_T", entry["value"])
 
 
-class MotorWidget(QtView):
-    """Motor widget for Redsun Mimir.
+class MotorView(QtView):
+    """View for manual motor stage control.
+
+    Builds one control group per motor device using configuration
+    provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Virtual bus for the session.
 
     Attributes
     ----------
-    sigMotorMove : ``Signal[str, str, float]``
-        Signal emitted when a stage is moved.
-        - ``str``: motor name
-        - ``str``: motor axis
-        - ``float``: stage new position
-    sigConfigChanged : ``Signal[str, dict[str, Any]]``
-        Signal emitted when a configuration value is changed.
-        - ``str``: motor name
-        - ``dict[str, Any]``: mapping of configuration parameters to new values
-
+    sigMotorMove :
+        Emitted when the user requests a stage movement.
+        Carries motor name (`str`), axis (`str`), and target position (`float`).
+    sigConfigChanged :
+        Emitted when the user changes a configuration parameter.
+        Carries motor name (`str`) and a mapping of parameter names
+        to new values (`dict[str, Any]`).
     """
 
     sigMotorMove = Signal(str, str, float)
@@ -97,7 +97,7 @@ class MotorWidget(QtView):
         """Inject motor configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by ``MotorController.register_providers``.
+        (metadata) registered by [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
         """
         configuration: dict[str, dict[str, Reading[Any]]] = (
             container.motor_configuration()
@@ -180,7 +180,7 @@ class MotorWidget(QtView):
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
+        self.virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
 

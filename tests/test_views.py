@@ -12,8 +12,8 @@ from qtpy.QtWidgets import QApplication
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
-from redsun_mimir.view._light import LightWidget
-from redsun_mimir.view._motor import MotorWidget
+from redsun_mimir.view._light import LightView
+from redsun_mimir.view._motor import MotorView
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,12 +34,12 @@ def _make_container(**objects: Any) -> DynamicContainer:
 
 
 # ---------------------------------------------------------------------------
-# MotorWidget
+# MotorView
 # ---------------------------------------------------------------------------
 
 
-class TestMotorWidget:
-    """Tests for MotorWidget."""
+class TestMotorView:
+    """Tests for MotorView."""
 
     @pytest.fixture
     def motor(self) -> MockMotorDevice:
@@ -48,15 +48,15 @@ class TestMotorWidget:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> MotorWidget:
-        return MotorWidget(virtual_bus)
+    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> MotorView:
+        return MotorView(virtual_bus)
 
-    def test_instantiation(self, widget: MotorWidget) -> None:
+    def test_instantiation(self, widget: MotorView) -> None:
         """Widget creates without error before inject_dependencies."""
         assert widget is not None
 
     def test_inject_dependencies_builds_ui(
-        self, widget: MotorWidget, motor: MockMotorDevice
+        self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """inject_dependencies() populates group boxes, labels, and buttons."""
         container = _make_container(
@@ -72,7 +72,7 @@ class TestMotorWidget:
         assert "button:stage:X:down" in widget._buttons
 
     def test_step_size_initialised_from_device(
-        self, widget: MotorWidget, motor: MockMotorDevice
+        self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Step size line edits are seeded from device step_sizes."""
         container = _make_container(
@@ -85,7 +85,7 @@ class TestMotorWidget:
         assert widget._line_edits["edit:stage:Y"].text() == "0.5"
 
     def test_update_position_changes_label(
-        self, widget: MotorWidget, motor: MockMotorDevice
+        self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """_update_position() refreshes the position label text."""
         container = _make_container(
@@ -98,7 +98,7 @@ class TestMotorWidget:
         assert "7.50" in widget._labels["pos:stage:X"].text()
 
     def test_step_up_emits_signal(
-        self, widget: MotorWidget, motor: MockMotorDevice
+        self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Clicking the '+' button emits sigMotorMove with position + step."""
         container = _make_container(
@@ -115,7 +115,7 @@ class TestMotorWidget:
         assert received[0] == ("stage", "X", pytest.approx(1.0))
 
     def test_step_down_emits_signal(
-        self, widget: MotorWidget, motor: MockMotorDevice
+        self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Clicking the '-' button emits sigMotorMove with position - step."""
         container = _make_container(
@@ -132,10 +132,10 @@ class TestMotorWidget:
         assert received[0] == ("stage", "X", pytest.approx(-1.0))
 
     def test_connect_to_virtual_registers_signals(
-        self, widget: MotorWidget, motor: MockMotorDevice, virtual_bus: VirtualBus
+        self, widget: MotorView, motor: MockMotorDevice, virtual_bus: VirtualBus
     ) -> None:
         """connect_to_virtual() registers the widget's signals on the bus."""
-        from redsun_mimir.presenter._motor import MotorController
+        from redsun_mimir.presenter._motor import MotorPresenter
 
         container = _make_container(
             motor_configuration={"stage": motor.read_configuration()},
@@ -144,22 +144,22 @@ class TestMotorWidget:
         widget.inject_dependencies(container)
 
         # The presenter must be registered first so its signals exist on the bus
-        ctrl = MotorController({"stage": motor}, virtual_bus)
+        ctrl = MotorPresenter({"stage": motor}, virtual_bus)
         ctrl.register_providers(container)
 
         widget.connect_to_virtual()
 
-        assert "MotorWidget" in virtual_bus.signals
+        assert "MotorView" in virtual_bus.signals
         ctrl.shutdown()
 
 
 # ---------------------------------------------------------------------------
-# LightWidget
+# LightView
 # ---------------------------------------------------------------------------
 
 
-class TestLightWidget:
-    """Tests for LightWidget."""
+class TestLightView:
+    """Tests for LightView."""
 
     @pytest.fixture
     def led(self) -> MockLightDevice:
@@ -174,15 +174,15 @@ class TestLightWidget:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> LightWidget:
-        return LightWidget(virtual_bus)
+    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> LightView:
+        return LightView(virtual_bus)
 
-    def test_instantiation(self, widget: LightWidget) -> None:
+    def test_instantiation(self, widget: LightView) -> None:
         """Widget creates without error before inject_dependencies."""
         assert widget is not None
 
     def test_inject_binary_light(
-        self, widget: LightWidget, led: MockLightDevice
+        self, widget: LightView, led: MockLightDevice
     ) -> None:
         """Binary device gets only an ON/OFF button, no slider."""
         container = _make_container(
@@ -196,7 +196,7 @@ class TestLightWidget:
         assert "power:led" not in widget._sliders
 
     def test_inject_continuous_light(
-        self, widget: LightWidget, laser: MockLightDevice
+        self, widget: LightView, laser: MockLightDevice
     ) -> None:
         """Continuous device gets both a button and an intensity slider."""
         container = _make_container(
@@ -210,7 +210,7 @@ class TestLightWidget:
         assert "power:laser" in widget._sliders
 
     def test_toggle_button_emits_signal(
-        self, widget: LightWidget, led: MockLightDevice
+        self, widget: LightView, led: MockLightDevice
     ) -> None:
         """Clicking the ON button emits sigToggleLightRequest with the device name."""
         container = _make_container(
@@ -226,7 +226,7 @@ class TestLightWidget:
         assert received == ["led"]
 
     def test_toggle_button_text_changes(
-        self, widget: LightWidget, led: MockLightDevice
+        self, widget: LightView, led: MockLightDevice
     ) -> None:
         """Toggle button label switches between ON and OFF."""
         container = _make_container(
@@ -245,7 +245,7 @@ class TestLightWidget:
         assert btn.text() == "ON"
 
     def test_slider_change_emits_signal(
-        self, widget: LightWidget, laser: MockLightDevice
+        self, widget: LightView, laser: MockLightDevice
     ) -> None:
         """Moving the intensity slider emits sigIntensityRequest."""
         container = _make_container(
@@ -263,7 +263,7 @@ class TestLightWidget:
         assert received[0][1] == 50
 
     def test_connect_to_virtual_registers_signals(
-        self, widget: LightWidget, led: MockLightDevice, virtual_bus: VirtualBus
+        self, widget: LightView, led: MockLightDevice, virtual_bus: VirtualBus
     ) -> None:
         """connect_to_virtual() registers the widget's signals on the bus."""
         container = _make_container(
@@ -273,4 +273,4 @@ class TestLightWidget:
         widget.inject_dependencies(container)
         widget.connect_to_virtual()
 
-        assert "LightWidget" in virtual_bus.signals
+        assert "LightView" in virtual_bus.signals

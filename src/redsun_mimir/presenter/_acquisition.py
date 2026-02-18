@@ -217,27 +217,28 @@ def convert_to_target_egu(
     return old_step, new_step
 
 
-class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
+class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
     """A centralized acquisition presenter to manage a Bluesky run engine.
 
     Parameters
     ----------
-    devices : ``Mapping[str, Device]``
+    devices :
         The available devices in the application.
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         The virtual bus to register signals on.
-    **kwargs : ``Any``
+    **kwargs :
         Additional keyword arguments.
-        - ``callbacks`` (list[str]): Names of presenters to wait for callbacks from.
-          Defaults to ``["DetectorController"]``.
+
+        - `callbacks` (`list[str]`): Names of presenters to subscribe as
+          run engine callbacks. Defaults to `["DetectorPresenter"]`.
 
     Attributes
     ----------
-    sigPlanDone : ``Signal``
-        Signal emitted when a plan is done.
-    sigActionDone : ``Signal[str]``
-        Signal emitted when an action is done.
-        - ``str``: The name of the action that is done.
+    sigPlanDone :
+        Emitted when a non-togglable plan completes.
+    sigActionDone :
+        Emitted when an action event is cleared.
+        Carries the name of the action as a `str`.
     """
 
     sigPlanDone = Signal()
@@ -262,7 +263,7 @@ class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
         self.expected_presenters = frozenset(
-            kwargs.get("callbacks", ["DetectorController"])
+            kwargs.get("callbacks", ["DetectorPresenter"])
         )
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
@@ -284,16 +285,16 @@ class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
+        self.virtual_bus.signals["AcquisitionView"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )
-        self.virtual_bus.signals["AcquisitionWidget"]["sigStopPlanRequest"].connect(
+        self.virtual_bus.signals["AcquisitionView"]["sigStopPlanRequest"].connect(
             self.stop_plan
         )
-        self.virtual_bus.signals["AcquisitionWidget"]["sigPauseResumeRequest"].connect(
+        self.virtual_bus.signals["AcquisitionView"]["sigPauseResumeRequest"].connect(
             self.pause_or_resume_plan
         )
-        self.virtual_bus.signals["AcquisitionWidget"]["sigActionRequest"].connect(
+        self.virtual_bus.signals["AcquisitionView"]["sigActionRequest"].connect(
             self.toggle_action_event
         )
 

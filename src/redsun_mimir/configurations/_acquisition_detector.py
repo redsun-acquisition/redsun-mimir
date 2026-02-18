@@ -12,18 +12,18 @@ _CONFIG = Path(__file__).parent / "acquisition_detector_configuration.yaml"
 def acquisition_detector_widget() -> None:
     """Run a local mock example.
 
-    Launches a Qt ``AcquisitionWidget`` app with a background
-    ``DetectorController`` and ``MedianPresenter``.
+    Launches a Qt ``AcquisitionView`` app with a background
+    ``DetectorPresenter`` and ``MedianPresenter``.
     """
     from redsun_mimir.device import MockMotorDevice
     from redsun_mimir.device.microscope import SimulatedCameraDevice
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
     from redsun_mimir.presenter import (
-        AcquisitionController,
-        DetectorController,
+        AcquisitionPresenter,
+        DetectorPresenter,
         MedianPresenter,
     )
-    from redsun_mimir.view import AcquisitionWidget, DetectorWidget
+    from redsun_mimir.view import AcquisitionView, DetectorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -37,14 +37,14 @@ def acquisition_detector_widget() -> None:
             MedianPresenter, layer="presenter", from_config="median_ctrl"
         )
         det_ctrl = component(
-            DetectorController, layer="presenter", from_config="det_ctrl"
+            DetectorPresenter, layer="presenter", from_config="det_ctrl"
         )
         acq_ctrl = component(
-            AcquisitionController, layer="presenter", from_config="acq_ctrl"
+            AcquisitionPresenter, layer="presenter", from_config="acq_ctrl"
         )
         acq_widget = component(
-            AcquisitionWidget, layer="view", from_config="acq_widget"
+            AcquisitionView, layer="view", from_config="acq_widget"
         )
-        det_widget = component(DetectorWidget, layer="view", from_config="det_widget")
+        det_widget = component(DetectorView, layer="view", from_config="det_widget")
 
     AcquisitionDetectorApp().run()

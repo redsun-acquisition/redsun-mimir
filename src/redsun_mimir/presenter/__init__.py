@@ -1,13 +1,13 @@
-from ._acquisition import AcquisitionController
-from ._detector import DetectorController
-from ._light import LightController
+from ._acquisition import AcquisitionPresenter
+from ._detector import DetectorPresenter
+from ._light import LightPresenter
 from ._median import MedianPresenter
-from ._motor import MotorController
+from ._motor import MotorPresenter
 
 __all__ = [
-    "AcquisitionController",
-    "DetectorController",
-    "MotorController",
-    "LightController",
+    "AcquisitionPresenter",
+    "DetectorPresenter",
+    "MotorPresenter",
+    "LightPresenter",
     "MedianPresenter",
 ]

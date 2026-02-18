@@ -12,13 +12,13 @@ _CONFIG = Path(__file__).parent / "mock_acquisition_configuration.yaml"
 def acquisition_widget() -> None:
     """Run a local acquisition example.
 
-    Launches a Qt ``AcquisitionWidget`` app with MMCore and simulated
+    Launches a Qt ``AcquisitionView`` app with MMCore and simulated
     camera devices.
     """
     from redsun_mimir.device.microscope import SimulatedCameraDevice
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
-    from redsun_mimir.presenter import AcquisitionController
-    from redsun_mimir.view import AcquisitionWidget
+    from redsun_mimir.presenter import AcquisitionPresenter
+    from redsun_mimir.view import AcquisitionView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -27,7 +27,7 @@ def acquisition_widget() -> None:
         camera2 = component(
             SimulatedCameraDevice, layer="device", from_config="camera2"
         )
-        ctrl = component(AcquisitionController, layer="presenter", from_config="ctrl")
-        widget = component(AcquisitionWidget, layer="view", from_config="widget")
+        ctrl = component(AcquisitionPresenter, layer="presenter", from_config="ctrl")
+        widget = component(AcquisitionView, layer="view", from_config="widget")
 
     AcquisitionApp().run()

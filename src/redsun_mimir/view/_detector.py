@@ -92,20 +92,27 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class DetectorWidget(QtView, Loggable):
-    """Widget for rendering acquired image data and control detector settings.
+class DetectorView(QtView, Loggable):
+    """View for live image display and detector settings control.
+
+    Renders image data forwarded by
+    [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter]
+    into a napari viewer and provides per-detector settings panels
+    for interactive configuration.
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Reference to the virtual bus.
-    **kwargs : ``Any``
-        Additional keyword arguments.
+    **kwargs :
+        Additional keyword arguments passed to the parent view.
 
     Attributes
     ----------
-    sigPropertyChanged : ``Signal[str, dict[str, object]]``
-        Signal emitted when a property of a detector is changed.
+    sigPropertyChanged :
+        Emitted when the user changes a detector property.
+        Carries the detector name (`str`) and a mapping of the
+        changed property to its new value (`dict[str, object]`).
     """
 
     sigPropertyChanged = Signal(str, dict[str, object])
@@ -172,10 +179,10 @@ class DetectorWidget(QtView, Loggable):
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["DetectorController"][
+        self.virtual_bus.signals["DetectorPresenter"][
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
-        self.virtual_bus.signals["DetectorController"]["sigNewData"].connect(
+        self.virtual_bus.signals["DetectorPresenter"]["sigNewData"].connect(
             self._update_layers, thread="main"
         )
         try:

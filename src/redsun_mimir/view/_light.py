@@ -44,24 +44,25 @@ def _get_value(
     return cast("_T", entry["value"])
 
 
-class LightWidget(QtView, Loggable):
-    """Light source widget for Redsun Mimir.
+class LightView(QtView, Loggable):
+    """View for light source toggle and intensity control.
+
+    Builds one control group per light device using configuration
+    provided by [`LightPresenter`][redsun_mimir.presenter.LightPresenter].
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Virtual bus for the session.
 
     Attributes
     ----------
-    sigToggleLightRequest : ``Signal[str]``
-        Signal emitted when the user toggles a light source on or off.
-        - ``str``: light source name
-    sigIntensityRequest : ``Signal[str, object]``
-        Signal emitted when the user changes the intensity of a light source.
-        - ``str``: light source name
-        - ``object``: new intensity value
-
+    sigToggleLightRequest :
+        Emitted when the user toggles a light source on or off.
+        Carries the light source name (`str`).
+    sigIntensityRequest :
+        Emitted when the user adjusts a light source intensity.
+        Carries the light source name (`str`) and the new intensity value.
     """
 
     sigToggleLightRequest = Signal(str)
@@ -96,7 +97,7 @@ class LightWidget(QtView, Loggable):
         """Inject light configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by ``LightController.register_providers``.
+        (metadata) registered by [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
         """
         configuration: dict[str, dict[str, Reading[Any]]] = (
             container.light_configuration()

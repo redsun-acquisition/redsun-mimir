@@ -151,24 +151,32 @@ class PlanWidget:
         return {w.name: w.value for w in self.container}
 
 
-class AcquisitionWidget(QtView, Loggable):
-    """Widget for the acquisition settings.
+class AcquisitionView(QtView, Loggable):
+    """View for plan selection, parameter input, and run control.
+
+    Displays available plans from
+    [`AcquisitionPresenter`][redsun_mimir.presenter.AcquisitionPresenter],
+    lets the user configure parameters, and provides run/pause/stop controls.
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Reference to the virtual bus.
 
     Attributes
     ----------
-    sigLaunchPlanRequest : ``Signal[str, dict[str, Any]]``
-        Signal to launch a plan.
-        - ``str``: The plan name.
-        - ``dict[str, Any]``: Plan parameters.
-    sigStopPlanRequest : ``Signal``
-        Signal to stop the currently running plan.
-    sigPauseResumeRequest : ``Signal[bool]``
-        Signal to pause or resume the currently running plan.
+    sigLaunchPlanRequest :
+        Emitted when the user starts a plan.
+        Carries the plan name (`str`) and its resolved parameters
+        (`dict[str, Any]`).
+    sigStopPlanRequest :
+        Emitted when the user requests plan stop.
+    sigPauseResumeRequest :
+        Emitted when the user toggles pause/resume.
+        Carries `True` to pause, `False` to resume.
+    sigActionRequest :
+        Emitted when the user triggers an action button.
+        Carries the action name (`str`) and toggle state (`bool`).
     """
 
     sigLaunchPlanRequest = Signal(str, object)
@@ -368,10 +376,10 @@ class AcquisitionWidget(QtView, Loggable):
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["AcquisitionController"]["sigPlanDone"].connect(
+        self.virtual_bus.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
             self._on_plan_done
         )
-        self.virtual_bus.signals["AcquisitionController"]["sigActionDone"].connect(
+        self.virtual_bus.signals["AcquisitionPresenter"]["sigActionDone"].connect(
             self._on_action_done, thread="main"
         )
 

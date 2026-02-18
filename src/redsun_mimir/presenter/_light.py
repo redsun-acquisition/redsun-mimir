@@ -18,19 +18,23 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-class LightController(Loggable, IsProvider, VirtualAware):
-    """Controller for the light model.
+class LightPresenter(Loggable, IsProvider, VirtualAware):
+    """Presenter for light source control.
+
+    Forwards toggle and intensity requests from
+    [`LightView`][redsun_mimir.view.LightView] to the underlying
+    light devices.
 
     Parameters
     ----------
-    devices : ``Mapping[str, Device]``
+    devices :
         Mapping of device names to device instances.
-    virtual_bus : ``VirtualBus``
-        The bus for communication.
-    **kwargs : Any
+    virtual_bus :
+        The virtual bus for signal exchange.
+    **kwargs :
         Additional keyword arguments.
-        - ``timeout`` (float | None): Timeout in seconds.
 
+        - `timeout` (`float | None`): Status wait timeout in seconds.
     """
 
     def __init__(
@@ -83,10 +87,10 @@ class LightController(Loggable, IsProvider, VirtualAware):
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
+        self.virtual_bus.signals["LightView"]["sigToggleLightRequest"].connect(
             self.trigger
         )
-        self.virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(self.set)
+        self.virtual_bus.signals["LightView"]["sigIntensityRequest"].connect(self.set)
 
     def trigger(self, name: str) -> None:
         """Toggle the light.
