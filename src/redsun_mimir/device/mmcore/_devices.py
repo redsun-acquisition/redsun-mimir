@@ -174,8 +174,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         }
 
         self._device_schema = self._core.getDeviceSchema(name)
-        self._buffer_key = f"{self.name}:buffer"
-        self._roi_key = f"{self.name}:roi"
+        self._buffer_key = make_key(self.prefix, self.name, "buffer")
+        self._roi_key = make_key(self.prefix, self.name, "roi")
         self._buffer_stream_key = f"{self.name}:buffer:stream"
         self._fly_permit = th.Event()
         self._fly_stop = th.Event()

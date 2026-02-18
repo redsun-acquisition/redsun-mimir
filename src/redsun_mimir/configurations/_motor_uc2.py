@@ -6,10 +6,10 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-_CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
+_CONFIG = Path(__file__).parent / "motor_configuration.yaml"
 
 
-def stage_widget_uc2() -> None:
+def run_youseetoo_motor_container() -> None:
     """Run a UC2 motor example.
 
     Launches a Qt ``MotorView`` app with UC2 serial and motor devices.

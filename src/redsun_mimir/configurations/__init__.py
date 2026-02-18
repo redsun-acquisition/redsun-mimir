@@ -1,23 +1,17 @@
-from ._acquisition import acquisition_widget
-from ._acquisition_detector import acquisition_detector_widget
-from ._acquisition_detector_uc2 import acquisition_detector_widget_uc2
-from ._acquisition_uc2 import acquisition_widget_uc2
-from ._detector import detector_widget
-from ._detector_uc2 import detector_widget_uc2
-from ._light import light_widget
-from ._light_uc2 import light_widget_uc2
-from ._motor import stage_widget
-from ._motor_uc2 import stage_widget_uc2
+from ._acquisition import run_acquisition_container
+from ._acquisition_uc2 import run_youseetoo_acquisition_container
+from ._light import run_light_container
+from ._light_uc2 import run_youseetoo_light_container
+from ._motor import run_stage_container
+from ._motor_uc2 import run_youseetoo_motor_container
 
 __all__ = [
-    "acquisition_widget",
-    "acquisition_detector_widget",
-    "acquisition_detector_widget_uc2",
-    "acquisition_widget_uc2",
-    "stage_widget",
-    "light_widget",
-    "detector_widget",
-    "detector_widget_uc2",
-    "light_widget_uc2",
-    "stage_widget_uc2",
+    "run_acquisition_container",
+    "run_youseetoo_acquisition_container",
+    "run_stage_container",
+    "run_light_container",
+    "run_detector_container",
+    "run_youseetoo_detector_container",
+    "run_youseetoo_light_container",
+    "run_youseetoo_motor_container",
 ]

@@ -6,10 +6,10 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-_CONFIG = Path(__file__).parent / "mock_light_configuration.yaml"
+_CONFIG = Path(__file__).parent / "light_configuration.yaml"
 
 
-def light_widget() -> None:
+def run_light_container() -> None:
     """Run a local mock light example.
 
     Launches a Qt ``LightView`` app with a mock light device.

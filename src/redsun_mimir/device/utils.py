@@ -125,3 +125,21 @@ def convert_shape(value: Sequence[int]) -> tuple[int, int]:
         raise ValueError("The tuple must contain exactly two values.")
     else:
         return (int(value[0]), int(value[1]))
+
+
+def check_limits(
+    instance: object,
+    attribute: Attribute[dict[str, tuple[float, float]]],
+    value: dict[str, tuple[float, float]] | None,
+) -> None:
+    if value is None:
+        return
+    for axis, limits in value.items():
+        if len(limits) != 2:
+            raise AttributeError(
+                f"Length of limits must be 2: {axis} has length {len(limits)}"
+            )
+        if limits[0] > limits[1]:
+            raise AttributeError(
+                f"{axis} minimum limit is greater than the maximum limit: {limits}"
+            )

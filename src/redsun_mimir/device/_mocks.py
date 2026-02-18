@@ -174,33 +174,35 @@ class MockLightDevice(Device, LightProtocol, Loggable):
 
 @define(kw_only=True, init=False, eq=False)
 class MockMotorDevice(Device, MotorProtocol, Loggable):
-    """Mock stage model for testing purposes."""
+    """Mock stage model for testing purposes.
+
+    Parameters
+    ----------
+    name : ``str``
+        Name of the device.
+    prefix : ``str``, optional
+        Prefix for key generation. Default is "MOCK".
+    egu : ``str``, optional
+        Engineering units for the motor position. Default is "mm".
+    axis : ``list[str]``
+        List of motor axes. No default value, must be provided.
+    step_sizes : ``dict[str, float]``, optional
+        Dictionary mapping each axis to its step size. Default is an empty dictionary.
+    limits : ``dict[str, tuple[float, float]]``, optional
+        Dictionary mapping each axis to a tuple of (min, max) limits. Default is ``None`` (no limits).
+    """
 
     name: str
-    prefix: str = field(
-        default="MOCK",
-        validator=validators.instance_of(str),
-        metadata={"description": "Device class prefix for key generation."},
-    )
+    prefix: str = field(default="MOCK", validator=validators.instance_of(str))
     egu: str = field(
-        default="mm",
-        validator=validators.instance_of(str),
-        on_setattr=setters.frozen,
-        metadata={"description": "Engineering units."},
+        default="mm", validator=validators.instance_of(str), on_setattr=setters.frozen
     )
     axis: list[str] = field(
-        validator=validators.instance_of(list),
-        on_setattr=setters.frozen,
-        metadata={"description": "Axis names."},
+        validator=validators.instance_of(list), on_setattr=setters.frozen
     )
-    step_sizes: dict[str, float] = field(
-        validator=validators.instance_of(dict),
-        metadata={"description": "Step sizes for each axis."},
-    )
+    step_sizes: dict[str, float] = field(validator=validators.instance_of(dict))
     limits: dict[str, tuple[float, float]] | None = field(
-        default=None,
-        converter=utils.convert_limits,
-        metadata={"description": "Limits for each axis."},
+        default=None, converter=utils.convert_limits, validator=utils.check_limits
     )
 
     @limits.validator
@@ -226,8 +228,25 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
         }
 
-        self._active_axis = self.axis[0]
+        self._descriptors: dict[str, Descriptor] = {
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)]
+            ),
+        }
+        for ax in self.axis:
+            key = make_key(self.prefix, self.name, rf"{ax}_step_size")
+            if self.limits is not None and ax in self.limits:
+                low, high = self.limits[ax]
+                self._descriptors[key] = make_descriptor(
+                    "settings", "number", low=low, high=high
+                )
+            else:
+                self._descriptors[key] = make_descriptor("settings", "number")
 
+        self._active_axis = self.axis[0]
         self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -314,24 +333,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        descriptors: dict[str, Descriptor] = {
-            make_key(self.prefix, self.name, "egu"): make_descriptor(
-                "settings", "string"
-            ),
-            make_key(self.prefix, self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)]
-            ),
-        }
-        for ax in self.axis:
-            key = make_key(self.prefix, self.name, rf"step_size\{ax}")
-            if self.limits is not None and ax in self.limits:
-                low, high = self.limits[ax]
-                descriptors[key] = make_descriptor(
-                    "settings", "number", low=low, high=high
-                )
-            else:
-                descriptors[key] = make_descriptor("settings", "number")
-        return descriptors
+        return self._descriptors
 
     def shutdown(self) -> None: ...
 

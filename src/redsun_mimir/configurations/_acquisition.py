@@ -6,28 +6,43 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-_CONFIG = Path(__file__).parent / "mock_acquisition_configuration.yaml"
+_CONFIG = Path(__file__).parent / "acquisition_configuration.yaml"
 
 
-def acquisition_widget() -> None:
-    """Run a local acquisition example.
+def run_acquisition_container() -> None:
+    """Run a local mock example.
 
-    Launches a Qt ``AcquisitionView`` app with MMCore and simulated
-    camera devices.
+    Launches a Qt ``AcquisitionView`` app with a background
+    ``DetectorPresenter`` and ``MedianPresenter``.
     """
+    from redsun_mimir.device import MockMotorDevice
     from redsun_mimir.device.microscope import SimulatedCameraDevice
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
-    from redsun_mimir.presenter import AcquisitionPresenter
-    from redsun_mimir.view import AcquisitionView
+    from redsun_mimir.presenter import (
+        AcquisitionPresenter,
+        DetectorPresenter,
+        MedianPresenter,
+    )
+    from redsun_mimir.view import AcquisitionView, DetectorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class AcquisitionApp(QtAppContainer, config=_CONFIG):
-        camera1 = component(MMCoreCameraDevice, layer="device", from_config="camera1")
-        camera2 = component(
+    class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
+        mmcore = component(MMCoreCameraDevice, layer="device", from_config="camera1")
+        microscope = component(
             SimulatedCameraDevice, layer="device", from_config="camera2"
         )
-        ctrl = component(AcquisitionPresenter, layer="presenter", from_config="ctrl")
-        widget = component(AcquisitionView, layer="view", from_config="widget")
+        motor = component(MockMotorDevice, layer="device", from_config="motor")
+        median_ctrl = component(
+            MedianPresenter, layer="presenter", from_config="median_ctrl"
+        )
+        det_ctrl = component(
+            DetectorPresenter, layer="presenter", from_config="det_ctrl"
+        )
+        acq_ctrl = component(
+            AcquisitionPresenter, layer="presenter", from_config="acq_ctrl"
+        )
+        acq_widget = component(AcquisitionView, layer="view", from_config="acq_widget")
+        det_widget = component(DetectorView, layer="view", from_config="det_widget")
 
-    AcquisitionApp().run()
+    AcquisitionDetectorApp().run()

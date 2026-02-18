@@ -91,7 +91,7 @@ class TestMockMotorDevice:
         assert "MOCK:stage\\egu" in desc
         assert "MOCK:stage\\axis" in desc
         for ax in ["X", "Y", "Z"]:
-            assert f"MOCK:stage\\step_size\\{ax}" in desc
+            assert f"MOCK:stage\\{ax}_step_size" in desc
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from redsun.qt import QtAppContainer
 _CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
 
-def light_widget_uc2() -> None:
+def run_youseetoo_light_container() -> None:
     """Run a UC2 light example.
 
     Launches a Qt ``LightView`` app with UC2 serial and laser devices.

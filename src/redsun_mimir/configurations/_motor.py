@@ -6,10 +6,10 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-_CONFIG = Path(__file__).parent / "mock_motor_configuration.yaml"
+_CONFIG = Path(__file__).parent / "motor_configuration.yaml"
 
 
-def stage_widget() -> None:
+def run_stage_container() -> None:
     """Run a local mock motor example.
 
     Launches a Qt ``MotorView`` app with a mock motor device.
