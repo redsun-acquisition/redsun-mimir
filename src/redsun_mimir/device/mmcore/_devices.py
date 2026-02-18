@@ -12,15 +12,16 @@ from sunflare.engine import Status
 from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
+from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.storage import ZarrWriter
 from redsun_mimir.utils.descriptors import (
     make_array_descriptor,
     make_enum_descriptor,
     make_key,
     make_number_descriptor,
     make_reading,
+    parse_key,
 )
-from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.storage import ZarrWriter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -225,7 +226,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         try:
             propr = kwargs.get("propr", None)
             if propr:
-                propr = cast("str", propr).split(":")[1]
+                _, _, propr = parse_key(cast("str", propr))
             else:
                 raise ValueError(
                     "Property name must be specified via 'propr' keyword argument."

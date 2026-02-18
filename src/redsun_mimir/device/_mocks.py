@@ -10,6 +10,7 @@ from sunflare.engine import Status
 from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from redsun_mimir.utils.descriptors import (
     make_array_descriptor,
     make_integer_descriptor,
@@ -18,7 +19,6 @@ from redsun_mimir.utils.descriptors import (
     make_reading,
     make_string_descriptor,
 )
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any
@@ -293,7 +293,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             make_key(self.prefix, self.name, "axis"): make_reading(self.axis, timestamp),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.prefix, self.name, f"step_size\\{ax}")] = make_reading(step, timestamp)
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(step, timestamp)
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
@@ -302,7 +302,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             make_key(self.prefix, self.name, "axis"): make_array_descriptor("settings", shape=[len(self.axis)]),
         }
         for ax in self.axis:
-            key = make_key(self.prefix, self.name, f"step_size\\{ax}")
+            key = make_key(self.prefix, self.name, rf"step_size\{ax}")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
                 descriptors[key] = make_number_descriptor("settings", low=low, high=high)

@@ -16,14 +16,15 @@ from sunflare.engine import Status
 from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
+from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 from redsun_mimir.utils.descriptors import (
     make_array_descriptor,
+    make_integer_descriptor,
     make_key,
     make_number_descriptor,
     make_reading,
     make_string_descriptor,
 )
-from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -127,10 +128,34 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         Factory.set_stage(self)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return {}
+        descriptors: dict[str, Descriptor] = {
+            make_key(self.prefix, self.name, "egu"): make_string_descriptor("settings"),
+            make_key(self.prefix, self.name, "axis"): make_array_descriptor(
+                "settings", shape=[len(self.axis)]
+            ),
+        }
+        for ax in self.axis:
+            key = make_key(self.prefix, self.name, rf"step_size\{ax}")
+            if self.limits is not None and ax in self.limits:
+                low, high = self.limits[ax]
+                descriptors[key] = make_number_descriptor(
+                    "settings", low=low, high=high
+                )
+            else:
+                descriptors[key] = make_number_descriptor("settings")
+        return descriptors
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return {}
+        timestamp = time.time()
+        config: dict[str, Reading[Any]] = {
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "axis"): make_reading(self.axis, timestamp),
+        }
+        for ax, step in self.step_sizes.items():
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = (
+                make_reading(step, timestamp)
+            )
+        return config
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -269,10 +294,39 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return {}
+        return {
+            make_key(self.prefix, self.name, "wavelength"): make_integer_descriptor(
+                "settings", units="nm"
+            ),
+            make_key(self.prefix, self.name, "binary"): make_string_descriptor(
+                "settings"
+            ),
+            make_key(self.prefix, self.name, "egu"): make_string_descriptor("settings"),
+            make_key(self.prefix, self.name, "intensity_range"): make_array_descriptor(
+                "settings", shape=[2]
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_integer_descriptor(
+                "settings"
+            ),
+        }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return {}
+        timestamp = time.time()
+        return {
+            make_key(self.prefix, self.name, "wavelength"): make_reading(
+                self.wavelength, timestamp
+            ),
+            make_key(self.prefix, self.name, "binary"): make_reading(
+                self.binary, timestamp
+            ),
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "intensity_range"): make_reading(
+                list(self.intensity_range), timestamp
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_reading(
+                self.step_size, timestamp
+            ),
+        }
 
     def trigger(self) -> Status:
         s = Status()
