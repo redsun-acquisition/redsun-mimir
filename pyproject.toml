@@ -168,3 +168,6 @@ include = ["src", "tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
+
+[tool.uv.sources]
+redsun = { git = "https://github.com/redsun-acquisition/redsun.git", rev = "feat/presenter-connect-to-virtual" }
