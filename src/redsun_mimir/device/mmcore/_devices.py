@@ -36,7 +36,7 @@ class PrepareKwargs(TypedDict):
     """When True, write data indefinitely until stopped. Overrides `capacity`."""
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
@@ -114,10 +114,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     initialized: ClassVar[bool] = False
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    # Identity-based hashing is correct for stateful hardware objects.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MockLightDevice(Device, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
@@ -65,9 +65,6 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -197,7 +194,7 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         return s
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MockMotorDevice(Device, MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
@@ -239,9 +236,6 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
                     f"{axis} minimum limit is greater than the maximum limit: {limits}"
                 )
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)

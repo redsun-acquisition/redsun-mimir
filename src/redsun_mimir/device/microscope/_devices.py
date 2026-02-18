@@ -58,7 +58,7 @@ class Factory:
         cls.light_ready.set()
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
     """Simulated stage device using the microscope library.
 
@@ -98,9 +98,6 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         metadata={"description": "Limits for each axis."},
     )
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -157,7 +154,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         }
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]
     """Simulated light source using the microscope library.
 
@@ -205,9 +202,6 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         metadata={"description": "Step size for the intensity."},
     )
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -294,7 +288,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         return s
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
     """Simulated camera model implementing DetectorProtocol.
 
@@ -313,9 +307,6 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         metadata={"description": "Shape of the sensor (width, height)."},
     )
 
-    # attrs @define generates __eq__ which sets __hash__ = None;
-    # bluesky's RunEngine adds devices to a set() so we need to be hashable.
-    __hash__ = object.__hash__
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
