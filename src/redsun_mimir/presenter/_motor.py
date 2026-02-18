@@ -149,9 +149,10 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
 
         """
         success_map: dict[str, bool] = {}
+        bare = self._bare_name(motor)
         for key, value in config.items():
             self.logger.debug(f"Configuring {key} of {motor} to {value}")
-            s = self._motors[motor].set(value, propr=key)
+            s = self._motors[bare].set(value, propr=key)
             try:
                 s.wait(self._timeout)
             except Exception as e:
@@ -164,6 +165,24 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
                 success_map[key] = s.success
         self.sigNewConfiguration.emit(motor, success_map)
         return success_map
+
+    def _bare_name(self, device_label: str) -> str:
+        """Resolve a device label to the bare device name used as dict key.
+
+        The view emits ``prefix:name`` labels, but ``self._motors`` is keyed
+        by the bare device name.  Splits on ``":"`` and returns the second
+        component; returns the original string unchanged when no colon is
+        present so bare names from internal callers continue to work.
+
+        Parameters
+        ----------
+        device_label :
+            Either a canonical ``prefix:name`` label or a plain device name.
+        """
+        parts = device_label.split(":", 1)
+        if len(parts) == 2:
+            return parts[1]
+        return device_label
 
     def shutdown(self) -> None:
         """Shutdown the presenter.
@@ -193,7 +212,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
             if task is not None:
                 motor, axis, position = task
                 self.logger.debug(f"Moving {motor} to {position} on {axis}")
-                self._do_move(self._motors[motor], axis, position)
+                self._do_move(self._motors[self._bare_name(motor)], axis, position)
                 self._queue.task_done()
             else:
                 # ensure no pending task

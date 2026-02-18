@@ -100,6 +100,26 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
         )
         self.virtual_bus.signals["LightView"]["sigIntensityRequest"].connect(self.set)
 
+    def _bare_name(self, device_label: str) -> str:
+        """Resolve a device label to the bare device name used as dict key.
+
+        The view emits ``prefix:name`` labels, but ``self._lights`` is keyed
+        by the bare device name.  ``parse_key`` extracts the name component;
+        if the label has no canonical separator the string is returned as-is
+        so bare names from internal callers continue to work.
+
+        Parameters
+        ----------
+        device_label :
+            Either a canonical ``prefix:name`` label or a plain device name.
+        """
+        # A canonical key has a backslash (prefix:name\property).
+        # A device label is just prefix:name — split on ":" and take index 1.
+        parts = device_label.split(":", 1)
+        if len(parts) == 2:
+            return parts[1]
+        return device_label
+
     def trigger(self, name: str) -> None:
         """Toggle the light.
 
@@ -109,14 +129,15 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
             Name of the light.
 
         """
-        s = self._lights[name].trigger()
+        s = self._lights[self._bare_name(name)].trigger()
         try:
             s.wait(self._timeout)
         except Exception as e:
             self.logger.error(f"Failed toggle on {name}: {e}")
         else:
+            light = self._lights[self._bare_name(name)]
             self.logger.debug(
-                f"Toggled source {name} {not self._lights[name].enabled} -> {self._lights[name].enabled}"
+                f"Toggled source {name} {not light.enabled} -> {light.enabled}"
             )
 
     def set(self, name: str, intensity: int | float) -> None:
@@ -130,7 +151,7 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
             Intensity to set.
 
         """
-        light = self._lights[name]
+        light = self._lights[self._bare_name(name)]
         s = light.set(intensity)
         try:
             s.wait(self._timeout)
