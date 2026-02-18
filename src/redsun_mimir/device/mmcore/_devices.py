@@ -14,6 +14,12 @@ from sunflare.log import Loggable
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.storage import ZarrWriter
+from redsun_mimir.utils.descriptors import (
+    make_descriptor,
+    make_key,
+    make_reading,
+    parse_key,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,7 +42,7 @@ class PrepareKwargs(TypedDict):
     """When True, write data indefinitely until stopped. Overrides `capacity`."""
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     """Demo camera wrapper for CMMCorePlus.
 
@@ -77,6 +83,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     """
 
     name: str
+    prefix: str = field(validator=validators.instance_of(str), default="MM")
     adapter: str = field(validator=validators.instance_of(str), default="DemoCamera")
     device: str = field(validator=validators.instance_of(str), default="DCam")
     allowed_properties: list[str] = field(
@@ -216,7 +223,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         try:
             propr = kwargs.get("propr", None)
             if propr:
-                propr = cast("str", propr).split(":")[1]
+                _, _, propr = parse_key(cast("str", propr))
             else:
                 raise ValueError(
                     "Property name must be specified via 'propr' keyword argument."
@@ -246,53 +253,43 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         config_descriptor: dict[str, Descriptor] = {}
-        for key, value in self._device_schema["properties"].items():
-            # Filter to only include exposed properties
-            if key not in self.allowed_properties:
+        for prop_name, value in self._device_schema["properties"].items():
+            if prop_name not in self.allowed_properties:
                 continue
 
             choices: list[str] = []
-            if key in self.enum_map:
-                choices = list(self.enum_map[key])
+            if prop_name in self.enum_map:
+                choices = list(self.enum_map[prop_name])
             elif value["type"] == "string":
                 choices = value.get("enum", [])
 
-            descriptor_key = f"{self.name}:{key}"
-            config_descriptor[descriptor_key] = {
-                "source": "properties",
-                # the "type" key is JSON-compatible,
-                # so we can skip the type check here
-                "dtype": value["type"],  # type: ignore[typeddict-item]
-                "shape": [],
-                "choices": choices,
-            }
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
-            if maximum is not None and minimum is not None:
-                config_descriptor[descriptor_key]["limits"] = {
-                    "control": {
-                        "low": value["minimum"],
-                        "high": value["maximum"],
-                    }
-                }
-        config_descriptor[f"{self.name}:exposure"] = {
-            "source": "settings",
-            "dtype": "number",
-            "shape": [],
-            "limits": {
-                "control": {
-                    "low": self.exposure_limits[0],
-                    "high": self.exposure_limits[1],
-                },
-            },
-            "units": "ms",
-        }
-        config_descriptor[f"{self.name}:sensor_shape"] = {
-            "source": "settings",
-            "dtype": "array",
-            "shape": [2],
-        }
+            key = make_key(self.prefix, self.name, prop_name)
 
+            if choices:
+                config_descriptor[key] = make_descriptor(
+                    "properties", "string", choices=choices
+                )
+            elif maximum is not None and minimum is not None:
+                config_descriptor[key] = make_descriptor(
+                    "properties", "number", low=minimum, high=maximum
+                )
+            else:
+                config_descriptor[key] = make_descriptor("properties", "number")
+
+        config_descriptor[make_key(self.prefix, self.name, "exposure")] = (
+            make_descriptor(
+                "settings",
+                "number",
+                low=self.exposure_limits[0],
+                high=self.exposure_limits[1],
+                units="ms",
+            )
+        )
+        config_descriptor[make_key(self.prefix, self.name, "sensor_shape")] = (
+            make_descriptor("settings", "array", shape=[2])
+        )
         return config_descriptor
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -300,22 +297,18 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         config: dict[str, Reading[Any]] = {}
 
         for prop in self._properties.values():
-            # Filter to only include exposed properties
             if prop.name not in self.allowed_properties:
                 continue
+            config[make_key(self.prefix, self.name, prop.name)] = make_reading(
+                prop.value, timestamp
+            )
 
-            config[f"{self.name}:{prop.name}"] = {
-                "value": prop.value,
-                "timestamp": timestamp,
-            }
-        config[f"{self.name}:exposure"] = {
-            "value": self._core.getExposure(),
-            "timestamp": timestamp,
-        }
-        config[f"{self.name}:sensor_shape"] = {
-            "value": list(self.sensor_shape),
-            "timestamp": timestamp,
-        }
+        config[make_key(self.prefix, self.name, "exposure")] = make_reading(
+            self._core.getExposure(), timestamp
+        )
+        config[make_key(self.prefix, self.name, "sensor_shape")] = make_reading(
+            list(self.sensor_shape), timestamp
+        )
         return config
 
     def stage(self) -> Status:

@@ -3,27 +3,27 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
-
-from redsun_mimir.device.youseetoo import MimirLaserDevice, MimirSerialDevice
-from redsun_mimir.presenter import LightController
-from redsun_mimir.view import LightWidget
+from redsun.containers import component
+from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
 
-class _LightUC2App(AppContainer, config=_CONFIG):
-    serial: MimirSerialDevice = component(layer="device", from_config="serial")
-    laser: MimirLaserDevice = component(layer="device", from_config="laser")
-    ctrl: LightController = component(layer="presenter", from_config="ctrl")
-    widget: LightWidget = component(layer="view", from_config="widget")
-
-
 def light_widget_uc2() -> None:
-    """Run a local UC2 example.
+    """Run a UC2 light example.
 
-    Launches a Qt ``LightWidget`` app
-    with a UC2 device configuration.
+    Launches a Qt ``LightView`` app with UC2 serial and laser devices.
     """
+    from redsun_mimir.device.youseetoo import MimirLaserDevice, MimirSerialDevice
+    from redsun_mimir.presenter import LightPresenter
+    from redsun_mimir.view import LightView
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _LightUC2App().run()
+
+    class LightUC2App(QtAppContainer, config=_CONFIG):
+        serial = component(MimirSerialDevice, layer="device", from_config="serial")
+        laser = component(MimirLaserDevice, layer="device", from_config="laser")
+        ctrl = component(LightPresenter, layer="presenter", from_config="ctrl")
+        widget = component(LightView, layer="view", from_config="widget")
+
+    LightUC2App().run()

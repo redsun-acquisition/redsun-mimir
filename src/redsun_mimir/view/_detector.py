@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
@@ -12,7 +12,7 @@ from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
-from redsun_mimir.common import ConfigurationDict  # noqa: TC001
+from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -21,47 +21,48 @@ from redsun_mimir.utils.napari import (
 from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from typing import Any
-
     import numpy.typing as npt
     from dependency_injector.containers import DynamicContainer
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
 
 
-_T = TypeVar("_T")
-
-
-def _get_value(
-    readings: dict[str, Reading[Any]],
-    key: str,
-    default: _T,
-) -> _T:
-    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry."""
-    entry = readings.get(key)
-    if entry is None:
-        return default
-    return cast("_T", entry["value"])
-
-
 class SettingsControlWidget(QtWidgets.QWidget):
-    """Widget for controlling the detector settings.
+    r"""Widget for controlling device settings, backed by a descriptor tree view.
+
+    Populated once at construction from the descriptor and reading dicts
+    provided by the DI container — no separate setup step required.
 
     Parameters
     ----------
-    layer : ``Image``
-        The image layer to control.
-    parent: ``QtWidgets.QWidget``, optional
-        The parent widget for this control widget. Defaults to None.
+    descriptors :
+        Flat ``describe_configuration()`` dict for one or more devices,
+        keyed in ``prefix:name\\property`` form.
+    readings :
+        Flat ``read_configuration()`` dict matching the same keys.
+    layer :
+        The napari image layer to attach ROI controls to.
+    parent :
+        Optional parent widget.
     """
 
-    def __init__(self, layer: Image, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        descriptors: dict[str, Descriptor],
+        readings: dict[str, Reading[Any]],
+        layer: Image,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
         super().__init__(parent=parent)
 
         self._layer = layer
 
         self.tree_view = DescriptorTreeView(self)
         self.tree_view.model().sigStructureChanged.connect(self._on_structure_changed)
+
+        # Populate the tree once at construction
+        self.tree_view.model().update_structure(descriptors)
+        self.tree_view.model().update_readings(readings)
 
         self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
         self._enable_roi_button.setCheckable(True)
@@ -92,20 +93,27 @@ class SettingsControlWidget(QtWidgets.QWidget):
             self.tree_view.resizeColumnToContents(i)
 
 
-class DetectorWidget(QtView, Loggable):
-    """Widget for rendering acquired image data and control detector settings.
+class DetectorView(QtView, Loggable):
+    """View for live image display and detector settings control.
+
+    Renders image data forwarded by
+    [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter]
+    into a napari viewer and provides per-detector settings panels
+    for interactive configuration.
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Reference to the virtual bus.
-    **kwargs : ``Any``
-        Additional keyword arguments.
+    **kwargs :
+        Additional keyword arguments passed to the parent view.
 
     Attributes
     ----------
-    sigPropertyChanged : ``Signal[str, dict[str, object]]``
-        Signal emitted when a property of a detector is changed.
+    sigPropertyChanged :
+        Emitted when the user changes a detector property.
+        Carries the detector name (`str`) and a mapping of the
+        changed property to its new value (`dict[str, object]`).
     """
 
     sigPropertyChanged = Signal(str, dict[str, object])
@@ -160,21 +168,20 @@ class DetectorWidget(QtView, Loggable):
 
         self.buffer_key = "buffer"
 
+        self.virtual_bus.register_signals(self)
+
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject detector configuration from the DI container."""
-        model_config: ConfigurationDict = container.detector_configuration()
-        model_reading: dict[str, dict[str, Descriptor]] = (
-            container.detector_descriptions()
-        )
-        self.setup_ui(model_config, model_reading)
+        descriptors: dict[str, Descriptor] = container.detector_descriptors()
+        readings: dict[str, Reading[Any]] = container.detector_readings()
+        self.setup_ui(descriptors, readings)
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.signals["DetectorController"][
+        self.virtual_bus.signals["DetectorPresenter"][
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
-        self.virtual_bus.signals["DetectorController"]["sigNewData"].connect(
+        self.virtual_bus.signals["DetectorPresenter"]["sigNewData"].connect(
             self._update_layers, thread="main"
         )
         try:
@@ -188,32 +195,57 @@ class DetectorWidget(QtView, Loggable):
 
     def setup_ui(
         self,
-        model_config: ConfigurationDict,
-        model_reading: dict[str, dict[str, Descriptor]],
+        descriptors: dict[str, Descriptor],
+        readings: dict[str, Reading[Any]],
     ) -> None:
-        """Initialize the user interface.
+        r"""Initialize the user interface.
+
+        Groups descriptors and readings by their ``prefix:name`` device label
+        (the part of the key before the backslash) and creates one napari
+        image layer and one :class:`SettingsControlWidget` tab per device.
 
         Parameters
         ----------
-        model_config : ``ConfigurationDict``
-            Configuration data from the presenter.
-        model_reading : ``dict[str, dict[str, Descriptor]]``
-            Reading description data from the presenter.
+        descriptors :
+            Flat merged ``describe_configuration()`` output from all detectors,
+            keyed as ``prefix:name\\property``.
+        readings :
+            Flat merged ``read_configuration()`` output from all detectors,
+            keyed identically.
         """
-        for detector in model_config["descriptors"]:
-            config_descriptor = model_config["descriptors"][detector]
-            config_reading = model_config["readings"][detector]
-            dtype = model_reading[detector][f"{detector}:buffer"].get(
-                "dtype_numpy", "uint8"
-            )
-            sensor_shape: tuple[int, int] = cast(
-                "tuple[int, int]",
-                tuple(_get_value(config_reading, f"{detector}:sensor_shape", [0, 0])),
-            )
+        # Group keys by device label (prefix:name)
+        devices: dict[str, dict[str, Descriptor]] = {}
+        for key, descriptor in descriptors.items():
+            try:
+                prefix, name, _ = parse_key(key)
+            except ValueError:
+                self.logger.warning(f"Skipping malformed descriptor key: {key!r}")
+                continue
+            device_label = f"{prefix}:{name}"
+            devices.setdefault(device_label, {})[key] = descriptor
+
+        for device_label, dev_descriptors in devices.items():
+            dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}
+
+            # Derive sensor shape from the first array descriptor we can find
+            sensor_shape = (512, 512)
+            for key, reading in dev_readings.items():
+                if descriptors[key].get("dtype") == "array" and "sensor_shape" in key:
+                    val = reading["value"]
+                    if isinstance(val, (list, tuple)) and len(val) == 2:
+                        sensor_shape = (int(val[0]), int(val[1]))
+                    break
+
+            # Infer numpy dtype from buffer descriptor if available
+            dtype = "uint8"
+            for key, desc in dev_descriptors.items():
+                if desc.get("dtype") == "array" and "buffer" in key:
+                    dtype = str(desc.get("dtype_numpy", "uint8"))
+                    break
 
             layer = self.viewer_model.add_image(
                 np.zeros(shape=sensor_shape, dtype=dtype),
-                name=detector,
+                name=device_label,
             )
             layer._overlays.update(
                 {
@@ -224,26 +256,17 @@ class DetectorWidget(QtView, Loggable):
             )
             layer.mouse_drag_callbacks.append(resize_selection_box)
             layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-            self.settings_controls[detector] = SettingsControlWidget(layer)
-            self.settings_controls[detector].tree_view.model().update_structure(
-                config_descriptor
-            )
-            self.settings_controls[detector].tree_view.model().update_readings(
-                config_reading
-            )
-            # Capture detector name by value using default argument to avoid closure issue
-            self.settings_controls[
-                detector
-            ].tree_view.model().sigPropertyChanged.connect(
-                lambda setting, value, det=detector: self.sigPropertyChanged.emit(
-                    det, {setting: value}
+
+            widget = SettingsControlWidget(dev_descriptors, dev_readings, layer)
+            # Forward property changes with the device label so the presenter
+            # can route the set() call to the right detector instance
+            widget.tree_view.model().sigPropertyChanged.connect(
+                lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
+                    lbl, {setting: value}
                 )
             )
-
-            self.settings_tab_widget.addTab(
-                self.settings_controls[detector],
-                f"{detector}",
-            )
+            self.settings_controls[device_label] = widget
+            self.settings_tab_widget.addTab(widget, device_label)
 
     def _handle_configuration_result(
         self, detector: str, setting_name: str, success: bool

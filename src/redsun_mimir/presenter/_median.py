@@ -21,27 +21,27 @@ if TYPE_CHECKING:
 
 
 class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
-    """Presenter that calculates the median of incoming data.
+    """Presenter that computes per-detector median images from scan streams.
 
-    Stores incoming data from expected streams, computes the median
-    when a non-expected stream event is received, and applies the median
-    to the incoming data before emitting it to the viewer.
+    Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
+    event documents. Frames arriving on expected streams (e.g. `square_scan`)
+    are stacked; on the next live-stream event the median across the stack is
+    computed and applied to the incoming buffer before forwarding it to
+    [`DetectorView`][redsun_mimir.view.DetectorView].
 
     Parameters
     ----------
-    devices : ``Mapping[str, Device]``
-        Mapping of device names to device instances.
-        Unused in this presenter.
-    virtual_bus : ``VirtualBus``
+    devices :
+        Mapping of device names to device instances. Unused by this presenter.
+    virtual_bus :
         Reference to the virtual bus.
 
     Attributes
     ----------
-    sigNewData : ``Signal(dict[str, dict[str, Any]])``
-        Signal emitting new data with median applied with structure:
-        - outer key: object name with `[median]` suffix.
-        - inner key: data key (e.g., `buffer`).
-        - value: data array with median applied.
+    sigNewData :
+        Emitted with median-corrected image data.
+        Carries object name (suffixed with `[median]`) and the corrected
+        array as a `numpy.ndarray`.
     """
 
     sigNewData = Signal(str, object)
@@ -67,10 +67,12 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-    def register_providers(self, container: DynamicContainer) -> None:
-        """Register the presenter on the virtual bus."""
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
+
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register the presenter on the virtual bus."""
+        ...
 
     def connect_to_virtual(self) -> None:
         """No virtual connections needed for MedianPresenter."""

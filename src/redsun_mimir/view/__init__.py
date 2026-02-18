@@ -1,11 +1,11 @@
-from ._acquisition import AcquisitionWidget
-from ._detector import DetectorWidget
-from ._light import LightWidget
-from ._motor import MotorWidget
+from ._acquisition import AcquisitionView
+from ._detector import DetectorView
+from ._light import LightView
+from ._motor import MotorView
 
 __all__ = [
-    "AcquisitionWidget",
-    "DetectorWidget",
-    "MotorWidget",
-    "LightWidget",
+    "AcquisitionView",
+    "DetectorView",
+    "MotorView",
+    "LightView",
 ]

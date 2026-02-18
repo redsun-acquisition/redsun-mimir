@@ -11,9 +11,9 @@ from dependency_injector.containers import DynamicContainer
 from sunflare.virtual import VirtualBus
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
-from redsun_mimir.presenter._light import LightController
+from redsun_mimir.presenter._light import LightPresenter
 from redsun_mimir.presenter._median import MedianPresenter
-from redsun_mimir.presenter._motor import MotorController
+from redsun_mimir.presenter._motor import MotorPresenter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,12 +29,12 @@ def _make_di_container(**objects: Any) -> DynamicContainer:
 
 
 # ---------------------------------------------------------------------------
-# MotorController
+# MotorPresenter
 # ---------------------------------------------------------------------------
 
 
-class TestMotorController:
-    """Tests for MotorController presenter."""
+class TestMotorPresenter:
+    """Tests for MotorPresenter presenter."""
 
     @pytest.fixture
     def devices(self, mock_motor: MockMotorDevice) -> dict[str, MockMotorDevice]:
@@ -43,16 +43,16 @@ class TestMotorController:
     @pytest.fixture
     def controller(
         self, devices: dict[str, MockMotorDevice], virtual_bus: VirtualBus
-    ) -> MotorController:
-        ctrl = MotorController(devices, virtual_bus)
+    ) -> MotorPresenter:
+        ctrl = MotorPresenter(devices, virtual_bus)
         return ctrl
 
-    def test_instantiation(self, controller: MotorController) -> None:
+    def test_instantiation(self, controller: MotorPresenter) -> None:
         """Controller initialises and identifies motor devices."""
         assert "stage" in controller._motors
 
     def test_register_providers(
-        self, controller: MotorController, virtual_bus: VirtualBus
+        self, controller: MotorPresenter, virtual_bus: VirtualBus
     ) -> None:
         """register_providers() populates motor_configuration on the container."""
         container = _make_di_container()
@@ -61,7 +61,7 @@ class TestMotorController:
         assert "stage" in container.motor_configuration()
 
     def test_move_updates_position(
-        self, controller: MotorController, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """move() enqueues and executes a position update."""
         received: list[tuple[str, str, float]] = []
@@ -77,7 +77,7 @@ class TestMotorController:
         assert mock_motor.locate()["setpoint"] == pytest.approx(10.0)
 
     def test_configure_step_size(
-        self, controller: MotorController, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
@@ -87,7 +87,7 @@ class TestMotorController:
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
         assert len(received) == 1
 
-    def test_shutdown_stops_daemon(self, controller: MotorController) -> None:
+    def test_shutdown_stops_daemon(self, controller: MotorPresenter) -> None:
         """shutdown() terminates the background thread gracefully."""
         controller.shutdown()
         controller._daemon.join(timeout=2.0)
@@ -95,12 +95,12 @@ class TestMotorController:
 
 
 # ---------------------------------------------------------------------------
-# LightController
+# LightPresenter
 # ---------------------------------------------------------------------------
 
 
-class TestLightController:
-    """Tests for LightController presenter."""
+class TestLightPresenter:
+    """Tests for LightPresenter presenter."""
 
     @pytest.fixture
     def devices(
@@ -111,16 +111,16 @@ class TestLightController:
     @pytest.fixture
     def controller(
         self, devices: dict[str, MockLightDevice], virtual_bus: VirtualBus
-    ) -> LightController:
-        return LightController(devices, virtual_bus)
+    ) -> LightPresenter:
+        return LightPresenter(devices, virtual_bus)
 
-    def test_instantiation(self, controller: LightController) -> None:
+    def test_instantiation(self, controller: LightPresenter) -> None:
         """Controller identifies and stores light devices."""
         assert "led" in controller._lights
         assert "laser" in controller._lights
 
     def test_register_providers(
-        self, controller: LightController, virtual_bus: VirtualBus
+        self, controller: LightPresenter, virtual_bus: VirtualBus
     ) -> None:
         """register_providers() populates light_configuration on the container."""
         container = _make_di_container()
@@ -129,7 +129,7 @@ class TestLightController:
         assert "led" in container.light_configuration()
 
     def test_trigger_toggles_led(
-        self, controller: LightController, mock_led: MockLightDevice
+        self, controller: LightPresenter, mock_led: MockLightDevice
     ) -> None:
         """trigger() toggles the target light source."""
         assert mock_led.enabled is False
@@ -139,7 +139,7 @@ class TestLightController:
         assert mock_led.enabled is False
 
     def test_set_intensity(
-        self, controller: LightController, mock_laser: MockLightDevice
+        self, controller: LightPresenter, mock_laser: MockLightDevice
     ) -> None:
         """set() updates the intensity of the target light source."""
         controller.set("laser", 75.0)
@@ -150,7 +150,7 @@ class TestLightController:
     ) -> None:
         """MotorDevice is not included in _lights even if passed in devices."""
         devices: dict[str, Any] = {"motor": mock_motor}
-        ctrl = LightController(devices, virtual_bus)
+        ctrl = LightPresenter(devices, virtual_bus)
         assert "motor" not in ctrl._lights
 
 

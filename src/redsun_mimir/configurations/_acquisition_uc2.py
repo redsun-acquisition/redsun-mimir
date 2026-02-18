@@ -3,26 +3,26 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
-
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import AcquisitionController
-from redsun_mimir.view import AcquisitionWidget
+from redsun.containers import component
+from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "uc2_acquisition_configuration.yaml"
 
 
-class _AcquisitionUC2App(AppContainer, config=_CONFIG):
-    camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
-    ctrl: AcquisitionController = component(layer="presenter", from_config="ctrl")
-    widget: AcquisitionWidget = component(layer="view", from_config="widget")
-
-
 def acquisition_widget_uc2() -> None:
-    """Run a local UC2 example.
+    """Run a UC2 acquisition example.
 
-    Launches a Qt ``AcquisitionWidget`` app
-    with a UC2 device configuration.
+    Launches a Qt ``AcquisitionView`` app with a UC2 MMCore camera device.
     """
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import AcquisitionPresenter
+    from redsun_mimir.view import AcquisitionView
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _AcquisitionUC2App().run()
+
+    class AcquisitionUC2App(QtAppContainer, config=_CONFIG):
+        camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
+        ctrl = component(AcquisitionPresenter, layer="presenter", from_config="ctrl")
+        widget = component(AcquisitionView, layer="view", from_config="widget")
+
+    AcquisitionUC2App().run()

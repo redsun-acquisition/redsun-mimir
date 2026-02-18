@@ -17,6 +17,11 @@ from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
+from redsun_mimir.utils.descriptors import (
+    make_descriptor,
+    make_key,
+    make_reading,
+)
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -58,7 +63,7 @@ class Factory:
         cls.light_ready.set()
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # type: ignore[misc]
     """Simulated stage device using the microscope library.
 
@@ -77,6 +82,11 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     egu: str = field(
         default="mm",
         validator=validators.instance_of(str),
@@ -114,10 +124,38 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         Factory.set_stage(self)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return {}
+        descriptors: dict[str, Descriptor] = {
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)]
+            ),
+        }
+        for ax in self.axis:
+            key = make_key(self.prefix, self.name, rf"step_size\{ax}")
+            if self.limits is not None and ax in self.limits:
+                low, high = self.limits[ax]
+                descriptors[key] = make_descriptor(
+                    "settings", "number", low=low, high=high
+                )
+            else:
+                descriptors[key] = make_descriptor("settings", "number")
+        return descriptors
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return {}
+        timestamp = time.time()
+        config: dict[str, Reading[Any]] = {
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "axis"): make_reading(
+                self.axis, timestamp
+            ),
+        }
+        for ax, step in self.step_sizes.items():
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(
+                step, timestamp
+            )
+        return config
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -153,7 +191,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         }
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]
     """Simulated light source using the microscope library.
 
@@ -174,6 +212,11 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     binary: bool = field(
         default=False,
         validator=validators.instance_of(bool),
@@ -250,10 +293,41 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return {}
+        return {
+            make_key(self.prefix, self.name, "wavelength"): make_descriptor(
+                "settings", "integer", units="nm"
+            ),
+            make_key(self.prefix, self.name, "binary"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
+                "settings", "array", shape=[2]
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_descriptor(
+                "settings", "integer"
+            ),
+        }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return {}
+        timestamp = time.time()
+        return {
+            make_key(self.prefix, self.name, "wavelength"): make_reading(
+                self.wavelength, timestamp
+            ),
+            make_key(self.prefix, self.name, "binary"): make_reading(
+                self.binary, timestamp
+            ),
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "intensity_range"): make_reading(
+                list(self.intensity_range), timestamp
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_reading(
+                self.step_size, timestamp
+            ),
+        }
 
     def trigger(self) -> Status:
         s = Status()
@@ -286,7 +360,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         return s
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
     """Simulated camera model implementing DetectorProtocol.
 
@@ -299,6 +373,11 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     sensor_shape: tuple[int, int] = field(
         default=(512, 512),
         converter=utils.convert_shape,
@@ -325,28 +404,26 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe the detector configuration."""
         config: dict[str, Descriptor] = {}
-        settings = self.get_all_settings()
-        for setting_name in settings:
-            config[f"{self.name}:{setting_name}"] = {
-                "source": "settings",
-                "dtype": "string",
-                "shape": [],
-            }
+        for setting_name in self.get_all_settings():
+            config[make_key(self.prefix, self.name, setting_name)] = make_descriptor(
+                "settings", "string"
+            )
+        config[make_key(self.prefix, self.name, "sensor_shape")] = make_descriptor(
+            "settings", "array", shape=[2]
+        )
         return config
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read the detector configuration."""
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {}
-
-        # Add current camera settings to configuration
-        settings = self.get_all_settings()
-        for setting_name, setting_value in settings.items():
-            config[f"{self.name}:{setting_name}"] = {
-                "value": setting_value,
-                "timestamp": timestamp,
-            }
-
+        for setting_name, setting_value in self.get_all_settings().items():
+            config[make_key(self.prefix, self.name, setting_name)] = make_reading(
+                setting_value, timestamp
+            )
+        config[make_key(self.prefix, self.name, "sensor_shape")] = make_reading(
+            list(self.sensor_shape), timestamp
+        )
         return config
 
     def set(self, value: Any, **kwargs: Any) -> Status:

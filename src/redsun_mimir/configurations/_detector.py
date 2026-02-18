@@ -3,26 +3,26 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
-
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import DetectorController
-from redsun_mimir.view import DetectorWidget
+from redsun.containers import component
+from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "mock_detector_configuration.yaml"
 
 
-class _DetectorApp(AppContainer, config=_CONFIG):
-    camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
-    ctrl: DetectorController = component(layer="presenter", from_config="ctrl")
-    widget: DetectorWidget = component(layer="view", from_config="widget")
-
-
 def detector_widget() -> None:
-    """Run a local mock example.
+    """Run a local mock detector example.
 
-    Launches a Qt ``DetectorWidget`` app
-    with a mock device configuration.
+    Launches a Qt ``DetectorView`` app with an MMCore camera device.
     """
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import DetectorPresenter
+    from redsun_mimir.view import DetectorView
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _DetectorApp().run()
+
+    class DetectorApp(QtAppContainer, config=_CONFIG):
+        camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
+        ctrl = component(DetectorPresenter, layer="presenter", from_config="ctrl")
+        widget = component(DetectorView, layer="view", from_config="widget")
+
+    DetectorApp().run()

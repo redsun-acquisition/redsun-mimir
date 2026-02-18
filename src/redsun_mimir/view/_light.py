@@ -17,51 +17,52 @@ if TYPE_CHECKING:
 _T = TypeVar("_T")
 
 
-def _get_value(
+def _get_prop(
     readings: dict[str, Reading[Any]],
-    key: str,
+    prop: str,
     default: _T,
 ) -> _T:
-    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry.
+    r"""Find a reading value by property name suffix.
+
+    Searches all keys whose last ``\``-delimited segment matches *prop*,
+    making the lookup independent of the ``prefix:name`` portion
+    of the canonical ``prefix:name\property`` key.
 
     Parameters
     ----------
-    readings : ``dict[str, Reading[Any]]``
-        A mapping of key → Reading produced by ``read_configuration()``.
-    key : ``str``
-        The key to look up.
-    default : ``_T``
-        The value returned when *key* is absent.
-
-    Returns
-    -------
-    ``_T``
-        The ``value`` field of the Reading, or *default*.
+    readings :
+        Inner per-device reading dict (values from ``read_configuration()``).
+    prop :
+        Property name to match (e.g. ``"binary"``, ``"wavelength"``).
+    default :
+        Returned when no matching key is found.
     """
-    entry = readings.get(key)
-    if entry is None:
-        return default
-    return cast("_T", entry["value"])
+    for key, reading in readings.items():
+        tail = key.rsplit("\\", 1)[-1]
+        if tail == prop:
+            return cast("_T", reading["value"])
+    return default
 
 
-class LightWidget(QtView, Loggable):
-    """Light source widget for Redsun Mimir.
+class LightView(QtView, Loggable):
+    """View for light source toggle and intensity control.
+
+    Builds one control group per light device using configuration
+    provided by [`LightPresenter`][redsun_mimir.presenter.LightPresenter].
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    virtual_bus :
         Virtual bus for the session.
 
     Attributes
     ----------
-    sigToggleLightRequest : ``Signal[str]``
-        Signal emitted when the user toggles a light source on or off.
-        - ``str``: light source name
-    sigIntensityRequest : ``Signal[str, object]``
-        Signal emitted when the user changes the intensity of a light source.
-        - ``str``: light source name
-        - ``object``: new intensity value
-
+    sigToggleLightRequest :
+        Emitted when the user toggles a light source on or off.
+        Carries the light source name (`str`).
+    sigIntensityRequest :
+        Emitted when the user adjusts a light source intensity.
+        Carries the light source name (`str`) and the new intensity value.
     """
 
     sigToggleLightRequest = Signal(str)
@@ -96,7 +97,7 @@ class LightWidget(QtView, Loggable):
         """Inject light configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by ``LightController.register_providers``.
+        (metadata) registered by [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
         """
         configuration: dict[str, dict[str, Reading[Any]]] = (
             container.light_configuration()
@@ -124,13 +125,13 @@ class LightWidget(QtView, Loggable):
         self._description = description
 
         for name, readings in configuration.items():
-            wavelength: int = _get_value(readings, f"{name}:wavelength", 0)
-            binary: bool = _get_value(readings, f"{name}:binary", False)
-            egu: str = _get_value(readings, f"{name}:egu", "")
-            intensity_range: list[int | float] = _get_value(
-                readings, f"{name}:intensity_range", [0, 100]
+            wavelength: int = _get_prop(readings, "wavelength", 0)
+            binary: bool = _get_prop(readings, "binary", False)
+            egu: str = _get_prop(readings, "egu", "")
+            intensity_range: list[int | float] = _get_prop(
+                readings, "intensity_range", [0, 100]
             )
-            step_size: int | float = _get_value(readings, f"{name}:step_size", 1)
+            step_size: int | float = _get_prop(readings, "step_size", 1)
 
             self._groups[name] = QtWidgets.QGroupBox(f"{name} ({wavelength} nm)")
             self._groups[name].setAlignment(
@@ -181,9 +182,10 @@ class LightWidget(QtView, Loggable):
 
         self.setLayout(self.main_layout)
 
+        self.virtual_bus.register_signals(self)
+
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
 
     def _on_toggle_button_checked(self, name: str) -> None:
         """Toggle the light source."""

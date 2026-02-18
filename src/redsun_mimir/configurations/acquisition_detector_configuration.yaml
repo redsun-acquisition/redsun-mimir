@@ -24,7 +24,7 @@ presenters:
   acq_ctrl:
     timeout: 5.0
     callbacks:
-      - DetectorController
+      - DetectorPresenter
       - MedianPresenter
 
 views:

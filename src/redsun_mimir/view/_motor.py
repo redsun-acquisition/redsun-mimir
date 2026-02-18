@@ -42,26 +42,75 @@ def _get_value(
     return cast("_T", entry["value"])
 
 
-class MotorWidget(QtView):
-    """Motor widget for Redsun Mimir.
+def _get_prop(
+    readings: dict[str, Reading[Any]],
+    prop: str,
+    default: _T,
+) -> _T:
+    """Find a reading value by property name suffix.
+
+    Searches all keys whose last backslash-delimited segment matches
+    *prop*. This makes the lookup independent of the ``prefix:name``
+    portion of the canonical key.
 
     Parameters
     ----------
-    virtual_bus : ``VirtualBus``
+    readings :
+        Inner per-device reading dict (values from ``read_configuration()``).
+    prop :
+        Property name to match (e.g. ``"egu"``, ``"axis"``).
+    default :
+        Returned when no matching key is found.
+    """
+    for key, reading in readings.items():
+        # canonical format: prefix:name\property  (backslash separator)
+        tail = key.rsplit("\\", 1)[-1]
+        if tail == prop:
+            return cast("_T", reading["value"])
+    return default
+
+
+def _get_prop_with_suffix(
+    readings: dict[str, Reading[Any]],
+    prop_prefix: str,
+    suffix: str,
+    default: _T,
+) -> _T:
+    r"""Find a reading value by a nested property name.
+
+    Matches keys whose property segment (after the last ``\``) equals
+    ``{prop_prefix}\{suffix}`` — e.g. ``prop_prefix="step_size"``,
+    ``suffix="X"`` matches ``MOCK:stage\step_size\X``.
+    """
+    target = rf"{prop_prefix}\{suffix}"
+    for key, reading in readings.items():
+        # drop the prefix:name head; keep everything after the first backslash
+        remainder = key.split("\\", 1)[-1] if "\\" in key else key
+        if remainder == target:
+            return cast("_T", reading["value"])
+    return default
+
+
+class MotorView(QtView):
+    """View for manual motor stage control.
+
+    Builds one control group per motor device using configuration
+    provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
+
+    Parameters
+    ----------
+    virtual_bus :
         Virtual bus for the session.
 
     Attributes
     ----------
-    sigMotorMove : ``Signal[str, str, float]``
-        Signal emitted when a stage is moved.
-        - ``str``: motor name
-        - ``str``: motor axis
-        - ``float``: stage new position
-    sigConfigChanged : ``Signal[str, dict[str, Any]]``
-        Signal emitted when a configuration value is changed.
-        - ``str``: motor name
-        - ``dict[str, Any]``: mapping of configuration parameters to new values
-
+    sigMotorMove :
+        Emitted when the user requests a stage movement.
+        Carries motor name (`str`), axis (`str`), and target position (`float`).
+    sigConfigChanged :
+        Emitted when the user changes a configuration parameter.
+        Carries motor name (`str`) and a mapping of parameter names
+        to new values (`dict[str, Any]`).
     """
 
     sigMotorMove = Signal(str, str, float)
@@ -97,7 +146,7 @@ class MotorWidget(QtView):
         """Inject motor configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by ``MotorController.register_providers``.
+        (metadata) registered by [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
         """
         configuration: dict[str, dict[str, Reading[Any]]] = (
             container.motor_configuration()
@@ -125,8 +174,8 @@ class MotorWidget(QtView):
         self._configuration = configuration
 
         for name, readings in configuration.items():
-            egu: str = _get_value(readings, f"{name}:egu", "")
-            axis: list[str] = _get_value(readings, f"{name}:axis", [])
+            egu: str = _get_prop(readings, "egu", "")
+            axis: list[str] = _get_prop(readings, "axis", [])
 
             self._groups[name] = QtWidgets.QGroupBox(name)
             self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
@@ -135,8 +184,8 @@ class MotorWidget(QtView):
 
             for i, ax in enumerate(axis):
                 suffix = f"{name}:{ax}"
-                initial_step: float = _get_value(
-                    readings, f"{name}:step_size:{ax}", 1.0
+                initial_step: float = _get_prop_with_suffix(
+                    readings, "step_size", ax, 1.0
                 )
 
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
@@ -176,10 +225,11 @@ class MotorWidget(QtView):
 
         self.setLayout(self.main_layout)
 
+        self.virtual_bus.register_signals(self)
+
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
+        self.virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
 
@@ -217,7 +267,7 @@ class MotorWidget(QtView):
             New position of the motor.
         """
         motor_readings = self._configuration.get(motor, {})
-        egu: str = _get_value(motor_readings, f"{motor}:egu", "")
+        egu: str = _get_prop(motor_readings, "egu", "")
         new_pos = f"{position:.2f} {egu}"
         self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 

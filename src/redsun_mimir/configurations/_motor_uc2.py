@@ -3,27 +3,27 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
-
-from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
-from redsun_mimir.presenter import MotorController
-from redsun_mimir.view import MotorWidget
+from redsun.containers import component
+from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
 
 
-class _MotorUC2App(AppContainer, config=_CONFIG):
-    serial: MimirSerialDevice = component(layer="device", from_config="serial")
-    stage: MimirMotorDevice = component(layer="device", from_config="stage")
-    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
-    widget: MotorWidget = component(layer="view", from_config="widget")
-
-
 def stage_widget_uc2() -> None:
-    """Run a local UC2 example.
+    """Run a UC2 motor example.
 
-    Launches a Qt ``MotorWidget`` app
-    with a UC2 device configuration.
+    Launches a Qt ``MotorView`` app with UC2 serial and motor devices.
     """
+    from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
+    from redsun_mimir.presenter import MotorPresenter
+    from redsun_mimir.view import MotorView
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _MotorUC2App().run()
+
+    class MotorUC2App(QtAppContainer, config=_CONFIG):
+        serial = component(MimirSerialDevice, layer="device", from_config="serial")
+        motor = component(MimirMotorDevice, layer="device", from_config="motor")
+        ctrl = component(MotorPresenter, layer="presenter", from_config="ctrl")
+        widget = component(MotorView, layer="view", from_config="widget")
+
+    MotorUC2App().run()

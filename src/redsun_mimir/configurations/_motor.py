@@ -3,26 +3,26 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
-
-from redsun_mimir.device import MockMotorDevice
-from redsun_mimir.presenter import MotorController
-from redsun_mimir.view import MotorWidget
+from redsun.containers import component
+from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "mock_motor_configuration.yaml"
 
 
-class _MotorApp(AppContainer, config=_CONFIG):
-    motor: MockMotorDevice = component(layer="device", from_config="motor")
-    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
-    widget: MotorWidget = component(layer="view", from_config="widget")
-
-
 def stage_widget() -> None:
-    """Run a local mock example.
+    """Run a local mock motor example.
 
-    Launches a Qt ``MotorWidget`` app
-    with a mock device configuration.
+    Launches a Qt ``MotorView`` app with a mock motor device.
     """
+    from redsun_mimir.device import MockMotorDevice
+    from redsun_mimir.presenter import MotorPresenter
+    from redsun_mimir.view import MotorView
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
-    _MotorApp().run()
+
+    class MotorApp(QtAppContainer, config=_CONFIG):
+        motor = component(MockMotorDevice, layer="device", from_config="motor")
+        ctrl = component(MotorPresenter, layer="presenter", from_config="ctrl")
+        widget = component(MotorView, layer="view", from_config="widget")
+
+    MotorApp().run()

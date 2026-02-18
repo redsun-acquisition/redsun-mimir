@@ -11,6 +11,11 @@ from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.utils.descriptors import (
+    make_descriptor,
+    make_key,
+    make_reading,
+)
 
 if TYPE_CHECKING:
     from typing import Any
@@ -18,11 +23,16 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MockLightDevice(Device, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
     name: str
+    prefix: str = field(
+        default="MOCK",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     binary: bool = field(
         default=False,
         validator=validators.instance_of(bool),
@@ -116,71 +126,40 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read the current configuration of the light source.
-
-        Returns a dictionary with the current values of the light source
-        static configuration: wavelength, binary mode, EGU,
-        intensity range and step size.
-
-        Returns
-        -------
-        ``dict[str, Reading[Any]]``
-            Dictionary with the current configuration values.
-        """
         timestamp = time.time()
         return {
-            f"{self.name}:wavelength": {
-                "value": self.wavelength,
-                "timestamp": timestamp,
-            },
-            f"{self.name}:binary": {"value": self.binary, "timestamp": timestamp},
-            f"{self.name}:egu": {"value": self.egu, "timestamp": timestamp},
-            f"{self.name}:intensity_range": {
-                "value": list(self.intensity_range),
-                "timestamp": timestamp,
-            },
-            f"{self.name}:step_size": {"value": self.step_size, "timestamp": timestamp},
+            make_key(self.prefix, self.name, "wavelength"): make_reading(
+                self.wavelength, timestamp
+            ),
+            make_key(self.prefix, self.name, "binary"): make_reading(
+                self.binary, timestamp
+            ),
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "intensity_range"): make_reading(
+                list(self.intensity_range), timestamp
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_reading(
+                self.step_size, timestamp
+            ),
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe the static configuration of the light source.
-
-        Returns a dictionary with the metadata of the light source
-        configuration: wavelength, binary mode, EGU,
-        intensity range and step size.
-
-        Returns
-        -------
-        ``dict[str, Descriptor]``
-            Dictionary with the configuration metadata.
-        """
         return {
-            f"{self.name}:wavelength": {
-                "source": self.name,
-                "dtype": "integer",
-                "shape": [],
-                "units": "nm",
-            },
-            f"{self.name}:binary": {
-                "source": self.name,
-                "dtype": "boolean",
-                "shape": [],
-            },
-            f"{self.name}:egu": {
-                "source": self.name,
-                "dtype": "string",
-                "shape": [],
-            },
-            f"{self.name}:intensity_range": {
-                "source": self.name,
-                "dtype": "array",
-                "shape": [2],
-            },
-            f"{self.name}:step_size": {
-                "source": self.name,
-                "dtype": "integer",
-                "shape": [],
-            },
+            make_key(self.prefix, self.name, "wavelength"): make_descriptor(
+                "settings", "integer", units="nm"
+            ),
+            make_key(self.prefix, self.name, "binary"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
+                "settings", "array", shape=[2]
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_descriptor(
+                "settings", "integer"
+            ),
         }
 
     def shutdown(self) -> None: ...
@@ -193,11 +172,16 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         return s
 
 
-@define(kw_only=True, init=False)
+@define(kw_only=True, init=False, eq=False)
 class MockMotorDevice(Device, MotorProtocol, Loggable):
     """Mock stage model for testing purposes."""
 
     name: str
+    prefix: str = field(
+        default="MOCK",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     egu: str = field(
         default="mm",
         validator=validators.instance_of(str),
@@ -316,64 +300,37 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         return self._positions[self._active_axis]
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read the current configuration of the motor device.
-
-        Returns a dictionary with the current step sizes for each axis
-        and the EGU.
-
-        Returns
-        -------
-        ``dict[str, Reading[Any]]``
-            Dictionary with the current configuration values.
-        """
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {
-            f"{self.name}:egu": {"value": self.egu, "timestamp": timestamp},
-            f"{self.name}:axis": {"value": self.axis, "timestamp": timestamp},
+            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.prefix, self.name, "axis"): make_reading(
+                self.axis, timestamp
+            ),
         }
         for ax, step in self.step_sizes.items():
-            config[f"{self.name}:step_size:{ax}"] = {
-                "value": step,
-                "timestamp": timestamp,
-            }
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(
+                step, timestamp
+            )
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe the static configuration of the motor device.
-
-        Returns a dictionary with the metadata of the motor configuration:
-        EGU, axis names and per-axis step sizes (with optional limit hints).
-
-        Returns
-        -------
-        ``dict[str, Descriptor]``
-            Dictionary with the configuration metadata.
-        """
         descriptors: dict[str, Descriptor] = {
-            f"{self.name}:egu": {
-                "source": self.name,
-                "dtype": "string",
-                "shape": [],
-            },
-            f"{self.name}:axis": {
-                "source": self.name,
-                "dtype": "array",
-                "shape": [len(self.axis)],
-            },
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)]
+            ),
         }
         for ax in self.axis:
-            key = f"{self.name}:step_size:{ax}"
-            descriptor: Descriptor = {
-                "source": self.name,
-                "dtype": "number",
-                "shape": [],
-            }
+            key = make_key(self.prefix, self.name, rf"step_size\{ax}")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
-                descriptor["limits"] = {
-                    "control": {"low": low, "high": high},
-                }
-            descriptors[key] = descriptor
+                descriptors[key] = make_descriptor(
+                    "settings", "number", low=low, high=high
+                )
+            else:
+                descriptors[key] = make_descriptor("settings", "number")
         return descriptors
 
     def shutdown(self) -> None: ...
