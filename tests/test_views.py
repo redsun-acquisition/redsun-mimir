@@ -53,76 +53,76 @@ class TestMotorView:
     ) -> None:
         """inject_dependencies() populates group boxes, labels, and buttons."""
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        assert "stage" in widget._groups
-        assert "pos:stage:X" in widget._labels
-        assert "pos:stage:Y" in widget._labels
-        assert "button:stage:X:up" in widget._buttons
-        assert "button:stage:X:down" in widget._buttons
+        assert "MOCK:stage" in widget._groups
+        assert "pos:MOCK:stage:X" in widget._labels
+        assert "pos:MOCK:stage:Y" in widget._labels
+        assert "button:MOCK:stage:X:up" in widget._buttons
+        assert "button:MOCK:stage:X:down" in widget._buttons
 
     def test_step_size_initialised_from_device(
         self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Step size line edits are seeded from device step_sizes."""
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        assert widget._line_edits["edit:stage:X"].text() == "1.0"
-        assert widget._line_edits["edit:stage:Y"].text() == "0.5"
+        assert widget._line_edits["edit:MOCK:stage:X"].text() == "1.0"
+        assert widget._line_edits["edit:MOCK:stage:Y"].text() == "0.5"
 
     def test_update_position_changes_label(
         self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """_update_position() refreshes the position label text."""
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        widget._update_position("stage", "X", 7.5)
-        assert "7.50" in widget._labels["pos:stage:X"].text()
+        widget._update_position("MOCK:stage", "X", 7.5)
+        assert "7.50" in widget._labels["pos:MOCK:stage:X"].text()
 
     def test_step_up_emits_signal(
         self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Clicking the '+' button emits sigMotorMove with position + step."""
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("stage", "X", direction_up=True)
+        widget._step("MOCK:stage", "X", direction_up=True)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", pytest.approx(1.0))
+        assert received[0] == ("MOCK:stage", "X", pytest.approx(1.0))
 
     def test_step_down_emits_signal(
         self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
         """Clicking the '-' button emits sigMotorMove with position - step."""
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("stage", "X", direction_up=False)
+        widget._step("MOCK:stage", "X", direction_up=False)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", pytest.approx(-1.0))
+        assert received[0] == ("MOCK:stage", "X", pytest.approx(-1.0))
 
     def test_connect_to_virtual_registers_signals(
         self, widget: MotorView, motor: MockMotorDevice, virtual_bus: VirtualBus
@@ -131,8 +131,8 @@ class TestMotorView:
         from redsun_mimir.presenter._motor import MotorPresenter
 
         container = _make_container(
-            motor_configuration={"stage": motor.read_configuration()},
-            motor_description={"stage": motor.describe_configuration()},
+            motor_configuration=motor.read_configuration(),
+            motor_description=motor.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
@@ -177,62 +177,62 @@ class TestLightView:
     def test_inject_binary_light(self, widget: LightView, led: MockLightDevice) -> None:
         """Binary device gets only an ON/OFF button, no slider."""
         container = _make_container(
-            light_configuration={"led": led.read_configuration()},
-            light_description={"led": led.describe_configuration()},
+            light_configuration=led.read_configuration(),
+            light_description=led.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        assert "led" in widget._groups
-        assert "on:led" in widget._buttons
-        assert "power:led" not in widget._sliders
+        assert "MOCK:led" in widget._groups
+        assert "on:MOCK:led" in widget._buttons
+        assert "power:MOCK:led" not in widget._sliders
 
     def test_inject_continuous_light(
         self, widget: LightView, laser: MockLightDevice
     ) -> None:
         """Continuous device gets both a button and an intensity slider."""
         container = _make_container(
-            light_configuration={"laser": laser.read_configuration()},
-            light_description={"laser": laser.describe_configuration()},
+            light_configuration=laser.read_configuration(),
+            light_description=laser.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        assert "laser" in widget._groups
-        assert "on:laser" in widget._buttons
-        assert "power:laser" in widget._sliders
+        assert "MOCK:laser" in widget._groups
+        assert "on:MOCK:laser" in widget._buttons
+        assert "power:MOCK:laser" in widget._sliders
 
     def test_toggle_button_emits_signal(
         self, widget: LightView, led: MockLightDevice
     ) -> None:
         """Clicking the ON button emits sigToggleLightRequest with the device name."""
         container = _make_container(
-            light_configuration={"led": led.read_configuration()},
-            light_description={"led": led.describe_configuration()},
+            light_configuration=led.read_configuration(),
+            light_description=led.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
         received: list[str] = []
         widget.sigToggleLightRequest.connect(received.append)
 
-        widget._on_toggle_button_checked("led")
-        assert received == ["led"]
+        widget._on_toggle_button_checked("MOCK:led")
+        assert received == ["MOCK:led"]
 
     def test_toggle_button_text_changes(
         self, widget: LightView, led: MockLightDevice
     ) -> None:
         """Toggle button label switches between ON and OFF."""
         container = _make_container(
-            light_configuration={"led": led.read_configuration()},
-            light_description={"led": led.describe_configuration()},
+            light_configuration=led.read_configuration(),
+            light_description=led.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
-        btn = widget._buttons["on:led"]
+        btn = widget._buttons["on:MOCK:led"]
         assert btn.text() == "ON"
         btn.setChecked(True)
-        widget._on_toggle_button_checked("led")
+        widget._on_toggle_button_checked("MOCK:led")
         assert btn.text() == "OFF"
         btn.setChecked(False)
-        widget._on_toggle_button_checked("led")
+        widget._on_toggle_button_checked("MOCK:led")
         assert btn.text() == "ON"
 
     def test_slider_change_emits_signal(
@@ -240,17 +240,17 @@ class TestLightView:
     ) -> None:
         """Moving the intensity slider emits sigIntensityRequest."""
         container = _make_container(
-            light_configuration={"laser": laser.read_configuration()},
-            light_description={"laser": laser.describe_configuration()},
+            light_configuration=laser.read_configuration(),
+            light_description=laser.describe_configuration(),
         )
         widget.inject_dependencies(container)
 
         received: list[tuple[str, Any]] = []
         widget.sigIntensityRequest.connect(lambda n, v: received.append((n, v)))
 
-        widget._on_slider_changed(50, "laser")
+        widget._on_slider_changed(50, "MOCK:laser")
         assert len(received) == 1
-        assert received[0][0] == "laser"
+        assert received[0][0] == "MOCK:laser"
         assert received[0][1] == 50
 
     def test_connect_to_virtual_registers_signals(
@@ -258,8 +258,8 @@ class TestLightView:
     ) -> None:
         """connect_to_virtual() registers the widget's signals on the bus."""
         container = _make_container(
-            light_configuration={"led": led.read_configuration()},
-            light_description={"led": led.describe_configuration()},
+            light_configuration=led.read_configuration(),
+            light_description=led.describe_configuration(),
         )
         widget.inject_dependencies(container)
         widget.connect_to_virtual()

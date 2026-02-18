@@ -100,6 +100,7 @@ def make_descriptor(
     low: float | None = ...,
     high: float | None = ...,
     units: str | None = ...,
+    readonly: bool = ...,
 ) -> Descriptor: ...
 @overload
 def make_descriptor(
@@ -109,6 +110,7 @@ def make_descriptor(
     low: int | None = ...,
     high: int | None = ...,
     units: str | None = ...,
+    readonly: bool = ...,
 ) -> Descriptor: ...
 @overload
 def make_descriptor(
@@ -117,6 +119,7 @@ def make_descriptor(
     *,
     choices: list[str] | None = ...,
     units: str | None = ...,
+    readonly: bool = ...,
 ) -> Descriptor: ...
 @overload
 def make_descriptor(
@@ -125,6 +128,7 @@ def make_descriptor(
     *,
     shape: list[int | None] = ...,
     units: str | None = ...,
+    readonly: bool = ...,
 ) -> Descriptor: ...
 def make_descriptor(
     source: str,
@@ -135,6 +139,7 @@ def make_descriptor(
     units: str | None = None,
     choices: list[str] | None = None,
     shape: list[int | None] | None = None,
+    readonly: bool = False,
 ) -> Descriptor:
     r"""Build a bluesky-compatible descriptor entry.
 
@@ -162,11 +167,27 @@ def make_descriptor(
     shape : list[int | None] | None
         Array dimensions. Required for ``"array"``.
         A `None` entry indicates a variable dimension (e.g. ``[None, 3]`` for an Nx3 array).
+    readonly : bool
+        When ``True``, the ``source`` field is suffixed with ``"/readonly"``
+        (e.g. ``"settings/readonly"``).  The settings tree view recognises
+        this convention and disables in-place editing for the field.
+        Default is ``False``.
 
     Returns
     -------
     Descriptor
         The constructed descriptor dictionary.
+
+    Notes
+    -----
+    **Read-only fields**: pass ``readonly=True`` to mark a field as
+    non-editable in the settings tree.  Internally, the ``source`` string
+    is stored as ``"{source}/readonly"``; the
+    :class:`~redsun_mimir.utils.qt.DescriptorModel` splits on ``"/"`` to
+    detect the flag::
+
+        make_descriptor("settings", "string", readonly=True)
+        # → {"source": "settings/readonly", "dtype": "string", "shape": []}
 
     Examples
     --------
@@ -189,8 +210,13 @@ def make_descriptor(
     Fixed-shape array::
 
         make_descriptor("settings", "array", shape=[2])
+
+    Read-only field::
+
+        make_descriptor("settings", "string", readonly=True)
     """
-    d: Descriptor = {"source": source, "dtype": dtype, "shape": []}
+    source_field = f"{source}/readonly" if readonly else source
+    d: Descriptor = {"source": source_field, "dtype": dtype, "shape": []}
     if units is not None:
         d["units"] = units
 

@@ -9,6 +9,8 @@ from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
+from redsun_mimir.utils.descriptors import parse_key
+
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from dependency_injector.containers import DynamicContainer
@@ -36,6 +38,7 @@ def _get_prop(
         Property name to match (e.g. ``"binary"``, ``"wavelength"``).
     default :
         Returned when no matching key is found.
+    r
     """
     for key, reading in readings.items():
         tail = key.rsplit("\\", 1)[-1]
@@ -59,14 +62,16 @@ class LightView(QtView, Loggable):
     ----------
     sigToggleLightRequest :
         Emitted when the user toggles a light source on or off.
-        Carries the light source name (`str`).
+        Carries the light source device label (``str``, ``prefix:name``).
     sigIntensityRequest :
         Emitted when the user adjusts a light source intensity.
-        Carries the light source name (`str`) and the new intensity value.
+        Carries the light source device label (``str``) and the new
+        intensity value.
+    r
     """
 
     sigToggleLightRequest = Signal(str)
-    sigIntensityRequest = Signal(str, object)  # name, intensity
+    sigIntensityRequest = Signal(str, object)  # device_label, intensity
 
     position = ViewPositionTypes.CENTER
 
@@ -78,8 +83,8 @@ class LightView(QtView, Loggable):
     ) -> None:
         super().__init__(virtual_bus, **kwargs)
 
-        self._configuration: dict[str, dict[str, Reading[Any]]] = {}
-        self._description: dict[str, dict[str, Descriptor]] = {}
+        self._configuration: dict[str, Reading[Any]] = {}
+        self._description: dict[str, Descriptor] = {}
         self.setWindowTitle("Light sources")
 
         self.main_layout = QtWidgets.QVBoxLayout()
@@ -89,42 +94,52 @@ class LightView(QtView, Loggable):
         self._sliders: dict[str, QLabeledDoubleSlider | QLabeledSlider] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
 
-        # Regular expression for a valid floating-point number
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
-        """Inject light configuration from the DI container and build the UI.
+        r"""Inject light configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
+        (metadata) registered by
+        [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
+        Both are flat dicts keyed by the canonical ``prefix:name\\property``
+        scheme, merging all light devices.
         """
-        configuration: dict[str, dict[str, Reading[Any]]] = (
-            container.light_configuration()
-        )
-        description: dict[str, dict[str, Descriptor]] = container.light_description()
+        configuration: dict[str, Reading[Any]] = container.light_configuration()
+        description: dict[str, Descriptor] = container.light_description()
         self.setup_ui(configuration, description)
 
     def setup_ui(
         self,
-        configuration: dict[str, dict[str, Reading[Any]]],
-        description: dict[str, dict[str, Descriptor]],
+        configuration: dict[str, Reading[Any]],
+        description: dict[str, Descriptor],
     ) -> None:
-        """Build the UI from configuration readings and descriptors.
+        r"""Build the UI from configuration readings and descriptors.
 
         Parameters
         ----------
-        configuration : ``dict[str, dict[str, Reading[Any]]]``
-            Mapping of light names to their current configuration readings.
-            Each inner dict maps ``"<light>:<key>"`` strings to Reading dicts.
-        description : ``dict[str, dict[str, Descriptor]]``
-            Mapping of light names to their configuration descriptors.
-            Each inner dict maps ``"<light>:<key>"`` strings to Descriptor dicts.
+        configuration : ``dict[str, Reading[Any]]``
+            Flat mapping of canonical ``prefix:name\property`` keys to readings,
+            merging all light devices.
+        description : ``dict[str, Descriptor]``
+            Flat mapping of canonical ``prefix:name\property`` keys to
+            descriptors, merging all light devices.
         """
         self._configuration = configuration
         self._description = description
 
-        for name, readings in configuration.items():
+        # Group flat keys by device label (prefix:name)
+        devices: dict[str, dict[str, Reading[Any]]] = {}
+        for key, reading in configuration.items():
+            try:
+                prefix, name, _ = parse_key(key)
+            except ValueError:
+                continue
+            label = f"{prefix}:{name}"
+            devices.setdefault(label, {})[key] = reading
+
+        for device_label, readings in devices.items():
             wavelength: int = _get_prop(readings, "wavelength", 0)
             binary: bool = _get_prop(readings, "binary", False)
             egu: str = _get_prop(readings, "egu", "")
@@ -133,18 +148,20 @@ class LightView(QtView, Loggable):
             )
             step_size: int | float = _get_prop(readings, "step_size", 1)
 
-            self._groups[name] = QtWidgets.QGroupBox(f"{name} ({wavelength} nm)")
-            self._groups[name].setAlignment(
+            self._groups[device_label] = QtWidgets.QGroupBox(
+                f"{device_label} ({wavelength} nm)"
+            )
+            self._groups[device_label].setAlignment(
                 QtCore.Qt.AlignmentFlag.AlignHCenter
                 | QtCore.Qt.AlignmentFlag.AlignRight
             )
 
             layout = QtWidgets.QGridLayout()
 
-            self._buttons[f"on:{name}"] = QtWidgets.QPushButton("ON")
-            self._buttons[f"on:{name}"].setCheckable(True)
-            self._buttons[f"on:{name}"].clicked.connect(
-                lambda _, name=name: self._on_toggle_button_checked(name)
+            self._buttons[f"on:{device_label}"] = QtWidgets.QPushButton("ON")
+            self._buttons[f"on:{device_label}"].setCheckable(True)
+            self._buttons[f"on:{device_label}"].clicked.connect(
+                lambda _, lbl=device_label: self._on_toggle_button_checked(lbl)
             )
 
             if not binary:
@@ -154,48 +171,50 @@ class LightView(QtView, Loggable):
                 elif all(isinstance(i, float) for i in intensity_range):
                     slider = QLabeledDoubleSlider()
                 else:
-                    # should never happen
                     raise TypeError(
                         "Intensity range must be either all integers or all floats."
                     )
-                self._sliders[f"power:{name}"] = slider
-                self._sliders[f"power:{name}"].setOrientation(
+                self._sliders[f"power:{device_label}"] = slider
+                self._sliders[f"power:{device_label}"].setOrientation(
                     QtCore.Qt.Orientation.Horizontal
                 )
-                self._sliders[f"power:{name}"].setRange(*intensity_range)
-                self._sliders[f"power:{name}"].setSingleStep(int(step_size))
-                self._sliders[f"power:{name}"].valueChanged.connect(
-                    lambda value, name=name: self._on_slider_changed(value, name)
+                self._sliders[f"power:{device_label}"].setRange(*intensity_range)
+                self._sliders[f"power:{device_label}"].setSingleStep(int(step_size))
+                self._sliders[f"power:{device_label}"].valueChanged.connect(
+                    lambda value, lbl=device_label: self._on_slider_changed(value, lbl)
                 )
-                self._sliders[f"power:{name}"]._label.setAlignment(
+                self._sliders[f"power:{device_label}"]._label.setAlignment(
                     QtCore.Qt.AlignmentFlag.AlignHCenter
                 )
-                self._labels[f"egu:{name}"] = QtWidgets.QLabel(egu)
-                layout.addWidget(self._buttons[f"on:{name}"], 0, 0)
-                layout.addWidget(self._sliders[f"power:{name}"], 0, 1, 1, 3)
-                layout.addWidget(self._labels[f"egu:{name}"], 0, 4)
+                self._labels[f"egu:{device_label}"] = QtWidgets.QLabel(egu)
+                layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0)
+                layout.addWidget(
+                    self._sliders[f"power:{device_label}"], 0, 1, 1, 3
+                )
+                layout.addWidget(self._labels[f"egu:{device_label}"], 0, 4)
             else:
-                layout.addWidget(self._buttons[f"on:{name}"], 0, 0, 1, 4)
+                layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0, 1, 4)
 
-            self._groups[name].setLayout(layout)
-            self.main_layout.addWidget(self._groups[name])
+            self._groups[device_label].setLayout(layout)
+            self.main_layout.addWidget(self._groups[device_label])
 
         self.setLayout(self.main_layout)
-
         self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
 
-    def _on_toggle_button_checked(self, name: str) -> None:
+    def _on_toggle_button_checked(self, device_label: str) -> None:
         """Toggle the light source."""
-        self.sigToggleLightRequest.emit(name)
-        if self._buttons[f"on:{name}"].isChecked():
-            self._buttons[f"on:{name}"].setText("OFF")
+        self.sigToggleLightRequest.emit(device_label)
+        if self._buttons[f"on:{device_label}"].isChecked():
+            self._buttons[f"on:{device_label}"].setText("OFF")
         else:
-            self._buttons[f"on:{name}"].setText("ON")
+            self._buttons[f"on:{device_label}"].setText("ON")
 
-    def _on_slider_changed(self, value: int | float, name: str) -> None:
+    def _on_slider_changed(self, value: int | float, device_label: str) -> None:
         """Change the intensity of the light source."""
-        self.logger.debug(f"Change intensity of light source {name} to {value:.2f}")
-        self.sigIntensityRequest.emit(name, value)
+        self.logger.debug(
+            f"Change intensity of light source {device_label} to {value:.2f}"
+        )
+        self.sigIntensityRequest.emit(device_label, value)

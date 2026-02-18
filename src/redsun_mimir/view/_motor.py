@@ -7,39 +7,14 @@ from redsun.config import ViewPositionTypes
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
+from redsun_mimir.utils.descriptors import parse_key
+
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
 
 _T = TypeVar("_T")
-
-
-def _get_value(
-    readings: dict[str, Reading[Any]],
-    key: str,
-    default: _T,
-) -> _T:
-    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry.
-
-    Parameters
-    ----------
-    readings : ``dict[str, Reading[Any]]``
-        A mapping of key → Reading produced by ``read_configuration()``.
-    key : ``str``
-        The key to look up.
-    default : ``_T``
-        The value returned when *key* is absent.
-
-    Returns
-    -------
-    ``_T``
-        The ``value`` field of the Reading, or *default*.
-    """
-    entry = readings.get(key)
-    if entry is None:
-        return default
-    return cast("_T", entry["value"])
 
 
 def _get_prop(
@@ -56,7 +31,7 @@ def _get_prop(
     Parameters
     ----------
     readings :
-        Inner per-device reading dict (values from ``read_configuration()``).
+        Flat reading dict (values from ``read_configuration()``).
     prop :
         Property name to match (e.g. ``"egu"``, ``"axis"``).
     default :
@@ -70,29 +45,8 @@ def _get_prop(
     return default
 
 
-def _get_prop_with_suffix(
-    readings: dict[str, Reading[Any]],
-    prop_prefix: str,
-    suffix: str,
-    default: _T,
-) -> _T:
-    r"""Find a reading value by a nested property name.
-
-    Matches keys whose property segment (after the last ``\``) equals
-    ``{prop_prefix}\{suffix}`` — e.g. ``prop_prefix="step_size"``,
-    ``suffix="X"`` matches ``MOCK:stage\step_size\X``.
-    """
-    target = rf"{prop_prefix}\{suffix}"
-    for key, reading in readings.items():
-        # drop the prefix:name head; keep everything after the first backslash
-        remainder = key.split("\\", 1)[-1] if "\\" in key else key
-        if remainder == target:
-            return cast("_T", reading["value"])
-    return default
-
-
 class MotorView(QtView):
-    """View for manual motor stage control.
+    r"""View for manual motor stage control.
 
     Builds one control group per motor device using configuration
     provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
@@ -106,11 +60,14 @@ class MotorView(QtView):
     ----------
     sigMotorMove :
         Emitted when the user requests a stage movement.
-        Carries motor name (`str`), axis (`str`), and target position (`float`).
+        Carries motor name (``str``), axis (``str``), and target position
+        (``float``).
     sigConfigChanged :
         Emitted when the user changes a configuration parameter.
-        Carries motor name (`str`) and a mapping of parameter names
-        to new values (`dict[str, Any]`).
+        Carries device label (``str``, ``prefix:name``) and a mapping of
+        canonical ``prefix:name\property`` keys to new values
+        (``dict[str, Any]``).
+    r
     """
 
     sigMotorMove = Signal(str, str, float)
@@ -125,8 +82,11 @@ class MotorView(QtView):
         **kwargs: Any,
     ) -> None:
         super().__init__(virtual_bus, **kwargs)
-        self._description: dict[str, dict[str, Descriptor]] = {}
-        self._configuration: dict[str, dict[str, Reading[Any]]] = {}
+        # Flat canonical-keyed dicts for the full config
+        self._configuration: dict[str, Reading[Any]] = {}
+        self._description: dict[str, Descriptor] = {}
+        # Per-device-label grouped readings for fast _update_position lookups
+        self._device_readings: dict[str, dict[str, Reading[Any]]] = {}
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
@@ -134,7 +94,6 @@ class MotorView(QtView):
 
         self.main_layout = QtWidgets.QVBoxLayout()
 
-        # Regular expression for a valid floating-point number
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
@@ -143,50 +102,63 @@ class MotorView(QtView):
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
     def inject_dependencies(self, container: DynamicContainer) -> None:
-        """Inject motor configuration from the DI container and build the UI.
+        r"""Inject motor configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
+        (metadata) registered by
+        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
+        Both are flat dicts keyed by the canonical ``prefix:name\\property``
+        scheme, merging all motor devices.
         """
-        configuration: dict[str, dict[str, Reading[Any]]] = (
-            container.motor_configuration()
-        )
-        description: dict[str, dict[str, Descriptor]] = container.motor_description()
+        configuration: dict[str, Reading[Any]] = container.motor_configuration()
+        description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
 
     def setup_ui(
         self,
-        configuration: dict[str, dict[str, Reading[Any]]],
-        description: dict[str, dict[str, Descriptor]],
+        configuration: dict[str, Reading[Any]],
+        description: dict[str, Descriptor],
     ) -> None:
-        """Build the UI from configuration readings and descriptors.
+        r"""Build the UI from configuration readings and descriptors.
 
         Parameters
         ----------
-        configuration : ``dict[str, dict[str, Reading[Any]]]``
-            Mapping of motor names to their current configuration readings.
-            Each inner dict maps ``"<motor>:<key>"`` strings to Reading dicts.
-        description : ``dict[str, dict[str, Descriptor]]``
-            Mapping of motor names to their configuration descriptors.
-            Each inner dict maps ``"<motor>:<key>"`` strings to Descriptor dicts.
+        configuration : ``dict[str, Reading[Any]]``
+            Flat mapping of canonical ``prefix:name\property`` keys to readings,
+            merging all motor devices.
+        description : ``dict[str, Descriptor]``
+            Flat mapping of canonical ``prefix:name\property`` keys to
+            descriptors, merging all motor devices.
         """
-        self._description = description
         self._configuration = configuration
+        self._description = description
 
-        for name, readings in configuration.items():
+        # Group flat keys by device label (prefix:name)
+        devices: dict[str, dict[str, Reading[Any]]] = {}
+        for key, reading in configuration.items():
+            try:
+                prefix, name, _ = parse_key(key)
+            except ValueError:
+                continue
+            label = f"{prefix}:{name}"
+            devices.setdefault(label, {})[key] = reading
+
+        self._device_readings = devices
+
+        for device_label, readings in devices.items():
             egu: str = _get_prop(readings, "egu", "")
             axis: list[str] = _get_prop(readings, "axis", [])
 
-            self._groups[name] = QtWidgets.QGroupBox(name)
-            self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+            self._groups[device_label] = QtWidgets.QGroupBox(device_label)
+            self._groups[device_label].setAlignment(
+                QtCore.Qt.AlignmentFlag.AlignHCenter
+            )
 
             layout = QtWidgets.QGridLayout()
 
             for i, ax in enumerate(axis):
-                suffix = f"{name}:{ax}"
-                initial_step: float = _get_prop_with_suffix(
-                    readings, "step_size", ax, 1.0
-                )
+                suffix = f"{device_label}:{ax}"
+                initial_step: float = _get_prop(readings, f"{ax}_step_size", 1.0)
 
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
                 self._labels["label:" + suffix].setTextFormat(
@@ -194,7 +166,9 @@ class MotorView(QtView):
                 )
                 self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {egu}")
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
-                self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
+                self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton(
+                    "-"
+                )
                 self._labels["step:" + suffix] = QtWidgets.QLabel("Step size: ")
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
                     str(initial_step)
@@ -211,20 +185,19 @@ class MotorView(QtView):
                 layout.addWidget(self._line_edits["edit:" + suffix], i, 6)
 
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
-                    lambda _, name=name, axis=ax: self._step(name, axis, True)
+                    lambda _, lbl=device_label, a=ax: self._step(lbl, a, True)
                 )
                 self._buttons["button:" + suffix + ":down"].clicked.connect(
-                    lambda _, name=name, axis=ax: self._step(name, axis, False)
+                    lambda _, lbl=device_label, a=ax: self._step(lbl, a, False)
                 )
                 self._line_edits["edit:" + suffix].editingFinished.connect(
-                    lambda name=name, axis=ax: self._validate_and_notify(name, axis)
+                    lambda lbl=device_label, a=ax: self._validate_and_notify(lbl, a)
                 )
 
-            self._groups[name].setLayout(layout)
-            self.main_layout.addWidget(self._groups[name])
+            self._groups[device_label].setLayout(layout)
+            self.main_layout.addWidget(self._groups[device_label])
 
         self.setLayout(self.main_layout)
-
         self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
@@ -239,11 +212,11 @@ class MotorView(QtView):
         Parameters
         ----------
         motor : ``str``
-            Motor name.
+            Motor device label (``prefix:name``).
         axis : ``str``
             Motor axis.
         direction_up : ``bool``
-            If `True`, increase motor's position.
+            If ``True``, increase motor's position.
         """
         current_position = float(
             self._labels["pos:" + motor + ":" + axis].text().split()[0]
@@ -260,39 +233,59 @@ class MotorView(QtView):
         Parameters
         ----------
         motor : ``str``
-            Motor name.
+            Motor device label (``prefix:name``).
         axis : ``str``
             Motor axis.
         position : ``float``
             New position of the motor.
         """
-        motor_readings = self._configuration.get(motor, {})
-        egu: str = _get_prop(motor_readings, "egu", "")
-        new_pos = f"{position:.2f} {egu}"
-        self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
+        dev_readings = self._device_readings.get(motor, {})
+        egu: str = _get_prop(dev_readings, "egu", "")
+        self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
 
-    def _validate_and_notify(self, name: str, axis: str) -> None:
-        """Validate the new step size value and notify the virtual bus when input is accepted.
+    def _validate_and_notify(self, device_label: str, axis: str) -> None:
+        r"""Validate the new step size value and notify the virtual bus.
+
+        Emits ``sigConfigChanged`` with the device label and a mapping of
+        canonical ``prefix:name\property`` keys to new values, so the
+        presenter can route them directly to the device's ``set()`` call.
 
         Parameters
         ----------
-        name : ``str``
-            Motor name.
+        device_label : ``str``
+            Motor device label (``prefix:name``).
         axis : ``str``
             Motor axis.
-
         """
-        text = self._line_edits["edit:" + name + ":" + axis].text()
+        text = self._line_edits["edit:" + device_label + ":" + axis].text()
         state = self.validator.validate(text, 0)[0]
         if state == QtGui.QRegularExpressionValidator.State.Invalid:
-            # set red border if input is invalid
-            self._line_edits["edit:" + name + ":" + axis].setStyleSheet(
+            self._line_edits["edit:" + device_label + ":" + axis].setStyleSheet(
                 "border: 2px solid red;"
             )
         else:
-            # expression is valid
-            self._line_edits["edit:" + name + ":" + axis].setStyleSheet("")
+            self._line_edits["edit:" + device_label + ":" + axis].setStyleSheet("")
 
-        # only notify the virtual bus if the input is valid
         if state == QtGui.QRegularExpressionValidator.State.Acceptable:
-            self.sigConfigChanged.emit(name, {"axis": axis, "step_size": float(text)})
+            # Resolve canonical keys from the flat config dict
+            axis_key = next(
+                (
+                    k
+                    for k in self._configuration
+                    if k.startswith(device_label) and k.rsplit("\\", 1)[-1] == "axis"
+                ),
+                f"{device_label}\\axis",
+            )
+            step_key = next(
+                (
+                    k
+                    for k in self._configuration
+                    if k.startswith(device_label)
+                    and k.rsplit("\\", 1)[-1] == f"{axis}_step_size"
+                ),
+                f"{device_label}\\{axis}_step_size",
+            )
+            self.sigConfigChanged.emit(
+                device_label,
+                {axis_key: axis, step_key: float(text)},
+            )
