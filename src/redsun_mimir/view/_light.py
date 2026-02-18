@@ -17,31 +17,31 @@ if TYPE_CHECKING:
 _T = TypeVar("_T")
 
 
-def _get_value(
+def _get_prop(
     readings: dict[str, Reading[Any]],
-    key: str,
+    prop: str,
     default: _T,
 ) -> _T:
-    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry.
+    """Find a reading value by property name suffix.
+
+    Searches all keys whose last backslash-delimited segment matches
+    *prop*, making the lookup independent of the ``prefix:name`` portion
+    of the canonical ``prefix:name\\property`` key.
 
     Parameters
     ----------
-    readings : ``dict[str, Reading[Any]]``
-        A mapping of key → Reading produced by ``read_configuration()``.
-    key : ``str``
-        The key to look up.
-    default : ``_T``
-        The value returned when *key* is absent.
-
-    Returns
-    -------
-    ``_T``
-        The ``value`` field of the Reading, or *default*.
+    readings :
+        Inner per-device reading dict (values from ``read_configuration()``).
+    prop :
+        Property name to match (e.g. ``"binary"``, ``"wavelength"``).
+    default :
+        Returned when no matching key is found.
     """
-    entry = readings.get(key)
-    if entry is None:
-        return default
-    return cast("_T", entry["value"])
+    for key, reading in readings.items():
+        tail = key.rsplit("\\", 1)[-1]
+        if tail == prop:
+            return cast("_T", reading["value"])
+    return default
 
 
 class LightView(QtView, Loggable):
@@ -125,13 +125,13 @@ class LightView(QtView, Loggable):
         self._description = description
 
         for name, readings in configuration.items():
-            wavelength: int = _get_value(readings, f"{name}:wavelength", 0)
-            binary: bool = _get_value(readings, f"{name}:binary", False)
-            egu: str = _get_value(readings, f"{name}:egu", "")
-            intensity_range: list[int | float] = _get_value(
-                readings, f"{name}:intensity_range", [0, 100]
+            wavelength: int = _get_prop(readings, "wavelength", 0)
+            binary: bool = _get_prop(readings, "binary", False)
+            egu: str = _get_prop(readings, "egu", "")
+            intensity_range: list[int | float] = _get_prop(
+                readings, "intensity_range", [0, 100]
             )
-            step_size: int | float = _get_value(readings, f"{name}:step_size", 1)
+            step_size: int | float = _get_prop(readings, "step_size", 1)
 
             self._groups[name] = QtWidgets.QGroupBox(f"{name} ({wavelength} nm)")
             self._groups[name].setAlignment(

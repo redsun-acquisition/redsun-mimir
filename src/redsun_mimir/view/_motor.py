@@ -42,6 +42,53 @@ def _get_value(
     return cast("_T", entry["value"])
 
 
+def _get_prop(
+    readings: dict[str, Reading[Any]],
+    prop: str,
+    default: _T,
+) -> _T:
+    """Find a reading value by property name suffix.
+
+    Searches all keys whose last backslash-delimited segment matches
+    *prop*. This makes the lookup independent of the ``prefix:name``
+    portion of the canonical key.
+
+    Parameters
+    ----------
+    readings :
+        Inner per-device reading dict (values from ``read_configuration()``).
+    prop :
+        Property name to match (e.g. ``"egu"``, ``"axis"``).
+    default :
+        Returned when no matching key is found.
+    """
+    for key, reading in readings.items():
+        # canonical format: prefix:name\property  (backslash separator)
+        tail = key.rsplit("\\", 1)[-1]
+        if tail == prop:
+            return cast("_T", reading["value"])
+    return default
+
+
+def _get_prop_with_suffix(
+    readings: dict[str, Reading[Any]],
+    prop_prefix: str,
+    suffix: str,
+    default: _T,
+) -> _T:
+    """Find a reading value whose property segment starts with *prop_prefix*
+    and ends with *suffix* (e.g. ``prop_prefix="step_size"`` + ``suffix="X"``).
+    """
+    target = f"{prop_prefix}\\{suffix}"
+    for key, reading in readings.items():
+        tail = key.rsplit("\\", 1)[-1]
+        # handle nested: step_size\X  →  tail after first split would be "step_size\X"
+        remainder = key.split("\\", 1)[-1] if "\\" in key else key
+        if remainder.endswith(target) or remainder == target:
+            return cast("_T", reading["value"])
+    return default
+
+
 class MotorView(QtView):
     """View for manual motor stage control.
 
@@ -125,8 +172,8 @@ class MotorView(QtView):
         self._configuration = configuration
 
         for name, readings in configuration.items():
-            egu: str = _get_value(readings, f"{name}:egu", "")
-            axis: list[str] = _get_value(readings, f"{name}:axis", [])
+            egu: str = _get_prop(readings, "egu", "")
+            axis: list[str] = _get_prop(readings, "axis", [])
 
             self._groups[name] = QtWidgets.QGroupBox(name)
             self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
@@ -135,8 +182,8 @@ class MotorView(QtView):
 
             for i, ax in enumerate(axis):
                 suffix = f"{name}:{ax}"
-                initial_step: float = _get_value(
-                    readings, f"{name}:step_size:{ax}", 1.0
+                initial_step: float = _get_prop_with_suffix(
+                    readings, "step_size", ax, 1.0
                 )
 
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
@@ -218,7 +265,7 @@ class MotorView(QtView):
             New position of the motor.
         """
         motor_readings = self._configuration.get(motor, {})
-        egu: str = _get_value(motor_readings, f"{motor}:egu", "")
+        egu: str = _get_prop(motor_readings, "egu", "")
         new_pos = f"{position:.2f} {egu}"
         self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 

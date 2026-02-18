@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import pytest
@@ -18,12 +17,6 @@ from redsun_mimir.view._motor import MotorView
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="session")
-def qapp() -> QApplication:
-    """Session-scoped QApplication (offscreen)."""
-    return QApplication.instance() or QApplication(sys.argv)
 
 
 def _make_container(**objects: Any) -> DynamicContainer:
