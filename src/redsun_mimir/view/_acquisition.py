@@ -242,6 +242,8 @@ class AcquisitionView(QtView, Loggable):
         self.setLayout(self.root_layout)
         self.plans_actions_buttons: dict[str, dict[str, ActionButton]] = {}
 
+        self.virtual_bus.register_signals(self)
+
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject plan specs from the DI container and build the UI."""
         specs: set[PlanSpec] = container.plan_specs()
@@ -372,8 +374,6 @@ class AcquisitionView(QtView, Loggable):
             )
 
         self.stack_widget.setCurrentIndex(0)
-
-        self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
