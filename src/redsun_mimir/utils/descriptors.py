@@ -38,12 +38,6 @@ __all__ = [
     "parse_key",
     "make_descriptor",
     "make_reading",
-    # kept for backwards compatibility
-    "make_number_descriptor",
-    "make_integer_descriptor",
-    "make_string_descriptor",
-    "make_enum_descriptor",
-    "make_array_descriptor",
 ]
 
 # ---------------------------------------------------------------------------
@@ -228,73 +222,6 @@ def make_descriptor(
         d["shape"] = shape
 
     return d  # type: ignore[return-value]
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatible thin wrappers
-# ---------------------------------------------------------------------------
-
-
-def make_number_descriptor(
-    source: str,
-    *,
-    low: float | None = None,
-    high: float | None = None,
-    units: str | None = None,
-) -> Descriptor:
-    """Build a floating-point number descriptor.
-
-    .. deprecated::
-        Use :func:`make_descriptor` with ``dtype="number"`` instead.
-    """
-    return make_descriptor(source, "number", low=low, high=high, units=units)
-
-
-def make_integer_descriptor(
-    source: str,
-    *,
-    low: int | None = None,
-    high: int | None = None,
-    units: str | None = None,
-) -> Descriptor:
-    """Build an integer descriptor.
-
-    .. deprecated::
-        Use :func:`make_descriptor` with ``dtype="integer"`` instead.
-    """
-    return make_descriptor(source, "integer", low=low, high=high, units=units)
-
-
-def make_string_descriptor(source: str) -> Descriptor:
-    """Build a free-text string descriptor.
-
-    .. deprecated::
-        Use :func:`make_descriptor` with ``dtype="string"`` instead.
-    """
-    return make_descriptor(source, "string")
-
-
-def make_enum_descriptor(source: str, choices: list[str]) -> Descriptor:
-    """Build an enumerated string descriptor.
-
-    .. deprecated::
-        Use :func:`make_descriptor` with ``dtype="string"`` and ``choices=`` instead.
-    """
-    return make_descriptor(source, "string", choices=choices)
-
-
-def make_array_descriptor(source: str, shape: list[int]) -> Descriptor:
-    """Build an array descriptor (read-only in the tree view).
-
-    .. deprecated::
-        Use :func:`make_descriptor` with ``dtype="array"`` instead.
-    """
-    return make_descriptor(source, "array", shape=shape)
-
-
-# ---------------------------------------------------------------------------
-# Reading factory
-# ---------------------------------------------------------------------------
 
 
 def make_reading(value: Any, timestamp: float) -> Reading[Any]:
