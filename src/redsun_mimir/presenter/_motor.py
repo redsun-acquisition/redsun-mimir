@@ -87,29 +87,37 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         self.virtual_bus.register_signals(self)
         self.logger.info("Initialized")
 
-    def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
-        """Get the current configuration readings of all motor devices.
+    def models_configuration(self) -> dict[str, Reading[Any]]:
+        r"""Get the current configuration readings of all motor devices.
+
+        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        scheme, merging all motors together (matching the detector pattern).
 
         Returns
         -------
-        dict[str, dict[str, Reading[Any]]]
-            Mapping of motor names to their current configuration readings.
+        dict[str, Reading[Any]]
+            Flat mapping of canonical keys to their current readings.
         """
-        return {
-            name: motor.read_configuration() for name, motor in self._motors.items()
-        }
+        result: dict[str, Reading[Any]] = {}
+        for motor in self._motors.values():
+            result.update(motor.read_configuration())
+        return result
 
-    def models_description(self) -> dict[str, dict[str, Descriptor]]:
-        """Get the configuration descriptors of all motor devices.
+    def models_description(self) -> dict[str, Descriptor]:
+        r"""Get the configuration descriptors of all motor devices.
+
+        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        scheme, merging all motors together (matching the detector pattern).
 
         Returns
         -------
-        dict[str, dict[str, Descriptor]]
-            Mapping of motor names to their configuration descriptors.
+        dict[str, Descriptor]
+            Flat mapping of canonical keys to their descriptors.
         """
-        return {
-            name: motor.describe_configuration() for name, motor in self._motors.items()
-        }
+        result: dict[str, Descriptor] = {}
+        for motor in self._motors.values():
+            result.update(motor.describe_configuration())
+        return result
 
     def move(self, motor: str, axis: str, position: float) -> None:
         """Move a motor to a given position.
@@ -143,7 +151,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         success_map: dict[str, bool] = {}
         for key, value in config.items():
             self.logger.debug(f"Configuring {key} of {motor} to {value}")
-            s = self._motors[motor].set(value, prop=key)
+            s = self._motors[motor].set(value, propr=key)
             try:
                 s.wait(self._timeout)
             except Exception as e:

@@ -79,7 +79,7 @@ class TestMockMotorDevice:
         assert cfg["MOCK:stage\\egu"]["value"] == "um"
         assert cfg["MOCK:stage\\axis"]["value"] == ["X", "Y", "Z"]
         for ax in ["X", "Y", "Z"]:
-            key = f"MOCK:stage\\step_size\\{ax}"
+            key = f"MOCK:stage\\{ax}_step_size"
             assert key in cfg
             assert cfg[key]["value"] == 1.0
 

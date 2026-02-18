@@ -15,6 +15,7 @@ from redsun_mimir.utils.descriptors import (
     make_descriptor,
     make_key,
     make_reading,
+    parse_key,
 )
 
 if TYPE_CHECKING:
@@ -146,16 +147,16 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def describe_configuration(self) -> dict[str, Descriptor]:
         return {
             make_key(self.prefix, self.name, "wavelength"): make_descriptor(
-                "settings", "integer", units="nm"
+                "settings", "integer", units="nm", readonly=True
             ),
             make_key(self.prefix, self.name, "binary"): make_descriptor(
-                "settings", "string"
+                "settings", "string", readonly=True
             ),
             make_key(self.prefix, self.name, "egu"): make_descriptor(
-                "settings", "string"
+                "settings", "string", readonly=True
             ),
             make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
-                "settings", "array", shape=[2]
+                "settings", "array", shape=[2], readonly=True
             ),
             make_key(self.prefix, self.name, "step_size"): make_descriptor(
                 "settings", "integer"
@@ -230,10 +231,10 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
 
         self._descriptors: dict[str, Descriptor] = {
             make_key(self.prefix, self.name, "egu"): make_descriptor(
-                "settings", "string"
+                "settings", "string", readonly=True
             ),
             make_key(self.prefix, self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)]
+                "settings", "array", shape=[len(self.axis)], readonly=True
             ),
         }
         for ax in self.axis:
@@ -250,18 +251,22 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
-        """Set something in the mock model.
+        r"""Set something in the mock model.
 
         Either set the motor position or update a configuration value.
-        When setting a configuration value, the keyword argument `prop`
-        must be provided.
+        When setting a configuration value, the keyword argument ``propr``
+        must be provided as a canonical ``prefix:name\property`` key.
+        For backwards compatibility, a bare name via ``prop`` is also accepted.
+
         Accepted updatable properties:
 
         - ``axis``: motor axis.
-        - ``step_size``: step size for the motor current axis.
+        - ``step_size``: step size for the currently active axis (bare form).
+        - ``{ax}_step_size``: step size for a specific axis (e.g. ``"X_step_size"``).
 
-        i.e. `set(10)` will set the motor position to 10,
-        `set("Y", prop="axis")` will update the axis to "Y".
+        i.e. ``set(10)`` will set the motor position to 10,
+        ``set("Y", propr="MOCK:stage\\axis")`` will update the axis to "Y",
+        ``set(0.5, propr="MOCK:stage\\X_step_size")`` updates the X step size.
 
         Parameters
         ----------
@@ -282,19 +287,31 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         s = Status()
         s.add_callback(self._update_readback)
 
-        # TODO: this should be "propr" and not "prop";
-        # in general though this whole section should be moved
-        # to a separate, customized bluesky verb
-        propr = kwargs.get("prop", None) or kwargs.get("propr", None)
-        if propr is not None:
+        raw = kwargs.get("propr", None) or kwargs.get("prop", None)
+        if raw is not None:
+            # Accept either a canonical key ("prefix:name\\property") or a bare name
+            try:
+                _, _, propr = parse_key(str(raw))
+            except ValueError:
+                propr = str(raw)
             self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):
                 self._active_axis = value
                 s.set_finished()
                 return s
             elif propr == "step_size" and isinstance(value, int | float):
+                # bare "step_size" updates the currently active axis
                 self.step_sizes[self._active_axis] = value
                 s.set_finished()
+                return s
+            elif propr.endswith("_step_size") and isinstance(value, int | float):
+                # axis-qualified form: "{ax}_step_size" (e.g. "X_step_size")
+                ax = propr[: -len("_step_size")]
+                if ax in self.step_sizes:
+                    self.step_sizes[ax] = value
+                    s.set_finished()
+                    return s
+                s.set_exception(ValueError(f"Unknown axis in property: {propr}"))
                 return s
             else:
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
@@ -327,7 +344,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             ),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(
+            config[make_key(self.prefix, self.name, f"{ax}_step_size")] = make_reading(
                 step, timestamp
             )
         return config

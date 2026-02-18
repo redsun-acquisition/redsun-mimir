@@ -11,7 +11,7 @@ from sunflare.log import Loggable
 from sunflare.virtual import IsProvider, Signal, VirtualAware
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_models
+from redsun_mimir.utils import filter_models, parse_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -117,7 +117,7 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         )
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
-        """Configure a detector with confirmation feedback.
+        r"""Configure a detector with confirmation feedback.
 
         Update one or more configuration parameters of a detector.
 
@@ -129,14 +129,29 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         Parameters
         ----------
         detector : ``str``
-            Detector name.
+            Device label (``prefix:name``) as emitted by
+            :class:`~redsun_mimir.view.DetectorView`.
         config : ``dict[str, Any]``
-            Mapping of configuration parameters to new values.
+            Mapping of canonical ``prefix:name\\property`` keys to new values.
 
         """
+        # device_label is "prefix:name"; self.detectors is keyed by bare name
+        try:
+            _, bare_name, _ = parse_key(next(iter(config)))
+        except (StopIteration, ValueError):
+            # fall back to treating detector arg as the bare name directly
+            bare_name = detector
+
+        device = self.detectors.get(bare_name)
+        if device is None:
+            self.logger.error(
+                f"No detector found for label {detector!r} (bare name {bare_name!r})"
+            )
+            return
+
         for key, value in config.items():
             self.logger.debug(f"Configuring '{key}' of {detector} to {value}")
-            s = self.detectors[detector].set(value, propr=key)
+            s = device.set(value, propr=key)
             try:
                 s.wait(self._timeout)
                 success = s.success
@@ -147,7 +162,6 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
                     self.logger.error(
                         f"Failed to configure '{key}' of {detector}: {s.exception()}"
                     )
-                # Emit confirmation for each setting
                 self.sigConfigurationConfirmed.emit(detector, key, success)
 
             except Exception as e:
@@ -163,7 +177,11 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             The event document.
         """
         for key, value in doc["data"].items():
-            obj_name, data_key = key.split(":")
+            parts = key.split(":")
+            if len(parts) < 2:
+                continue
+            obj_name = parts[0]
+            data_key = parts[1]
             if data_key in self.hints:
                 self.packet.setdefault(obj_name, {})
                 self.packet[obj_name][data_key] = value

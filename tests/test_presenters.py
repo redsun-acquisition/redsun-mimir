@@ -58,7 +58,8 @@ class TestMotorPresenter:
         container = _make_di_container()
         controller.register_providers(container)
         assert hasattr(container, "motor_configuration")
-        assert "stage" in container.motor_configuration()
+        cfg = container.motor_configuration()
+        assert any("stage" in k for k in cfg)
 
     def test_move_updates_position(
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
@@ -82,8 +83,9 @@ class TestMotorPresenter:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        result = controller.configure("stage", {"step_size": 0.5})
-        assert result.get("step_size") is True
+        step_key = "MOCK:stage\\X_step_size"
+        result = controller.configure("stage", {step_key: 0.5})
+        assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
         assert len(received) == 1
 
@@ -126,7 +128,8 @@ class TestLightPresenter:
         container = _make_di_container()
         controller.register_providers(container)
         assert hasattr(container, "light_configuration")
-        assert "led" in container.light_configuration()
+        cfg = container.light_configuration()
+        assert any("led" in k for k in cfg)
 
     def test_trigger_toggles_led(
         self, controller: LightPresenter, mock_led: MockLightDevice

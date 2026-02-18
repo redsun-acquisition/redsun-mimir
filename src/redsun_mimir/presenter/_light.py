@@ -56,29 +56,37 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
 
         self.virtual_bus.register_signals(self)
 
-    def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
-        """Get the current configuration readings of all light devices.
+    def models_configuration(self) -> dict[str, Reading[Any]]:
+        r"""Get the current configuration readings of all light devices.
+
+        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        scheme, merging all lights together (matching the detector pattern).
 
         Returns
         -------
-        dict[str, dict[str, Reading[Any]]]
-            Mapping of light names to their current configuration readings.
+        dict[str, Reading[Any]]
+            Flat mapping of canonical keys to their current readings.
         """
-        return {
-            name: light.read_configuration() for name, light in self._lights.items()
-        }
+        result: dict[str, Reading[Any]] = {}
+        for light in self._lights.values():
+            result.update(light.read_configuration())
+        return result
 
-    def models_description(self) -> dict[str, dict[str, Descriptor]]:
-        """Get the configuration descriptors of all light devices.
+    def models_description(self) -> dict[str, Descriptor]:
+        r"""Get the configuration descriptors of all light devices.
+
+        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        scheme, merging all lights together (matching the detector pattern).
 
         Returns
         -------
-        dict[str, dict[str, Descriptor]]
-            Mapping of light names to their configuration descriptors.
+        dict[str, Descriptor]
+            Flat mapping of canonical keys to their descriptors.
         """
-        return {
-            name: light.describe_configuration() for name, light in self._lights.items()
-        }
+        result: dict[str, Descriptor] = {}
+        for light in self._lights.values():
+            result.update(light.describe_configuration())
+        return result
 
     def register_providers(self, container: DynamicContainer) -> None:
         """Register light model info as a provider in the DI container."""
