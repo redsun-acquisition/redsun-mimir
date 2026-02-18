@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
@@ -12,7 +12,7 @@ from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
-from redsun_mimir.device.descriptors import parse_key
+from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -21,27 +21,10 @@ from redsun_mimir.utils.napari import (
 from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from typing import Any
-
     import numpy.typing as npt
     from dependency_injector.containers import DynamicContainer
     from napari.layers import Image
     from sunflare.virtual import VirtualBus
-
-
-_T = TypeVar("_T")
-
-
-def _get_value(
-    readings: dict[str, Reading[Any]],
-    key: str,
-    default: _T,
-) -> _T:
-    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry."""
-    entry = readings.get(key)
-    if entry is None:
-        return default
-    return cast("_T", entry["value"])
 
 
 class SettingsControlWidget(QtWidgets.QWidget):

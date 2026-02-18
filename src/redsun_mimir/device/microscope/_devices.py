@@ -16,6 +16,13 @@ from sunflare.engine import Status
 from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
+from redsun_mimir.utils.descriptors import (
+    make_array_descriptor,
+    make_key,
+    make_number_descriptor,
+    make_reading,
+    make_string_descriptor,
+)
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
@@ -77,6 +84,11 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     egu: str = field(
         default="mm",
         validator=validators.instance_of(str),
@@ -175,6 +187,11 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     binary: bool = field(
         default=False,
         validator=validators.instance_of(bool),
@@ -301,6 +318,11 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
     """
 
     name: str
+    prefix: str = field(
+        default="SIM",
+        validator=validators.instance_of(str),
+        metadata={"description": "Device class prefix for key generation."},
+    )
     sensor_shape: tuple[int, int] = field(
         default=(512, 512),
         converter=utils.convert_shape,
@@ -328,37 +350,26 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe the detector configuration."""
         config: dict[str, Descriptor] = {}
-        settings = self.get_all_settings()
-        for setting_name in settings:
-            config[f"{self.name}:{setting_name}"] = {
-                "source": "settings",
-                "dtype": "string",
-                "shape": [],
-            }
-        config[f"{self.name}:sensor_shape"] = {
-            "source": "settings",
-            "dtype": "array",
-            "shape": [2],
-        }
+        for setting_name in self.get_all_settings():
+            config[make_key(self.prefix, self.name, setting_name)] = (
+                make_string_descriptor("settings")
+            )
+        config[make_key(self.prefix, self.name, "sensor_shape")] = (
+            make_array_descriptor("settings", shape=[2])
+        )
         return config
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         """Read the detector configuration."""
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {}
-
-        # Add current camera settings to configuration
-        settings = self.get_all_settings()
-        for setting_name, setting_value in settings.items():
-            config[f"{self.name}:{setting_name}"] = {
-                "value": setting_value,
-                "timestamp": timestamp,
-            }
-
-        config[f"{self.name}:sensor_shape"] = {
-            "value": list(self.sensor_shape),
-            "timestamp": timestamp,
-        }
+        for setting_name, setting_value in self.get_all_settings().items():
+            config[make_key(self.prefix, self.name, setting_name)] = make_reading(
+                setting_value, timestamp
+            )
+        config[make_key(self.prefix, self.name, "sensor_shape")] = make_reading(
+            list(self.sensor_shape), timestamp
+        )
         return config
 
     def set(self, value: Any, **kwargs: Any) -> Status:

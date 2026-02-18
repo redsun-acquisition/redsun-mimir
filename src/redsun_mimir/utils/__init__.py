@@ -4,7 +4,30 @@ from typing import Any, TypeVar, get_args, get_origin
 from sunflare.device import PDevice
 from typing_extensions import TypeIs
 
-__all__ = ["filter_models", "get_choice_list", "issequence"]
+from redsun_mimir.utils.descriptors import (
+    make_array_descriptor,
+    make_enum_descriptor,
+    make_integer_descriptor,
+    make_key,
+    make_number_descriptor,
+    make_reading,
+    make_string_descriptor,
+    parse_key,
+)
+
+__all__ = [
+    "filter_models",
+    "get_choice_list",
+    "issequence",
+    "make_key",
+    "parse_key",
+    "make_number_descriptor",
+    "make_integer_descriptor",
+    "make_string_descriptor",
+    "make_enum_descriptor",
+    "make_array_descriptor",
+    "make_reading",
+]
 
 P = TypeVar("P", bound=PDevice)
 
