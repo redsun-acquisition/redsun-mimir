@@ -188,9 +188,7 @@ class LightView(QtView, Loggable):
                 )
                 self._labels[f"egu:{device_label}"] = QtWidgets.QLabel(egu)
                 layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0)
-                layout.addWidget(
-                    self._sliders[f"power:{device_label}"], 0, 1, 1, 3
-                )
+                layout.addWidget(self._sliders[f"power:{device_label}"], 0, 1, 1, 3)
                 layout.addWidget(self._labels[f"egu:{device_label}"], 0, 4)
             else:
                 layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0, 1, 4)

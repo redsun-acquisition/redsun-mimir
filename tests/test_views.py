@@ -14,21 +14,12 @@ from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.view._light import LightView
 from redsun_mimir.view._motor import MotorView
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_container(**objects: Any) -> DynamicContainer:
     container = DynamicContainer()
     for name, value in objects.items():
         setattr(container, name, providers.Object(value))
     return container
-
-
-# ---------------------------------------------------------------------------
-# MotorView
-# ---------------------------------------------------------------------------
 
 
 class TestMotorView:
@@ -144,11 +135,6 @@ class TestMotorView:
 
         assert "MotorView" in virtual_bus.signals
         ctrl.shutdown()
-
-
-# ---------------------------------------------------------------------------
-# LightView
-# ---------------------------------------------------------------------------
 
 
 class TestLightView:

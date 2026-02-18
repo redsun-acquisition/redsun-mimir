@@ -7,10 +7,6 @@ import pytest
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
-# ---------------------------------------------------------------------------
-# MockMotorDevice
-# ---------------------------------------------------------------------------
-
 
 class TestMockMotorDevice:
     """Tests for MockMotorDevice."""
@@ -92,11 +88,6 @@ class TestMockMotorDevice:
         assert "MOCK:stage\\axis" in desc
         for ax in ["X", "Y", "Z"]:
             assert f"MOCK:stage\\{ax}_step_size" in desc
-
-
-# ---------------------------------------------------------------------------
-# MockLightDevice
-# ---------------------------------------------------------------------------
 
 
 class TestMockLightDevice:

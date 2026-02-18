@@ -15,10 +15,6 @@ from redsun_mimir.presenter._light import LightPresenter
 from redsun_mimir.presenter._median import MedianPresenter
 from redsun_mimir.presenter._motor import MotorPresenter
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_di_container(**objects: Any) -> DynamicContainer:
     """Build a minimal DynamicContainer seeded with Object providers."""
@@ -26,11 +22,6 @@ def _make_di_container(**objects: Any) -> DynamicContainer:
     for name, value in objects.items():
         setattr(container, name, providers.Object(value))
     return container
-
-
-# ---------------------------------------------------------------------------
-# MotorPresenter
-# ---------------------------------------------------------------------------
 
 
 class TestMotorPresenter:
