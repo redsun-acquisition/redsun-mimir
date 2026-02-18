@@ -12,7 +12,6 @@ from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
 from redsun_mimir.actions import Action
-from redsun_mimir.common import PlanSpec  # noqa: TC001
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
 if TYPE_CHECKING:
@@ -20,6 +19,8 @@ if TYPE_CHECKING:
 
     from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
+
+    from redsun_mimir.common import PlanSpec
 
 
 class ActionButton(QtW.QPushButton):
