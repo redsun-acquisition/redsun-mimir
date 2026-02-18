@@ -116,10 +116,72 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         }
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        return {}
+        """Read the current configuration of the light source.
+
+        Returns a dictionary with the current values of the light source
+        static configuration: wavelength, binary mode, EGU,
+        intensity range and step size.
+
+        Returns
+        -------
+        ``dict[str, Reading[Any]]``
+            Dictionary with the current configuration values.
+        """
+        timestamp = time.time()
+        return {
+            f"{self.name}:wavelength": {
+                "value": self.wavelength,
+                "timestamp": timestamp,
+            },
+            f"{self.name}:binary": {"value": self.binary, "timestamp": timestamp},
+            f"{self.name}:egu": {"value": self.egu, "timestamp": timestamp},
+            f"{self.name}:intensity_range": {
+                "value": list(self.intensity_range),
+                "timestamp": timestamp,
+            },
+            f"{self.name}:step_size": {"value": self.step_size, "timestamp": timestamp},
+        }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return {}
+        """Describe the static configuration of the light source.
+
+        Returns a dictionary with the metadata of the light source
+        configuration: wavelength, binary mode, EGU,
+        intensity range and step size.
+
+        Returns
+        -------
+        ``dict[str, Descriptor]``
+            Dictionary with the configuration metadata.
+        """
+        return {
+            f"{self.name}:wavelength": {
+                "source": self.name,
+                "dtype": "integer",
+                "shape": [],
+                "units": "nm",
+            },
+            f"{self.name}:binary": {
+                "source": self.name,
+                "dtype": "boolean",
+                "shape": [],
+            },
+            f"{self.name}:egu": {
+                "source": self.name,
+                "dtype": "string",
+                "shape": [],
+            },
+            f"{self.name}:intensity_range": {
+                "source": self.name,
+                "dtype": "array",
+                "shape": [2],
+            },
+            f"{self.name}:step_size": {
+                "source": self.name,
+                "dtype": "integer",
+                "shape": [],
+            },
+        }
 
     def shutdown(self) -> None: ...
 
@@ -254,12 +316,65 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         return self._positions[self._active_axis]
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read mock configuration."""
-        return {}
+        """Read the current configuration of the motor device.
+
+        Returns a dictionary with the current step sizes for each axis
+        and the EGU.
+
+        Returns
+        -------
+        ``dict[str, Reading[Any]]``
+            Dictionary with the current configuration values.
+        """
+        timestamp = time.time()
+        config: dict[str, Reading[Any]] = {
+            f"{self.name}:egu": {"value": self.egu, "timestamp": timestamp},
+            f"{self.name}:axis": {"value": self.axis, "timestamp": timestamp},
+        }
+        for ax, step in self.step_sizes.items():
+            config[f"{self.name}:step_size:{ax}"] = {
+                "value": step,
+                "timestamp": timestamp,
+            }
+        return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe mock configuration."""
-        return {}
+        """Describe the static configuration of the motor device.
+
+        Returns a dictionary with the metadata of the motor configuration:
+        EGU, axis names and per-axis step sizes (with optional limit hints).
+
+        Returns
+        -------
+        ``dict[str, Descriptor]``
+            Dictionary with the configuration metadata.
+        """
+        descriptors: dict[str, Descriptor] = {
+            f"{self.name}:egu": {
+                "source": self.name,
+                "dtype": "string",
+                "shape": [],
+            },
+            f"{self.name}:axis": {
+                "source": self.name,
+                "dtype": "array",
+                "shape": [len(self.axis)],
+            },
+        }
+        for ax in self.axis:
+            key = f"{self.name}:step_size:{ax}"
+            descriptor: Descriptor = {
+                "source": self.name,
+                "dtype": "number",
+                "shape": [],
+            }
+            if self.limits is not None and ax in self.limits:
+                low, high = self.limits[ax]
+                descriptor["limits"] = {
+                    "control": {"low": low, "high": high},
+                }
+            descriptors[key] = descriptor
+        return descriptors
 
     def shutdown(self) -> None: ...
 

@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-import in_n_out as ino
 from bluesky.protocols import Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
+from dependency_injector import providers
 from event_model import DocumentRouter
 from sunflare.log import Loggable
-from sunflare.virtual import Signal
+from sunflare.virtual import IsProvider, Signal, VirtualAware
 
 from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
@@ -18,17 +18,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Reading
+    from dependency_injector.containers import DynamicContainer
     from event_model import Event
     from sunflare.device import Device
     from sunflare.virtual import VirtualBus
 
 
-info_store = ino.Store.create("detector_info")
-config_store = ino.Store.create("detector_configuration")
-reading_store = ino.Store.create("detector_reading_description")
-
-
-class DetectorController(DocumentRouter, Loggable):
+class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
     """Controller for detector configuration.
 
     Parameters
@@ -76,14 +72,11 @@ class DetectorController(DocumentRouter, Loggable):
         super().__init__()
         self._timeout: float | None = kwargs.get("timeout", None)
         self.virtual_bus = virtual_bus
+        self.devices = devices
 
         self.detectors = filter_models(devices, DetectorProtocol)
 
         self.hints = ["buffer", "roi"]
-
-        info_store.register_provider(self.get_models_info)
-        config_store.register_provider(self.get_models_configuration)
-        reading_store.register_provider(self.get_models_description)
 
         # data stream name,
         # extracted from the incoming
@@ -92,21 +85,19 @@ class DetectorController(DocumentRouter, Loggable):
         self.current_stream = ""
         self.packet: dict[str, dict[str, Any]] = {}
 
-    def get_models_info(self) -> dict[str, DetectorProtocol]:
-        """Get the detector devices.
-
-        Returns
-        -------
-        dict[str, DetectorProtocol]
-            Mapping of detector names to detector device instances.
-        """
-        return dict(self.detectors)
-
-    def registration_phase(self) -> None:
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register detector info as providers in the DI container."""
+        container.detector_configuration = providers.Object(
+            self.get_models_configuration()
+        )
+        container.detector_descriptions = providers.Object(
+            self.get_models_description()
+        )
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
 
-    def connection_phase(self) -> None:
+    def connect_to_virtual(self) -> None:
+        """Connect to the virtual bus signals."""
         self.virtual_bus.signals["DetectorWidget"]["sigPropertyChanged"].connect(
             self.configure
         )

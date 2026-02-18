@@ -1,0 +1,29 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code_analysis:
+    name: Run Code Analysis
+    uses: ./.github/workflows/run-code-analysis.yaml
+    with:
+      ref: ${{ github.ref }}
+      event_name: ${{ github.event_name }}
+
+  tests:
+    name: Run Tests
+    uses: ./.github/workflows/run-tests.yaml
+    with:
+      ref: ${{ github.ref }}
+      event_name: ${{ github.event_name }}
+    secrets: inherit

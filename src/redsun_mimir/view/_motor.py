@@ -1,17 +1,45 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-import in_n_out as ino
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun.config import ViewPositionTypes
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
-from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
-
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
+    from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
+
+_T = TypeVar("_T")
+
+
+def _get_value(
+    readings: dict[str, Reading[Any]],
+    key: str,
+    default: _T,
+) -> _T:
+    """Safely extract the ``value`` field from a :class:`bluesky.protocols.Reading` entry.
+
+    Parameters
+    ----------
+    readings : ``dict[str, Reading[Any]]``
+        A mapping of key → Reading produced by ``read_configuration()``.
+    key : ``str``
+        The key to look up.
+    default : ``_T``
+        The value returned when *key* is absent.
+
+    Returns
+    -------
+    ``_T``
+        The ``value`` field of the Reading, or *default*.
+    """
+    entry = readings.get(key)
+    if entry is None:
+        return default
+    return cast("_T", entry["value"])
 
 
 class MotorWidget(QtView):
@@ -39,6 +67,8 @@ class MotorWidget(QtView):
     sigMotorMove = Signal(str, str, float)
     sigConfigChanged = Signal(str, dict[str, Any])
 
+    position = ViewPositionTypes.CENTER
+
     def __init__(
         self,
         virtual_bus: VirtualBus,
@@ -63,41 +93,67 @@ class MotorWidget(QtView):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-        self.store = ino.Store.get_store("MotorProtocol")
-        self.store.inject(self.setup_ui)()
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject motor configuration from the DI container and build the UI.
 
-    def setup_ui(self, motors_info: dict[str, MotorProtocol]) -> None:
-        self._motors_info = motors_info
+        Retrieves configuration readings (current values) and descriptors
+        (metadata) registered by ``MotorController.register_providers``.
+        """
+        configuration: dict[str, dict[str, Reading[Any]]] = (
+            container.motor_configuration()
+        )
+        description: dict[str, dict[str, Descriptor]] = container.motor_description()
+        self.setup_ui(configuration, description)
 
-        # setup the layout and connect the signals
-        for name, model_info in self._motors_info.items():
+    def setup_ui(
+        self,
+        configuration: dict[str, dict[str, Reading[Any]]],
+        description: dict[str, dict[str, Descriptor]],
+    ) -> None:
+        """Build the UI from configuration readings and descriptors.
+
+        Parameters
+        ----------
+        configuration : ``dict[str, dict[str, Reading[Any]]]``
+            Mapping of motor names to their current configuration readings.
+            Each inner dict maps ``"<motor>:<key>"`` strings to Reading dicts.
+        description : ``dict[str, dict[str, Descriptor]]``
+            Mapping of motor names to their configuration descriptors.
+            Each inner dict maps ``"<motor>:<key>"`` strings to Descriptor dicts.
+        """
+        self._description = description
+        self._configuration = configuration
+
+        for name, readings in configuration.items():
+            egu: str = _get_value(readings, f"{name}:egu", "")
+            axis: list[str] = _get_value(readings, f"{name}:axis", [])
+
             self._groups[name] = QtWidgets.QGroupBox(name)
             self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
 
-            # group layout
             layout = QtWidgets.QGridLayout()
 
-            for i, axis in enumerate(model_info.axis):
-                # create the views
-                suffix = f"{name}:{axis}"
-                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{axis}")
+            for i, ax in enumerate(axis):
+                suffix = f"{name}:{ax}"
+                initial_step: float = _get_value(
+                    readings, f"{name}:step_size:{ax}", 1.0
+                )
+
+                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
-                self._labels["pos:" + suffix] = QtWidgets.QLabel(
-                    f"{0:.2f} {model_info.egu}"
-                )
+                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {egu}")
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
                 self._labels["step:" + suffix] = QtWidgets.QLabel("Step size: ")
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
-                    str(model_info.step_sizes[axis])
+                    str(initial_step)
                 )
                 self._line_edits["edit:" + suffix].setAlignment(
                     QtCore.Qt.AlignmentFlag.AlignHCenter
                 )
 
-                # setup the layout
                 layout.addWidget(self._labels["label:" + suffix], i, 0)
                 layout.addWidget(self._labels["pos:" + suffix], i, 1)
                 layout.addWidget(self._buttons["button:" + suffix + ":up"], i, 2)
@@ -105,33 +161,24 @@ class MotorWidget(QtView):
                 layout.addWidget(self._labels["step:" + suffix], i, 5)
                 layout.addWidget(self._line_edits["edit:" + suffix], i, 6)
 
-                # connect the signals
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
-                    lambda _, name=name, axis=axis: self._step(name, axis, True)
+                    lambda _, name=name, axis=ax: self._step(name, axis, True)
                 )
                 self._buttons["button:" + suffix + ":down"].clicked.connect(
-                    lambda _, name=name, axis=axis: self._step(name, axis, False)
+                    lambda _, name=name, axis=ax: self._step(name, axis, False)
+                )
+                self._line_edits["edit:" + suffix].editingFinished.connect(
+                    lambda name=name, axis=ax: self._validate_and_notify(name, axis)
                 )
 
-                self._line_edits["edit:" + suffix].editingFinished.connect(
-                    lambda name=name, axis=axis: self._validate_and_notify(name, axis)
-                )
             self._groups[name].setLayout(layout)
             self.main_layout.addWidget(self._groups[name])
 
         self.setLayout(self.main_layout)
 
-    def registration_phase(self) -> None:
-        """Register your signals to the virtual bus."""
+    def connect_to_virtual(self) -> None:
+        """Register signals and connect to virtual bus."""
         self.virtual_bus.register_signals(self)
-
-    def connection_phase(self) -> None:
-        """Connect your signals to the virtual bus.
-
-        The presenter layer will be already built when this method is called.
-        We use it to directly build the GUI by retrieving a configuration of
-        the currently allocated motors to create the proper widget layout.
-        """
         self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )
@@ -158,7 +205,7 @@ class MotorWidget(QtView):
             self.sigMotorMove.emit(motor, axis, current_position - step_size)
 
     def _update_position(self, motor: str, axis: str, position: float) -> None:
-        """Update the motor position.
+        """Update the motor position label.
 
         Parameters
         ----------
@@ -169,7 +216,9 @@ class MotorWidget(QtView):
         position : ``float``
             New position of the motor.
         """
-        new_pos = f"{position:.2f} {self._motors_info[motor].egu}"
+        motor_readings = self._configuration.get(motor, {})
+        egu: str = _get_value(motor_readings, f"{motor}:egu", "")
+        new_pos = f"{position:.2f} {egu}"
         self._labels[f"pos:{motor}:{axis}"].setText(new_pos)
 
     def _validate_and_notify(self, name: str, axis: str) -> None:

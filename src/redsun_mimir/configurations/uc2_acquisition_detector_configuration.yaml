@@ -1,61 +1,31 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  iSCAT:
-    plugin_name: test
-    plugin_id: test
-    adapter: DahengGalaxy
-    device: DahengCamera
-    allowed_properties:
-      - PixelType
-    enum_map:
-      PixelType:
-        - Mono8
-        - Mono10
-    defaults:
-      PixelType: Mono10
-    numpy_dtype:
-      PixelType:
-        Mono8: uint8
-        Mono10: uint16
-    exposure_limits:
-      - 0.02
-      - 1000.0
-    sensor_shape: [1920, 1200]
-    pixel_size: [5.86, 5.86]
-  motor-mock:
-    plugin_name: test
-    plugin_id: test
-    egu: mm
+
+devices:
+  camera:
+    sensor_shape: [100, 100]
+  motor:
     axis:
       - X
       - Y
+      - Z
     step_sizes:
-      X: 0.1
-      Y: 0.1
-controllers:
-  AcquisitionController:
-    plugin_name: test
-    plugin_id: test
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
+
+presenters:
+  median_ctrl: {}
+  det_ctrl:
     timeout: 5.0
-  DetectorController:
-    plugin_name: test
-    plugin_id: test
+  acq_ctrl:
     timeout: 5.0
-  MedianPresenter:
-    plugin_name: test
-    plugin_id: test
+    callbacks:
+      - DetectorController
+      - MedianPresenter
+
 views:
-  AcquisitionWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
-  DetectorWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  acq_widget: {}
+  det_widget: {}

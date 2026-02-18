@@ -7,19 +7,20 @@ from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
 from sunflare.log import Loggable
 from sunflare.presenter import PPresenter
-from sunflare.virtual import Signal
+from sunflare.virtual import Signal, VirtualAware
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
     import numpy.typing as npt
+    from dependency_injector.containers import DynamicContainer
     from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.device import Device
     from sunflare.virtual import VirtualBus
 
 
-class MedianPresenter(PPresenter, DocumentRouter, Loggable):
+class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
     """Presenter that calculates the median of incoming data.
 
     Stores incoming data from expected streams, computes the median
@@ -54,6 +55,7 @@ class MedianPresenter(PPresenter, DocumentRouter, Loggable):
     ) -> None:
         super().__init__()
         self.virtual_bus = virtual_bus
+        self.devices = devices
 
         # TODO: generalize this
         # via ctrl_info?
@@ -65,10 +67,14 @@ class MedianPresenter(PPresenter, DocumentRouter, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-    def registration_phase(self) -> None:
+    def register_providers(self, container: DynamicContainer) -> None:
         """Register the presenter on the virtual bus."""
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
+
+    def connect_to_virtual(self) -> None:
+        """No virtual connections needed for MedianPresenter."""
+        ...
 
     def start(self, doc: RunStart) -> RunStart | None:
         """Process a new start document.

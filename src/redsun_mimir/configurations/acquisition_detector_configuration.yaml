@@ -1,54 +1,32 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  mmcore-mock:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [512, 512]
-    pixel_size: [1, 1]
-  microscope-mock1:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [512, 512]
-    pixel_size: [1, 1]
-  microscope-mock2:
-    plugin_name: test
-    plugin_id: test
-    sensor_shape: [512, 512]
-    pixel_size: [1, 1]
-  motor-mock:
-    plugin_name: test
-    plugin_id: test
-    egu: um
+
+devices:
+  camera1:
+    sensor_shape: [100, 100]
+  camera2:
+  motor:
     axis:
       - X
       - Y
+      - Z
     step_sizes:
-      X: 10.0
-      Y: 10.0
-controllers:
-  AcquisitionController:
-    plugin_name: test
-    plugin_id: test
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
+
+presenters:
+  median_ctrl: {}
+  det_ctrl:
     timeout: 5.0
-  DetectorController:
-    plugin_name: test
-    plugin_id: test
+  acq_ctrl:
     timeout: 5.0
-  MedianPresenter:
-    plugin_name: test
-    plugin_id: test
+    callbacks:
+      - DetectorController
+      - MedianPresenter
+
 views:
-  AcquisitionWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
-  DetectorWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  acq_widget: {}
+  det_widget: {}

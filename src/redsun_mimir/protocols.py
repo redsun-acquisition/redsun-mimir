@@ -109,6 +109,7 @@ class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
 
     axis: list[str]
     egu: str
+    step_sizes: dict[str, float]
 
 
 @runtime_checkable
@@ -130,6 +131,11 @@ class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
 
     intensity: float | int
     enabled: bool
+    binary: bool
+    wavelength: int
+    egu: str
+    intensity_range: tuple[int | float, ...]
+    step_size: int | float
 
     def trigger(self) -> Status:
         """Toggle the activation status of the light source.
@@ -187,6 +193,7 @@ class DetectorProtocol(PDevice, Settable, Readable[Any], Stageable, Protocol):
     """
 
     roi: tuple[int, int, int, int]
+    sensor_shape: tuple[int, int]
 
 
 @runtime_checkable

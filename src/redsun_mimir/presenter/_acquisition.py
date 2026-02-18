@@ -7,12 +7,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
-import in_n_out as ino
 from bluesky.utils import MsgGenerator  # noqa: TC002
+from dependency_injector import providers
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.presenter import PPresenter
-from sunflare.virtual import Signal, VirtualBus
+from sunflare.virtual import IsProvider, Signal, VirtualAware, VirtualBus
 
 import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
@@ -35,11 +35,10 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Mapping
 
     from bluesky.protocols import Readable
+    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
 
     from redsun_mimir.actions import SRLatch
-
-store = ino.Store.create("plan_specs")
 
 
 @dataclass
@@ -218,17 +217,19 @@ def convert_to_target_egu(
     return old_step, new_step
 
 
-class AcquisitionController(PPresenter, Loggable):
+class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
     """A centralized acquisition presenter to manage a Bluesky run engine.
 
     Parameters
     ----------
-    ctrl_info : ``AcquisitionControllerInfo``
-        The acquisition presenter configuration information.
-    models : ``Mapping[str, PModel]``
-        The available models in the application.
+    devices : ``Mapping[str, Device]``
+        The available devices in the application.
     virtual_bus : ``VirtualBus``
         The virtual bus to register signals on.
+    **kwargs : ``Any``
+        Additional keyword arguments.
+        - ``callbacks`` (list[str]): Names of presenters to wait for callbacks from.
+          Defaults to ``["DetectorController"]``.
 
     Attributes
     ----------
@@ -250,6 +251,7 @@ class AcquisitionController(PPresenter, Loggable):
         **kwargs: Any,
     ) -> None:
         self.virtual_bus = virtual_bus
+        self.devices = devices
         self.models = devices
         self.engine = RunEngine()
 
@@ -274,12 +276,13 @@ class AcquisitionController(PPresenter, Loggable):
             name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
 
-        store.register_provider(self.plans_specificiers)
-
-    def registration_phase(self) -> None:
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register plan specs as a provider in the DI container."""
+        container.plan_specs = providers.Object(self.plans_specificiers())
         self.virtual_bus.register_signals(self)
 
-    def connection_phase(self) -> None:
+    def connect_to_virtual(self) -> None:
+        """Connect to the virtual bus signals."""
         self.virtual_bus.signals["AcquisitionWidget"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )

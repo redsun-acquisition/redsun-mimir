@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
-from psygnal.qt import start_emitting_from_queue
-from qtpy import QtWidgets
-from sunflare.config import RedSunSessionInfo
-from sunflare.virtual import VirtualBus
+from redsun.containers import AppContainer, component
 
-from redsun_mimir.device import MotorModelInfo
-from redsun_mimir.device.youseetoo import (
-    MimirMotorModel,
-    MimirSerialModel,
-    MimirSerialModelInfo,
-)
-from redsun_mimir.presenter import MotorController, MotorControllerInfo
-from redsun_mimir.view import MotorWidget, MotorWidgetInfo
+from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
+from redsun_mimir.presenter import MotorController
+from redsun_mimir.view import MotorWidget
+
+_CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
+
+
+class _MotorUC2App(AppContainer, config=_CONFIG):
+    serial: MimirSerialDevice = component(layer="device", from_config="serial")
+    stage: MimirMotorDevice = component(layer="device", from_config="stage")
+    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
+    widget: MotorWidget = component(layer="view", from_config="widget")
 
 
 def stage_widget_uc2() -> None:
@@ -25,57 +25,5 @@ def stage_widget_uc2() -> None:
     Launches a Qt ``MotorWidget`` app
     with a UC2 device configuration.
     """
-    logger = logging.getLogger("redsun")
-    logger.setLevel(logging.DEBUG)
-    app = QtWidgets.QApplication([])
-
-    config_path = Path(__file__).parent / "uc2_motor_configuration.yaml"
-    config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-
-    models_info: dict[str, MimirSerialModelInfo | MotorModelInfo] = {}
-
-    for name, values in config_dict["models"].items():
-        if name == "Serial":
-            models_info[name] = MimirSerialModelInfo(**values)
-        elif name == "Stage":
-            models_info[name] = MotorModelInfo(**values)
-
-    ctrl_info: dict[str, MotorControllerInfo] = {
-        name: MotorControllerInfo(**values)
-        for name, values in config_dict["controllers"].items()
-    }
-    widget_info: dict[str, MotorWidgetInfo] = {
-        name: MotorWidgetInfo(**values) for name, values in config_dict["views"].items()
-    }
-
-    config = RedSunSessionInfo(
-        session=config_dict["session"],
-        frontend=config_dict["frontend"],
-        models=models_info,  # type: ignore
-        controllers=ctrl_info,  # type: ignore
-        views=widget_info,  # type: ignore
-    )
-
-    models: dict[str, MimirSerialModel | MimirMotorModel] = {
-        name: MimirSerialModel(name, model_info)
-        if isinstance(model_info, MimirSerialModelInfo)
-        else MimirMotorModel(name, model_info)
-        for name, model_info in models_info.items()
-    }
-
-    bus = VirtualBus()
-
-    ctrl = MotorController(config.controllers["MotorController"], models, bus)  # type: ignore
-    widget = MotorWidget(config.views["MotorWidget"], bus)
-
-    ctrl.registration_phase()
-    widget.registration_phase()
-    ctrl.connection_phase()
-    widget.connection_phase()
-
-    window = QtWidgets.QMainWindow()
-    window.setCentralWidget(widget)
-    window.show()
-
-    start_emitting_from_queue()
-    app.exec()
+    logging.getLogger("redsun").setLevel(logging.DEBUG)
+    _MotorUC2App().run()

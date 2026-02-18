@@ -287,6 +287,11 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             },
             "units": "ms",
         }
+        config_descriptor[f"{self.name}:sensor_shape"] = {
+            "source": "settings",
+            "dtype": "array",
+            "shape": [2],
+        }
 
         return config_descriptor
 
@@ -305,6 +310,10 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             }
         config[f"{self.name}:exposure"] = {
             "value": self._core.getExposure(),
+            "timestamp": timestamp,
+        }
+        config[f"{self.name}:sensor_shape"] = {
+            "value": list(self.sensor_shape),
             "timestamp": timestamp,
         }
         return config

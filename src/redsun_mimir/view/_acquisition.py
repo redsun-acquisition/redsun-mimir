@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-import in_n_out as ino
 import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
+from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
@@ -18,6 +18,7 @@ from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 if TYPE_CHECKING:
     from typing import Any
 
+    from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
 
 
@@ -150,9 +151,6 @@ class PlanWidget:
         return {w.name: w.value for w in self.container}
 
 
-store = ino.Store.get_store("plan_specs")
-
-
 class AcquisitionWidget(QtView, Loggable):
     """Widget for the acquisition settings.
 
@@ -177,6 +175,8 @@ class AcquisitionWidget(QtView, Loggable):
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
     sigActionRequest = Signal(str, bool)
+
+    position = ViewPositionTypes.CENTER
 
     def __init__(
         self,
@@ -233,7 +233,10 @@ class AcquisitionWidget(QtView, Loggable):
         self.setLayout(self.root_layout)
         self.plans_actions_buttons: dict[str, dict[str, ActionButton]] = {}
 
-        ino.Store.get_store("plan_specs").inject(self.setup_ui)()
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject plan specs from the DI container and build the UI."""
+        specs: set[PlanSpec] = container.plan_specs()
+        self.setup_ui(specs)
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """
@@ -361,17 +364,15 @@ class AcquisitionWidget(QtView, Loggable):
 
         self.stack_widget.setCurrentIndex(0)
 
-    def registration_phase(self) -> None:
+    def connect_to_virtual(self) -> None:
+        """Register signals and connect to virtual bus."""
         self.virtual_bus.register_signals(self)
-
-    def connection_phase(self) -> None:
         self.virtual_bus.signals["AcquisitionController"]["sigPlanDone"].connect(
             self._on_plan_done
         )
         self.virtual_bus.signals["AcquisitionController"]["sigActionDone"].connect(
             self._on_action_done, thread="main"
         )
-        self.stack_widget.setCurrentIndex(0)
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()

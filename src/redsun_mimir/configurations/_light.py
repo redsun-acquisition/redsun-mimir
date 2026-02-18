@@ -2,68 +2,28 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
-from psygnal.qt import start_emitting_from_queue
-from qtpy import QtWidgets
-from sunflare.config import RedSunSessionInfo
-from sunflare.virtual import VirtualBus
+from redsun.containers import AppContainer, component
 
-from redsun_mimir.device import LightModelInfo, MockLightDevice
-from redsun_mimir.presenter import LightController, LightControllerInfo
-from redsun_mimir.view import LightWidget, LightWidgetInfo
+from redsun_mimir.device import MockLightDevice
+from redsun_mimir.presenter import LightController
+from redsun_mimir.view import LightWidget
+
+_CONFIG = Path(__file__).parent / "mock_light_configuration.yaml"
+
+
+class _LightApp(AppContainer, config=_CONFIG):
+    led: MockLightDevice = component(layer="device", from_config="led")
+    laser: MockLightDevice = component(layer="device", from_config="laser")
+    ctrl: LightController = component(layer="presenter", from_config="ctrl")
+    widget: LightWidget = component(layer="view", from_config="widget")
 
 
 def light_widget() -> None:
     """Run a local mock example.
 
     Launches a Qt ``LightWidget`` app
-    with a mock device configuration.
+    with mock device configurations.
     """
-    logger = logging.getLogger("redsun")
-    logger.setLevel(logging.DEBUG)
-
-    app = QtWidgets.QApplication([])
-
-    config_path = Path(__file__).parent / "mock_light_configuration.yaml"
-    config_dict: dict[str, Any] = RedSunSessionInfo.load_yaml(str(config_path))
-    models_info: dict[str, LightModelInfo] = {
-        name: LightModelInfo(**values) for name, values in config_dict["models"].items()
-    }
-    ctrl_info: dict[str, LightControllerInfo] = {
-        name: LightControllerInfo(**values)
-        for name, values in config_dict["controllers"].items()
-    }
-    widget_info: dict[str, LightWidgetInfo] = {
-        name: LightWidgetInfo(**values) for name, values in config_dict["views"].items()
-    }
-
-    config = RedSunSessionInfo(
-        session=config_dict["session"],
-        frontend=config_dict["frontend"],
-        models=models_info,  # type: ignore
-        controllers=ctrl_info,  # type: ignore
-        views=widget_info,  # type: ignore
-    )
-
-    mock_models: dict[str, MockLightDevice] = {
-        name: MockLightDevice(name, model_info)
-        for name, model_info in models_info.items()
-    }
-
-    bus = VirtualBus()
-
-    ctrl = LightController(config.controllers["LightController"], mock_models, bus)  # type: ignore
-    widget = LightWidget(config.views["LightWidget"], bus)
-
-    ctrl.registration_phase()
-    widget.registration_phase()
-    ctrl.connection_phase()
-    widget.connection_phase()
-
-    window = QtWidgets.QMainWindow()
-    window.setCentralWidget(widget)
-    window.show()
-
-    start_emitting_from_queue()
-    app.exec()
+    logging.getLogger("redsun").setLevel(logging.DEBUG)
+    _LightApp().run()

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import in_n_out as ino
+from dependency_injector import providers
 from sunflare.log import Loggable
+from sunflare.virtual import IsProvider, VirtualAware
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
@@ -11,13 +12,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
+    from bluesky.protocols import Descriptor, Reading
+    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
     from sunflare.virtual import VirtualBus
 
-store = ino.Store.create("LightModelInfo")
 
-
-class LightController(Loggable):
+class LightController(Loggable, IsProvider, VirtualAware):
     """Controller for the light model.
 
     Parameters
@@ -40,7 +41,8 @@ class LightController(Loggable):
         **kwargs: Any,
     ) -> None:
         self._timeout: float | None = kwargs.get("timeout", None)
-        self._virtual_bus = virtual_bus
+        self.virtual_bus = virtual_bus
+        self.devices = devices
 
         self._lights = {
             name: model
@@ -48,30 +50,42 @@ class LightController(Loggable):
             if isinstance(model, LightProtocol)
         }
 
-        store.register_provider(self.models_info, type_hint=dict[str, LightProtocol])
-
-    def models_info(self) -> dict[str, LightProtocol]:
-        """Get the light devices.
+    def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
+        """Get the current configuration readings of all light devices.
 
         Returns
         -------
-        dict[str, LightProtocol]
-            Mapping of light names to light device instances.
+        dict[str, dict[str, Reading[Any]]]
+            Mapping of light names to their current configuration readings.
         """
-        return dict(self._lights)
+        return {
+            name: light.read_configuration() for name, light in self._lights.items()
+        }
 
-    def registration_phase(self) -> None:
-        """Register the presenter."""
-        self._virtual_bus.register_signals(self)
+    def models_description(self) -> dict[str, dict[str, Descriptor]]:
+        """Get the configuration descriptors of all light devices.
 
-    def connection_phase(self) -> None:
-        """Connect the presenter."""
-        self._virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
+        Returns
+        -------
+        dict[str, dict[str, Descriptor]]
+            Mapping of light names to their configuration descriptors.
+        """
+        return {
+            name: light.describe_configuration() for name, light in self._lights.items()
+        }
+
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register light model info as a provider in the DI container."""
+        container.light_configuration = providers.Object(self.models_configuration())
+        container.light_description = providers.Object(self.models_description())
+        self.virtual_bus.register_signals(self)
+
+    def connect_to_virtual(self) -> None:
+        """Connect to the virtual bus signals."""
+        self.virtual_bus.signals["LightWidget"]["sigToggleLightRequest"].connect(
             self.trigger
         )
-        self._virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(
-            self.set
-        )
+        self.virtual_bus.signals["LightWidget"]["sigIntensityRequest"].connect(self.set)
 
     def trigger(self, name: str) -> None:
         """Toggle the light.
@@ -108,6 +122,4 @@ class LightController(Loggable):
         try:
             s.wait(self._timeout)
         except Exception:
-            self.logger.exception(
-                f"Timeout when setting {name} at {intensity} {light.egu}"
-            )
+            self.logger.exception(f"Timeout when setting {name} at {intensity}")

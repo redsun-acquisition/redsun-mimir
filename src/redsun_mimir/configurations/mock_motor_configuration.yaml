@@ -1,10 +1,9 @@
+schema: 1.0
 session: redsun-mimir
-engine: bluesky
 frontend: pyqt
-models:
-  Mock motor:
-    plugin_name: test
-    plugin_id: test
+
+devices:
+  motor:
     axis:
       - X
       - Y
@@ -14,15 +13,10 @@ models:
       Y: 100.0
       Z: 100.0
     egu: um
-controllers:
-  MotorController:
-    plugin_name: test
-    plugin_id: test
+
+presenters:
+  ctrl:
     timeout: 5.0
+
 views:
-  MotorWidget:
-    plugin_name: test
-    plugin_id: test
-    # doesn't have any effect;
-    # used locally for testing
-    position: center
+  widget: {}

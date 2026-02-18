@@ -28,9 +28,9 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "redsun>=0.5.2",
     "sunflare>=0.9.0",
     "napari>=0.6.6",
-    "in-n-out>=0.2.1",
     "superqt>=0.7.4",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
@@ -88,7 +88,7 @@ redsun-mimir = "redsun.yaml"
 [tool.coverage.run]
 source = ["redsun_mimir"]
 omit = [
-    "src/redsun_mimir/tests/conftest.py"
+    "tests/conftest.py",
 ]
 
 [tool.coverage.report]
@@ -121,6 +121,7 @@ strict = true
 warn_unreachable = true
 warn_no_return = true
 
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = [
@@ -148,6 +149,13 @@ ignore = [
     "D103", # https://docs.astral.sh/ruff/rules/undocumented-public-function/
     "D107", # https://docs.astral.sh/ruff/rules/undocumented-public-init/
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Component type annotations in AppContainer subclasses must be available
+# at runtime so AppContainerMeta can resolve them at class creation time.
+"src/redsun_mimir/configurations/*.py" = ["TC001"]
+# Test fixtures and helpers don't need docstrings; imports are runtime-required.
+"tests/*.py" = ["D102", "D103", "TC001", "TC002"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
