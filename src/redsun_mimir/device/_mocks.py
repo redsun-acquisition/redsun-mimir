@@ -12,12 +12,9 @@ from sunflare.log import Loggable
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from redsun_mimir.utils.descriptors import (
-    make_array_descriptor,
-    make_integer_descriptor,
+    make_descriptor,
     make_key,
-    make_number_descriptor,
     make_reading,
-    make_string_descriptor,
 )
 
 if TYPE_CHECKING:
@@ -141,11 +138,11 @@ class MockLightDevice(Device, LightProtocol, Loggable):
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         return {
-            make_key(self.prefix, self.name, "wavelength"): make_integer_descriptor("settings", units="nm"),
-            make_key(self.prefix, self.name, "binary"): make_string_descriptor("settings"),
-            make_key(self.prefix, self.name, "egu"): make_string_descriptor("settings"),
-            make_key(self.prefix, self.name, "intensity_range"): make_array_descriptor("settings", shape=[2]),
-            make_key(self.prefix, self.name, "step_size"): make_integer_descriptor("settings"),
+            make_key(self.prefix, self.name, "wavelength"): make_descriptor("settings", "integer", units="nm"),
+            make_key(self.prefix, self.name, "binary"): make_descriptor("settings", "string"),
+            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
+            make_key(self.prefix, self.name, "intensity_range"): make_descriptor("settings", "array", shape=[2]),
+            make_key(self.prefix, self.name, "step_size"): make_descriptor("settings", "integer"),
         }
 
     def shutdown(self) -> None: ...
@@ -298,16 +295,16 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptors: dict[str, Descriptor] = {
-            make_key(self.prefix, self.name, "egu"): make_string_descriptor("settings"),
-            make_key(self.prefix, self.name, "axis"): make_array_descriptor("settings", shape=[len(self.axis)]),
+            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
+            make_key(self.prefix, self.name, "axis"): make_descriptor("settings", "array", shape=[len(self.axis)]),
         }
         for ax in self.axis:
             key = make_key(self.prefix, self.name, rf"step_size\{ax}")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
-                descriptors[key] = make_number_descriptor("settings", low=low, high=high)
+                descriptors[key] = make_descriptor("settings", "number", low=low, high=high)
             else:
-                descriptors[key] = make_number_descriptor("settings")
+                descriptors[key] = make_descriptor("settings", "number")
         return descriptors
 
     def shutdown(self) -> None: ...

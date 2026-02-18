@@ -1,10 +1,10 @@
-"""Helper utilities for building bluesky-compatible descriptor and reading keys.
+r"""Helper utilities for building bluesky-compatible descriptor and reading keys.
 
 Key format
 ----------
 Keys follow the convention::
 
-    {prefix}:{name}\\{property}
+    {prefix}:{name}\{property}
 
 where:
 
@@ -12,7 +12,12 @@ where:
 - ``name``   is the runtime device instance name (e.g. ``"mmcore"``).
 - ``property`` is the individual setting name (e.g. ``"exposure"``).
 
-Example: ``MM:mmcore\\exposure``
+Example: ``MM:mmcore\exposure``
+
+The same key convention applies to both configuration descriptor dicts
+(``describe_configuration()``) and configuration reading dicts
+(``read_configuration()``), so that the same ``parse_key`` / ``make_key``
+helpers can be reused uniformly across both.
 
 These helpers are intended to be ported to ``sunflare`` once the API
 stabilises.
@@ -20,7 +25,7 @@ stabilises.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 if TYPE_CHECKING:
     from typing import Any
@@ -30,12 +35,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "make_key",
+    "parse_key",
+    "make_descriptor",
+    "make_reading",
+    # kept for backwards compatibility
     "make_number_descriptor",
     "make_integer_descriptor",
     "make_string_descriptor",
     "make_enum_descriptor",
     "make_array_descriptor",
-    "make_reading",
 ]
 
 # ---------------------------------------------------------------------------
@@ -44,7 +52,7 @@ __all__ = [
 
 
 def make_key(prefix: str, name: str, property_name: str) -> str:
-    """Build a canonical device property key.
+    r"""Build a canonical device property key.
 
     Parameters
     ----------
@@ -54,22 +62,24 @@ def make_key(prefix: str, name: str, property_name: str) -> str:
         Runtime device instance name (e.g. ``"mmcore"``).
     property_name :
         Individual setting name (e.g. ``"exposure"``).
+        Nested properties use ``\`` as separator
+        (e.g. ``r"step_size\X"`` for per-axis step sizes).
 
     Returns
     -------
     str
-        Key in the form ``{prefix}:{name}\\{property_name}``.
+        Key in the form ``{prefix}:{name}\{property_name}``.
     """
     return f"{prefix}:{name}\\{property_name}"
 
 
 def parse_key(key: str) -> tuple[str, str, str]:
-    """Parse a canonical device property key into its components.
+    r"""Parse a canonical device property key into its components.
 
     Parameters
     ----------
     key :
-        Key in the form ``{prefix}:{name}\\{property_name}``.
+        Key in the form ``{prefix}:{name}\{property_name}``.
 
     Returns
     -------
@@ -93,7 +103,135 @@ def parse_key(key: str) -> tuple[str, str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Descriptor factories
+# Descriptor factory — single entry point with overloads
+# ---------------------------------------------------------------------------
+
+
+@overload
+def make_descriptor(
+    source: str,
+    dtype: Literal["number"],
+    *,
+    low: float | None = ...,
+    high: float | None = ...,
+    units: str | None = ...,
+) -> Descriptor: ...
+
+
+@overload
+def make_descriptor(
+    source: str,
+    dtype: Literal["integer"],
+    *,
+    low: int | None = ...,
+    high: int | None = ...,
+    units: str | None = ...,
+) -> Descriptor: ...
+
+
+@overload
+def make_descriptor(
+    source: str,
+    dtype: Literal["string"],
+    *,
+    choices: list[str] | None = ...,
+) -> Descriptor: ...
+
+
+@overload
+def make_descriptor(
+    source: str,
+    dtype: Literal["array"],
+    *,
+    shape: list[int],
+) -> Descriptor: ...
+
+
+def make_descriptor(
+    source: str,
+    dtype: Literal["number", "integer", "string", "array"],
+    *,
+    low: float | int | None = None,
+    high: float | int | None = None,
+    units: str | None = None,
+    choices: list[str] | None = None,
+    shape: list[int] | None = None,
+) -> Descriptor:
+    r"""Build a bluesky-compatible descriptor entry.
+
+    This is the single entry-point for all descriptor construction.
+    Select the desired ``dtype`` and supply the matching keyword arguments;
+    the type-checker enforces that only valid combinations are used.
+
+    Parameters
+    ----------
+    source :
+        Human-readable source label (e.g. ``"settings"``, ``"properties"``).
+    dtype :
+        One of ``"number"``, ``"integer"``, ``"string"``, ``"array"``.
+    low :
+        Lower control limit. Valid for ``"number"`` and ``"integer"`` only.
+        Both ``low`` and ``high`` must be provided together.
+    high :
+        Upper control limit. Valid for ``"number"`` and ``"integer"`` only.
+    units :
+        Physical unit string (e.g. ``"ms"``, ``"nm"``).
+        Valid for ``"number"`` and ``"integer"`` only.
+    choices :
+        Allowed string values for combo-box editing.
+        Valid for ``"string"`` only; produces an enum-style descriptor.
+    shape :
+        Array dimensions. Required for ``"array"``.
+
+    Returns
+    -------
+    Descriptor
+
+    Examples
+    --------
+    Floating-point with limits and units::
+
+        make_descriptor("settings", "number", low=0.0, high=1000.0, units="ms")
+
+    Integer without limits::
+
+        make_descriptor("settings", "integer", units="nm")
+
+    Free-text string::
+
+        make_descriptor("settings", "string")
+
+    Enumerated string::
+
+        make_descriptor("settings", "string", choices=["8bit", "16bit", "32bit"])
+
+    Fixed-shape array::
+
+        make_descriptor("settings", "array", shape=[2])
+    """
+    d: dict[str, Any] = {"source": source, "dtype": dtype, "shape": []}
+
+    if dtype in ("number", "integer"):
+        if low is not None and high is not None:
+            limits: LimitsRange = {"low": float(low), "high": float(high)}
+            d["limits"] = {"control": limits}
+        if units is not None:
+            d["units"] = units
+
+    elif dtype == "string":
+        if choices is not None:
+            d["choices"] = choices
+
+    elif dtype == "array":
+        if shape is None:
+            raise ValueError("'shape' is required when dtype='array'.")
+        d["shape"] = shape
+
+    return d  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible thin wrappers
 # ---------------------------------------------------------------------------
 
 
@@ -106,28 +244,10 @@ def make_number_descriptor(
 ) -> Descriptor:
     """Build a floating-point number descriptor.
 
-    Parameters
-    ----------
-    source :
-        Human-readable source label (e.g. ``"settings"``).
-    low :
-        Lower control limit. Omitted from descriptor when ``None``.
-    high :
-        Upper control limit. Omitted from descriptor when ``None``.
-    units :
-        Physical unit string (e.g. ``"ms"``). Omitted when ``None``.
-
-    Returns
-    -------
-    Descriptor
+    .. deprecated::
+        Use :func:`make_descriptor` with ``dtype="number"`` instead.
     """
-    d: dict[str, Any] = {"source": source, "dtype": "number", "shape": []}
-    if low is not None and high is not None:
-        limits: LimitsRange = {"low": low, "high": high}
-        d["limits"] = {"control": limits}
-    if units is not None:
-        d["units"] = units
-    return d  # type: ignore[return-value]
+    return make_descriptor(source, "number", low=low, high=high, units=units)
 
 
 def make_integer_descriptor(
@@ -139,85 +259,37 @@ def make_integer_descriptor(
 ) -> Descriptor:
     """Build an integer descriptor.
 
-    Parameters
-    ----------
-    source :
-        Human-readable source label.
-    low :
-        Lower control limit.
-    high :
-        Upper control limit.
-    units :
-        Physical unit string.
-
-    Returns
-    -------
-    Descriptor
+    .. deprecated::
+        Use :func:`make_descriptor` with ``dtype="integer"`` instead.
     """
-    d: dict[str, Any] = {"source": source, "dtype": "integer", "shape": []}
-    if low is not None and high is not None:
-        limits: LimitsRange = {"low": float(low), "high": float(high)}
-        d["limits"] = {"control": limits}
-    if units is not None:
-        d["units"] = units
-    return d  # type: ignore[return-value]
+    return make_descriptor(source, "integer", low=low, high=high, units=units)
 
 
 def make_string_descriptor(source: str) -> Descriptor:
     """Build a free-text string descriptor.
 
-    Parameters
-    ----------
-    source :
-        Human-readable source label.
-
-    Returns
-    -------
-    Descriptor
+    .. deprecated::
+        Use :func:`make_descriptor` with ``dtype="string"`` instead.
     """
-    d: dict[str, Any] = {"source": source, "dtype": "string", "shape": []}
-    return d  # type: ignore[return-value]
+    return make_descriptor(source, "string")
 
 
 def make_enum_descriptor(source: str, choices: list[str]) -> Descriptor:
     """Build an enumerated string descriptor.
 
-    Parameters
-    ----------
-    source :
-        Human-readable source label.
-    choices :
-        Allowed string values shown in the combo-box editor.
-
-    Returns
-    -------
-    Descriptor
+    .. deprecated::
+        Use :func:`make_descriptor` with ``dtype="string"`` and ``choices=`` instead.
     """
-    d: dict[str, Any] = {
-        "source": source,
-        "dtype": "string",
-        "shape": [],
-        "choices": choices,
-    }
-    return d  # type: ignore[return-value]
+    return make_descriptor(source, "string", choices=choices)
 
 
 def make_array_descriptor(source: str, shape: list[int]) -> Descriptor:
     """Build an array descriptor (read-only in the tree view).
 
-    Parameters
-    ----------
-    source :
-        Human-readable source label.
-    shape :
-        Array dimensions.
-
-    Returns
-    -------
-    Descriptor
+    .. deprecated::
+        Use :func:`make_descriptor` with ``dtype="array"`` instead.
     """
-    d: dict[str, Any] = {"source": source, "dtype": "array", "shape": shape}
-    return d  # type: ignore[return-value]
+    return make_descriptor(source, "array", shape=shape)
 
 
 # ---------------------------------------------------------------------------

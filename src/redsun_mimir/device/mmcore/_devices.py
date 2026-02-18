@@ -15,10 +15,8 @@ import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.storage import ZarrWriter
 from redsun_mimir.utils.descriptors import (
-    make_array_descriptor,
-    make_enum_descriptor,
+    make_descriptor,
     make_key,
-    make_number_descriptor,
     make_reading,
     parse_key,
 )
@@ -271,24 +269,25 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             key = make_key(self.prefix, self.name, prop_name)
 
             if choices:
-                config_descriptor[key] = make_enum_descriptor("properties", choices)
+                config_descriptor[key] = make_descriptor("properties", "string", choices=choices)
             elif maximum is not None and minimum is not None:
-                config_descriptor[key] = make_number_descriptor(
-                    "properties", low=minimum, high=maximum
+                config_descriptor[key] = make_descriptor(
+                    "properties", "number", low=minimum, high=maximum
                 )
             else:
-                config_descriptor[key] = make_number_descriptor("properties")
+                config_descriptor[key] = make_descriptor("properties", "number")
 
         config_descriptor[make_key(self.prefix, self.name, "exposure")] = (
-            make_number_descriptor(
+            make_descriptor(
                 "settings",
+                "number",
                 low=self.exposure_limits[0],
                 high=self.exposure_limits[1],
                 units="ms",
             )
         )
         config_descriptor[make_key(self.prefix, self.name, "sensor_shape")] = (
-            make_array_descriptor("settings", shape=[2])
+            make_descriptor("settings", "array", shape=[2])
         )
         return config_descriptor
 
