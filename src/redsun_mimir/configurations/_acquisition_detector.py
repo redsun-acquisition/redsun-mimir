@@ -28,9 +28,9 @@ def acquisition_detector_widget() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
-        mmcore = component(MMCoreCameraDevice, layer="device", from_config="mmcore")
+        mmcore = component(MMCoreCameraDevice, layer="device", from_config="camera1")
         microscope = component(
-            SimulatedCameraDevice, layer="device", from_config="microscope"
+            SimulatedCameraDevice, layer="device", from_config="camera2"
         )
         motor = component(MockMotorDevice, layer="device", from_config="motor")
         median_ctrl = component(
