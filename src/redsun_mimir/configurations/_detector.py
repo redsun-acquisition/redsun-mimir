@@ -6,18 +6,18 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import DetectorController
-from redsun_mimir.view import DetectorWidget
-
 _CONFIG = Path(__file__).parent / "mock_detector_configuration.yaml"
 
 
 def detector_widget() -> None:
-    """Run a local detector example.
+    """Run a local mock detector example.
 
     Launches a Qt ``DetectorWidget`` app with an MMCore camera device.
     """
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import DetectorController
+    from redsun_mimir.view import DetectorWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _DetectorApp(QtAppContainer, config=_CONFIG):

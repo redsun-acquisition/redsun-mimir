@@ -6,18 +6,18 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import DetectorController
-from redsun_mimir.view import DetectorWidget
-
 _CONFIG = Path(__file__).parent / "uc2_detector_configuration.yaml"
 
 
 def detector_widget_uc2() -> None:
     """Run a UC2 detector example.
 
-    Launches a Qt ``DetectorWidget`` app with a UC2 MMCore camera device.
+    Launches a Qt ``DetectorWidget`` app with an MMCore camera device.
     """
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import DetectorController
+    from redsun_mimir.view import DetectorWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _DetectorUC2App(QtAppContainer, config=_CONFIG):

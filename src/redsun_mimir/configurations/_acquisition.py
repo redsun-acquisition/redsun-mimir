@@ -6,11 +6,6 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device.microscope import SimulatedCameraDevice
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import AcquisitionController
-from redsun_mimir.view import AcquisitionWidget
-
 _CONFIG = Path(__file__).parent / "mock_acquisition_configuration.yaml"
 
 
@@ -20,6 +15,11 @@ def acquisition_widget() -> None:
     Launches a Qt ``AcquisitionWidget`` app with MMCore and simulated
     camera devices.
     """
+    from redsun_mimir.device.microscope import SimulatedCameraDevice
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import AcquisitionController
+    from redsun_mimir.view import AcquisitionWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _AcquisitionApp(QtAppContainer, config=_CONFIG):

@@ -6,10 +6,6 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device import MockMotorDevice
-from redsun_mimir.presenter import MotorController
-from redsun_mimir.view import MotorWidget
-
 _CONFIG = Path(__file__).parent / "mock_motor_configuration.yaml"
 
 
@@ -18,6 +14,10 @@ def stage_widget() -> None:
 
     Launches a Qt ``MotorWidget`` app with a mock motor device.
     """
+    from redsun_mimir.device import MockMotorDevice
+    from redsun_mimir.presenter import MotorController
+    from redsun_mimir.view import MotorWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _MotorApp(QtAppContainer, config=_CONFIG):

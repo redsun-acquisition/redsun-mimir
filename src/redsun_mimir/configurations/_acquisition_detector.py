@@ -6,16 +6,6 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device import MockMotorDevice
-from redsun_mimir.device.microscope import SimulatedCameraDevice
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
-from redsun_mimir.presenter import (
-    AcquisitionController,
-    DetectorController,
-    MedianPresenter,
-)
-from redsun_mimir.view import AcquisitionWidget, DetectorWidget
-
 _CONFIG = Path(__file__).parent / "acquisition_detector_configuration.yaml"
 
 
@@ -25,6 +15,16 @@ def acquisition_detector_widget() -> None:
     Launches a Qt ``AcquisitionWidget`` app with a background
     ``DetectorController`` and ``MedianPresenter``.
     """
+    from redsun_mimir.device import MockMotorDevice
+    from redsun_mimir.device.microscope import SimulatedCameraDevice
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.presenter import (
+        AcquisitionController,
+        DetectorController,
+        MedianPresenter,
+    )
+    from redsun_mimir.view import AcquisitionWidget, DetectorWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):

@@ -6,10 +6,6 @@ from pathlib import Path
 from redsun.containers import component
 from redsun.qt import QtAppContainer
 
-from redsun_mimir.device.youseetoo import MimirLaserDevice, MimirSerialDevice
-from redsun_mimir.presenter import LightController
-from redsun_mimir.view import LightWidget
-
 _CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
 
@@ -18,6 +14,10 @@ def light_widget_uc2() -> None:
 
     Launches a Qt ``LightWidget`` app with UC2 serial and laser devices.
     """
+    from redsun_mimir.device.youseetoo import MimirLaserDevice, MimirSerialDevice
+    from redsun_mimir.presenter import LightController
+    from redsun_mimir.view import LightWidget
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class _LightUC2App(QtAppContainer, config=_CONFIG):
