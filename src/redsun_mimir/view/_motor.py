@@ -176,9 +176,10 @@ class MotorWidget(QtView):
 
         self.setLayout(self.main_layout)
 
+        self.virtual_bus.register_signals(self)
+
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
         self.virtual_bus.signals["MotorController"]["sigNewPosition"].connect(
             self._update_position, thread="main"
         )

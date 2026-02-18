@@ -276,10 +276,11 @@ class AcquisitionController(PPresenter, IsProvider, VirtualAware, Loggable):
             name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
 
+        self.virtual_bus.register_signals(self)
+
     def register_providers(self, container: DynamicContainer) -> None:
         """Register plan specs as a provider in the DI container."""
         container.plan_specs = providers.Object(self.plans_specificiers())
-        self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""

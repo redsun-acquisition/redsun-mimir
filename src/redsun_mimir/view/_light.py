@@ -181,9 +181,10 @@ class LightWidget(QtView, Loggable):
 
         self.setLayout(self.main_layout)
 
+        self.virtual_bus.register_signals(self)
+
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
 
     def _on_toggle_button_checked(self, name: str) -> None:
         """Toggle the light source."""

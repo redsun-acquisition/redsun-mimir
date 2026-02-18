@@ -364,9 +364,10 @@ class AcquisitionWidget(QtView, Loggable):
 
         self.stack_widget.setCurrentIndex(0)
 
+        self.virtual_bus.register_signals(self)
+
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
         self.virtual_bus.signals["AcquisitionController"]["sigPlanDone"].connect(
             self._on_plan_done
         )

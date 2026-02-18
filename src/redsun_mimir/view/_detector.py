@@ -160,6 +160,8 @@ class DetectorWidget(QtView, Loggable):
 
         self.buffer_key = "buffer"
 
+        self.virtual_bus.register_signals(self)
+
     def inject_dependencies(self, container: DynamicContainer) -> None:
         """Inject detector configuration from the DI container."""
         model_config: ConfigurationDict = container.detector_configuration()
@@ -170,7 +172,6 @@ class DetectorWidget(QtView, Loggable):
 
     def connect_to_virtual(self) -> None:
         """Register signals and connect to virtual bus."""
-        self.virtual_bus.register_signals(self)
         self.virtual_bus.signals["DetectorController"][
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)

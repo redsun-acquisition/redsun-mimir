@@ -85,6 +85,9 @@ class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
         self.current_stream = ""
         self.packet: dict[str, dict[str, Any]] = {}
 
+        self.virtual_bus.register_signals(self)
+        self.virtual_bus.register_callbacks(self)
+
     def register_providers(self, container: DynamicContainer) -> None:
         """Register detector info as providers in the DI container."""
         container.detector_configuration = providers.Object(
@@ -93,8 +96,6 @@ class DetectorController(DocumentRouter, IsProvider, VirtualAware, Loggable):
         container.detector_descriptions = providers.Object(
             self.get_models_description()
         )
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.register_callbacks(self)
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""

@@ -67,10 +67,12 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-    def register_providers(self, container: DynamicContainer) -> None:
-        """Register the presenter on the virtual bus."""
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
+
+    def register_providers(self, container: DynamicContainer) -> None:
+        """Register the presenter on the virtual bus."""
+        ...
 
     def connect_to_virtual(self) -> None:
         """No virtual connections needed for MedianPresenter."""

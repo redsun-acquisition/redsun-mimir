@@ -103,6 +103,7 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
+        self.virtual_bus.register_signals(self)
         self.logger.info("Initialized")
 
     def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
@@ -188,7 +189,6 @@ class MotorController(Loggable, IsProvider, HasShutdown, VirtualAware):
         """Register motor model info as a provider in the DI container."""
         container.motor_configuration = providers.Object(self.models_configuration())
         container.motor_description = providers.Object(self.models_description())
-        self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""

@@ -50,6 +50,8 @@ class LightController(Loggable, IsProvider, VirtualAware):
             if isinstance(model, LightProtocol)
         }
 
+        self.virtual_bus.register_signals(self)
+
     def models_configuration(self) -> dict[str, dict[str, Reading[Any]]]:
         """Get the current configuration readings of all light devices.
 
@@ -78,7 +80,6 @@ class LightController(Loggable, IsProvider, VirtualAware):
         """Register light model info as a provider in the DI container."""
         container.light_configuration = providers.Object(self.models_configuration())
         container.light_description = providers.Object(self.models_description())
-        self.virtual_bus.register_signals(self)
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
