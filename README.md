@@ -5,13 +5,11 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/redsun-mimir.svg?color=green)](https://python.org)
 [![tests](https://github.com/redsun-acquisition/redsun-mimir/workflows/tests/badge.svg)](https://github.com/redsun-acquisition/redsun-mimir/actions)
 [![codecov](https://codecov.io/gh/redsun-acquisition/redsun-mimir/branch/main/graph/badge.svg)](https://codecov.io/gh/redsun-acquisition/redsun-mimir)
-[![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-Plugin bundle for the OpenUC2 "Mimir" microscope
+Bundle of components for the OpenUC2 "Mimir" microscope
 
-----------------------------------
-
-This [Redsun] plugin was generated with [copier] using the [redsun-plugin-template].
+> [!WARNING]
+> This bundle of components is still a work in progress. Use at your own risk.
 
 ## Installation
 
