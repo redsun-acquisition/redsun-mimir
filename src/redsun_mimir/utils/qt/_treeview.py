@@ -506,7 +506,7 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         self._add_settings_to_tree(self._descriptors)
 
     def _add_settings_to_tree(self, device_descriptor: dict[str, Descriptor]) -> None:
-        """Add settings to the tree structure.
+        r"""Add settings to the tree structure.
 
         Keys are expected in the canonical form ``{prefix}:{name}\\{property}``.
         The tree is built as a three-level hierarchy::
@@ -651,7 +651,7 @@ class DescriptorModel(QtCore.QAbstractItemModel):
             self.dataChanged.emit(index, index)
 
     def _find_setting_item(self, setting_name: str) -> TreeNode | None:
-        """Find a setting item by its full key.
+        r"""Find a setting item by its full key.
 
         Parameters
         ----------

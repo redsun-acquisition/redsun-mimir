@@ -22,11 +22,11 @@ def _get_prop(
     prop: str,
     default: _T,
 ) -> _T:
-    """Find a reading value by property name suffix.
+    r"""Find a reading value by property name suffix.
 
-    Searches all keys whose last backslash-delimited segment matches
-    *prop*, making the lookup independent of the ``prefix:name`` portion
-    of the canonical ``prefix:name\\property`` key.
+    Searches all keys whose last ``\``-delimited segment matches *prop*,
+    making the lookup independent of the ``prefix:name`` portion
+    of the canonical ``prefix:name\property`` key.
 
     Parameters
     ----------

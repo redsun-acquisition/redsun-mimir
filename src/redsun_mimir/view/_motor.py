@@ -76,15 +76,17 @@ def _get_prop_with_suffix(
     suffix: str,
     default: _T,
 ) -> _T:
-    """Find a reading value whose property segment starts with *prop_prefix*
-    and ends with *suffix* (e.g. ``prop_prefix="step_size"`` + ``suffix="X"``).
+    r"""Find a reading value by a nested property name.
+
+    Matches keys whose property segment (after the last ``\``) equals
+    ``{prop_prefix}\{suffix}`` — e.g. ``prop_prefix="step_size"``,
+    ``suffix="X"`` matches ``MOCK:stage\step_size\X``.
     """
-    target = f"{prop_prefix}\\{suffix}"
+    target = rf"{prop_prefix}\{suffix}"
     for key, reading in readings.items():
-        tail = key.rsplit("\\", 1)[-1]
-        # handle nested: step_size\X  →  tail after first split would be "step_size\X"
+        # drop the prefix:name head; keep everything after the first backslash
         remainder = key.split("\\", 1)[-1] if "\\" in key else key
-        if remainder.endswith(target) or remainder == target:
+        if remainder == target:
             return cast("_T", reading["value"])
     return default
 
