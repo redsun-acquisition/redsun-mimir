@@ -332,6 +332,11 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
                 "dtype": "string",
                 "shape": [],
             }
+        config[f"{self.name}:sensor_shape"] = {
+            "source": "settings",
+            "dtype": "array",
+            "shape": [2],
+        }
         return config
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -347,6 +352,10 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
                 "timestamp": timestamp,
             }
 
+        config[f"{self.name}:sensor_shape"] = {
+            "value": list(self.sensor_shape),
+            "timestamp": timestamp,
+        }
         return config
 
     def set(self, value: Any, **kwargs: Any) -> Status:
