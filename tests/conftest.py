@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 from qtpy.QtWidgets import QApplication
@@ -10,9 +11,14 @@ from sunflare.virtual import VirtualBus
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from qtpy.QtCore import QCoreApplication
+
 
 @pytest.fixture(scope="session")
-def qapp():
+def qapp() -> Generator[QCoreApplication, None, None]:
     """Session-scoped QApplication instance."""
     app = QApplication.instance() or QApplication(sys.argv)
     yield app

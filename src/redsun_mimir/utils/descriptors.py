@@ -25,11 +25,9 @@ stabilises.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, overload
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from bluesky.protocols import Descriptor, Reading
     from event_model.documents import LimitsRange
 
@@ -40,9 +38,7 @@ __all__ = [
     "make_reading",
 ]
 
-# ---------------------------------------------------------------------------
-# Key construction
-# ---------------------------------------------------------------------------
+T = TypeVar("T")
 
 
 def make_key(prefix: str, name: str, property_name: str) -> str:
@@ -56,7 +52,7 @@ def make_key(prefix: str, name: str, property_name: str) -> str:
         Runtime device instance name (e.g. ``"mmcore"``).
     property_name :
         Individual setting name (e.g. ``"exposure"``).
-        Nested properties use ``\`` as separator
+        Nested properties use "\\" as separator
         (e.g. ``r"step_size\X"`` for per-axis step sizes).
 
     Returns
@@ -96,11 +92,6 @@ def parse_key(key: str) -> tuple[str, str, str]:
         )
 
 
-# ---------------------------------------------------------------------------
-# Descriptor factory — single entry point with overloads
-# ---------------------------------------------------------------------------
-
-
 @overload
 def make_descriptor(
     source: str,
@@ -110,8 +101,6 @@ def make_descriptor(
     high: float | None = ...,
     units: str | None = ...,
 ) -> Descriptor: ...
-
-
 @overload
 def make_descriptor(
     source: str,
@@ -121,26 +110,22 @@ def make_descriptor(
     high: int | None = ...,
     units: str | None = ...,
 ) -> Descriptor: ...
-
-
 @overload
 def make_descriptor(
     source: str,
     dtype: Literal["string"],
     *,
     choices: list[str] | None = ...,
+    units: str | None = ...,
 ) -> Descriptor: ...
-
-
 @overload
 def make_descriptor(
     source: str,
     dtype: Literal["array"],
     *,
-    shape: list[int],
+    shape: list[int | None] = ...,
+    units: str | None = ...,
 ) -> Descriptor: ...
-
-
 def make_descriptor(
     source: str,
     dtype: Literal["number", "integer", "string", "array"],
@@ -149,7 +134,7 @@ def make_descriptor(
     high: float | int | None = None,
     units: str | None = None,
     choices: list[str] | None = None,
-    shape: list[int] | None = None,
+    shape: list[int | None] | None = None,
 ) -> Descriptor:
     r"""Build a bluesky-compatible descriptor entry.
 
@@ -159,27 +144,29 @@ def make_descriptor(
 
     Parameters
     ----------
-    source :
+    source : str
         Human-readable source label (e.g. ``"settings"``, ``"properties"``).
-    dtype :
+    dtype : Literal["number", "integer", "string", "array"]
         One of ``"number"``, ``"integer"``, ``"string"``, ``"array"``.
-    low :
+    low : float | int | None
         Lower control limit. Valid for ``"number"`` and ``"integer"`` only.
         Both ``low`` and ``high`` must be provided together.
-    high :
+    high : float | int | None
         Upper control limit. Valid for ``"number"`` and ``"integer"`` only.
-    units :
+    units : str | None
         Physical unit string (e.g. ``"ms"``, ``"nm"``).
         Valid for ``"number"`` and ``"integer"`` only.
-    choices :
+    choices : list[str] | None
         Allowed string values for combo-box editing.
         Valid for ``"string"`` only; produces an enum-style descriptor.
-    shape :
+    shape : list[int | None] | None
         Array dimensions. Required for ``"array"``.
+        A `None` entry indicates a variable dimension (e.g. ``[None, 3]`` for an Nx3 array).
 
     Returns
     -------
     Descriptor
+        The constructed descriptor dictionary.
 
     Examples
     --------
@@ -203,39 +190,39 @@ def make_descriptor(
 
         make_descriptor("settings", "array", shape=[2])
     """
-    d: dict[str, Any] = {"source": source, "dtype": dtype, "shape": []}
+    d: Descriptor = {"source": source, "dtype": dtype, "shape": []}
+    if units is not None:
+        d["units"] = units
 
-    if dtype in ("number", "integer"):
-        if low is not None and high is not None:
-            limits: LimitsRange = {"low": float(low), "high": float(high)}
-            d["limits"] = {"control": limits}
-        if units is not None:
-            d["units"] = units
-
-    elif dtype == "string":
-        if choices is not None:
-            d["choices"] = choices
-
-    elif dtype == "array":
-        if shape is None:
-            raise ValueError("'shape' is required when dtype='array'.")
-        d["shape"] = shape
-
-    return d  # type: ignore[return-value]
+    match dtype:
+        case "number" | "integer":
+            if low is not None and high is not None:
+                limits: LimitsRange = {"low": float(low), "high": float(high)}
+                d["limits"] = {"control": limits}
+            if units is not None:
+                d["units"] = units
+        case "string":
+            if choices is not None:
+                d["choices"] = choices
+        case "array":
+            if shape is None:
+                raise ValueError("'shape' is required when dtype='array'.")
+            d["shape"] = shape
+    return d
 
 
-def make_reading(value: Any, timestamp: float) -> Reading[Any]:
+def make_reading(value: T, timestamp: float) -> Reading[T]:
     """Build a bluesky-compatible reading entry.
 
     Parameters
     ----------
-    value :
+    value : T
         Current value for the property.
-    timestamp :
+    timestamp : float
         UNIX timestamp of the reading.
 
     Returns
     -------
-    Reading[Any]
+    Reading[T]
     """
     return {"value": value, "timestamp": timestamp}
