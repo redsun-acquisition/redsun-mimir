@@ -13,9 +13,9 @@ _CONFIG = Path(__file__).parent / "mock_detector_configuration.yaml"
 
 
 class _DetectorApp(AppContainer, config=_CONFIG):
-    camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
-    ctrl: DetectorController = component(layer="presenter", from_config="ctrl")
-    widget: DetectorWidget = component(layer="view", from_config="widget")
+    camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
+    ctrl = component(DetectorController, layer="presenter", from_config="ctrl")
+    widget = component(DetectorWidget, layer="view", from_config="widget")
 
 
 def detector_widget() -> None:

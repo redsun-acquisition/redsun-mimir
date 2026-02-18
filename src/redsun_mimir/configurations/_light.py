@@ -13,10 +13,10 @@ _CONFIG = Path(__file__).parent / "mock_light_configuration.yaml"
 
 
 class _LightApp(AppContainer, config=_CONFIG):
-    led: MockLightDevice = component(layer="device", from_config="led")
-    laser: MockLightDevice = component(layer="device", from_config="laser")
-    ctrl: LightController = component(layer="presenter", from_config="ctrl")
-    widget: LightWidget = component(layer="view", from_config="widget")
+    led = component(MockLightDevice, layer="device", from_config="led")
+    laser = component(MockLightDevice, layer="device", from_config="laser")
+    ctrl = component(LightController, layer="presenter", from_config="ctrl")
+    widget = component(LightWidget, layer="view", from_config="widget")
 
 
 def light_widget() -> None:

@@ -14,10 +14,10 @@ _CONFIG = Path(__file__).parent / "mock_acquisition_configuration.yaml"
 
 
 class _AcquisitionApp(AppContainer, config=_CONFIG):
-    camera1: MMCoreCameraDevice = component(layer="device", from_config="camera1")
-    camera2: SimulatedCameraDevice = component(layer="device", from_config="camera2")
-    ctrl: AcquisitionController = component(layer="presenter", from_config="ctrl")
-    widget: AcquisitionWidget = component(layer="view", from_config="widget")
+    camera1 = component(MMCoreCameraDevice, layer="device", from_config="camera1")
+    camera2 = component(SimulatedCameraDevice, layer="device", from_config="camera2")
+    ctrl = component(AcquisitionController, layer="presenter", from_config="ctrl")
+    widget = component(AcquisitionWidget, layer="view", from_config="widget")
 
 
 def acquisition_widget() -> None:

@@ -13,9 +13,9 @@ _CONFIG = Path(__file__).parent / "uc2_acquisition_configuration.yaml"
 
 
 class _AcquisitionUC2App(AppContainer, config=_CONFIG):
-    camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
-    ctrl: AcquisitionController = component(layer="presenter", from_config="ctrl")
-    widget: AcquisitionWidget = component(layer="view", from_config="widget")
+    camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
+    ctrl = component(AcquisitionController, layer="presenter", from_config="ctrl")
+    widget = component(AcquisitionWidget, layer="view", from_config="widget")
 
 
 def acquisition_widget_uc2() -> None:

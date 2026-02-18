@@ -13,9 +13,9 @@ _CONFIG = Path(__file__).parent / "mock_motor_configuration.yaml"
 
 
 class _MotorApp(AppContainer, config=_CONFIG):
-    motor: MockMotorDevice = component(layer="device", from_config="motor")
-    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
-    widget: MotorWidget = component(layer="view", from_config="widget")
+    motor = component(MockMotorDevice, layer="device", from_config="motor")
+    ctrl = component(MotorController, layer="presenter", from_config="ctrl")
+    widget = component(MotorWidget, layer="view", from_config="widget")
 
 
 def stage_widget() -> None:

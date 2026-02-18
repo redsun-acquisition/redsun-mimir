@@ -13,10 +13,10 @@ _CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
 
 
 class _MotorUC2App(AppContainer, config=_CONFIG):
-    serial: MimirSerialDevice = component(layer="device", from_config="serial")
-    stage: MimirMotorDevice = component(layer="device", from_config="stage")
-    ctrl: MotorController = component(layer="presenter", from_config="ctrl")
-    widget: MotorWidget = component(layer="view", from_config="widget")
+    serial = component(MimirSerialDevice, layer="device", from_config="serial")
+    stage = component(MimirMotorDevice, layer="device", from_config="stage")
+    ctrl = component(MotorController, layer="presenter", from_config="ctrl")
+    widget = component(MotorWidget, layer="view", from_config="widget")
 
 
 def stage_widget_uc2() -> None:

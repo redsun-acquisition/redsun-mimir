@@ -13,10 +13,10 @@ _CONFIG = Path(__file__).parent / "uc2_light_configuration.yaml"
 
 
 class _LightUC2App(AppContainer, config=_CONFIG):
-    serial: MimirSerialDevice = component(layer="device", from_config="serial")
-    laser: MimirLaserDevice = component(layer="device", from_config="laser")
-    ctrl: LightController = component(layer="presenter", from_config="ctrl")
-    widget: LightWidget = component(layer="view", from_config="widget")
+    serial = component(MimirSerialDevice, layer="device", from_config="serial")
+    laser = component(MimirLaserDevice, layer="device", from_config="laser")
+    ctrl = component(LightController, layer="presenter", from_config="ctrl")
+    widget = component(LightWidget, layer="view", from_config="widget")
 
 
 def light_widget_uc2() -> None:
