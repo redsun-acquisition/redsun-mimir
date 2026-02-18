@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
-    """Widget for controlling device settings, backed by a descriptor tree view.
+    r"""Widget for controlling device settings, backed by a descriptor tree view.
 
     Populated once at construction from the descriptor and reading dicts
     provided by the DI container — no separate setup step required.
@@ -198,7 +198,7 @@ class DetectorView(QtView, Loggable):
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
     ) -> None:
-        """Initialize the user interface.
+        r"""Initialize the user interface.
 
         Groups descriptors and readings by their ``prefix:name`` device label
         (the part of the key before the backslash) and creates one napari

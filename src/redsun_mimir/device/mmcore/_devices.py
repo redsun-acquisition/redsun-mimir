@@ -121,7 +121,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     initialized: ClassVar[bool] = False
 
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -269,7 +268,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             key = make_key(self.prefix, self.name, prop_name)
 
             if choices:
-                config_descriptor[key] = make_descriptor("properties", "string", choices=choices)
+                config_descriptor[key] = make_descriptor(
+                    "properties", "string", choices=choices
+                )
             elif maximum is not None and minimum is not None:
                 config_descriptor[key] = make_descriptor(
                     "properties", "number", low=minimum, high=maximum

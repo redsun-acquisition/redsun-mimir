@@ -76,12 +76,10 @@ def _get_prop_with_suffix(
     suffix: str,
     default: _T,
 ) -> _T:
-    """Find a reading value whose property segment starts with *prop_prefix*
-    and ends with *suffix* (e.g. ``prop_prefix="step_size"`` + ``suffix="X"``).
-    """
+    """Find a reading value matching a property name prefix and suffix."""
     target = f"{prop_prefix}\\{suffix}"
     for key, reading in readings.items():
-        tail = key.rsplit("\\", 1)[-1]
+        key.rsplit("\\", 1)[-1]
         # handle nested: step_size\X  →  tail after first split would be "step_size\X"
         remainder = key.split("\\", 1)[-1] if "\\" in key else key
         if remainder.endswith(target) or remainder == target:

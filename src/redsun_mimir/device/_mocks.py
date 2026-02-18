@@ -75,7 +75,6 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
 
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -129,20 +128,38 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
         return {
-            make_key(self.prefix, self.name, "wavelength"): make_reading(self.wavelength, timestamp),
-            make_key(self.prefix, self.name, "binary"): make_reading(self.binary, timestamp),
+            make_key(self.prefix, self.name, "wavelength"): make_reading(
+                self.wavelength, timestamp
+            ),
+            make_key(self.prefix, self.name, "binary"): make_reading(
+                self.binary, timestamp
+            ),
             make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.prefix, self.name, "intensity_range"): make_reading(list(self.intensity_range), timestamp),
-            make_key(self.prefix, self.name, "step_size"): make_reading(self.step_size, timestamp),
+            make_key(self.prefix, self.name, "intensity_range"): make_reading(
+                list(self.intensity_range), timestamp
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_reading(
+                self.step_size, timestamp
+            ),
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         return {
-            make_key(self.prefix, self.name, "wavelength"): make_descriptor("settings", "integer", units="nm"),
-            make_key(self.prefix, self.name, "binary"): make_descriptor("settings", "string"),
-            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
-            make_key(self.prefix, self.name, "intensity_range"): make_descriptor("settings", "array", shape=[2]),
-            make_key(self.prefix, self.name, "step_size"): make_descriptor("settings", "integer"),
+            make_key(self.prefix, self.name, "wavelength"): make_descriptor(
+                "settings", "integer", units="nm"
+            ),
+            make_key(self.prefix, self.name, "binary"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
+                "settings", "array", shape=[2]
+            ),
+            make_key(self.prefix, self.name, "step_size"): make_descriptor(
+                "settings", "integer"
+            ),
         }
 
     def shutdown(self) -> None: ...
@@ -201,7 +218,6 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
                 raise AttributeError(
                     f"{axis} minimum limit is greater than the maximum limit: {limits}"
                 )
-
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -287,22 +303,32 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {
             make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.prefix, self.name, "axis"): make_reading(self.axis, timestamp),
+            make_key(self.prefix, self.name, "axis"): make_reading(
+                self.axis, timestamp
+            ),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(step, timestamp)
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(
+                step, timestamp
+            )
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptors: dict[str, Descriptor] = {
-            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
-            make_key(self.prefix, self.name, "axis"): make_descriptor("settings", "array", shape=[len(self.axis)]),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
+            make_key(self.prefix, self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)]
+            ),
         }
         for ax in self.axis:
             key = make_key(self.prefix, self.name, rf"step_size\{ax}")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
-                descriptors[key] = make_descriptor("settings", "number", low=low, high=high)
+                descriptors[key] = make_descriptor(
+                    "settings", "number", low=low, high=high
+                )
             else:
                 descriptors[key] = make_descriptor("settings", "number")
         return descriptors

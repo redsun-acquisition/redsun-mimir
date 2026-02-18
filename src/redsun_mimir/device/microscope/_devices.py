@@ -108,7 +108,6 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         metadata={"description": "Limits for each axis."},
     )
 
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -126,7 +125,9 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptors: dict[str, Descriptor] = {
-            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
             make_key(self.prefix, self.name, "axis"): make_descriptor(
                 "settings", "array", shape=[len(self.axis)]
             ),
@@ -146,11 +147,13 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {
             make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.prefix, self.name, "axis"): make_reading(self.axis, timestamp),
+            make_key(self.prefix, self.name, "axis"): make_reading(
+                self.axis, timestamp
+            ),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = (
-                make_reading(step, timestamp)
+            config[make_key(self.prefix, self.name, rf"step_size\{ax}")] = make_reading(
+                step, timestamp
             )
         return config
 
@@ -241,7 +244,6 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         metadata={"description": "Step size for the intensity."},
     )
 
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -298,7 +300,9 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
             make_key(self.prefix, self.name, "binary"): make_descriptor(
                 "settings", "string"
             ),
-            make_key(self.prefix, self.name, "egu"): make_descriptor("settings", "string"),
+            make_key(self.prefix, self.name, "egu"): make_descriptor(
+                "settings", "string"
+            ),
             make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
                 "settings", "array", shape=[2]
             ),
@@ -380,7 +384,6 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         metadata={"description": "Shape of the sensor (width, height)."},
     )
 
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -402,11 +405,11 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         """Describe the detector configuration."""
         config: dict[str, Descriptor] = {}
         for setting_name in self.get_all_settings():
-            config[make_key(self.prefix, self.name, setting_name)] = (
-                make_descriptor("settings", "string")
+            config[make_key(self.prefix, self.name, setting_name)] = make_descriptor(
+                "settings", "string"
             )
-        config[make_key(self.prefix, self.name, "sensor_shape")] = (
-            make_descriptor("settings", "array", shape=[2])
+        config[make_key(self.prefix, self.name, "sensor_shape")] = make_descriptor(
+            "settings", "array", shape=[2]
         )
         return config
 

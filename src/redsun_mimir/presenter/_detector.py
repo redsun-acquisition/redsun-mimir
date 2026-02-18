@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Configurable, Descriptor  # noqa: TC002
+from bluesky.protocols import Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
 from dependency_injector import providers
 from event_model import DocumentRouter
@@ -89,7 +89,7 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         self.virtual_bus.register_callbacks(self)
 
     def register_providers(self, container: DynamicContainer) -> None:
-        """Register detector info as providers in the DI container.
+        r"""Register detector info as providers in the DI container.
 
         Injects two flat dicts keyed by the canonical ``prefix:name\\property``
         scheme so the view can populate its tree directly at construction:
@@ -102,7 +102,9 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         descriptors: dict[str, Descriptor] = {}
         readings: dict[str, Reading[Any]] = {}
         for detector in self.detectors.values():
-            descriptors.update(asyncio.run(maybe_await(detector.describe_configuration())))
+            descriptors.update(
+                asyncio.run(maybe_await(detector.describe_configuration()))
+            )
             readings.update(asyncio.run(maybe_await(detector.read_configuration())))
 
         container.detector_descriptors = providers.Object(descriptors)
