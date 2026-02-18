@@ -68,6 +68,15 @@ class TestMotorPresenter:
         assert pos == pytest.approx(10.0)
         assert mock_motor.locate()["setpoint"] == pytest.approx(10.0)
 
+    def test_move_via_device_label(
+        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+    ) -> None:
+        """move() accepts a prefix:name device label as emitted by the view."""
+        device_label = f"{mock_motor.prefix}:{mock_motor.name}"  # e.g. "MOCK:stage"
+        controller.move(device_label, "X", 5.0)
+        controller._queue.join()
+        assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
+
     def test_configure_step_size(
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
@@ -79,6 +88,16 @@ class TestMotorPresenter:
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
         assert len(received) == 1
+
+    def test_configure_via_device_label(
+        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+    ) -> None:
+        """configure() accepts a prefix:name device label as emitted by the view."""
+        device_label = f"{mock_motor.prefix}:{mock_motor.name}"  # e.g. "MOCK:stage"
+        step_key = f"{device_label}\\X_step_size"
+        result = controller.configure(device_label, {step_key: 2.0})
+        assert result.get(step_key) is True
+        assert mock_motor.step_sizes["X"] == pytest.approx(2.0)
 
     def test_shutdown_stops_daemon(self, controller: MotorPresenter) -> None:
         """shutdown() terminates the background thread gracefully."""
@@ -132,12 +151,29 @@ class TestLightPresenter:
         controller.trigger("led")
         assert mock_led.enabled is False
 
+    def test_trigger_via_device_label(
+        self, controller: LightPresenter, mock_led: MockLightDevice
+    ) -> None:
+        """trigger() accepts a prefix:name device label as emitted by the view."""
+        device_label = f"{mock_led.prefix}:{mock_led.name}"  # e.g. "MOCK:led"
+        assert mock_led.enabled is False
+        controller.trigger(device_label)
+        assert mock_led.enabled is True
+
     def test_set_intensity(
         self, controller: LightPresenter, mock_laser: MockLightDevice
     ) -> None:
         """set() updates the intensity of the target light source."""
         controller.set("laser", 75.0)
         assert mock_laser.intensity == pytest.approx(75.0)
+
+    def test_set_intensity_via_device_label(
+        self, controller: LightPresenter, mock_laser: MockLightDevice
+    ) -> None:
+        """set() accepts a prefix:name device label as emitted by the view."""
+        device_label = f"{mock_laser.prefix}:{mock_laser.name}"  # e.g. "MOCK:laser"
+        controller.set(device_label, 42.0)
+        assert mock_laser.intensity == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
         self, mock_motor: MockMotorDevice, virtual_bus: VirtualBus
