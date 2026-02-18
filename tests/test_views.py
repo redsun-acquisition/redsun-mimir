@@ -181,9 +181,7 @@ class TestLightView:
         """Widget creates without error before inject_dependencies."""
         assert widget is not None
 
-    def test_inject_binary_light(
-        self, widget: LightView, led: MockLightDevice
-    ) -> None:
+    def test_inject_binary_light(self, widget: LightView, led: MockLightDevice) -> None:
         """Binary device gets only an ON/OFF button, no slider."""
         container = _make_container(
             light_configuration={"led": led.read_configuration()},

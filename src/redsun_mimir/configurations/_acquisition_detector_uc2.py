@@ -38,9 +38,7 @@ def acquisition_detector_widget_uc2() -> None:
         acq_ctrl = component(
             AcquisitionPresenter, layer="presenter", from_config="acq_ctrl"
         )
-        acq_widget = component(
-            AcquisitionView, layer="view", from_config="acq_widget"
-        )
+        acq_widget = component(AcquisitionView, layer="view", from_config="acq_widget")
         det_widget = component(DetectorView, layer="view", from_config="det_widget")
 
     AcquisitionDetectorUC2App().run()
