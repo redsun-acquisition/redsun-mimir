@@ -3408,15 +3408,15 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.5.2"
+version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "platformdirs" },
     { name = "sunflare" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/60/20d27ea2f93295e2e9b0c729495d39a95dc8ef97a4c6967f76a770ef7244/redsun-0.5.2.tar.gz", hash = "sha256:b9ef05571f074de4fba640f79b2b2a48466c2907286662609dcac3478b4610a8", size = 147303, upload-time = "2026-02-17T23:43:58.402Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/af/973441e1ff393dadfe1e227fa2cf46e0ebf79d3c763ad6c603fdad8afb9c/redsun-0.5.4.tar.gz", hash = "sha256:704e926a7911997f7520c4b36cec87da87cd1ee1469e3b9e780519680ffe1caf", size = 147596, upload-time = "2026-02-18T09:57:52.496Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/56/e2b6debb83e99a2a44d33fa61cb98c6d0dff7606fed8f564ec8e9037594c/redsun-0.5.2-py3-none-any.whl", hash = "sha256:921831907882a380e99b478a7ec494f6ef565643ee168d1ec2dde6d4c4268bb2", size = 20998, upload-time = "2026-02-17T23:43:57.3Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/d2/1d526016486ef2daf17ab5a786792548cae00a42fd4ded3ea8e5c6a429e3/redsun-0.5.4-py3-none-any.whl", hash = "sha256:0374dc243c2ebfc81793938bb1ca28cea3a357f275cb1ddf3acafc1a5f42f5a3", size = 20959, upload-time = "2026-02-18T09:57:51.273Z" },
 ]
 
 [[package]]
@@ -3484,7 +3484,7 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", specifier = ">=0.5.2" },
+    { name = "redsun", specifier = ">=0.5.4" },
     { name = "sunflare", specifier = ">=0.9.0" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.9.0" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.9.0" },
