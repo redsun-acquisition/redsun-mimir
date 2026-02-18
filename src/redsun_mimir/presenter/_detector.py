@@ -3,14 +3,13 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Descriptor  # noqa: TC002
+from bluesky.protocols import Configurable, Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
 from dependency_injector import providers
 from event_model import DocumentRouter
 from sunflare.log import Loggable
 from sunflare.virtual import IsProvider, Signal, VirtualAware
 
-from redsun_mimir.common import ConfigurationDict  # noqa: TC001
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.utils import filter_models
 
@@ -90,42 +89,30 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         self.virtual_bus.register_callbacks(self)
 
     def register_providers(self, container: DynamicContainer) -> None:
-        """Register detector info as providers in the DI container."""
-        container.detector_configuration = providers.Object(
-            self.get_models_configuration()
-        )
-        container.detector_descriptions = providers.Object(
-            self.get_models_description()
-        )
+        """Register detector info as providers in the DI container.
+
+        Injects two flat dicts keyed by the canonical ``prefix:name\\property``
+        scheme so the view can populate its tree directly at construction:
+
+        - ``detector_descriptors``: merged ``describe_configuration()`` output
+          from all detectors.
+        - ``detector_readings``: merged ``read_configuration()`` output from
+          all detectors.
+        """
+        descriptors: dict[str, Descriptor] = {}
+        readings: dict[str, Reading[Any]] = {}
+        for detector in self.detectors.values():
+            descriptors.update(asyncio.run(maybe_await(detector.describe_configuration())))
+            readings.update(asyncio.run(maybe_await(detector.read_configuration())))
+
+        container.detector_descriptors = providers.Object(descriptors)
+        container.detector_readings = providers.Object(readings)
 
     def connect_to_virtual(self) -> None:
         """Connect to the virtual bus signals."""
         self.virtual_bus.signals["DetectorView"]["sigPropertyChanged"].connect(
             self.configure
         )
-
-    def get_models_configuration(self) -> ConfigurationDict:
-        """Get the configuration of all detectors."""
-        descriptors = {
-            name: self.describe_configuration(name) for name in self.detectors.keys()
-        }
-        readings = {
-            name: self.read_configuration(name) for name in self.detectors.keys()
-        }
-
-        config: ConfigurationDict = {
-            "descriptors": descriptors,
-            "readings": readings,
-        }
-
-        return config
-
-    def get_models_description(self) -> dict[str, dict[str, Descriptor]]:
-        """Get reading descriptions of all detectors."""
-        descriptions = {
-            name: detector.describe() for name, detector in self.detectors.items()
-        }
-        return descriptions  # type: ignore
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         """Configure a detector with confirmation feedback.
@@ -164,43 +151,6 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             except Exception as e:
                 self.logger.error(f"Exception configuring '{key}' of {detector}: {e}")
                 self.sigConfigurationConfirmed.emit(detector, key, False)
-
-    async def _describe_config_async(self, detector: str) -> dict[str, Descriptor]:
-        return await maybe_await(self.detectors[detector].describe_configuration())
-
-    async def _read_config_async(self, detector: str) -> dict[str, Reading[Any]]:
-        return await maybe_await(self.detectors[detector].read_configuration())
-
-    def read_configuration(self, detector: str) -> dict[str, Reading[Any]]:
-        """Read the configuration of a detector.
-
-        Parameters
-        ----------
-        detector : ``str``
-            Detector name.
-
-        Returns
-        -------
-        dict[str, Reading[Any]]
-            Mapping of configuration parameters to their readings.
-        """
-        return asyncio.run(self._read_config_async(detector))
-
-    def describe_configuration(self, detector: str) -> dict[str, Descriptor]:
-        """Read the configuration description of a detector.
-
-        Parameters
-        ----------
-        detector : ``str``
-            Detector name.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            Mapping of configuration parameters to their descriptors.
-
-        """
-        return asyncio.run(self._describe_config_async(detector))
 
     def event(self, doc: Event) -> Event:
         """Process new event documents.

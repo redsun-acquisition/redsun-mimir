@@ -508,52 +508,69 @@ class DescriptorModel(QtCore.QAbstractItemModel):
     def _add_settings_to_tree(self, device_descriptor: dict[str, Descriptor]) -> None:
         """Add settings to the tree structure.
 
+        Keys are expected in the canonical form ``{prefix}:{name}\\{property}``.
+        The tree is built as a three-level hierarchy::
+
+            {prefix}:{name}          (device node)
+            └── {source}             (source group node, e.g. "settings")
+                └── {property}       (setting leaf node)
+
+        The legacy two-part format ``{device}:{property}`` (no backslash) is
+        also accepted and produces a two-level tree (source → setting).
+
         Parameters
         ----------
         device_descriptor : ``dict[str, Descriptor]``
-            Dictionary of device settings and their descriptor
+            Dictionary of device settings and their descriptor.
 
         """
-        # Group settings by source
-        # {source: [(full_key, clean_name, descriptor), ...]}
-        groups: dict[str, list[tuple[str, str, Descriptor]]] = {}
+        # outer: device label  →  inner: source  →  list of (full_key, property, descriptor)
+        groups: dict[str, dict[str, list[tuple[str, str, Descriptor]]]] = {}
         readonly_flags: dict[str, bool] = {}
 
         for full_key, descriptor in device_descriptor.items():
-            # Parse device prefix from key if present
-            if ":" in full_key:
-                _, clean_name = full_key.split(":", 1)
+            # Parse key into device label and property name
+            if "\\" in full_key:
+                # New format: prefix:name\property
+                device_label, property_name = full_key.split("\\", 1)
+            elif ":" in full_key:
+                # Legacy format: device:property  →  treat device as label
+                device_label, property_name = full_key.split(":", 1)
             else:
-                clean_name = full_key
+                device_label = ""
+                property_name = full_key
 
             # Extract source and readonly flag
-            group_tokens = descriptor["source"].split("/")
-            source = descriptor["source"] = group_tokens[0]
+            source_raw = descriptor.get("source", "unknown")
+            group_tokens = source_raw.split("/")
+            source = group_tokens[0]
             if len(group_tokens) > 1 and group_tokens[1] == "readonly":
                 readonly_flags[full_key] = True
 
-            # Build nested structure by source
-            if source not in groups:
-                groups[source] = []
-            groups[source].append((full_key, clean_name, descriptor))
+            groups.setdefault(device_label, {}).setdefault(source, []).append(
+                (full_key, property_name, descriptor)
+            )
 
-        # Build tree: Group (source) → Setting (clean name)
-        for source, settings in groups.items():
-            group_item = TreeNode(source, self._root_item, NodeType.GROUP)
-            self._root_item.appendChild(group_item)
+        # Build tree: Device → Source → Setting
+        for device_label, source_groups in groups.items():
+            device_item = TreeNode(device_label, self._root_item, NodeType.GROUP)
+            self._root_item.appendChild(device_item)
 
-            for full_key, clean_name, descriptor in settings:
-                readonly = readonly_flags.get(full_key, False)
-                setting_item = TreeNode(
-                    clean_name,
-                    group_item,
-                    NodeType.SETTING,
-                    descriptor=descriptor,
-                    readonly=readonly,
-                )
-                # Store the full key for lookups
-                setting_item._full_key = full_key
-                group_item.appendChild(setting_item)
+            for source, settings in source_groups.items():
+                source_item = TreeNode(source, device_item, NodeType.GROUP)
+                device_item.appendChild(source_item)
+
+                for full_key, property_name, descriptor in settings:
+                    readonly = readonly_flags.get(full_key, False)
+                    setting_item = TreeNode(
+                        property_name,
+                        source_item,
+                        NodeType.SETTING,
+                        descriptor=descriptor,
+                        readonly=readonly,
+                    )
+                    setting_item._full_key = full_key
+                    source_item.appendChild(setting_item)
 
     def update_structure(self, descriptor: dict[str, Descriptor]) -> None:
         """Update the entire structure of the model.
@@ -634,29 +651,29 @@ class DescriptorModel(QtCore.QAbstractItemModel):
             self.dataChanged.emit(index, index)
 
     def _find_setting_item(self, setting_name: str) -> TreeNode | None:
-        """Find a setting item by name.
+        """Find a setting item by its full key.
 
         Parameters
         ----------
         setting_name : ``str``
-            Name of the setting to find (can be full key like "camera:exposure"
-            or clean name like "exposure")
+            Full canonical key (e.g. ``"MM:mmcore\\exposure"``).
 
         Returns
         -------
         ``TreeNode | None``
-            The setting item if found, otherwise None
+            The matching leaf node, or ``None`` if not found.
 
         """
-        # Traverse Group → Setting hierarchy
-        for group_idx in range(self._root_item.childCount()):
-            group_item = self._root_item.child(group_idx)
-            for setting_idx in range(group_item.childCount()):
-                setting_item = group_item.child(setting_idx)
-                # Match by full key if available, otherwise by clean name
-                full_key = getattr(setting_item, "_full_key", setting_item.name)
-                if full_key == setting_name or setting_item.name == setting_name:
-                    return setting_item
+        # Tree is three levels deep: device → source → setting
+        for device_idx in range(self._root_item.childCount()):
+            device_item = self._root_item.child(device_idx)
+            for source_idx in range(device_item.childCount()):
+                source_item = device_item.child(source_idx)
+                for setting_idx in range(source_item.childCount()):
+                    setting_item = source_item.child(setting_idx)
+                    full_key = getattr(setting_item, "_full_key", setting_item.name)
+                    if full_key == setting_name or setting_item.name == setting_name:
+                        return setting_item
         return None
 
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:
