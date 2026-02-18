@@ -20,10 +20,10 @@ def light_widget_uc2() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _LightUC2App(QtAppContainer, config=_CONFIG):
+    class LightUC2App(QtAppContainer, config=_CONFIG):
         serial = component(MimirSerialDevice, layer="device", from_config="serial")
         laser = component(MimirLaserDevice, layer="device", from_config="laser")
         ctrl = component(LightController, layer="presenter", from_config="ctrl")
         widget = component(LightWidget, layer="view", from_config="widget")
 
-    _LightUC2App().run()
+    LightUC2App().run()

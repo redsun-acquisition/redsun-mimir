@@ -20,9 +20,9 @@ def stage_widget() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _MotorApp(QtAppContainer, config=_CONFIG):
+    class MotorApp(QtAppContainer, config=_CONFIG):
         motor = component(MockMotorDevice, layer="device", from_config="motor")
         ctrl = component(MotorController, layer="presenter", from_config="ctrl")
         widget = component(MotorWidget, layer="view", from_config="widget")
 
-    _MotorApp().run()
+    MotorApp().run()

@@ -20,9 +20,9 @@ def light_widget() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _LightApp(QtAppContainer, config=_CONFIG):
+    class LightApp(QtAppContainer, config=_CONFIG):
         light = component(MockLightDevice, layer="device", from_config="light")
         ctrl = component(LightController, layer="presenter", from_config="ctrl")
         widget = component(LightWidget, layer="view", from_config="widget")
 
-    _LightApp().run()
+    LightApp().run()

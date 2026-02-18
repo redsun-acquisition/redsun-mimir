@@ -20,9 +20,9 @@ def detector_widget_uc2() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _DetectorUC2App(QtAppContainer, config=_CONFIG):
+    class DetectorUC2App(QtAppContainer, config=_CONFIG):
         camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
         ctrl = component(DetectorController, layer="presenter", from_config="ctrl")
         widget = component(DetectorWidget, layer="view", from_config="widget")
 
-    _DetectorUC2App().run()
+    DetectorUC2App().run()

@@ -26,7 +26,7 @@ def acquisition_detector_widget_uc2() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _AcquisitionDetectorUC2App(QtAppContainer, config=_CONFIG):
+    class AcquisitionDetectorUC2App(QtAppContainer, config=_CONFIG):
         camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
         motor = component(MockMotorDevice, layer="device", from_config="motor")
         median_ctrl = component(
@@ -43,4 +43,4 @@ def acquisition_detector_widget_uc2() -> None:
         )
         det_widget = component(DetectorWidget, layer="view", from_config="det_widget")
 
-    _AcquisitionDetectorUC2App().run()
+    AcquisitionDetectorUC2App().run()

@@ -20,10 +20,10 @@ def stage_widget_uc2() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _MotorUC2App(QtAppContainer, config=_CONFIG):
+    class MotorUC2App(QtAppContainer, config=_CONFIG):
         serial = component(MimirSerialDevice, layer="device", from_config="serial")
         motor = component(MimirMotorDevice, layer="device", from_config="motor")
         ctrl = component(MotorController, layer="presenter", from_config="ctrl")
         widget = component(MotorWidget, layer="view", from_config="widget")
 
-    _MotorUC2App().run()
+    MotorUC2App().run()

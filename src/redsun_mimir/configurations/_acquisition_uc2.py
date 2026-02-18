@@ -20,9 +20,9 @@ def acquisition_widget_uc2() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class _AcquisitionUC2App(QtAppContainer, config=_CONFIG):
+    class AcquisitionUC2App(QtAppContainer, config=_CONFIG):
         camera = component(MMCoreCameraDevice, layer="device", from_config="camera")
         ctrl = component(AcquisitionController, layer="presenter", from_config="ctrl")
         widget = component(AcquisitionWidget, layer="view", from_config="widget")
 
-    _AcquisitionUC2App().run()
+    AcquisitionUC2App().run()
