@@ -29,12 +29,22 @@ def acquisition_detector_widget() -> None:
 
     class _AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
         camera1 = component(MMCoreCameraDevice, layer="device", from_config="camera1")
-        camera2 = component(SimulatedCameraDevice, layer="device", from_config="camera2")
+        camera2 = component(
+            SimulatedCameraDevice, layer="device", from_config="camera2"
+        )
         motor = component(MockMotorDevice, layer="device", from_config="motor")
-        median_ctrl = component(MedianPresenter, layer="presenter", from_config="median_ctrl")
-        det_ctrl = component(DetectorController, layer="presenter", from_config="det_ctrl")
-        acq_ctrl = component(AcquisitionController, layer="presenter", from_config="acq_ctrl")
-        acq_widget = component(AcquisitionWidget, layer="view", from_config="acq_widget")
+        median_ctrl = component(
+            MedianPresenter, layer="presenter", from_config="median_ctrl"
+        )
+        det_ctrl = component(
+            DetectorController, layer="presenter", from_config="det_ctrl"
+        )
+        acq_ctrl = component(
+            AcquisitionController, layer="presenter", from_config="acq_ctrl"
+        )
+        acq_widget = component(
+            AcquisitionWidget, layer="view", from_config="acq_widget"
+        )
         det_widget = component(DetectorWidget, layer="view", from_config="det_widget")
 
     _AcquisitionDetectorApp().run()

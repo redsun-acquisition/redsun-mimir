@@ -24,7 +24,9 @@ def acquisition_widget() -> None:
 
     class _AcquisitionApp(QtAppContainer, config=_CONFIG):
         camera1 = component(MMCoreCameraDevice, layer="device", from_config="camera1")
-        camera2 = component(SimulatedCameraDevice, layer="device", from_config="camera2")
+        camera2 = component(
+            SimulatedCameraDevice, layer="device", from_config="camera2"
+        )
         ctrl = component(AcquisitionController, layer="presenter", from_config="ctrl")
         widget = component(AcquisitionWidget, layer="view", from_config="widget")
 
