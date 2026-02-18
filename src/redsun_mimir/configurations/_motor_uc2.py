@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
+from redsun.containers import component
+from redsun.containers.qt_container import QtAppContainer
 
 from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
 from redsun_mimir.presenter import MotorController
@@ -12,7 +13,7 @@ from redsun_mimir.view import MotorWidget
 _CONFIG = Path(__file__).parent / "uc2_motor_configuration.yaml"
 
 
-class _MotorUC2App(AppContainer, config=_CONFIG):
+class _MotorUC2App(QtAppContainer, config=_CONFIG):
     serial: MimirSerialDevice = component(layer="device", from_config="serial")
     stage: MimirMotorDevice = component(layer="device", from_config="stage")
     ctrl: MotorController = component(layer="presenter", from_config="ctrl")

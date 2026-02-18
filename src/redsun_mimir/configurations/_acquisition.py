@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
+from redsun.containers import component
+from redsun.containers.qt_container import QtAppContainer
 
 from redsun_mimir.device.microscope import SimulatedCameraDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
@@ -13,7 +14,7 @@ from redsun_mimir.view import AcquisitionWidget
 _CONFIG = Path(__file__).parent / "mock_acquisition_configuration.yaml"
 
 
-class _AcquisitionApp(AppContainer, config=_CONFIG):
+class _AcquisitionApp(QtAppContainer, config=_CONFIG):
     camera1: MMCoreCameraDevice = component(layer="device", from_config="camera1")
     camera2: SimulatedCameraDevice = component(layer="device", from_config="camera2")
     ctrl: AcquisitionController = component(layer="presenter", from_config="ctrl")

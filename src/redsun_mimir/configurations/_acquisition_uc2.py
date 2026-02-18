@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
+from redsun.containers import component
+from redsun.containers.qt_container import QtAppContainer
 
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
 from redsun_mimir.presenter import AcquisitionController
@@ -12,7 +13,7 @@ from redsun_mimir.view import AcquisitionWidget
 _CONFIG = Path(__file__).parent / "uc2_acquisition_configuration.yaml"
 
 
-class _AcquisitionUC2App(AppContainer, config=_CONFIG):
+class _AcquisitionUC2App(QtAppContainer, config=_CONFIG):
     camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
     ctrl: AcquisitionController = component(layer="presenter", from_config="ctrl")
     widget: AcquisitionWidget = component(layer="view", from_config="widget")

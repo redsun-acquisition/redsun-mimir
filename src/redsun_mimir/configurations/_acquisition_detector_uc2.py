@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import AppContainer, component
+from redsun.containers import component
+from redsun.containers.qt_container import QtAppContainer
 
 from redsun_mimir.device import MockMotorDevice
 from redsun_mimir.device.mmcore import MMCoreCameraDevice
@@ -17,7 +18,7 @@ from redsun_mimir.view import AcquisitionWidget, DetectorWidget
 _CONFIG = Path(__file__).parent / "uc2_acquisition_detector_configuration.yaml"
 
 
-class _AcquisitionDetectorUC2App(AppContainer, config=_CONFIG):
+class _AcquisitionDetectorUC2App(QtAppContainer, config=_CONFIG):
     camera: MMCoreCameraDevice = component(layer="device", from_config="camera")
     motor: MockMotorDevice = component(layer="device", from_config="motor")
     median_ctrl: MedianPresenter = component(
