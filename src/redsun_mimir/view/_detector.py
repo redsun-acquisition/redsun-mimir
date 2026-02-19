@@ -213,16 +213,15 @@ class DetectorView(QtView, Loggable):
             Flat merged ``read_configuration()`` output from all detectors,
             keyed identically.
         """
-        # Group keys by device label (prefix:name)
+        # Group keys by device name
         devices: dict[str, dict[str, Descriptor]] = {}
         for key, descriptor in descriptors.items():
             try:
-                prefix, name, _ = parse_key(key)
+                name, _ = parse_key(key)
             except ValueError:
                 self.logger.warning(f"Skipping malformed descriptor key: {key!r}")
                 continue
-            device_label = f"{prefix}:{name}"
-            devices.setdefault(device_label, {})[key] = descriptor
+            devices.setdefault(name, {})[key] = descriptor
 
         for device_label, dev_descriptors in devices.items():
             dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}

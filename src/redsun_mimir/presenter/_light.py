@@ -103,21 +103,13 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
     def _bare_name(self, device_label: str) -> str:
         """Resolve a device label to the bare device name used as dict key.
 
-        The view emits ``prefix:name`` labels, but ``self._lights`` is keyed
-        by the bare device name.  ``parse_key`` extracts the name component;
-        if the label has no canonical separator the string is returned as-is
-        so bare names from internal callers continue to work.
+        Returns the label unchanged since devices are now keyed by bare name only.
 
         Parameters
         ----------
         device_label :
-            Either a canonical ``prefix:name`` label or a plain device name.
+            Device name.
         """
-        # A canonical key has a backslash (prefix:name\property).
-        # A device label is just prefix:name — split on ":" and take index 1.
-        parts = device_label.split(":", 1)
-        if len(parts) == 2:
-            return parts[1]
         return device_label
 
     def trigger(self, name: str) -> None:

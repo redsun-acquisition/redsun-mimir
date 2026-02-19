@@ -169,19 +169,15 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
     def _bare_name(self, device_label: str) -> str:
         """Resolve a device label to the bare device name used as dict key.
 
-        The view emits ``prefix:name`` labels, but ``self._motors`` is keyed
-        by the bare device name.  Splits on ``":"`` and returns the second
-        component; returns the original string unchanged when no colon is
-        present so bare names from internal callers continue to work.
+        Since keys are now keyed by bare device name only, this method
+        returns the label unchanged. Kept for compatibility with any
+        callers that may still pass a name.
 
         Parameters
         ----------
         device_label :
-            Either a canonical ``prefix:name`` label or a plain device name.
+            Device name.
         """
-        parts = device_label.split(":", 1)
-        if len(parts) == 2:
-            return parts[1]
         return device_label
 
     def shutdown(self) -> None:

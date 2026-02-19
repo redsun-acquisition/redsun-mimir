@@ -4,15 +4,14 @@ Key format
 ----------
 Keys follow the convention::
 
-    {prefix}:{name}\{property}
+    {name}\{property}
 
 where:
 
-- ``prefix`` is a short device-class tag (e.g. ``"MM"`` for Micro-Manager).
-- ``name``   is the runtime device instance name (e.g. ``"mmcore"``).
+- ``name``     is the runtime device instance name (e.g. ``"mmcore"``).
 - ``property`` is the individual setting name (e.g. ``"exposure"``).
 
-Example: ``MM:mmcore\exposure``
+Example: ``mmcore\exposure``
 
 The same key convention applies to both configuration descriptor dicts
 (``describe_configuration()``) and configuration reading dicts
@@ -41,40 +40,36 @@ __all__ = [
 T = TypeVar("T")
 
 
-def make_key(prefix: str, name: str, property_name: str) -> str:
+def make_key(name: str, property_name: str) -> str:
     r"""Build a canonical device property key.
 
     Parameters
     ----------
-    prefix :
-        Short device-class tag (e.g. ``"MM"``).
     name :
         Runtime device instance name (e.g. ``"mmcore"``).
     property_name :
         Individual setting name (e.g. ``"exposure"``).
-        Nested properties use "\\" as separator
-        (e.g. ``r"step_size\X"`` for per-axis step sizes).
 
     Returns
     -------
     str
-        Key in the form ``{prefix}:{name}\{property_name}``.
+        Key in the form ``{name}\{property_name}``.
     """
-    return f"{prefix}:{name}\\{property_name}"
+    return f"{name}\\{property_name}"
 
 
-def parse_key(key: str) -> tuple[str, str, str]:
+def parse_key(key: str) -> tuple[str, str]:
     r"""Parse a canonical device property key into its components.
 
     Parameters
     ----------
     key :
-        Key in the form ``{prefix}:{name}\{property_name}``.
+        Key in the form ``{name}\{property_name}``.
 
     Returns
     -------
-    tuple[str, str, str]
-        ``(prefix, name, property_name)``
+    tuple[str, str]
+        ``(name, property_name)``
 
     Raises
     ------
@@ -82,13 +77,12 @@ def parse_key(key: str) -> tuple[str, str, str]:
         If the key does not conform to the expected format.
     """
     try:
-        prefix_name, property_name = key.split("\\", 1)
-        prefix, name = prefix_name.split(":", 1)
-        return prefix, name, property_name
+        name, property_name = key.split("\\", 1)
+        return name, property_name
     except ValueError:
         raise ValueError(
             f"Key {key!r} does not conform to the expected "
-            f"'{{prefix}}:{{name}}\\{{property}}' format."
+            f"'{{name}}\\\\{{property}}' format."
         )
 
 
@@ -143,79 +137,31 @@ def make_descriptor(
 ) -> Descriptor:
     r"""Build a bluesky-compatible descriptor entry.
 
-    This is the single entry-point for all descriptor construction.
-    Select the desired ``dtype`` and supply the matching keyword arguments;
-    the type-checker enforces that only valid combinations are used.
-
     Parameters
     ----------
     source : str
-        Human-readable source label (e.g. ``"settings"``, ``"properties"``).
+        Human-readable source label (e.g. ``"settings"``).
     dtype : Literal["number", "integer", "string", "array"]
-        One of ``"number"``, ``"integer"``, ``"string"``, ``"array"``.
+        Data type of the field.
     low : float | int | None
-        Lower control limit. Valid for ``"number"`` and ``"integer"`` only.
-        Both ``low`` and ``high`` must be provided together.
+        Lower control limit (``"number"`` / ``"integer"`` only).
     high : float | int | None
-        Upper control limit. Valid for ``"number"`` and ``"integer"`` only.
+        Upper control limit (``"number"`` / ``"integer"`` only).
     units : str | None
-        Physical unit string (e.g. ``"ms"``, ``"nm"``).
-        Valid for ``"number"`` and ``"integer"`` only.
+        Physical unit string.
     choices : list[str] | None
-        Allowed string values for combo-box editing.
-        Valid for ``"string"`` only; produces an enum-style descriptor.
+        Allowed string values (``"string"`` only).
     shape : list[int | None] | None
-        Array dimensions. Required for ``"array"``.
-        A `None` entry indicates a variable dimension (e.g. ``[None, 3]`` for an Nx3 array).
+        Array dimensions (required for ``"array"``).
     readonly : bool
-        When ``True``, the ``source`` field is suffixed with ``"/readonly"``
-        (e.g. ``"settings/readonly"``).  The settings tree view recognises
-        this convention and disables in-place editing for the field.
-        Default is ``False``.
+        When ``True``, the ``source`` field is suffixed with ``"\\readonly"``.
 
     Returns
     -------
     Descriptor
         The constructed descriptor dictionary.
-
-    Notes
-    -----
-    **Read-only fields**: pass ``readonly=True`` to mark a field as
-    non-editable in the settings tree.  Internally, the ``source`` string
-    is stored as ``"{source}/readonly"``; the
-    :class:`~redsun_mimir.utils.qt.DescriptorModel` splits on ``"/"`` to
-    detect the flag::
-
-        make_descriptor("settings", "string", readonly=True)
-        # → {"source": "settings/readonly", "dtype": "string", "shape": []}
-
-    Examples
-    --------
-    Floating-point with limits and units::
-
-        make_descriptor("settings", "number", low=0.0, high=1000.0, units="ms")
-
-    Integer without limits::
-
-        make_descriptor("settings", "integer", units="nm")
-
-    Free-text string::
-
-        make_descriptor("settings", "string")
-
-    Enumerated string::
-
-        make_descriptor("settings", "string", choices=["8bit", "16bit", "32bit"])
-
-    Fixed-shape array::
-
-        make_descriptor("settings", "array", shape=[2])
-
-    Read-only field::
-
-        make_descriptor("settings", "string", readonly=True)
     """
-    source_field = f"{source}/readonly" if readonly else source
+    source_field = f"{source}\\readonly" if readonly else source
     d: Descriptor = {"source": source_field, "dtype": dtype, "shape": []}
     if units is not None:
         d["units"] = units
@@ -237,7 +183,7 @@ def make_descriptor(
     return d
 
 
-def make_reading(value: T, timestamp: float) -> Reading[T]:
+def make_reading(value: T, timestamp: float) -> "Reading[T]":
     """Build a bluesky-compatible reading entry.
 
     Parameters

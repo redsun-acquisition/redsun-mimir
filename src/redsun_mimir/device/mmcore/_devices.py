@@ -174,8 +174,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         }
 
         self._device_schema = self._core.getDeviceSchema(name)
-        self._buffer_key = make_key(self.prefix, self.name, "buffer")
-        self._roi_key = make_key(self.prefix, self.name, "roi")
+        self._buffer_key = make_key(self.name, "buffer")
+        self._roi_key = make_key(self.name, "roi")
         self._buffer_stream_key = f"{self.name}:buffer:stream"
         self._fly_permit = th.Event()
         self._fly_stop = th.Event()
@@ -223,7 +223,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         try:
             propr = kwargs.get("propr", None)
             if propr:
-                _, _, propr = parse_key(cast("str", propr))
+                _, propr = parse_key(cast("str", propr))
             else:
                 raise ValueError(
                     "Property name must be specified via 'propr' keyword argument."
@@ -265,7 +265,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
-            key = make_key(self.prefix, self.name, prop_name)
+            key = make_key(self.name, prop_name)
 
             if choices:
                 config_descriptor[key] = make_descriptor(
@@ -278,17 +278,15 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             else:
                 config_descriptor[key] = make_descriptor("properties", "number")
 
-        config_descriptor[make_key(self.prefix, self.name, "exposure")] = (
-            make_descriptor(
-                "settings",
-                "number",
-                low=self.exposure_limits[0],
-                high=self.exposure_limits[1],
-                units="ms",
-            )
+        config_descriptor[make_key(self.name, "exposure")] = make_descriptor(
+            "settings",
+            "number",
+            low=self.exposure_limits[0],
+            high=self.exposure_limits[1],
+            units="ms",
         )
-        config_descriptor[make_key(self.prefix, self.name, "sensor_shape")] = (
-            make_descriptor("settings", "array", shape=[2])
+        config_descriptor[make_key(self.name, "sensor_shape")] = make_descriptor(
+            "settings", "array", shape=[2]
         )
         return config_descriptor
 
@@ -299,14 +297,12 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         for prop in self._properties.values():
             if prop.name not in self.allowed_properties:
                 continue
-            config[make_key(self.prefix, self.name, prop.name)] = make_reading(
-                prop.value, timestamp
-            )
+            config[make_key(self.name, prop.name)] = make_reading(prop.value, timestamp)
 
-        config[make_key(self.prefix, self.name, "exposure")] = make_reading(
+        config[make_key(self.name, "exposure")] = make_reading(
             self._core.getExposure(), timestamp
         )
-        config[make_key(self.prefix, self.name, "sensor_shape")] = make_reading(
+        config[make_key(self.name, "sensor_shape")] = make_reading(
             list(self.sensor_shape), timestamp
         )
         return config

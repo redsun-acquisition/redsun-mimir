@@ -49,11 +49,11 @@ class TestMotorView:
         )
         widget.inject_dependencies(container)
 
-        assert "MOCK:stage" in widget._groups
-        assert "pos:MOCK:stage:X" in widget._labels
-        assert "pos:MOCK:stage:Y" in widget._labels
-        assert "button:MOCK:stage:X:up" in widget._buttons
-        assert "button:MOCK:stage:X:down" in widget._buttons
+        assert "stage" in widget._groups
+        assert "pos:stage:X" in widget._labels
+        assert "pos:stage:Y" in widget._labels
+        assert "button:stage:X:up" in widget._buttons
+        assert "button:stage:X:down" in widget._buttons
 
     def test_step_size_initialised_from_device(
         self, widget: MotorView, motor: MockMotorDevice
@@ -65,8 +65,8 @@ class TestMotorView:
         )
         widget.inject_dependencies(container)
 
-        assert widget._line_edits["edit:MOCK:stage:X"].text() == "1.0"
-        assert widget._line_edits["edit:MOCK:stage:Y"].text() == "0.5"
+        assert widget._line_edits["edit:stage:X"].text() == "1.0"
+        assert widget._line_edits["edit:stage:Y"].text() == "0.5"
 
     def test_update_position_changes_label(
         self, widget: MotorView, motor: MockMotorDevice
@@ -78,8 +78,8 @@ class TestMotorView:
         )
         widget.inject_dependencies(container)
 
-        widget._update_position("MOCK:stage", "X", 7.5)
-        assert "7.50" in widget._labels["pos:MOCK:stage:X"].text()
+        widget._update_position("stage", "X", 7.5)
+        assert "7.50" in widget._labels["pos:stage:X"].text()
 
     def test_step_up_emits_signal(
         self, widget: MotorView, motor: MockMotorDevice
@@ -94,9 +94,9 @@ class TestMotorView:
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("MOCK:stage", "X", direction_up=True)
+        widget._step("stage", "X", direction_up=True)
         assert len(received) == 1
-        assert received[0] == ("MOCK:stage", "X", pytest.approx(1.0))
+        assert received[0] == ("stage", "X", pytest.approx(1.0))
 
     def test_step_down_emits_signal(
         self, widget: MotorView, motor: MockMotorDevice
@@ -111,9 +111,9 @@ class TestMotorView:
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("MOCK:stage", "X", direction_up=False)
+        widget._step("stage", "X", direction_up=False)
         assert len(received) == 1
-        assert received[0] == ("MOCK:stage", "X", pytest.approx(-1.0))
+        assert received[0] == ("stage", "X", pytest.approx(-1.0))
 
     def test_connect_to_virtual_registers_signals(
         self, widget: MotorView, motor: MockMotorDevice, virtual_bus: VirtualBus
@@ -168,9 +168,9 @@ class TestLightView:
         )
         widget.inject_dependencies(container)
 
-        assert "MOCK:led" in widget._groups
-        assert "on:MOCK:led" in widget._buttons
-        assert "power:MOCK:led" not in widget._sliders
+        assert "led" in widget._groups
+        assert "on:led" in widget._buttons
+        assert "power:led" not in widget._sliders
 
     def test_inject_continuous_light(
         self, widget: LightView, laser: MockLightDevice
@@ -182,9 +182,9 @@ class TestLightView:
         )
         widget.inject_dependencies(container)
 
-        assert "MOCK:laser" in widget._groups
-        assert "on:MOCK:laser" in widget._buttons
-        assert "power:MOCK:laser" in widget._sliders
+        assert "laser" in widget._groups
+        assert "on:laser" in widget._buttons
+        assert "power:laser" in widget._sliders
 
     def test_toggle_button_emits_signal(
         self, widget: LightView, led: MockLightDevice
@@ -199,8 +199,8 @@ class TestLightView:
         received: list[str] = []
         widget.sigToggleLightRequest.connect(received.append)
 
-        widget._on_toggle_button_checked("MOCK:led")
-        assert received == ["MOCK:led"]
+        widget._on_toggle_button_checked("led")
+        assert received == ["led"]
 
     def test_toggle_button_text_changes(
         self, widget: LightView, led: MockLightDevice
@@ -212,13 +212,13 @@ class TestLightView:
         )
         widget.inject_dependencies(container)
 
-        btn = widget._buttons["on:MOCK:led"]
+        btn = widget._buttons["on:led"]
         assert btn.text() == "ON"
         btn.setChecked(True)
-        widget._on_toggle_button_checked("MOCK:led")
+        widget._on_toggle_button_checked("led")
         assert btn.text() == "OFF"
         btn.setChecked(False)
-        widget._on_toggle_button_checked("MOCK:led")
+        widget._on_toggle_button_checked("led")
         assert btn.text() == "ON"
 
     def test_slider_change_emits_signal(
@@ -234,9 +234,9 @@ class TestLightView:
         received: list[tuple[str, Any]] = []
         widget.sigIntensityRequest.connect(lambda n, v: received.append((n, v)))
 
-        widget._on_slider_changed(50, "MOCK:laser")
+        widget._on_slider_changed(50, "laser")
         assert len(received) == 1
-        assert received[0][0] == "MOCK:laser"
+        assert received[0][0] == "laser"
         assert received[0][1] == 50
 
     def test_connect_to_virtual_registers_signals(

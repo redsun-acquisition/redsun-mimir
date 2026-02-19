@@ -129,38 +129,30 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
         return {
-            make_key(self.prefix, self.name, "wavelength"): make_reading(
-                self.wavelength, timestamp
-            ),
-            make_key(self.prefix, self.name, "binary"): make_reading(
-                self.binary, timestamp
-            ),
-            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.prefix, self.name, "intensity_range"): make_reading(
+            make_key(self.name, "wavelength"): make_reading(self.wavelength, timestamp),
+            make_key(self.name, "binary"): make_reading(self.binary, timestamp),
+            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.name, "intensity_range"): make_reading(
                 list(self.intensity_range), timestamp
             ),
-            make_key(self.prefix, self.name, "step_size"): make_reading(
-                self.step_size, timestamp
-            ),
+            make_key(self.name, "step_size"): make_reading(self.step_size, timestamp),
         }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         return {
-            make_key(self.prefix, self.name, "wavelength"): make_descriptor(
+            make_key(self.name, "wavelength"): make_descriptor(
                 "settings", "integer", units="nm", readonly=True
             ),
-            make_key(self.prefix, self.name, "binary"): make_descriptor(
+            make_key(self.name, "binary"): make_descriptor(
                 "settings", "string", readonly=True
             ),
-            make_key(self.prefix, self.name, "egu"): make_descriptor(
+            make_key(self.name, "egu"): make_descriptor(
                 "settings", "string", readonly=True
             ),
-            make_key(self.prefix, self.name, "intensity_range"): make_descriptor(
+            make_key(self.name, "intensity_range"): make_descriptor(
                 "settings", "array", shape=[2], readonly=True
             ),
-            make_key(self.prefix, self.name, "step_size"): make_descriptor(
-                "settings", "integer"
-            ),
+            make_key(self.name, "step_size"): make_descriptor("settings", "integer"),
         }
 
     def shutdown(self) -> None: ...
@@ -230,15 +222,15 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         }
 
         self._descriptors: dict[str, Descriptor] = {
-            make_key(self.prefix, self.name, "egu"): make_descriptor(
+            make_key(self.name, "egu"): make_descriptor(
                 "settings", "string", readonly=True
             ),
-            make_key(self.prefix, self.name, "axis"): make_descriptor(
+            make_key(self.name, "axis"): make_descriptor(
                 "settings", "array", shape=[len(self.axis)], readonly=True
             ),
         }
         for ax in self.axis:
-            key = make_key(self.prefix, self.name, rf"{ax}_step_size")
+            key = make_key(self.name, rf"{ax}_step_size")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
                 self._descriptors[key] = make_descriptor(
@@ -291,7 +283,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         if raw is not None:
             # Accept either a canonical key ("prefix:name\\property") or a bare name
             try:
-                _, _, propr = parse_key(str(raw))
+                _, propr = parse_key(str(raw))
             except ValueError:
                 propr = str(raw)
             self.logger.info("Setting property %s to %s.", propr, value)
@@ -338,13 +330,11 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {
-            make_key(self.prefix, self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.prefix, self.name, "axis"): make_reading(
-                self.axis, timestamp
-            ),
+            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.name, "axis"): make_reading(self.axis, timestamp),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.prefix, self.name, f"{ax}_step_size")] = make_reading(
+            config[make_key(self.name, f"{ax}_step_size")] = make_reading(
                 step, timestamp
             )
         return config

@@ -68,12 +68,11 @@ class TestMotorPresenter:
         assert pos == pytest.approx(10.0)
         assert mock_motor.locate()["setpoint"] == pytest.approx(10.0)
 
-    def test_move_via_device_label(
+    def test_move_via_device_name(
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
-        """move() accepts a prefix:name device label as emitted by the view."""
-        device_label = f"{mock_motor.prefix}:{mock_motor.name}"  # e.g. "MOCK:stage"
-        controller.move(device_label, "X", 5.0)
+        """move() accepts the bare device name."""
+        controller.move(mock_motor.name, "X", 5.0)
         controller._queue.join()
         assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
 
@@ -83,19 +82,18 @@ class TestMotorPresenter:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        step_key = "MOCK:stage\\X_step_size"
+        step_key = "stage\\X_step_size"
         result = controller.configure("stage", {step_key: 0.5})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
         assert len(received) == 1
 
-    def test_configure_via_device_label(
+    def test_configure_via_device_name(
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
-        """configure() accepts a prefix:name device label as emitted by the view."""
-        device_label = f"{mock_motor.prefix}:{mock_motor.name}"  # e.g. "MOCK:stage"
-        step_key = f"{device_label}\\X_step_size"
-        result = controller.configure(device_label, {step_key: 2.0})
+        """configure() accepts the bare device name."""
+        step_key = f"{mock_motor.name}\\X_step_size"
+        result = controller.configure(mock_motor.name, {step_key: 2.0})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(2.0)
 
@@ -151,13 +149,12 @@ class TestLightPresenter:
         controller.trigger("led")
         assert mock_led.enabled is False
 
-    def test_trigger_via_device_label(
+    def test_trigger_via_device_name(
         self, controller: LightPresenter, mock_led: MockLightDevice
     ) -> None:
-        """trigger() accepts a prefix:name device label as emitted by the view."""
-        device_label = f"{mock_led.prefix}:{mock_led.name}"  # e.g. "MOCK:led"
+        """trigger() accepts the bare device name."""
         assert mock_led.enabled is False
-        controller.trigger(device_label)
+        controller.trigger(mock_led.name)
         assert mock_led.enabled is True
 
     def test_set_intensity(
@@ -167,12 +164,11 @@ class TestLightPresenter:
         controller.set("laser", 75.0)
         assert mock_laser.intensity == pytest.approx(75.0)
 
-    def test_set_intensity_via_device_label(
+    def test_set_intensity_via_device_name(
         self, controller: LightPresenter, mock_laser: MockLightDevice
     ) -> None:
-        """set() accepts a prefix:name device label as emitted by the view."""
-        device_label = f"{mock_laser.prefix}:{mock_laser.name}"  # e.g. "MOCK:laser"
-        controller.set(device_label, 42.0)
+        """set() accepts the bare device name."""
+        controller.set(mock_laser.name, 42.0)
         assert mock_laser.intensity == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
@@ -194,7 +190,9 @@ class TestMedianPresenter:
 
     @pytest.fixture
     def presenter(self, virtual_bus: VirtualBus) -> MedianPresenter:
-        return MedianPresenter({}, virtual_bus)
+        return MedianPresenter(
+            {}, virtual_bus, streams=["square_scan"], hints=["buffer"]
+        )
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -248,7 +246,7 @@ class TestMedianPresenter:
         presenter.uid_to_stream[desc_uid] = "square_scan"
 
         frame = np.ones((4, 4))
-        evt = self._make_event(desc_uid, {"cam:buffer": frame})
+        evt = self._make_event(desc_uid, {"cam\\buffer": frame})
 
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
@@ -272,14 +270,14 @@ class TestMedianPresenter:
         # Stack two identical frames so median == the frame itself
         frame = np.ones((4, 4)) * 2.0
         for _ in range(2):
-            presenter.event(self._make_event(scan_uid, {"cam:buffer": frame}))  # type: ignore[arg-type]
+            presenter.event(self._make_event(scan_uid, {"cam\\buffer": frame}))  # type: ignore[arg-type]
 
         # Now send a live event — median should be applied
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
 
         live_frame = np.ones((4, 4)) * 4.0
-        presenter.event(self._make_event(live_uid, {"cam:buffer": live_frame}))  # type: ignore[arg-type]
+        presenter.event(self._make_event(live_uid, {"cam\\buffer": live_frame}))  # type: ignore[arg-type]
 
         assert len(emitted) == 1
         result = emitted[0]
