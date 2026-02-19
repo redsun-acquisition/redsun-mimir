@@ -7,7 +7,7 @@ from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import Signal, VirtualAware
+from sunflare.virtual import Signal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualBus
 
 
-class MedianPresenter(Presenter, DocumentRouter, VirtualAware, Loggable):
+class MedianPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter that computes per-detector median images from scan streams.
 
     Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
