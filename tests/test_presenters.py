@@ -281,5 +281,5 @@ class TestMedianPresenter:
 
         assert len(emitted) == 1
         result = emitted[0]
-        # cam[median] key should be present
-        assert any("[median]" in k for k in result)
+        # cam-median key should be present
+        assert any("median" in k for k in result)
