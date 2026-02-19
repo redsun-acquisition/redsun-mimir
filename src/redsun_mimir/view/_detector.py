@@ -249,7 +249,7 @@ class DetectorView(QtView, Loggable):
             widget = SettingsControlWidget(dev_descriptors, dev_readings, layer)
             # Forward property changes with the device label so the presenter
             # can route the set() call to the right detector instance
-            widget.tree_view.model().sigPropertyChanged.connect(
+            widget.tree_view.sigPropertyChanged.connect(
                 lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
                     lbl, {setting: value}
                 )
@@ -272,8 +272,9 @@ class DetectorView(QtView, Loggable):
             Whether the configuration change was successful
         """
         if detector in self.settings_controls:
-            model = self.settings_controls[detector].tree_view.model()
-            model.confirm_change(setting_name, success)
+            self.settings_controls[detector].tree_view.confirm_change(
+                setting_name, success
+            )
 
             if not success:
                 self.logger.error(f"Failed to configure {setting_name} for {detector}")
