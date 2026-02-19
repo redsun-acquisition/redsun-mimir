@@ -137,9 +137,9 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             Mapping of canonical ``prefix:name\\property`` keys to new values.
 
         """
-        # device_label is "prefix:name"; self.detectors is keyed by bare name
+        # device_label is "name"; self.detectors is keyed by bare name
         try:
-            _, bare_name, _ = parse_key(next(iter(config)))
+            bare_name, _ = parse_key(next(iter(config)))
         except (StopIteration, ValueError):
             # fall back to treating detector arg as the bare name directly
             bare_name = detector

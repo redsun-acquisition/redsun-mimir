@@ -129,15 +129,14 @@ class LightView(QtView, Loggable):
         self._configuration = configuration
         self._description = description
 
-        # Group flat keys by device label (prefix:name)
+        # Group flat keys by device name
         devices: dict[str, dict[str, Reading[Any]]] = {}
         for key, reading in configuration.items():
             try:
-                prefix, name, _ = parse_key(key)
+                name, _ = parse_key(key)
             except ValueError:
                 continue
-            label = f"{prefix}:{name}"
-            devices.setdefault(label, {})[key] = reading
+            devices.setdefault(name, {})[key] = reading
 
         for device_label, readings in devices.items():
             wavelength: int = _get_prop(readings, "wavelength", 0)

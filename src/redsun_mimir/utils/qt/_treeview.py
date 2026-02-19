@@ -508,15 +508,12 @@ class DescriptorModel(QtCore.QAbstractItemModel):
     def _add_settings_to_tree(self, device_descriptor: dict[str, Descriptor]) -> None:
         r"""Add settings to the tree structure.
 
-        Keys are expected in the canonical form ``{prefix}:{name}\\{property}``.
-        The tree is built as a three-level hierarchy::
+        Keys are expected in the canonical form ``{name}\\{property}``.
+        The tree is built as a two-level hierarchy::
 
-            {prefix}:{name}          (device node)
-            └── {source}             (source group node, e.g. "settings")
-                └── {property}       (setting leaf node)
-
-        The legacy two-part format ``{device}:{property}`` (no backslash) is
-        also accepted and produces a two-level tree (source → setting).
+            {name}               (device node)
+            └── {source}         (source group node, e.g. "settings")
+                └── {property}   (setting leaf node)
 
         Parameters
         ----------
@@ -524,27 +521,23 @@ class DescriptorModel(QtCore.QAbstractItemModel):
             Dictionary of device settings and their descriptor.
 
         """
-        # outer: device label  →  inner: source  →  list of (full_key, property, descriptor)
+        # outer: device name → inner: source → list of (full_key, property, descriptor)
         groups: dict[str, dict[str, list[tuple[str, str, Descriptor]]]] = {}
         readonly_flags: dict[str, bool] = {}
 
         for full_key, descriptor in device_descriptor.items():
-            # Parse key into device label and property name
+            # Parse key into device name and property name
             if "\\" in full_key:
-                # New format: prefix:name\property
                 device_label, property_name = full_key.split("\\", 1)
-            elif ":" in full_key:
-                # Legacy format: device:property  →  treat device as label
-                device_label, property_name = full_key.split(":", 1)
             else:
                 device_label = ""
                 property_name = full_key
 
-            # Extract source and readonly flag
+            # Extract source and readonly flag (separated by "\" instead of "/")
             source_raw = descriptor.get("source", "unknown")
-            group_tokens = source_raw.split("/")
-            source = group_tokens[0]
-            if len(group_tokens) > 1 and group_tokens[1] == "readonly":
+            source_parts = source_raw.split("\\", 1)
+            source = source_parts[0]
+            if len(source_parts) > 1 and source_parts[1] == "readonly":
                 readonly_flags[full_key] = True
 
             groups.setdefault(device_label, {}).setdefault(source, []).append(

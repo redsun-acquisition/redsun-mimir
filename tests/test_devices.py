@@ -70,12 +70,12 @@ class TestMockMotorDevice:
     ) -> None:
         """read_configuration() returns egu, axis and per-axis step sizes."""
         cfg = mock_motor.read_configuration()
-        assert "MOCK:stage\\egu" in cfg
-        assert "MOCK:stage\\axis" in cfg
-        assert cfg["MOCK:stage\\egu"]["value"] == "um"
-        assert cfg["MOCK:stage\\axis"]["value"] == ["X", "Y", "Z"]
+        assert "stage\\egu" in cfg
+        assert "stage\\axis" in cfg
+        assert cfg["stage\\egu"]["value"] == "um"
+        assert cfg["stage\\axis"]["value"] == ["X", "Y", "Z"]
         for ax in ["X", "Y", "Z"]:
-            key = f"MOCK:stage\\{ax}_step_size"
+            key = f"stage\\{ax}_step_size"
             assert key in cfg
             assert cfg[key]["value"] == 1.0
 
@@ -84,10 +84,10 @@ class TestMockMotorDevice:
     ) -> None:
         """describe_configuration() returns egu, axis and per-axis step size descriptors."""
         desc = mock_motor.describe_configuration()
-        assert "MOCK:stage\\egu" in desc
-        assert "MOCK:stage\\axis" in desc
+        assert "stage\\egu" in desc
+        assert "stage\\axis" in desc
         for ax in ["X", "Y", "Z"]:
-            assert f"MOCK:stage\\{ax}_step_size" in desc
+            assert f"stage\\{ax}_step_size" in desc
 
 
 class TestMockLightDevice:
@@ -163,21 +163,21 @@ class TestMockLightDevice:
     ) -> None:
         """read_configuration() returns wavelength, binary, egu, intensity_range, step_size."""
         cfg = mock_led.read_configuration()
-        assert "MOCK:led\\wavelength" in cfg
-        assert "MOCK:led\\binary" in cfg
-        assert "MOCK:led\\egu" in cfg
-        assert "MOCK:led\\intensity_range" in cfg
-        assert "MOCK:led\\step_size" in cfg
-        assert cfg["MOCK:led\\wavelength"]["value"] == 450
-        assert cfg["MOCK:led\\binary"]["value"] is True
+        assert "led\\wavelength" in cfg
+        assert "led\\binary" in cfg
+        assert "led\\egu" in cfg
+        assert "led\\intensity_range" in cfg
+        assert "led\\step_size" in cfg
+        assert cfg["led\\wavelength"]["value"] == 450
+        assert cfg["led\\binary"]["value"] is True
 
     def test_describe_configuration_contains_expected_keys(
         self, mock_led: MockLightDevice
     ) -> None:
         """describe_configuration() returns descriptors for all configuration keys."""
         desc = mock_led.describe_configuration()
-        assert "MOCK:led\\wavelength" in desc
-        assert "MOCK:led\\binary" in desc
-        assert "MOCK:led\\egu" in desc
-        assert "MOCK:led\\intensity_range" in desc
-        assert "MOCK:led\\step_size" in desc
+        assert "led\\wavelength" in desc
+        assert "led\\binary" in desc
+        assert "led\\egu" in desc
+        assert "led\\intensity_range" in desc
+        assert "led\\step_size" in desc

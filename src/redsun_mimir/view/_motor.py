@@ -25,7 +25,7 @@ def _get_prop(
     """Find a reading value by property name suffix.
 
     Searches all keys whose last backslash-delimited segment matches
-    *prop*. This makes the lookup independent of the ``prefix:name``
+    *prop*. This makes the lookup independent of the ``name``
     portion of the canonical key.
 
     Parameters
@@ -38,7 +38,7 @@ def _get_prop(
         Returned when no matching key is found.
     """
     for key, reading in readings.items():
-        # canonical format: prefix:name\property  (backslash separator)
+        # canonical format: name\property  (backslash separator)
         tail = key.rsplit("\\", 1)[-1]
         if tail == prop:
             return cast("_T", reading["value"])
@@ -64,8 +64,8 @@ class MotorView(QtView):
         (``float``).
     sigConfigChanged :
         Emitted when the user changes a configuration parameter.
-        Carries device label (``str``, ``prefix:name``) and a mapping of
-        canonical ``prefix:name\property`` keys to new values
+        Carries device label (``str``, ``name``) and a mapping of
+        canonical ``name\property`` keys to new values
         (``dict[str, Any]``).
     r
     """
@@ -107,7 +107,7 @@ class MotorView(QtView):
         Retrieves configuration readings (current values) and descriptors
         (metadata) registered by
         [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``prefix:name\\property``
+        Both are flat dicts keyed by the canonical ``name\\property``
         scheme, merging all motor devices.
         """
         configuration: dict[str, Reading[Any]] = container.motor_configuration()
@@ -124,24 +124,23 @@ class MotorView(QtView):
         Parameters
         ----------
         configuration : ``dict[str, Reading[Any]]``
-            Flat mapping of canonical ``prefix:name\property`` keys to readings,
+            Flat mapping of canonical ``name\property`` keys to readings,
             merging all motor devices.
         description : ``dict[str, Descriptor]``
-            Flat mapping of canonical ``prefix:name\property`` keys to
+            Flat mapping of canonical ``name\property`` keys to
             descriptors, merging all motor devices.
         """
         self._configuration = configuration
         self._description = description
 
-        # Group flat keys by device label (prefix:name)
+        # Group flat keys by device name
         devices: dict[str, dict[str, Reading[Any]]] = {}
         for key, reading in configuration.items():
             try:
-                prefix, name, _ = parse_key(key)
+                name, _ = parse_key(key)
             except ValueError:
                 continue
-            label = f"{prefix}:{name}"
-            devices.setdefault(label, {})[key] = reading
+            devices.setdefault(name, {})[key] = reading
 
         self._device_readings = devices
 
@@ -210,7 +209,7 @@ class MotorView(QtView):
         Parameters
         ----------
         motor : ``str``
-            Motor device label (``prefix:name``).
+            Motor device label (``name``).
         axis : ``str``
             Motor axis.
         direction_up : ``bool``
@@ -231,7 +230,7 @@ class MotorView(QtView):
         Parameters
         ----------
         motor : ``str``
-            Motor device label (``prefix:name``).
+            Motor device label (``name``).
         axis : ``str``
             Motor axis.
         position : ``float``
@@ -245,13 +244,13 @@ class MotorView(QtView):
         r"""Validate the new step size value and notify the virtual bus.
 
         Emits ``sigConfigChanged`` with the device label and a mapping of
-        canonical ``prefix:name\property`` keys to new values, so the
+        canonical ``name\property`` keys to new values, so the
         presenter can route them directly to the device's ``set()`` call.
 
         Parameters
         ----------
         device_label : ``str``
-            Motor device label (``prefix:name``).
+            Motor device label (``name``).
         axis : ``str``
             Motor axis.
         """
