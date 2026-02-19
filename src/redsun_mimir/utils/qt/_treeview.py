@@ -354,28 +354,6 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
             )
         super().paint(painter, option, index)
 
-    def editorEvent(
-        self,
-        event: QtCore.QEvent | None,
-        model: QtCore.QAbstractItemModel | None,
-        option: QtWidgets.QStyleOptionViewItem,
-        index: QtCore.QModelIndex,
-    ) -> bool:
-        """Open editor on single-click for editable value cells."""
-        if (
-            event is not None
-            and event.type() == QtCore.QEvent.Type.MouseButtonPress
-            and index.column() == _Col.VALUE
-        ):
-            node: _Node = index.internalPointer()
-            if node.kind == _NodeType.SETTING and (
-                index.flags() & QtCore.Qt.ItemFlag.ItemIsEditable
-            ):
-                view = cast("DescriptorTreeView", self.parent())
-                view.edit(index)
-                return True
-        return super().editorEvent(event, model, option, index)
-
 
 # ---------------------------------------------------------------------------
 # Model
@@ -591,12 +569,12 @@ class DescriptorModel(QtCore.QAbstractItemModel):
         if role == QtCore.Qt.ItemDataRole.TextAlignmentRole:
             if node.kind == _NodeType.SETTING:
                 if col == _Col.VALUE:
-                    return int(
+                    return (
                         QtCore.Qt.AlignmentFlag.AlignRight
                         | QtCore.Qt.AlignmentFlag.AlignVCenter
                     )
                 if col == _Col.SETTING:
-                    return int(
+                    return (
                         QtCore.Qt.AlignmentFlag.AlignLeft
                         | QtCore.Qt.AlignmentFlag.AlignVCenter
                     )
@@ -783,10 +761,8 @@ class DescriptorTreeView(QtWidgets.QTreeView):
         self.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.setEditTriggers(
-            QtWidgets.QAbstractItemView.EditTrigger.CurrentChanged
-            | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked
-        )
+        # Persistent editors handle all editing — no popup editors needed.
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self.header()
         if header is not None:
             header.setStretchLastSection(True)
@@ -801,14 +777,14 @@ class DescriptorTreeView(QtWidgets.QTreeView):
     # ------------------------------------------------------------------
 
     def _on_structure_changed(self) -> None:
-        """Expand all nodes and fit columns after a structure change."""
+        """Expand all nodes, open persistent editors, and fit columns."""
         self.expandAll()
+        self._apply_spanning()
+        self._open_persistent_editors()
         for col in range(self._model.columnCount()):
             self.resizeColumnToContents(col)
         header = self.header()
         if header is not None:
-            # Group column: fixed to its content width; Setting stretches;
-            # Value column gets a sensible share via stretch on Setting.
             header.setSectionResizeMode(
                 _Col.GROUP, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
             )
@@ -818,3 +794,31 @@ class DescriptorTreeView(QtWidgets.QTreeView):
             header.setSectionResizeMode(
                 _Col.VALUE, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
             )
+
+    def _apply_spanning(self) -> None:
+        """Span all GROUP rows across all columns."""
+        root_idx = QtCore.QModelIndex()
+        for dev_row in range(self._model.rowCount(root_idx)):
+            dev_idx = self._model.index(dev_row, 0, root_idx)
+            self.setFirstColumnSpanned(dev_row, root_idx, True)
+            for src_row in range(self._model.rowCount(dev_idx)):
+                self.setFirstColumnSpanned(src_row, dev_idx, True)
+
+    def _open_persistent_editors(self) -> None:
+        """Open a persistent editor for every non-readonly SETTING value cell."""
+        root_idx = QtCore.QModelIndex()
+        for dev_row in range(self._model.rowCount(root_idx)):
+            dev_idx = self._model.index(dev_row, 0, root_idx)
+            for src_row in range(self._model.rowCount(dev_idx)):
+                src_idx = self._model.index(src_row, 0, dev_idx)
+                for leaf_row in range(self._model.rowCount(src_idx)):
+                    leaf_idx = self._model.index(leaf_row, _Col.VALUE, src_idx)
+                    node: _Node = leaf_idx.internalPointer()
+                    if (
+                        node is not None
+                        and node.kind == _NodeType.SETTING
+                        and not node.readonly
+                        and node.descriptor is not None
+                        and node.descriptor.get("dtype") not in ("array", "")
+                    ):
+                        self.openPersistentEditor(leaf_idx)
