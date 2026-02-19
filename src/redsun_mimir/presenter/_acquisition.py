@@ -261,9 +261,7 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
-        self.expected_callbacks: frozenset[str] = frozenset([])
-        if callbacks is not None:
-            self.expected_callbacks = frozenset(callbacks)
+        self.expected_callbacks = frozenset(callbacks or [])
         self.callback_tokens: dict[str, int] = {}
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {

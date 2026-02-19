@@ -6,7 +6,7 @@ import numpy as np
 from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
 from sunflare.log import Loggable
-from sunflare.presenter import PPresenter
+from sunflare.presenter import Presenter
 from sunflare.virtual import Signal, VirtualAware
 
 if TYPE_CHECKING:
@@ -14,13 +14,12 @@ if TYPE_CHECKING:
     from typing import Any
 
     import numpy.typing as npt
-    from dependency_injector.containers import DynamicContainer
     from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.device import Device
     from sunflare.virtual import VirtualBus
 
 
-class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
+class MedianPresenter(Presenter, DocumentRouter, VirtualAware, Loggable):
     """Presenter that computes per-detector median images from scan streams.
 
     Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
@@ -35,6 +34,12 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
         Mapping of device names to device instances. Unused by this presenter.
     virtual_bus :
         Reference to the virtual bus.
+    streams: list[str] | None, keyword-only, optional
+        List of stream names to look for when stacking data for median calculation.
+        If `None`, no computation will be performed. Defaults to `None`.
+    hints: list[str] | None, keyword-only, optional
+        List of data key suffixes to look for in event documents when applying
+        the median correction. If `None`, no data will be processed. Defaults to `None`.
 
     Attributes
     ----------
@@ -51,16 +56,12 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
         devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
         /,
-        **kwargs: Any,
+        streams: list[str] | None = None,
+        hints: list[str] | None = None,
     ) -> None:
-        super().__init__()
-        self.virtual_bus = virtual_bus
-        self.devices = devices
-
-        # TODO: generalize this
-        # via ctrl_info?
-        self.expected_streams = frozenset(["square_scan"])
-        self.hints = frozenset(["buffer"])
+        super().__init__(devices, virtual_bus)
+        self.expected_streams = frozenset(streams or [])
+        self.hints = frozenset(hints or [])
         self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
         self.medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.packet: dict[str, dict[str, Any]] = {}
@@ -69,14 +70,6 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
 
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
-
-    def register_providers(self, container: DynamicContainer) -> None:
-        """Register the presenter on the virtual bus."""
-        ...
-
-    def connect_to_virtual(self) -> None:
-        """No virtual connections needed for MedianPresenter."""
-        ...
 
     def start(self, doc: RunStart) -> RunStart | None:
         """Process a new start document.
@@ -150,31 +143,30 @@ class MedianPresenter(PPresenter, DocumentRouter, VirtualAware, Loggable):
         return doc
 
     def _prepare_scan_data(self, doc: Event) -> Event:
-        """Stash incoming scan data for median calculation."""
         for key, value in doc["data"].items():
-            obj_name, data_key = key.split(":")
-            if data_key in self.hints:
+            parts = key.split("\\")
+            if len(parts) < 2:
+                continue
+            obj_name, hint = parts[0], parts[1]
+            if hint in self.hints:
                 self.median_stacks.setdefault(obj_name, {})
-                self.median_stacks[obj_name].setdefault(data_key, [])
-                self.median_stacks[obj_name][data_key].append(value)
+                self.median_stacks[obj_name].setdefault(hint, [])
+                self.median_stacks[obj_name][hint].append(value)
         return doc
 
     def _apply_median(self, doc: Event) -> Event:
-        """Apply the computed median to the incoming event data.
-
-        Each object name is suffixed with '[median]' to indicate
-        that the median has been applied. If the median has not been
-        computed yet, the function returns the document unmodified.
-        """
         if self.median_stacks:
             for key, value in doc["data"].items():
-                obj_name, data_key = key.split(":")
-                if data_key in self.hints:
+                parts = key.split("\\")
+                if len(parts) < 2:
+                    continue
+                obj_name, hint = parts[0], parts[1]
+                if hint in self.hints:
                     median_applied: npt.NDArray[Any] = (
-                        value / self.median_stacks[obj_name][data_key]
+                        value / self.medians[obj_name][hint]
                     )
-                    obj_name = f"{obj_name}[median]"
-                    self.packet.setdefault(obj_name, {})
-                    self.packet[obj_name][data_key] = median_applied
+                    suffixed = f"{obj_name}[median]"
+                    self.packet.setdefault(suffixed, {})
+                    self.packet[suffixed][hint] = median_applied
             self.sigNewData.emit(self.packet)
         return doc
