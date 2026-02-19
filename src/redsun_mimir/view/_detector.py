@@ -58,7 +58,6 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self._layer = layer
 
         self.tree_view = DescriptorTreeView(self)
-        self.tree_view.model().sigStructureChanged.connect(self._on_structure_changed)
 
         # Populate the tree once at construction
         self.tree_view.model().update_structure(descriptors)
@@ -86,11 +85,6 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self._accept_button.setEnabled(checked)
         self._layer.bounding_box.visible = checked
         self._layer._overlays["roi_box"].visible = checked
-
-    def _on_structure_changed(self) -> None:
-        self.tree_view.expandAll()
-        for i in range(self.tree_view.model().columnCount()):
-            self.tree_view.resizeColumnToContents(i)
 
 
 class DetectorView(QtView, Loggable):
