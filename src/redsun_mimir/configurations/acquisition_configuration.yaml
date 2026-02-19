@@ -22,7 +22,6 @@ presenters:
   det_ctrl:
     timeout: 5.0
   acq_ctrl:
-    timeout: 5.0
     callbacks:
       - DetectorPresenter
       - MedianPresenter

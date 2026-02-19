@@ -36,10 +36,15 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         Mapping of device names to device instances.
     virtual_bus :
         Reference to the virtual bus.
-    **kwargs :
-        Additional keyword arguments.
-
-        - `timeout` (`float | None`): Status wait timeout in seconds.
+    timeout: float | None, keyword-only, optional
+        Status object wait time in seconds
+        for configuration confirmation.
+        If `None`, waits indefinetely.
+        Defaults to 1.0 seconds.
+    hints: list[str] | None, keyword-only, optional
+        List of data key suffixes to look for in event documents
+        when routing data to the view. If `None`, no data will be routed.
+        Defaults to `["buffer", "roi"]`.
 
     Attributes
     ----------
@@ -67,17 +72,14 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
         /,
-        **kwargs: Any,
+        timeout: float | None = 1.0,
+        hints: list[str] | None = ["buffer", "roi"],
     ) -> None:
         super().__init__()
-        self._timeout: float | None = kwargs.get("timeout", None)
+        self.timeout = timeout or 1.0
+        self.hints = hints or ["buffer", "roi"]
         self.virtual_bus = virtual_bus
-        self.devices = devices
-
         self.detectors = filter_models(devices, DetectorProtocol)
-
-        self.hints = ["buffer", "roi"]
-
         # data stream name,
         # extracted from the incoming
         # descriptor document
@@ -153,7 +155,7 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             self.logger.debug(f"Configuring '{key}' of {detector} to {value}")
             s = device.set(value, propr=key)
             try:
-                s.wait(self._timeout)
+                s.wait(self.timeout)
                 success = s.success
 
                 if success:
@@ -177,13 +179,12 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             The event document.
         """
         for key, value in doc["data"].items():
-            parts = key.split(":")
+            parts = key.split("\\")
             if len(parts) < 2:
                 continue
-            obj_name = parts[0]
-            data_key = parts[1]
-            if data_key in self.hints:
+            obj_name, hint = parts[0], parts[1]
+            if hint in self.hints:
                 self.packet.setdefault(obj_name, {})
-                self.packet[obj_name][data_key] = value
+                self.packet[obj_name][hint] = value
         self.sigNewData.emit(self.packet)
         return doc

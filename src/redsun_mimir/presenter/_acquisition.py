@@ -222,15 +222,14 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
 
     Parameters
     ----------
-    devices :
+    devices: Mapping[str, Device]
         The available devices in the application.
-    virtual_bus :
+    virtual_bus: VirtualBus
         The virtual bus to register signals on.
-    **kwargs :
-        Additional keyword arguments.
-
-        - `callbacks` (`list[str]`): Names of presenters to subscribe as
-          run engine callbacks. Defaults to `["DetectorPresenter"]`.
+    callbacks: list[str] | None, keyword-only, optional
+        Callback names to subscribe to on the run engine, if any.
+        If not provided, no callbacks will be subscribed to.
+        Defaults to None.
 
     Attributes
     ----------
@@ -249,7 +248,7 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
         devices: Mapping[str, Device],
         virtual_bus: VirtualBus,
         /,
-        **kwargs: Any,
+        callbacks: list[str] | None = None,
     ) -> None:
         self.virtual_bus = virtual_bus
         self.devices = devices
@@ -262,9 +261,10 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
-        self.expected_presenters = frozenset(
-            kwargs.get("callbacks", ["DetectorPresenter"])
-        )
+        self.expected_callbacks: frozenset[str] = frozenset([])
+        if callbacks is not None:
+            self.expected_callbacks = frozenset(callbacks)
+        self.callback_tokens: dict[str, int] = {}
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "snap": self.snap,
@@ -298,9 +298,11 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
             self.toggle_action_event
         )
 
-        for name, callback in self.virtual_bus.callbacks.items():
-            if name in self.expected_presenters:
-                self.engine.subscribe(callback)
+        if len(self.expected_callbacks) > 0:
+            for name, callback in self.virtual_bus.callbacks.items():
+                if name in self.expected_callbacks:
+                    token = self.engine.subscribe(callback)
+                    self.callback_tokens[name] = token
 
     def plans_specificiers(self) -> set[PlanSpec]:
         return set(self.plan_specs.values())
