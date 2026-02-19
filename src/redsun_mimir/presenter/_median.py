@@ -43,13 +43,18 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Attributes
     ----------
-    sigNewData :
+    sigNewData: Signal[dict[str, dict[str, numpy.ndarray]]]
         Emitted with median-corrected image data.
-        Carries object name (suffixed with `[median]`) and the corrected
-        array as a `numpy.ndarray`.
+        Carries the object name corrected with the suffix "median"
+        for distinguishing from the original data, i.e. "camera-median"
+
+    Notes
+    -----
+    The presenter expects both `streams` and `hints` to be configured.
+    If either is missing, the presenter will be inactive.
     """
 
-    sigNewData = Signal(str, object)
+    sigNewData = Signal(object)
 
     def __init__(
         self,
@@ -64,12 +69,22 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.hints = frozenset(hints or [])
         self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
         self.medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
-        self.packet: dict[str, dict[str, Any]] = {}
+        self.packet: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
         self.virtual_bus.register_signals(self)
         self.virtual_bus.register_callbacks(self)
+        msg = "Initialized"
+        if len(self.expected_streams) > 0 and len(self.hints) > 0:
+            msg = (
+                msg
+                + f": detecting streams {', '.join(self.expected_streams)} and hints {', '.join(self.hints)}"
+            )
+            self.logger.info(msg)
+        else:
+            msg = msg + ": no streams or hints configured, presenter will be inactive"
+            self.logger.warning(msg)
 
     def start(self, doc: RunStart) -> RunStart | None:
         """Process a new start document.
@@ -165,7 +180,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                     median_applied: npt.NDArray[Any] = (
                         value / self.medians[obj_name][hint]
                     )
-                    suffixed = f"{obj_name}[median]"
+                    suffixed = f"{obj_name}-median"
                     self.packet.setdefault(suffixed, {})
                     self.packet[suffixed][hint] = median_applied
             self.sigNewData.emit(self.packet)

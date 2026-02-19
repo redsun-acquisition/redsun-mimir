@@ -297,6 +297,8 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
         )
 
         if len(self.expected_callbacks) > 0:
+            msg = ", ".join(self.expected_callbacks)
+            self.logger.debug(f"Registering callbacks: {msg}")
             for name, callback in self.virtual_bus.callbacks.items():
                 if name in self.expected_callbacks:
                     token = self.engine.subscribe(callback)

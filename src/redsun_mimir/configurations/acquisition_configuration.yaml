@@ -7,10 +7,7 @@ devices:
     sensor_shape: [100, 100]
   camera2:
   motor:
-    axis:
-      - X
-      - Y
-      - Z
+    axis: [X, Y, Z]
     step_sizes:
       X: 100.0
       Y: 100.0
@@ -18,13 +15,13 @@ devices:
     egu: um
 
 presenters:
-  median_ctrl: {}
+  median_ctrl:
+    streams: [square_scan]
+    hints: [buffer]
   det_ctrl:
     timeout: 5.0
   acq_ctrl:
-    callbacks:
-      - DetectorPresenter
-      - MedianPresenter
+    callbacks: [DetectorPresenter, MedianPresenter]
 
 views:
   acq_widget: {}
