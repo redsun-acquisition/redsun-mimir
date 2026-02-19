@@ -57,12 +57,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
 
         self._layer = layer
 
-        self.tree_view = DescriptorTreeView(self)
-        self.tree_view.model().sigStructureChanged.connect(self._on_structure_changed)
-
-        # Populate the tree once at construction
-        self.tree_view.model().update_structure(descriptors)
-        self.tree_view.model().update_readings(readings)
+        self.tree_view = DescriptorTreeView(descriptors, readings, self)
 
         self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
         self._enable_roi_button.setCheckable(True)
@@ -86,11 +81,6 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self._accept_button.setEnabled(checked)
         self._layer.bounding_box.visible = checked
         self._layer._overlays["roi_box"].visible = checked
-
-    def _on_structure_changed(self) -> None:
-        self.tree_view.expandAll()
-        for i in range(self.tree_view.model().columnCount()):
-            self.tree_view.resizeColumnToContents(i)
 
 
 class DetectorView(QtView, Loggable):
@@ -259,7 +249,7 @@ class DetectorView(QtView, Loggable):
             widget = SettingsControlWidget(dev_descriptors, dev_readings, layer)
             # Forward property changes with the device label so the presenter
             # can route the set() call to the right detector instance
-            widget.tree_view.model().sigPropertyChanged.connect(
+            widget.tree_view.sigPropertyChanged.connect(
                 lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
                     lbl, {setting: value}
                 )
@@ -282,8 +272,9 @@ class DetectorView(QtView, Loggable):
             Whether the configuration change was successful
         """
         if detector in self.settings_controls:
-            model = self.settings_controls[detector].tree_view.model()
-            model.confirm_change(setting_name, success)
+            self.settings_controls[detector].tree_view.confirm_change(
+                setting_name, success
+            )
 
             if not success:
                 self.logger.error(f"Failed to configure {setting_name} for {detector}")
