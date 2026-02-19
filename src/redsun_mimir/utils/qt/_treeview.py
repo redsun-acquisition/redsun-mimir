@@ -215,48 +215,50 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
 
         assert parent is not None
 
-        if dtype == "integer":
-            sb = QtWidgets.QSpinBox(parent)
-            sb.setRange(
-                int(low) if low is not None else -(2**31),
-                int(high) if high is not None else 2**31 - 1,
-            )
-            sb.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            sb.setFrame(False)
-            return sb
+        match dtype:
+            case "integer":
+                sb = QtWidgets.QSpinBox(parent)
+                sb.setRange(
+                    int(low) if low is not None else -(2**31),
+                    int(high) if high is not None else 2**31 - 1,
+                )
+                sb.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                sb.setFrame(False)
+                return sb
 
-        if dtype == "number":
-            dsb = QtWidgets.QDoubleSpinBox(parent)
-            dsb.setRange(
-                float(low) if low is not None else -1e18,
-                float(high) if high is not None else 1e18,
-            )
-            dsb.setDecimals(4)
-            dsb.setSingleStep(0.1)
-            dsb.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            dsb.setFrame(False)
-            return dsb
+            case "number":
+                dsb = QtWidgets.QDoubleSpinBox(parent)
+                dsb.setRange(
+                    float(low) if low is not None else -1e18,
+                    float(high) if high is not None else 1e18,
+                )
+                dsb.setDecimals(4)
+                dsb.setSingleStep(0.1)
+                dsb.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                dsb.setFrame(False)
+                return dsb
 
-        if dtype == "string":
-            choices: list[str] = desc.get("choices", [])
-            if choices:
+            case "string":
+                choices: list[str] = desc.get("choices", [])
+                if choices:
+                    cb = QtWidgets.QComboBox(parent)
+                    cb.addItems(choices)
+                    cb.setFrame(False)
+                    return cb
+                le = QtWidgets.QLineEdit(parent)
+                le.setFrame(False)
+                return le
+
+            case "boolean":
                 cb = QtWidgets.QComboBox(parent)
-                cb.addItems(choices)
+                cb.addItem("True", True)
+                cb.addItem("False", False)
                 cb.setFrame(False)
                 return cb
-            le = QtWidgets.QLineEdit(parent)
-            le.setFrame(False)
-            return le
 
-        if dtype == "boolean":
-            cb = QtWidgets.QComboBox(parent)
-            cb.addItem("True", True)
-            cb.addItem("False", False)
-            cb.setFrame(False)
-            return cb
-
-        # "array" and unknown dtypes: no editor (display-only)
-        return None
+            case _:
+                # "array" and unknown dtypes: no editor (display-only)
+                return None
 
     def setEditorData(
         self,
