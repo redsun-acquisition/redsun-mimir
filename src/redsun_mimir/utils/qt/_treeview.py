@@ -243,7 +243,6 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
                 if choices:
                     cb = QtWidgets.QComboBox(parent)
                     cb.addItems(choices)
-                    cb.setFrame(False)
                     return cb
                 le = QtWidgets.QLineEdit(parent)
                 le.setFrame(False)
@@ -253,7 +252,6 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
                 cb = QtWidgets.QComboBox(parent)
                 cb.addItem("True", True)
                 cb.addItem("False", False)
-                cb.setFrame(False)
                 return cb
 
             case _:
@@ -333,9 +331,10 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
         option: QtWidgets.QStyleOptionViewItem,
         index: QtCore.QModelIndex,
     ) -> None:
-        """Fill the cell rectangle exactly."""
+        """Constrain the editor to the value cell rectangle."""
         if editor is not None:
             editor.setGeometry(option.rect)
+        super().updateEditorGeometry(editor, option, index)
 
     def paint(
         self,
@@ -589,6 +588,20 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                 return self._readings.get(node.full_key)
             return None
 
+        if role == QtCore.Qt.ItemDataRole.TextAlignmentRole:
+            if node.kind == _NodeType.SETTING:
+                if col == _Col.VALUE:
+                    return int(
+                        QtCore.Qt.AlignmentFlag.AlignRight
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter
+                    )
+                if col == _Col.SETTING:
+                    return int(
+                        QtCore.Qt.AlignmentFlag.AlignLeft
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter
+                    )
+            return None
+
         if role == _NodeTypeRole:
             return node.kind
 
@@ -792,3 +805,16 @@ class DescriptorTreeView(QtWidgets.QTreeView):
         self.expandAll()
         for col in range(self._model.columnCount()):
             self.resizeColumnToContents(col)
+        header = self.header()
+        if header is not None:
+            # Group column: fixed to its content width; Setting stretches;
+            # Value column gets a sensible share via stretch on Setting.
+            header.setSectionResizeMode(
+                _Col.GROUP, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+            header.setSectionResizeMode(
+                _Col.SETTING, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
+            header.setSectionResizeMode(
+                _Col.VALUE, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
