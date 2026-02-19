@@ -22,7 +22,7 @@ def run_youseetoo_acquisition_container() -> None:
         DetectorPresenter,
         MedianPresenter,
     )
-    from redsun_mimir.view import AcquisitionView, DetectorView
+    from redsun_mimir.view import AcquisitionView, DetectorView, ImageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -39,6 +39,7 @@ def run_youseetoo_acquisition_container() -> None:
             AcquisitionPresenter, layer="presenter", from_config="acq_ctrl"
         )
         acq_widget = component(AcquisitionView, layer="view", from_config="acq_widget")
+        img_widget = component(ImageView, layer="view", from_config="img_widget")
         det_widget = component(DetectorView, layer="view", from_config="det_widget")
 
     AcquisitionDetectorUC2App().run()
