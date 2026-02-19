@@ -4,7 +4,7 @@ The :class:`DescriptorTreeView` is a self-contained, reusable Qt widget that
 renders bluesky-compatible ``describe_configuration`` / ``read_configuration``
 dicts as an interactive property tree.
 
-Key layout:
+Key layout::
 
     {name}               (device group row, spans all columns)
     └── {source}         (source group row, e.g. "settings")
@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 __all__ = ["DescriptorTreeView", "DescriptorModel"]
 
 _log = logging.getLogger("redsun")
+
 
 # ---------------------------------------------------------------------------
 # Internal enumerations and roles
@@ -121,10 +122,6 @@ class _Node:
         self._readonly = readonly
         self.full_key: str | None = full_key
 
-    # ------------------------------------------------------------------
-    # Child helpers
-    # ------------------------------------------------------------------
-
     def append(self, child: _Node) -> None:
         """Append *child* to this node's children."""
         self._children.append(child)
@@ -138,14 +135,10 @@ class _Node:
         return len(self._children)
 
     def row(self) -> int:
-        """Index of this node within its parent's children list."""
+        """Return the index of this node within its parent's children list."""
         if self._parent:
             return self._parent._children.index(self)
         return 0
-
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
 
     @property
     def name(self) -> str:
@@ -174,7 +167,7 @@ class _Node:
 
 
 # ---------------------------------------------------------------------------
-# Delegate — creates editors and handles painting
+# Delegate
 # ---------------------------------------------------------------------------
 
 
@@ -331,10 +324,20 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
         option: QtWidgets.QStyleOptionViewItem,
         index: QtCore.QModelIndex,
     ) -> None:
-        """Constrain the editor to the value cell rectangle."""
-        if editor is not None:
+        """Constrain the editor to the value cell rectangle only.
+
+        ``option.rect`` spans the full row when the view uses
+        ``SelectRows`` behaviour.  Using :meth:`QAbstractItemView.visualRect`
+        on the VALUE-column index gives the true single-cell bounds.
+        """
+        if editor is None:
+            return
+        view = self.parent()
+        if isinstance(view, QtWidgets.QAbstractItemView):
+            value_idx = index.sibling(index.row(), _Col.VALUE)
+            editor.setGeometry(view.visualRect(value_idx))
+        else:
             editor.setGeometry(option.rect)
-        super().updateEditorGeometry(editor, option, index)
 
     def paint(
         self,
@@ -342,7 +345,7 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
         option: QtWidgets.QStyleOptionViewItem,
         index: QtCore.QModelIndex,
     ) -> None:
-        """Right-align value cells; centre setting-name cells."""
+        """Right-align value cells; left-align setting-name cells."""
         if index.column() == _Col.VALUE:
             option.displayAlignment = (
                 QtCore.Qt.AlignmentFlag.AlignRight
@@ -361,7 +364,7 @@ class _Delegate(QtWidgets.QStyledItemDelegate):
 
 
 class DescriptorModel(QtCore.QAbstractItemModel):
-    """Qt item model backed by bluesky descriptor and reading dicts.
+    r"""Qt item model backed by bluesky descriptor and reading dicts.
 
     The tree hierarchy is::
 
@@ -372,75 +375,38 @@ class DescriptorModel(QtCore.QAbstractItemModel):
 
     Parameters
     ----------
+    descriptors:
+        Flat ``describe_configuration()`` dict keyed by
+        ``name\\property`` canonical keys.
+    readings:
+        Flat ``read_configuration()`` dict matching the same keys.
     parent:
         Optional parent ``QObject``.
 
     Signals
     -------
-    sigStructureChanged:
-        Emitted after :meth:`update_structure` or :meth:`add_setting`
-        completes a model reset.
     sigPropertyChanged:
         Emitted from :meth:`setData` when the user commits an edit.
         Carries the full canonical key (``str``) and the new value.
     """
 
-    sigStructureChanged: Signal = Signal()
     sigPropertyChanged: Signal = Signal(str, object)
 
-    def __init__(self, parent: QtCore.QObject | None = None) -> None:
+    def __init__(
+        self,
+        descriptors: dict[str, Descriptor],
+        readings: dict[str, Reading[Any]],
+        parent: QtCore.QObject | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._descriptors: dict[str, Descriptor] = {}
-        self._readings: dict[str, Any] = {}
+        self._descriptors: dict[str, Descriptor] = descriptors
+        self._readings: dict[str, Any] = {k: v["value"] for k, v in readings.items()}
         self._pending: dict[str, dict[str, Any]] = {}
-        self._root = _Node(None, None, _NodeType.ROOT)
+        self._root = self._build(descriptors)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-
-    def update_structure(self, descriptors: dict[str, Descriptor]) -> None:
-        r"""Replace the entire descriptor set and rebuild the tree.
-
-        Parameters
-        ----------
-        descriptors:
-            Flat ``describe_configuration()`` dict keyed by
-            ``name\\property`` canonical keys.
-        """
-        self.beginResetModel()
-        self._descriptors = descriptors
-        self._root = self._build(descriptors)
-        self.endResetModel()
-        self.sigStructureChanged.emit()
-
-    def add_setting(self, key: str, descriptor: Descriptor) -> None:
-        r"""Insert a single additional setting and rebuild the tree.
-
-        Parameters
-        ----------
-        key:
-            Canonical ``name\\property`` key.
-        descriptor:
-            Bluesky descriptor for the setting.
-        """
-        self.beginResetModel()
-        self._descriptors[key] = descriptor
-        self._root = self._build(self._descriptors)
-        self.endResetModel()
-        self.sigStructureChanged.emit()
-
-    def update_readings(self, readings: dict[str, Reading[Any]]) -> None:
-        """Merge *readings* into the local cache and refresh the view.
-
-        Parameters
-        ----------
-        readings:
-            Flat ``read_configuration()`` dict (same key scheme as descriptors).
-        """
-        for k, v in readings.items():
-            self._readings[k] = v["value"]
-        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
 
     def update_reading(self, key: str, reading: Reading[Any]) -> None:
         """Update a single setting value and emit a targeted ``dataChanged``.
@@ -555,7 +521,6 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                         return ""
                     units = node.descriptor.get("units", "") if node.descriptor else ""
                     suffix = f" {units}" if units else ""
-                    # For sequences/arrays display a compact repr
                     if isinstance(raw, (list, tuple)):
                         return f"{list(raw)}{suffix}"
                     return f"{raw}{suffix}"
@@ -671,7 +636,6 @@ class DescriptorModel(QtCore.QAbstractItemModel):
                     └── prop  (SETTING)
         """
         root = _Node(None, None, _NodeType.ROOT)
-        # groups[device][source] = [(full_key, prop_name, descriptor, readonly)]
         groups: dict[str, dict[str, list[tuple[str, str, Descriptor, bool]]]] = {}
 
         for full_key, desc in descriptors.items():
@@ -731,29 +695,41 @@ class DescriptorModel(QtCore.QAbstractItemModel):
 
 
 class DescriptorTreeView(QtWidgets.QTreeView):
-    """Self-contained tree widget for browsing and editing device settings.
+    r"""Self-contained tree widget for browsing and editing device settings.
 
-    Drop this widget into any Qt layout; call :meth:`model` to access the
-    underlying :class:`DescriptorModel` for populating data.
+    Accepts descriptors and readings at construction time — no separate
+    population step required.
 
     Example
     -------
     ::
 
-        view = DescriptorTreeView(parent)
-        view.model().update_structure(device.describe_configuration())
-        view.model().update_readings(device.read_configuration())
+        view = DescriptorTreeView(
+            device.describe_configuration(),
+            device.read_configuration(),
+            parent,
+        )
         view.model().sigPropertyChanged.connect(on_property_changed)
 
     Parameters
     ----------
+    descriptors:
+        Flat ``describe_configuration()`` dict keyed by
+        ``name\\property`` canonical keys.
+    readings:
+        Flat ``read_configuration()`` dict matching the same keys.
     parent:
         Optional parent widget.
     """
 
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        descriptors: dict[str, Descriptor],
+        readings: dict[str, Reading[Any]],
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._model = DescriptorModel(self)
+        self._model = DescriptorModel(descriptors, readings, self)
         self._delegate = _Delegate(self)
         self.setModel(self._model)
         self.setItemDelegate(self._delegate)
@@ -761,26 +737,27 @@ class DescriptorTreeView(QtWidgets.QTreeView):
         self.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
-        # Persistent editors handle all editing — no popup editors needed.
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
+            | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed
+        )
         header = self.header()
         if header is not None:
             header.setStretchLastSection(True)
-        self._model.sigStructureChanged.connect(self._on_structure_changed)
+        self._setup_view()
 
     def model(self) -> DescriptorModel:
         """Return the underlying :class:`DescriptorModel`."""
         return self._model
 
     # ------------------------------------------------------------------
-    # Private slots
+    # Private helpers
     # ------------------------------------------------------------------
 
-    def _on_structure_changed(self) -> None:
-        """Expand all nodes, open persistent editors, and fit columns."""
+    def _setup_view(self) -> None:
+        """Expand all nodes, span group rows, and size columns."""
         self.expandAll()
         self._apply_spanning()
-        self._open_persistent_editors()
         for col in range(self._model.columnCount()):
             self.resizeColumnToContents(col)
         header = self.header()
@@ -796,29 +773,10 @@ class DescriptorTreeView(QtWidgets.QTreeView):
             )
 
     def _apply_spanning(self) -> None:
-        """Span all GROUP rows across all columns."""
+        """Span GROUP rows (device and source nodes) across all columns."""
         root_idx = QtCore.QModelIndex()
         for dev_row in range(self._model.rowCount(root_idx)):
             dev_idx = self._model.index(dev_row, 0, root_idx)
             self.setFirstColumnSpanned(dev_row, root_idx, True)
             for src_row in range(self._model.rowCount(dev_idx)):
                 self.setFirstColumnSpanned(src_row, dev_idx, True)
-
-    def _open_persistent_editors(self) -> None:
-        """Open a persistent editor for every non-readonly SETTING value cell."""
-        root_idx = QtCore.QModelIndex()
-        for dev_row in range(self._model.rowCount(root_idx)):
-            dev_idx = self._model.index(dev_row, 0, root_idx)
-            for src_row in range(self._model.rowCount(dev_idx)):
-                src_idx = self._model.index(src_row, 0, dev_idx)
-                for leaf_row in range(self._model.rowCount(src_idx)):
-                    leaf_idx = self._model.index(leaf_row, _Col.VALUE, src_idx)
-                    node: _Node = leaf_idx.internalPointer()
-                    if (
-                        node is not None
-                        and node.kind == _NodeType.SETTING
-                        and not node.readonly
-                        and node.descriptor is not None
-                        and node.descriptor.get("dtype") not in ("array", "")
-                    ):
-                        self.openPersistentEditor(leaf_idx)

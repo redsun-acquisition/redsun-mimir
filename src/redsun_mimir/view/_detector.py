@@ -57,11 +57,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
 
         self._layer = layer
 
-        self.tree_view = DescriptorTreeView(self)
-
-        # Populate the tree once at construction
-        self.tree_view.model().update_structure(descriptors)
-        self.tree_view.model().update_readings(readings)
+        self.tree_view = DescriptorTreeView(descriptors, readings, self)
 
         self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
         self._enable_roi_button.setCheckable(True)
