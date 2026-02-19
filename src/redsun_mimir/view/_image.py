@@ -50,16 +50,16 @@ class ImageView(QtView, Loggable):
         self,
         virtual_bus: VirtualBus,
         /,
-        **kwargs: Any,
+        hints: list[str] | None = None,
     ) -> None:
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(virtual_bus, hints=hints)
 
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
         )
 
-        # TODO: replace with lightweight napari components instead of
-        # the full Window (Task 4).
+        # TODO: use napari components
+        # instead of the full Window
         self.viewer_window = Window(
             viewer=self.viewer_model,
             show=False,

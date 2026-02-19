@@ -73,7 +73,7 @@ class LightView(QtView, Loggable):
     sigToggleLightRequest = Signal(str)
     sigIntensityRequest = Signal(str, object)  # device_label, intensity
 
-    position = ViewPositionTypes.CENTER
+    position = ViewPositionTypes.RIGHT
 
     def __init__(
         self,

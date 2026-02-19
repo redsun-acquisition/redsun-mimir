@@ -73,7 +73,7 @@ class MotorView(QtView):
     sigMotorMove = Signal(str, str, float)
     sigConfigChanged = Signal(str, dict[str, Any])
 
-    position = ViewPositionTypes.CENTER
+    position = ViewPositionTypes.RIGHT
 
     def __init__(
         self,

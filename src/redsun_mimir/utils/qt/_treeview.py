@@ -243,14 +243,6 @@ def _update_widget_value(
         widget.blockSignals(False)
 
 
-# _OnChanged: (key: str, value: Any) -> None
-
-
-# ---------------------------------------------------------------------------
-# Public view widget
-# ---------------------------------------------------------------------------
-
-
 class DescriptorTreeView(QtWidgets.QTreeWidget):
     r"""Two-column property tree for browsing and editing device settings.
 
@@ -299,14 +291,12 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
     ) -> None:
         super().__init__(parent)
 
-        # ---- bookkeeping ------------------------------------------------
         self._descriptors = descriptors
         self._readings: dict[str, Any] = {k: v["value"] for k, v in readings.items()}
         self._pending: dict[str, Any] = {}  # key -> old value
         # key -> the widget embedded in the Value column
         self._widgets: dict[str, QtWidgets.QWidget] = {}
 
-        # ---- tree appearance --------------------------------------------
         self.setColumnCount(2)
         self.setHeaderLabels(["Setting", "Value"])
         self.setHeaderHidden(True)
@@ -325,12 +315,7 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-        # ---- populate ---------------------------------------------------
         self._build()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def update_reading(self, key: str, reading: Reading[Any]) -> None:
         r"""Push a live value update for *key* into the corresponding widget.
@@ -375,10 +360,6 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
     def get_keys(self) -> set[str]:
         """Return the set of all descriptor keys in this view."""
         return set(self._descriptors.keys())
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     def _on_changed(self, key: str, value: Any) -> None:
         """Slot wired to every editor widget's change signal."""

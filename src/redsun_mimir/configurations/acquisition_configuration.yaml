@@ -25,4 +25,5 @@ presenters:
 
 views:
   acq_widget: {}
+  img_widget: {}
   det_widget: {}
