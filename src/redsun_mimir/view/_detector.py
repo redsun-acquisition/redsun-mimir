@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
-from qtpy import QtCore, QtWidgets
+from qtpy import QtWidgets
 from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
@@ -14,10 +14,7 @@ from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
     from dependency_injector.containers import DynamicContainer
-    from napari.layers import Image
     from sunflare.virtual import VirtualBus
-
-    from redsun_mimir.view._image import ImageView
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -29,26 +26,29 @@ class SettingsControlWidget(QtWidgets.QWidget):
     Parameters
     ----------
     descriptors :
-        Flat ``describe_configuration()`` dict for one or more devices,
+        Flat ``describe_configuration()`` dict for one device,
         keyed in ``prefix:name\\property`` form.
     readings :
         Flat ``read_configuration()`` dict matching the same keys.
-    layer :
-        The napari image layer to attach ROI controls to.
     parent :
         Optional parent widget.
+
+    Note
+    ----
+    The ROI control buttons are present but currently non-functional.
+    Full ROI wiring (toggling napari overlay visibility) will be
+    implemented in a follow-up task once the ROI signal is published
+    on the virtual bus by
+    [`ImageView`][redsun_mimir.view.ImageView].
     """
 
     def __init__(
         self,
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
-        layer: Image,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent=parent)
-
-        self._layer = layer
 
         self.tree_view = DescriptorTreeView(descriptors, readings, self)
 
@@ -58,9 +58,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self._accept_button = QtWidgets.QPushButton("Accept")
         self._full_roi_button.setEnabled(False)
         self._accept_button.setEnabled(False)
-        self._enable_roi_button.toggled.connect(
-            lambda checked: self._on_resize_button_toggled(checked)
-        )
+        self._enable_roi_button.toggled.connect(self._on_resize_button_toggled)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.tree_view)
@@ -72,8 +70,6 @@ class SettingsControlWidget(QtWidgets.QWidget):
     def _on_resize_button_toggled(self, checked: bool) -> None:
         self._full_roi_button.setEnabled(checked)
         self._accept_button.setEnabled(checked)
-        self._layer.bounding_box.visible = checked
-        self._layer._overlays["roi_box"].visible = checked
 
 
 class DetectorView(QtView, Loggable):
@@ -84,17 +80,14 @@ class DetectorView(QtView, Loggable):
     [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter]
     via the virtual bus.
 
-    Image visualisation is handled separately by
-    [`ImageView`][redsun_mimir.view.ImageView]; a reference is required at
-    construction so that the two views can share the same initialisation pass
-    over the descriptor/reading data.
+    Image visualisation is handled independently by
+    [`ImageView`][redsun_mimir.view.ImageView]; the two views share only
+    the virtual bus and do not hold references to each other.
 
     Parameters
     ----------
     virtual_bus :
         Reference to the virtual bus.
-    image_view :
-        The companion [`ImageView`][redsun_mimir.view.ImageView] instance.
     **kwargs :
         Additional keyword arguments passed to the parent view.
 
@@ -114,27 +107,17 @@ class DetectorView(QtView, Loggable):
         self,
         virtual_bus: VirtualBus,
         /,
-        image_view: ImageView,
         **kwargs: Any,
     ) -> None:
         super().__init__(virtual_bus, **kwargs)
 
-        self._image_view = image_view
-
         self.settings_tab_widget = QtWidgets.QTabWidget()
         self.settings_tab_widget.setMinimumWidth(300)
 
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        splitter.addWidget(self._image_view.viewer_window._qt_window)
-        splitter.addWidget(self.settings_tab_widget)
-        splitter.setSizes([750, 250])
-        splitter.setChildrenCollapsible(True)
-
-        main_layout = QtWidgets.QHBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        main_layout.addWidget(splitter)
-        self.setLayout(main_layout)
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.settings_tab_widget)
+        self.setLayout(layout)
 
         self.settings_controls: dict[str, SettingsControlWidget] = {}
 
@@ -159,15 +142,12 @@ class DetectorView(QtView, Loggable):
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
     ) -> None:
-        r"""Initialise the settings panels and image layers.
+        r"""Initialise the settings panels.
 
         Groups descriptors and readings by their ``prefix:name`` device label
-        (the part of the key before the backslash), then for each device:
-
-        - adds a napari image layer via
-          [`ImageView.setup_layers`][redsun_mimir.view.ImageView.setup_layers];
-        - creates a [`SettingsControlWidget`][redsun_mimir.view.SettingsControlWidget]
-          tab in the settings panel.
+        (the part of the key before the backslash) and creates one
+        [`SettingsControlWidget`][redsun_mimir.view.SettingsControlWidget]
+        tab per device.
 
         Parameters
         ----------
@@ -190,12 +170,7 @@ class DetectorView(QtView, Loggable):
         for device_label, dev_descriptors in devices.items():
             dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}
 
-            self._image_view.setup_layers(
-                descriptors, readings, device_label, dev_descriptors, dev_readings
-            )
-            layer = self._image_view.viewer_model.layers[device_label]
-
-            widget = SettingsControlWidget(dev_descriptors, dev_readings, layer)
+            widget = SettingsControlWidget(dev_descriptors, dev_readings, self)
             widget.tree_view.sigPropertyChanged.connect(
                 lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
                     lbl, {setting: value}

@@ -5,9 +5,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from napari.components import ViewerModel
 from napari.window import Window
+from qtpy import QtWidgets
+from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
 from sunflare.view.qt import QtView
 
+from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -17,6 +20,7 @@ from redsun_mimir.utils.napari import (
 if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
+    from dependency_injector.containers import DynamicContainer
     from sunflare.virtual import VirtualBus
 
 
@@ -24,8 +28,13 @@ class ImageView(QtView, Loggable):
     """View for live image display in a napari viewer.
 
     Manages a [`napari.components.ViewerModel`][] and its associated
-    [`napari.window.Window`][]. One image layer is created per detector;
-    layers are updated in real-time as new data arrives from the presenter.
+    [`napari.window.Window`][]. One image layer is created per detector
+    during [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies];
+    layers are updated in real-time as new frames arrive from the presenter.
+
+    Property editing lives in the companion
+    [`DetectorView`][redsun_mimir.view.DetectorView], which is wired
+    independently through the virtual bus.
 
     Parameters
     ----------
@@ -33,12 +42,9 @@ class ImageView(QtView, Loggable):
         Reference to the virtual bus.
     **kwargs :
         Additional keyword arguments passed to the parent view.
-
-    Note
-    ----
-    This class handles only *visualisation*. Property editing lives in
-    [`DetectorView`][redsun_mimir.view.DetectorView].
     """
+
+    position = ViewPositionTypes.CENTER
 
     def __init__(
         self,
@@ -52,16 +58,29 @@ class ImageView(QtView, Loggable):
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
         )
 
-        # TODO: replace with a lightweight napari component instead of
-        # the full Window (see Task 4).
+        # TODO: replace with lightweight napari components instead of
+        # the full Window (Task 4).
         self.viewer_window = Window(
             viewer=self.viewer_model,
             show=False,
         )
 
+        layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.viewer_window._qt_window)
+        self.setLayout(layout)
+
         self.buffer_key = "buffer"
 
         self.logger.info("Initialized")
+
+        self.virtual_bus.register_signals(self)
+
+    def inject_dependencies(self, container: DynamicContainer) -> None:
+        """Inject detector configuration and create image layers."""
+        descriptors: dict[str, Descriptor] = container.detector_descriptors()
+        readings: dict[str, Reading[Any]] = container.detector_readings()
+        self._setup_layers(descriptors, readings)
 
     def connect_to_virtual(self) -> None:
         """Connect to presenter signals on the virtual bus."""
@@ -77,70 +96,68 @@ class ImageView(QtView, Loggable):
                 "MedianPresenter not found in virtual bus; skipping median data connection."
             )
 
-    def setup_layers(
+    def _setup_layers(
         self,
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
-        device_label: str,
-        dev_descriptors: dict[str, Descriptor],
-        dev_readings: dict[str, Reading[Any]],
     ) -> None:
-        """Add a napari image layer for *device_label*.
-
-        Called once per device during
-        [`DetectorView.setup_ui`][redsun_mimir.view.DetectorView.setup_ui]
-        so that both views share the same initialisation pass.
+        r"""Create one napari image layer per device.
 
         Parameters
         ----------
         descriptors :
-            Full merged descriptor dict (all devices).
+            Flat merged ``describe_configuration()`` output from all detectors,
+            keyed as ``prefix:name\\property``.
         readings :
-            Full merged readings dict (all devices).
-        device_label :
-            Human-readable device name, used as the layer name.
-        dev_descriptors :
-            Descriptor subset for this device only.
-        dev_readings :
-            Readings subset for this device only.
+            Flat merged ``read_configuration()`` output, keyed identically.
         """
-        # Derive sensor shape from the first array descriptor for this device
-        sensor_shape = (512, 512)
-        for key, reading in dev_readings.items():
-            if descriptors[key].get("dtype") == "array" and "sensor_shape" in key:
-                val = reading["value"]
-                if isinstance(val, (list, tuple)) and len(val) == 2:
-                    sensor_shape = (int(val[0]), int(val[1]))
-                break
+        devices: dict[str, dict[str, Descriptor]] = {}
+        for key, descriptor in descriptors.items():
+            try:
+                name, _ = parse_key(key)
+            except ValueError:
+                self.logger.warning(f"Skipping malformed descriptor key: {key!r}")
+                continue
+            devices.setdefault(name, {})[key] = descriptor
 
-        # Infer numpy dtype from buffer descriptor if available
-        dtype = "uint8"
-        for key, desc in dev_descriptors.items():
-            if desc.get("dtype") == "array" and "buffer" in key:
-                dtype = str(desc.get("dtype_numpy", "uint8"))
-                break
+        for device_label, dev_descriptors in devices.items():
+            dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}
 
-        layer = self.viewer_model.add_image(
-            np.zeros(shape=sensor_shape, dtype=dtype),
-            name=device_label,
-        )
-        layer._overlays.update(
-            {
-                "roi_box": ROIInteractionBoxOverlay(
-                    bounds=((0, 0), layer.data.shape), handles=True
-                )
-            }
-        )
-        layer.mouse_drag_callbacks.append(resize_selection_box)
-        layer.mouse_move_callbacks.append(highlight_roi_box_handles)
+            sensor_shape = (512, 512)
+            for key, reading in dev_readings.items():
+                if descriptors[key].get("dtype") == "array" and "sensor_shape" in key:
+                    val = reading["value"]
+                    if isinstance(val, (list, tuple)) and len(val) == 2:
+                        sensor_shape = (int(val[0]), int(val[1]))
+                    break
+
+            dtype = "uint8"
+            for key, desc in dev_descriptors.items():
+                if desc.get("dtype") == "array" and "buffer" in key:
+                    dtype = str(desc.get("dtype_numpy", "uint8"))
+                    break
+
+            layer = self.viewer_model.add_image(
+                np.zeros(shape=sensor_shape, dtype=dtype),
+                name=device_label,
+            )
+            layer._overlays.update(
+                {
+                    "roi_box": ROIInteractionBoxOverlay(
+                        bounds=((0, 0), layer.data.shape), handles=True
+                    )
+                }
+            )
+            layer.mouse_drag_callbacks.append(resize_selection_box)
+            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
 
     def _update_layers(self, data: dict[str, dict[str, Any]]) -> None:
-        """Update image layers with incoming frame data.
+        """Push incoming frame data into the corresponding image layers.
 
         Parameters
         ----------
         data :
-            Nested dict keyed by detector name.  Each value is a packet
+            Nested dict keyed by detector name. Each value is a packet
             containing at least ``"buffer"`` (the raw frame array) and
             ``"roi"`` (a 4-tuple ``(x_start, x_end, y_start, y_end)``).
         """
