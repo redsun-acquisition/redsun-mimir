@@ -135,11 +135,12 @@ class TestMotorView:
         ctrl = MotorPresenter("motor_presenter", {"stage": motor})
         ctrl.register_providers(virtual_container)
 
+        # View register_providers runs before inject_dependencies in the real build sequence
+        widget.register_providers(virtual_container)
         widget.inject_dependencies(virtual_container)
         ctrl.shutdown()
 
         assert "motor_view" in virtual_container.signals
-        ctrl.shutdown()
 
 
 @pytest.mark.skipif(
@@ -261,6 +262,9 @@ class TestLightView:
 
         ctrl = LightPresenter("light_presenter", {"led": led})
         ctrl.register_providers(virtual_container)
+
+        # View register_providers runs before inject_dependencies in the real build sequence
+        widget.register_providers(virtual_container)
         widget.inject_dependencies(virtual_container)
 
         assert "light_view" in virtual_container.signals
