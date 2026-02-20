@@ -98,7 +98,7 @@ class ImageView(QtView, Loggable):
         ----------
         descriptors :
             Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name\\property``.
+            keyed as ``prefix:name-property``.
         readings :
             Flat merged ``read_configuration()`` output, keyed identically.
         """

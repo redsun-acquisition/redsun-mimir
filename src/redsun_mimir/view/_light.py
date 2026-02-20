@@ -40,7 +40,7 @@ def _get_prop(
     r
     """
     for key, reading in readings.items():
-        tail = key.rsplit("\\", 1)[-1]
+        tail = key.rsplit("-", 1)[-1]
         if tail == prop:
             return cast("_T", reading["value"])
     return default
@@ -106,7 +106,7 @@ class LightView(QtView, Loggable):
         Retrieves configuration readings (current values) and descriptors
         (metadata) registered by
         [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``prefix:name\\property``
+        Both are flat dicts keyed by the canonical ``prefix:name-property``
         scheme, merging all light devices.
         """
         configuration: dict[str, Reading[Any]] = container.light_configuration()

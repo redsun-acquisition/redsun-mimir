@@ -96,7 +96,7 @@ class TestMotorPresenter:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        step_key = "stage\\X_step_size"
+        step_key = "stage-X_step_size"
         result = controller.configure("stage", {step_key: 0.5})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
@@ -106,7 +106,7 @@ class TestMotorPresenter:
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """configure() accepts the bare device name."""
-        step_key = f"{mock_motor.name}\\X_step_size"
+        step_key = f"{mock_motor.name}-X_step_size"
         result = controller.configure(mock_motor.name, {step_key: 2.0})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(2.0)
@@ -259,7 +259,7 @@ class TestMedianPresenter:
         presenter.uid_to_stream[desc_uid] = "square_scan"
 
         frame = np.ones((4, 4))
-        evt = self._make_event(desc_uid, {"cam\\buffer": frame})
+        evt = self._make_event(desc_uid, {"cam-buffer": frame})
 
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
@@ -283,14 +283,14 @@ class TestMedianPresenter:
         # Stack two identical frames so median == the frame itself
         frame = np.ones((4, 4)) * 2.0
         for _ in range(2):
-            presenter.event(self._make_event(scan_uid, {"cam\\buffer": frame}))  # type: ignore[arg-type]
+            presenter.event(self._make_event(scan_uid, {"cam-buffer": frame}))  # type: ignore[arg-type]
 
         # Now send a live event — median should be applied
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
 
         live_frame = np.ones((4, 4)) * 4.0
-        presenter.event(self._make_event(live_uid, {"cam\\buffer": live_frame}))  # type: ignore[arg-type]
+        presenter.event(self._make_event(live_uid, {"cam-buffer": live_frame}))  # type: ignore[arg-type]
 
         assert len(emitted) == 1
         result = emitted[0]

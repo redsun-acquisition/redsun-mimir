@@ -26,7 +26,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
     ----------
     descriptors :
         Flat ``describe_configuration()`` dict for one device,
-        keyed in ``prefix:name\\property`` form.
+        keyed in ``prefix:name-property`` form.
     readings :
         Flat ``read_configuration()`` dict matching the same keys.
     parent :
@@ -154,7 +154,7 @@ class DetectorView(QtView, Loggable):
         ----------
         descriptors :
             Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name\\property``.
+            keyed as ``prefix:name-property``.
         readings :
             Flat merged ``read_configuration()`` output from all detectors,
             keyed identically.

@@ -89,7 +89,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
     def register_providers(self, container: VirtualContainer) -> None:
         r"""Register detector info as providers in the DI container.
 
-        Injects two flat dicts keyed by the canonical ``prefix:name\\property``
+        Injects two flat dicts keyed by the canonical ``prefix:name-property``
         scheme so the view can populate its tree directly at construction:
 
         - ``detector_descriptors``: merged ``describe_configuration()`` output
@@ -134,7 +134,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
             Device label (``prefix:name``) as emitted by
             :class:`~redsun_mimir.view.DetectorView`.
         config : ``dict[str, Any]``
-            Mapping of canonical ``prefix:name\\property`` keys to new values.
+            Mapping of canonical ``prefix:name-property`` keys to new values.
 
         """
         # device_label is "name"; self.detectors is keyed by bare name
@@ -179,7 +179,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
             The event document.
         """
         for key, value in doc["data"].items():
-            parts = key.split("\\")
+            parts = key.split("-")
             if len(parts) < 2:
                 continue
             obj_name, hint = parts[0], parts[1]

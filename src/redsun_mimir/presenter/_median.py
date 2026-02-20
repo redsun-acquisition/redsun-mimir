@@ -156,7 +156,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def _prepare_scan_data(self, doc: Event) -> Event:
         for key, value in doc["data"].items():
-            parts = key.split("\\")
+            parts = key.split("-")
             if len(parts) < 2:
                 continue
             obj_name, hint = parts[0], parts[1]
@@ -169,7 +169,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     def _apply_median(self, doc: Event) -> Event:
         if self.median_stacks:
             for key, value in doc["data"].items():
-                parts = key.split("\\")
+                parts = key.split("-")
                 if len(parts) < 2:
                     continue
                 obj_name, hint = parts[0], parts[1]

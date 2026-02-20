@@ -56,7 +56,7 @@ class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
     def models_configuration(self) -> dict[str, Reading[Any]]:
         r"""Get the current configuration readings of all light devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all lights together (matching the detector pattern).
 
         Returns
@@ -72,7 +72,7 @@ class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
     def models_description(self) -> dict[str, Descriptor]:
         r"""Get the configuration descriptors of all light devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all lights together (matching the detector pattern).
 
         Returns

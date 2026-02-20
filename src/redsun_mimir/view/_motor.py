@@ -38,7 +38,7 @@ def _get_prop(
     """
     for key, reading in readings.items():
         # canonical format: name\property  (backslash separator)
-        tail = key.rsplit("\\", 1)[-1]
+        tail = key.rsplit("-", 1)[-1]
         if tail == prop:
             return cast("_T", reading["value"])
     return default
@@ -110,7 +110,7 @@ class MotorView(QtView):
         Retrieves configuration readings (current values) and descriptors
         (metadata) registered by
         [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``name\\property``
+        Both are flat dicts keyed by the canonical ``name-property``
         scheme, merging all motor devices.
         """
         configuration: dict[str, Reading[Any]] = container.motor_configuration()
@@ -272,18 +272,18 @@ class MotorView(QtView):
                 (
                     k
                     for k in self._configuration
-                    if k.startswith(device_label) and k.rsplit("\\", 1)[-1] == "axis"
+                    if k.startswith(device_label) and k.rsplit("-", 1)[-1] == "axis"
                 ),
-                f"{device_label}\\axis",
+                f"{device_label}-axis",
             )
             step_key = next(
                 (
                     k
                     for k in self._configuration
                     if k.startswith(device_label)
-                    and k.rsplit("\\", 1)[-1] == f"{axis}_step_size"
+                    and k.rsplit("-", 1)[-1] == f"{axis}_step_size"
                 ),
-                f"{device_label}\\{axis}_step_size",
+                f"{device_label}-{axis}_step_size",
             )
             self.sigConfigChanged.emit(
                 device_label,

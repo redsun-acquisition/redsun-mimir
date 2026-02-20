@@ -89,7 +89,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
     def models_configuration(self) -> dict[str, Reading[Any]]:
         r"""Get the current configuration readings of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
@@ -105,7 +105,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
     def models_description(self) -> dict[str, Descriptor]:
         r"""Get the configuration descriptors of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
