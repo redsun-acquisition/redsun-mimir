@@ -205,10 +205,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
 
         Close the daemon thread and wait
         for it to finish its last task.
-        Safe to call more than once.
         """
-        if not self._daemon.is_alive():
-            return
         self._queue.put(None)
         self._queue.join()
 
