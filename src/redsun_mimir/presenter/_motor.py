@@ -125,6 +125,41 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
         """
         self._queue.put((motor, axis, position))
 
+    def _apply_config(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
+        """Apply configuration to a motor without emitting signals.
+
+        Used internally by :meth:`_do_move` to switch axis before a move
+        without triggering a UI update that would deadlock the daemon thread.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        config : ``dict[str, Any]``
+            Mapping of configuration parameters to new values.
+
+        Returns
+        -------
+        dict[str, bool]
+            Mapping of configuration parameter keys to success flags.
+        """
+        success_map: dict[str, bool] = {}
+        bare = self._bare_name(motor)
+        for key, value in config.items():
+            self.logger.debug(f"Configuring {key} of {motor} to {value}")
+            s = self._motors[bare].set(value, propr=key)
+            try:
+                s.wait(self._timeout)
+            except Exception as e:
+                self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
+            finally:
+                if not s.success:
+                    self.logger.error(
+                        f"Failed to configure {key} of {motor}: {s.exception()}"
+                    )
+                success_map[key] = s.success
+        return success_map
+
     def configure(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
         """Configure a motor.
 
@@ -147,21 +182,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
             Mapping of configuration parameters to success status.
 
         """
-        success_map: dict[str, bool] = {}
-        bare = self._bare_name(motor)
-        for key, value in config.items():
-            self.logger.debug(f"Configuring {key} of {motor} to {value}")
-            s = self._motors[bare].set(value, propr=key)
-            try:
-                s.wait(self._timeout)
-            except Exception as e:
-                self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
-            finally:
-                if not s.success:
-                    self.logger.error(
-                        f"Failed to configure {key} of {motor}: {s.exception()}"
-                    )
-                success_map[key] = s.success
+        success_map = self._apply_config(motor, config)
         self.sigNewConfiguration.emit(motor, success_map)
         return success_map
 
@@ -205,15 +226,12 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
         while True:
             # block until a task is available
             task = self._queue.get()
-            # Mark the task done *before* _do_move so that queue.join()
-            # in tests (and shutdown) never deadlocks waiting for a task
-            # that is itself waiting to emit a signal back to the main thread.
-            self._queue.task_done()
             if task is not None:
                 motor, axis, position = task
                 self.logger.debug(f"Moving {motor} to {position} on {axis}")
                 self._do_move(self._motors[self._bare_name(motor)], axis, position)
-            else:
+            self._queue.task_done()
+            if task is None:
                 break
 
     def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
@@ -243,7 +261,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
                 f"Axis {axis!r} is not available for motor {motor.name!r}"
             )
             return
-        ret = self.configure(motor.name, {"axis": axis})
+        ret = self._apply_config(motor.name, {"axis": axis})
         if not ret:
             return
         s = motor.set(position)
