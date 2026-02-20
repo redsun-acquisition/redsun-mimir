@@ -72,7 +72,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", None)
+        self._timeout: float | None = kwargs.get("timeout", 5.0)
         self._queue: Queue[tuple[str, str, float] | None] = Queue()
 
         self._motors = {
@@ -205,14 +205,15 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
         while True:
             # block until a task is available
             task = self._queue.get()
+            # Mark the task done *before* _do_move so that queue.join()
+            # in tests (and shutdown) never deadlocks waiting for a task
+            # that is itself waiting to emit a signal back to the main thread.
+            self._queue.task_done()
             if task is not None:
                 motor, axis, position = task
                 self.logger.debug(f"Moving {motor} to {position} on {axis}")
                 self._do_move(self._motors[self._bare_name(motor)], axis, position)
-                self._queue.task_done()
             else:
-                # ensure no pending task
-                self._queue.task_done()
                 break
 
     def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:

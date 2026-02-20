@@ -45,7 +45,7 @@ class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", None)
+        self._timeout: float | None = kwargs.get("timeout", 5.0)
 
         self._lights = {
             name: model

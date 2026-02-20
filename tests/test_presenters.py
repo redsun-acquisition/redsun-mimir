@@ -124,8 +124,10 @@ class TestLightPresenter:
     @pytest.fixture
     def controller(
         self, devices: dict[str, MockLightDevice], virtual_container: VirtualContainer
-    ) -> LightPresenter:
-        return LightPresenter("light_presenter", devices)
+    ) -> Generator[LightPresenter, None, None]:
+        ctrl = LightPresenter("light_presenter", devices)
+        yield ctrl
+        ctrl.shutdown()
 
     def test_instantiation(self, controller: LightPresenter) -> None:
         """Controller identifies and stores light devices."""
@@ -191,10 +193,12 @@ class TestMedianPresenter:
     """Tests for MedianPresenter."""
 
     @pytest.fixture
-    def presenter(self, virtual_container: VirtualContainer) -> MedianPresenter:
-        return MedianPresenter(
+    def presenter(self, virtual_container: VirtualContainer) -> Generator[MedianPresenter, None, None]:
+        p = MedianPresenter(
             "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
         )
+        yield p
+        p.shutdown()
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
         return {
