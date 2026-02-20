@@ -19,6 +19,7 @@ __all__ = [
     "parse_key",
     "make_descriptor",
     "make_reading",
+    "find_signal",
 ]
 
 P = TypeVar("P", bound=PDevice)
@@ -103,3 +104,28 @@ def ismodelsequence(ann: Any) -> TypeIs[Sequence[PDevice]]:
 def ismodel(ann: Any) -> TypeIs[PDevice]:
     """Return True if annotation looks like a PDevice generic."""
     return isinstance(ann, PDevice)
+
+
+def find_signal(container: "Any", signal_name: str) -> "Any | None":
+    """Find a signal in the virtual container by name, regardless of owner.
+
+    Searches all registered signal caches for ``signal_name``,
+    returning the first match. This avoids coupling to the owner's
+    instance name, which is set at runtime by the application container.
+
+    Parameters
+    ----------
+    container :
+        The virtual container holding registered signals.
+    signal_name :
+        The signal name to look for (e.g. ``"sigMotorMove"``).
+
+    Returns
+    -------
+    Any | None
+        The signal instance, or ``None`` if not found.
+    """
+    for cache in container.signals.values():
+        if signal_name in cache:
+            return cache[signal_name]
+    return None

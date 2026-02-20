@@ -29,6 +29,7 @@ from redsun_mimir.protocols import (  # noqa: TC001
     MotorProtocol,
     ReadableFlyer,
 )
+from redsun_mimir.utils import find_signal
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -280,16 +281,15 @@ class AcquisitionPresenter(Presenter, IsProvider, IsInjectable, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        container.signals["acq_widget"]["sigLaunchPlanRequest"].connect(
-            self.launch_plan
-        )
-        container.signals["acq_widget"]["sigStopPlanRequest"].connect(self.stop_plan)
-        container.signals["acq_widget"]["sigPauseResumeRequest"].connect(
-            self.pause_or_resume_plan
-        )
-        container.signals["acq_widget"]["sigActionRequest"].connect(
-            self.toggle_action_event
-        )
+        for sig_name, slot in (
+            ("sigLaunchPlanRequest", self.launch_plan),
+            ("sigStopPlanRequest", self.stop_plan),
+            ("sigPauseResumeRequest", self.pause_or_resume_plan),
+            ("sigActionRequest", self.toggle_action_event),
+        ):
+            sig = find_signal(container, sig_name)
+            if sig is not None:
+                sig.connect(slot)
 
         if len(self.expected_callbacks) > 0:
             msg = ", ".join(self.expected_callbacks)

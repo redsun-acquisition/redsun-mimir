@@ -7,6 +7,7 @@ from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
+from redsun_mimir.utils import find_signal
 from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
@@ -119,10 +120,9 @@ class MotorView(QtView):
         description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
         container.register_signals(self)
-        if "MotorPresenter" in container.signals:
-            container.signals["MotorPresenter"]["sigNewPosition"].connect(
-                self._update_position, thread="main"
-            )
+        sig = find_signal(container, "sigNewPosition")
+        if sig is not None:
+            sig.connect(self._update_position, thread="main")
 
     def setup_ui(
         self,
