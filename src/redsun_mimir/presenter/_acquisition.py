@@ -280,16 +280,14 @@ class AcquisitionPresenter(Presenter, IsProvider, IsInjectable, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        container.signals["AcquisitionView"]["sigLaunchPlanRequest"].connect(
+        container.signals["acq_widget"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )
-        container.signals["AcquisitionView"]["sigStopPlanRequest"].connect(
-            self.stop_plan
-        )
-        container.signals["AcquisitionView"]["sigPauseResumeRequest"].connect(
+        container.signals["acq_widget"]["sigStopPlanRequest"].connect(self.stop_plan)
+        container.signals["acq_widget"]["sigPauseResumeRequest"].connect(
             self.pause_or_resume_plan
         )
-        container.signals["AcquisitionView"]["sigActionRequest"].connect(
+        container.signals["acq_widget"]["sigActionRequest"].connect(
             self.toggle_action_event
         )
 
