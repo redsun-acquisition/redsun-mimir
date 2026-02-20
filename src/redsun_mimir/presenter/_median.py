@@ -7,7 +7,7 @@ from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from sunflare.virtual import IsProvider, Signal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -16,9 +16,10 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.device import Device
+    from sunflare.virtual import VirtualContainer
 
 
-class MedianPresenter(Presenter, DocumentRouter, Loggable):
+class MedianPresenter(Presenter, DocumentRouter, IsProvider, Loggable):
     """Presenter that computes per-detector median images from scan streams.
 
     Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
@@ -82,6 +83,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         else:
             msg = msg + ": no streams or hints configured, presenter will be inactive"
             self.logger.warning(msg)
+
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register this presenter as a callback in the virtual container."""
+        container.register_callbacks(self)
 
     def start(self, doc: RunStart) -> RunStart | None:
         """Process a new start document.

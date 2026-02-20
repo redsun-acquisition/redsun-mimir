@@ -110,7 +110,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
         container.detector_descriptors = providers.Object(descriptors)
         container.detector_readings = providers.Object(readings)
         container.register_signals(self)
-        container.register_callbacks(self.name, self)
+        container.register_callbacks(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
