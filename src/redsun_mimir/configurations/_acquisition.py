@@ -29,19 +29,11 @@ def run_acquisition_container() -> None:
 
     class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
         mmcore = device(MMCoreCameraDevice, from_config="camera1")
-        microscope = device(
-            SimulatedCameraDevice, from_config="camera2"
-        )
+        microscope = device(SimulatedCameraDevice, from_config="camera2")
         motor = device(MockMotorDevice, from_config="motor")
-        median_ctrl = presenter(
-            MedianPresenter, from_config="median_ctrl"
-        )
-        det_ctrl = presenter(
-            DetectorPresenter, from_config="det_ctrl"
-        )
-        acq_ctrl = presenter(
-            AcquisitionPresenter, from_config="acq_ctrl"
-        )
+        median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
+        det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")
+        acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
         acq_widget = view(AcquisitionView, from_config="acq_widget")
         img_widget = view(ImageView, from_config="img_widget")
         det_widget = view(DetectorView, from_config="det_widget")

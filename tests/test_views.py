@@ -37,7 +37,9 @@ class TestMotorView:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_container: VirtualContainer) -> MotorView:
+    def widget(
+        self, qapp: QApplication, virtual_container: VirtualContainer
+    ) -> MotorView:
         return MotorView("motor_view")
 
     def test_instantiation(self, widget: MotorView) -> None:
@@ -121,7 +123,10 @@ class TestMotorView:
         assert received[0] == ("stage", "X", pytest.approx(-1.0))
 
     def test_inject_dependencies_registers_signals(
-        self, widget: MotorView, motor: MockMotorDevice, virtual_container: VirtualContainer
+        self,
+        widget: MotorView,
+        motor: MockMotorDevice,
+        virtual_container: VirtualContainer,
     ) -> None:
         """inject_dependencies() registers the widget signals on the container."""
         from redsun_mimir.presenter._motor import MotorPresenter
@@ -157,7 +162,9 @@ class TestLightView:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_container: VirtualContainer) -> LightView:
+    def widget(
+        self, qapp: QApplication, virtual_container: VirtualContainer
+    ) -> LightView:
         return LightView("light_view")
 
     def test_instantiation(self, widget: LightView) -> None:
@@ -244,7 +251,10 @@ class TestLightView:
         assert received[0][1] == 50
 
     def test_inject_dependencies_registers_signals(
-        self, widget: LightView, led: MockLightDevice, virtual_container: VirtualContainer
+        self,
+        widget: LightView,
+        led: MockLightDevice,
+        virtual_container: VirtualContainer,
     ) -> None:
         """inject_dependencies() registers the widget signals on the container."""
         from redsun_mimir.presenter._light import LightPresenter

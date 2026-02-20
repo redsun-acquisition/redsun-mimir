@@ -273,8 +273,6 @@ class AcquisitionPresenter(Presenter, IsProvider, IsInjectable, Loggable):
             name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
 
-
-
     def register_providers(self, container: VirtualContainer) -> None:
         """Register plan specs as a provider in the DI container."""
         container.plan_specs = providers.Object(self.plans_specificiers())

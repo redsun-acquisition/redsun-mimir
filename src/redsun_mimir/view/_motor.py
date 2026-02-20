@@ -204,8 +204,6 @@ class MotorView(QtView):
 
         self.setLayout(self.main_layout)
 
-
-
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.
 

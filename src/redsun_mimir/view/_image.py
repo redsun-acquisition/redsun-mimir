@@ -73,8 +73,6 @@ class ImageView(QtView, Loggable):
 
         self.logger.info("Initialized")
 
-
-
     def register_providers(self, container: VirtualContainer) -> None:
         """Register image view signals in the virtual container."""
         container.register_signals(self)
@@ -84,8 +82,6 @@ class ImageView(QtView, Loggable):
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self._setup_layers(descriptors, readings)
-
-
 
     def _setup_layers(
         self,

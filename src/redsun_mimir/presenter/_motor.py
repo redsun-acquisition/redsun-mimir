@@ -217,9 +217,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
         container.signals["MotorView"]["sigMotorMove"].connect(self.move)
-        container.signals["MotorView"]["sigConfigChanged"].connect(
-            self.configure
-        )
+        container.signals["MotorView"]["sigConfigChanged"].connect(self.configure)
 
     def _run_loop(self) -> None:
         while True:

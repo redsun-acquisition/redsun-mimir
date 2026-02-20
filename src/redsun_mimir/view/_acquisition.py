@@ -241,8 +241,6 @@ class AcquisitionView(QtView, Loggable):
         self.setLayout(self.root_layout)
         self.plans_actions_buttons: dict[str, dict[str, ActionButton]] = {}
 
-
-
     def register_providers(self, container: VirtualContainer) -> None:
         """Register acquisition view signals in the virtual container."""
         container.register_signals(self)
@@ -254,11 +252,11 @@ class AcquisitionView(QtView, Loggable):
         if "AcquisitionPresenter" in container.signals:
             container.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
                 self._on_plan_done
-        )
+            )
         if "AcquisitionPresenter" in container.signals:
             container.signals["AcquisitionPresenter"]["sigActionDone"].connect(
                 self._on_action_done, thread="main"
-        )
+            )
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """
@@ -385,8 +383,6 @@ class AcquisitionView(QtView, Loggable):
             )
 
         self.stack_widget.setCurrentIndex(0)
-
-
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()

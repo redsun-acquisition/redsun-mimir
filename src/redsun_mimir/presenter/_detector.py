@@ -114,9 +114,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        container.signals["DetectorView"]["sigPropertyChanged"].connect(
-            self.configure
-        )
+        container.signals["DetectorView"]["sigPropertyChanged"].connect(self.configure)
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         r"""Configure a detector with confirmation feedback.

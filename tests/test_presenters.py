@@ -9,22 +9,12 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pytest
-from dependency_injector import providers
-from dependency_injector.containers import DynamicContainer
 from sunflare.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.presenter._light import LightPresenter
 from redsun_mimir.presenter._median import MedianPresenter
 from redsun_mimir.presenter._motor import MotorPresenter
-
-
-def _make_di_container(**objects: Any) -> DynamicContainer:
-    """Build a minimal DynamicContainer seeded with Object providers."""
-    container = DynamicContainer()
-    for name, value in objects.items():
-        setattr(container, name, providers.Object(value))
-    return container
 
 
 class TestMotorPresenter:
@@ -118,11 +108,6 @@ class TestMotorPresenter:
         assert controller._daemon.is_alive()
 
 
-# ---------------------------------------------------------------------------
-# LightPresenter
-# ---------------------------------------------------------------------------
-
-
 class TestLightPresenter:
     """Tests for LightPresenter presenter."""
 
@@ -193,16 +178,13 @@ class TestLightPresenter:
         assert "motor" not in ctrl._lights
 
 
-# ---------------------------------------------------------------------------
-# MedianPresenter
-# ---------------------------------------------------------------------------
-
-
 class TestMedianPresenter:
     """Tests for MedianPresenter."""
 
     @pytest.fixture
-    def presenter(self, virtual_container: VirtualContainer) -> Generator[MedianPresenter, None, None]:
+    def presenter(
+        self, virtual_container: VirtualContainer
+    ) -> Generator[MedianPresenter, None, None]:
         yield MedianPresenter(
             "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
         )

@@ -122,8 +122,6 @@ class DetectorView(QtView, Loggable):
 
         self.logger.info("Initialized")
 
-
-
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector view signals in the virtual container."""
         container.register_signals(self)
@@ -134,9 +132,9 @@ class DetectorView(QtView, Loggable):
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self.setup_ui(descriptors, readings)
         if "DetectorPresenter" in container.signals:
-            container.signals["DetectorPresenter"][
-                "sigConfigurationConfirmed"
-        ].connect(self._handle_configuration_result)
+            container.signals["DetectorPresenter"]["sigConfigurationConfirmed"].connect(
+                self._handle_configuration_result
+            )
 
     def setup_ui(
         self,

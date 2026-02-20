@@ -93,9 +93,7 @@ class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        container.signals["LightView"]["sigToggleLightRequest"].connect(
-            self.trigger
-        )
+        container.signals["LightView"]["sigToggleLightRequest"].connect(self.trigger)
         container.signals["LightView"]["sigIntensityRequest"].connect(self.set)
 
     def _bare_name(self, device_label: str) -> str:
