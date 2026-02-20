@@ -37,7 +37,6 @@ def _get_prop(
         Property name to match (e.g. ``"binary"``, ``"wavelength"``).
     default :
         Returned when no matching key is found.
-    r
     """
     for key, reading in readings.items():
         tail = key.rsplit("-", 1)[-1]
