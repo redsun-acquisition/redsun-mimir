@@ -100,7 +100,9 @@ class DetectorView(QtView, Loggable):
 
     sigPropertyChanged = Signal(str, dict[str, object])
 
-    position = ViewPosition.RIGHT
+    @property
+    def view_position(self) -> ViewPosition:
+        return ViewPosition.RIGHT
 
     def __init__(
         self,

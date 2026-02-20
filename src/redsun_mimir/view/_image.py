@@ -43,7 +43,9 @@ class ImageView(QtView, Loggable):
         Additional keyword arguments passed to the parent view.
     """
 
-    position = ViewPosition.CENTER
+    @property
+    def view_position(self) -> ViewPosition:
+        return ViewPosition.CENTER
 
     def __init__(
         self,

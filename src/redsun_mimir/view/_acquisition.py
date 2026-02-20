@@ -184,7 +184,9 @@ class AcquisitionView(QtView, Loggable):
     sigPauseResumeRequest = Signal(bool)
     sigActionRequest = Signal(str, bool)
 
-    position = ViewPosition.LEFT
+    @property
+    def view_position(self) -> ViewPosition:
+        return ViewPosition.LEFT
 
     def __init__(
         self,
