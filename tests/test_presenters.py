@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import numpy as np
 import pytest
 from dependency_injector import providers
 from dependency_injector.containers import DynamicContainer
-from sunflare.virtual import VirtualBus
+from sunflare.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.presenter._light import LightPresenter
@@ -33,23 +36,23 @@ class TestMotorPresenter:
 
     @pytest.fixture
     def controller(
-        self, devices: dict[str, MockMotorDevice], virtual_bus: VirtualBus
-    ) -> MotorPresenter:
-        ctrl = MotorPresenter(devices, virtual_bus)
-        return ctrl
+        self, devices: dict[str, MockMotorDevice], virtual_container: VirtualContainer
+    ) -> Generator[MotorPresenter, None, None]:
+        ctrl = MotorPresenter("motor_presenter", devices)
+        yield ctrl
+        ctrl.shutdown()
 
     def test_instantiation(self, controller: MotorPresenter) -> None:
         """Controller initialises and identifies motor devices."""
         assert "stage" in controller._motors
 
     def test_register_providers(
-        self, controller: MotorPresenter, virtual_bus: VirtualBus
+        self, controller: MotorPresenter, virtual_container: VirtualContainer
     ) -> None:
         """register_providers() populates motor_configuration on the container."""
-        container = _make_di_container()
-        controller.register_providers(container)
-        assert hasattr(container, "motor_configuration")
-        cfg = container.motor_configuration()
+        controller.register_providers(virtual_container)
+        assert hasattr(virtual_container, "motor_configuration")
+        cfg = virtual_container.motor_configuration()
         assert any("stage" in k for k in cfg)
 
     def test_move_updates_position(
@@ -120,9 +123,9 @@ class TestLightPresenter:
 
     @pytest.fixture
     def controller(
-        self, devices: dict[str, MockLightDevice], virtual_bus: VirtualBus
+        self, devices: dict[str, MockLightDevice], virtual_container: VirtualContainer
     ) -> LightPresenter:
-        return LightPresenter(devices, virtual_bus)
+        return LightPresenter("light_presenter", devices)
 
     def test_instantiation(self, controller: LightPresenter) -> None:
         """Controller identifies and stores light devices."""
@@ -130,13 +133,12 @@ class TestLightPresenter:
         assert "laser" in controller._lights
 
     def test_register_providers(
-        self, controller: LightPresenter, virtual_bus: VirtualBus
+        self, controller: LightPresenter, virtual_container: VirtualContainer
     ) -> None:
         """register_providers() populates light_configuration on the container."""
-        container = _make_di_container()
-        controller.register_providers(container)
-        assert hasattr(container, "light_configuration")
-        cfg = container.light_configuration()
+        controller.register_providers(virtual_container)
+        assert hasattr(virtual_container, "light_configuration")
+        cfg = virtual_container.light_configuration()
         assert any("led" in k for k in cfg)
 
     def test_trigger_toggles_led(
@@ -172,11 +174,11 @@ class TestLightPresenter:
         assert mock_laser.intensity == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
-        self, mock_motor: MockMotorDevice, virtual_bus: VirtualBus
+        self, mock_motor: MockMotorDevice, virtual_container: VirtualContainer
     ) -> None:
         """MotorDevice is not included in _lights even if passed in devices."""
         devices: dict[str, Any] = {"motor": mock_motor}
-        ctrl = LightPresenter(devices, virtual_bus)
+        ctrl = LightPresenter("light_presenter", devices)
         assert "motor" not in ctrl._lights
 
 
@@ -189,9 +191,9 @@ class TestMedianPresenter:
     """Tests for MedianPresenter."""
 
     @pytest.fixture
-    def presenter(self, virtual_bus: VirtualBus) -> MedianPresenter:
+    def presenter(self, virtual_container: VirtualContainer) -> MedianPresenter:
         return MedianPresenter(
-            {}, virtual_bus, streams=["square_scan"], hints=["buffer"]
+            "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
         )
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:

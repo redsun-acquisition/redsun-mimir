@@ -6,8 +6,8 @@ import numpy as np
 from napari.components import ViewerModel
 from napari.window import Window
 from qtpy import QtWidgets
-from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 
 from redsun_mimir.utils.descriptors import parse_key
@@ -20,8 +20,7 @@ from redsun_mimir.utils.napari import (
 if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 
 class ImageView(QtView, Loggable):
@@ -44,15 +43,15 @@ class ImageView(QtView, Loggable):
         Additional keyword arguments passed to the parent view.
     """
 
-    position = ViewPositionTypes.CENTER
+    position = ViewPosition.CENTER
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         hints: list[str] | None = None,
     ) -> None:
-        super().__init__(virtual_bus, hints=hints)
+        super().__init__(name)
 
         self.viewer_model = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
@@ -74,27 +73,19 @@ class ImageView(QtView, Loggable):
 
         self.logger.info("Initialized")
 
-        self.virtual_bus.register_signals(self)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
+
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register image view signals in the virtual container."""
+        container.register_signals(self)
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
         """Inject detector configuration and create image layers."""
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self._setup_layers(descriptors, readings)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to presenter signals on the virtual bus."""
-        self.virtual_bus.signals["DetectorPresenter"]["sigNewData"].connect(
-            self._update_layers, thread="main"
-        )
-        try:
-            self.virtual_bus.signals["MedianPresenter"]["sigNewData"].connect(
-                self._update_layers, thread="main"
-            )
-        except KeyError:
-            self.logger.debug(
-                "MedianPresenter not found in virtual bus; skipping median data connection."
-            )
+
 
     def _setup_layers(
         self,

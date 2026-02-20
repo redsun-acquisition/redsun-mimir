@@ -2,26 +2,31 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import Any
 
 import pytest
 from dependency_injector import providers
-from dependency_injector.containers import DynamicContainer
 from qtpy.QtWidgets import QApplication
-from sunflare.virtual import VirtualBus
+from sunflare.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.view._light import LightView
 from redsun_mimir.view._motor import MotorView
 
 
-def _make_container(**objects: Any) -> DynamicContainer:
-    container = DynamicContainer()
+def _make_container(**objects: Any) -> VirtualContainer:
+    container = VirtualContainer()
     for name, value in objects.items():
         setattr(container, name, providers.Object(value))
     return container
 
 
+@pytest.mark.skipif(
+    sys.platform == "linux" and not os.environ.get("DISPLAY"),
+    reason="requires a display (Qt) on Linux",
+)
 class TestMotorView:
     """Tests for MotorView."""
 
@@ -32,8 +37,8 @@ class TestMotorView:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> MotorView:
-        return MotorView(virtual_bus)
+    def widget(self, qapp: QApplication, virtual_container: VirtualContainer) -> MotorView:
+        return MotorView("motor_view")
 
     def test_instantiation(self, widget: MotorView) -> None:
         """Widget creates without error before inject_dependencies."""
@@ -115,28 +120,26 @@ class TestMotorView:
         assert len(received) == 1
         assert received[0] == ("stage", "X", pytest.approx(-1.0))
 
-    def test_connect_to_virtual_registers_signals(
-        self, widget: MotorView, motor: MockMotorDevice, virtual_bus: VirtualBus
+    def test_inject_dependencies_registers_signals(
+        self, widget: MotorView, motor: MockMotorDevice, virtual_container: VirtualContainer
     ) -> None:
-        """connect_to_virtual() registers the widget's signals on the bus."""
+        """inject_dependencies() registers the widget signals on the container."""
         from redsun_mimir.presenter._motor import MotorPresenter
 
-        container = _make_container(
-            motor_configuration=motor.read_configuration(),
-            motor_description=motor.describe_configuration(),
-        )
-        widget.inject_dependencies(container)
+        # Presenter registers first so its signals exist on the container
+        ctrl = MotorPresenter("motor_presenter", {"stage": motor})
+        ctrl.register_providers(virtual_container)
 
-        # The presenter must be registered first so its signals exist on the bus
-        ctrl = MotorPresenter({"stage": motor}, virtual_bus)
-        ctrl.register_providers(container)
+        widget.inject_dependencies(virtual_container)
 
-        widget.connect_to_virtual()
-
-        assert "MotorView" in virtual_bus.signals
+        assert "MotorView" in virtual_container.signals
         ctrl.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.platform == "linux" and not os.environ.get("DISPLAY"),
+    reason="requires a display (Qt) on Linux",
+)
 class TestLightView:
     """Tests for LightView."""
 
@@ -153,8 +156,8 @@ class TestLightView:
         )
 
     @pytest.fixture
-    def widget(self, qapp: QApplication, virtual_bus: VirtualBus) -> LightView:
-        return LightView(virtual_bus)
+    def widget(self, qapp: QApplication, virtual_container: VirtualContainer) -> LightView:
+        return LightView("light_view")
 
     def test_instantiation(self, widget: LightView) -> None:
         """Widget creates without error before inject_dependencies."""
@@ -239,15 +242,14 @@ class TestLightView:
         assert received[0][0] == "laser"
         assert received[0][1] == 50
 
-    def test_connect_to_virtual_registers_signals(
-        self, widget: LightView, led: MockLightDevice, virtual_bus: VirtualBus
+    def test_inject_dependencies_registers_signals(
+        self, widget: LightView, led: MockLightDevice, virtual_container: VirtualContainer
     ) -> None:
-        """connect_to_virtual() registers the widget's signals on the bus."""
-        container = _make_container(
-            light_configuration=led.read_configuration(),
-            light_description=led.describe_configuration(),
-        )
-        widget.inject_dependencies(container)
-        widget.connect_to_virtual()
+        """inject_dependencies() registers the widget signals on the container."""
+        from redsun_mimir.presenter._light import LightPresenter
 
-        assert "LightView" in virtual_bus.signals
+        ctrl = LightPresenter("light_presenter", {"led": led})
+        ctrl.register_providers(virtual_container)
+        widget.inject_dependencies(virtual_container)
+
+        assert "LightView" in virtual_container.signals

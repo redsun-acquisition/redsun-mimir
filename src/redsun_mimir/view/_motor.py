@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
-from redsun.config import ViewPositionTypes
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
@@ -11,8 +11,7 @@ from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 _T = TypeVar("_T")
 
@@ -73,15 +72,15 @@ class MotorView(QtView):
     sigMotorMove = Signal(str, str, float)
     sigConfigChanged = Signal(str, dict[str, Any])
 
-    position = ViewPositionTypes.RIGHT
+    position = ViewPosition.RIGHT
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(name)
         # Flat canonical-keyed dicts for the full config
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}
@@ -101,7 +100,11 @@ class MotorView(QtView):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register motor view signals in the virtual container."""
+        pass  # signals registered after setup_ui
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
         r"""Inject motor configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
@@ -113,6 +116,10 @@ class MotorView(QtView):
         configuration: dict[str, Reading[Any]] = container.motor_configuration()
         description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
+        container.register_signals(self)
+        container.signals["MotorPresenter"]["sigNewPosition"].connect(
+            self._update_position, thread="main"
+        )
 
     def setup_ui(
         self,
@@ -195,13 +202,8 @@ class MotorView(QtView):
             self.main_layout.addWidget(self._groups[device_label])
 
         self.setLayout(self.main_layout)
-        self.virtual_bus.register_signals(self)
 
-    def connect_to_virtual(self) -> None:
-        """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
-            self._update_position, thread="main"
-        )
+
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.

@@ -168,3 +168,7 @@ include = ["src", "tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
+
+[tool.uv.sources]
+sunflare = { path = "../sunflare", editable = true }
+redsun = { path = "../redsun", editable = true }

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
-from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
@@ -13,8 +13,7 @@ from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 _T = TypeVar("_T")
 
@@ -73,15 +72,15 @@ class LightView(QtView, Loggable):
     sigToggleLightRequest = Signal(str)
     sigIntensityRequest = Signal(str, object)  # device_label, intensity
 
-    position = ViewPositionTypes.RIGHT
+    position = ViewPosition.RIGHT
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(name)
 
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}
@@ -97,7 +96,11 @@ class LightView(QtView, Loggable):
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register light view signals in the virtual container."""
+        pass  # signals registered in inject_dependencies
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
         r"""Inject light configuration from the DI container and build the UI.
 
         Retrieves configuration readings (current values) and descriptors
@@ -109,6 +112,7 @@ class LightView(QtView, Loggable):
         configuration: dict[str, Reading[Any]] = container.light_configuration()
         description: dict[str, Descriptor] = container.light_description()
         self.setup_ui(configuration, description)
+        container.register_signals(self)
 
     def setup_ui(
         self,
@@ -196,10 +200,6 @@ class LightView(QtView, Loggable):
             self.main_layout.addWidget(self._groups[device_label])
 
         self.setLayout(self.main_layout)
-        self.virtual_bus.register_signals(self)
-
-    def connect_to_virtual(self) -> None:
-        """Register signals and connect to virtual bus."""
 
     def _on_toggle_button_checked(self, device_label: str) -> None:
         """Toggle the light source."""

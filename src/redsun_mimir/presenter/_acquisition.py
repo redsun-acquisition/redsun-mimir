@@ -11,8 +11,8 @@ from bluesky.utils import MsgGenerator  # noqa: TC002
 from dependency_injector import providers
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
-from sunflare.presenter import PPresenter
-from sunflare.virtual import IsProvider, Signal, VirtualAware, VirtualBus
+from sunflare.presenter import Presenter
+from sunflare.virtual import IsInjectable, IsProvider, Signal
 
 import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Mapping
 
     from bluesky.protocols import Readable
-    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
+    from sunflare.virtual import VirtualContainer
 
     from redsun_mimir.actions import SRLatch
 
@@ -217,14 +217,13 @@ def convert_to_target_egu(
     return old_step, new_step
 
 
-class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
+class AcquisitionPresenter(Presenter, IsProvider, IsInjectable, Loggable):
     """A centralized acquisition presenter to manage a Bluesky run engine.
 
     Parameters
     ----------
     devices: Mapping[str, Device]
         The available devices in the application.
-    virtual_bus: VirtualBus
         The virtual bus to register signals on.
     callbacks: list[str] | None, keyword-only, optional
         Callback names to subscribe to on the run engine, if any.
@@ -245,13 +244,12 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         callbacks: list[str] | None = None,
     ) -> None:
-        self.virtual_bus = virtual_bus
-        self.devices = devices
+        super().__init__(name, devices)
         self.models = devices
         self.engine = RunEngine()
 
@@ -275,31 +273,32 @@ class AcquisitionPresenter(PPresenter, IsProvider, VirtualAware, Loggable):
             name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
 
-        self.virtual_bus.register_signals(self)
 
-    def register_providers(self, container: DynamicContainer) -> None:
+
+    def register_providers(self, container: VirtualContainer) -> None:
         """Register plan specs as a provider in the DI container."""
         container.plan_specs = providers.Object(self.plans_specificiers())
+        container.register_signals(self)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["AcquisitionView"]["sigLaunchPlanRequest"].connect(
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect to the virtual container signals."""
+        container.signals["AcquisitionView"]["sigLaunchPlanRequest"].connect(
             self.launch_plan
         )
-        self.virtual_bus.signals["AcquisitionView"]["sigStopPlanRequest"].connect(
+        container.signals["AcquisitionView"]["sigStopPlanRequest"].connect(
             self.stop_plan
         )
-        self.virtual_bus.signals["AcquisitionView"]["sigPauseResumeRequest"].connect(
+        container.signals["AcquisitionView"]["sigPauseResumeRequest"].connect(
             self.pause_or_resume_plan
         )
-        self.virtual_bus.signals["AcquisitionView"]["sigActionRequest"].connect(
+        container.signals["AcquisitionView"]["sigActionRequest"].connect(
             self.toggle_action_event
         )
 
         if len(self.expected_callbacks) > 0:
             msg = ", ".join(self.expected_callbacks)
             self.logger.debug(f"Registering callbacks: {msg}")
-            for name, callback in self.virtual_bus.callbacks.items():
+            for name, callback in container.callbacks.items():
                 if name in self.expected_callbacks:
                     token = self.engine.subscribe(callback)
                     self.callback_tokens[name] = token

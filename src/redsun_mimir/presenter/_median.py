@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.device import Device
-    from sunflare.virtual import VirtualBus
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):
@@ -30,10 +29,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances. Unused by this presenter.
-    virtual_bus :
-        Reference to the virtual bus.
     streams: list[str] | None, keyword-only, optional
         List of stream names to look for when stacking data for median calculation.
         If `None`, no computation will be performed. Defaults to `None`.
@@ -58,13 +57,13 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         streams: list[str] | None = None,
         hints: list[str] | None = None,
     ) -> None:
-        super().__init__(devices, virtual_bus)
+        super().__init__(name, devices)
         self.expected_streams = frozenset(streams or [])
         self.hints = frozenset(hints or [])
         self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
@@ -73,8 +72,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.register_callbacks(self)
         msg = "Initialized"
         if len(self.expected_streams) > 0 and len(self.hints) > 0:
             msg = (

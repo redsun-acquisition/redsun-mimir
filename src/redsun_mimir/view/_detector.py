@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
 from qtpy import QtWidgets
-from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
@@ -13,8 +13,7 @@ from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -101,15 +100,15 @@ class DetectorView(QtView, Loggable):
 
     sigPropertyChanged = Signal(str, dict[str, object])
 
-    position = ViewPositionTypes.RIGHT
+    position = ViewPosition.RIGHT
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(name)
 
         self.settings_tab_widget = QtWidgets.QTabWidget()
         self.settings_tab_widget.setMinimumWidth(300)
@@ -123,17 +122,18 @@ class DetectorView(QtView, Loggable):
 
         self.logger.info("Initialized")
 
-        self.virtual_bus.register_signals(self)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
+
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register detector view signals in the virtual container."""
+        container.register_signals(self)
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
         """Inject detector configuration from the DI container."""
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self.setup_ui(descriptors, readings)
-
-    def connect_to_virtual(self) -> None:
-        """Connect to presenter signals on the virtual bus."""
-        self.virtual_bus.signals["DetectorPresenter"][
+        container.signals["DetectorPresenter"][
             "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
 

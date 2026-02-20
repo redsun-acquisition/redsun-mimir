@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 from dependency_injector import providers
 from sunflare.log import Loggable
-from sunflare.virtual import IsProvider, VirtualAware
+from sunflare.presenter import Presenter
+from sunflare.virtual import IsInjectable, IsProvider
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
@@ -13,12 +14,11 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 
-class LightPresenter(Loggable, IsProvider, VirtualAware):
+class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
     """Presenter for light source control.
 
     Forwards toggle and intensity requests from
@@ -27,10 +27,10 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    virtual_bus :
-        The virtual bus for signal exchange.
     **kwargs :
         Additional keyword arguments.
 
@@ -39,22 +39,19 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         **kwargs: Any,
     ) -> None:
+        super().__init__(name, devices)
         self._timeout: float | None = kwargs.get("timeout", None)
-        self.virtual_bus = virtual_bus
-        self.devices = devices
 
         self._lights = {
             name: model
             for name, model in devices.items()
             if isinstance(model, LightProtocol)
         }
-
-        self.virtual_bus.register_signals(self)
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
         r"""Get the current configuration readings of all light devices.
@@ -88,17 +85,18 @@ class LightPresenter(Loggable, IsProvider, VirtualAware):
             result.update(light.describe_configuration())
         return result
 
-    def register_providers(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
         """Register light model info as a provider in the DI container."""
         container.light_configuration = providers.Object(self.models_configuration())
         container.light_description = providers.Object(self.models_description())
+        container.register_signals(self)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["LightView"]["sigToggleLightRequest"].connect(
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect to the virtual container signals."""
+        container.signals["LightView"]["sigToggleLightRequest"].connect(
             self.trigger
         )
-        self.virtual_bus.signals["LightView"]["sigIntensityRequest"].connect(self.set)
+        container.signals["LightView"]["sigIntensityRequest"].connect(self.set)
 
     def _bare_name(self, device_label: str) -> str:
         """Resolve a device label to the bare device name used as dict key.

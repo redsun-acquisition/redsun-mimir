@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, cast
 import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
-from redsun.config import ViewPositionTypes
 from sunflare.log import Loggable
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
@@ -17,8 +17,7 @@ from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 if TYPE_CHECKING:
     from typing import Any
 
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
     from redsun_mimir.common import PlanSpec
 
@@ -185,15 +184,15 @@ class AcquisitionView(QtView, Loggable):
     sigPauseResumeRequest = Signal(bool)
     sigActionRequest = Signal(str, bool)
 
-    position = ViewPositionTypes.LEFT
+    position = ViewPosition.LEFT
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         **kwargs: Any,
     ):
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(name)
         self.plans_info: dict[str, str] = {}
 
         # root layout
@@ -242,12 +241,22 @@ class AcquisitionView(QtView, Loggable):
         self.setLayout(self.root_layout)
         self.plans_actions_buttons: dict[str, dict[str, ActionButton]] = {}
 
-        self.virtual_bus.register_signals(self)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
+
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register acquisition view signals in the virtual container."""
+        container.register_signals(self)
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
         """Inject plan specs from the DI container and build the UI."""
         specs: set[PlanSpec] = container.plan_specs()
         self.setup_ui(specs)
+        container.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
+            self._on_plan_done
+        )
+        container.signals["AcquisitionPresenter"]["sigActionDone"].connect(
+            self._on_action_done, thread="main"
+        )
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """
@@ -375,14 +384,7 @@ class AcquisitionView(QtView, Loggable):
 
         self.stack_widget.setCurrentIndex(0)
 
-    def connect_to_virtual(self) -> None:
-        """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
-            self._on_plan_done
-        )
-        self.virtual_bus.signals["AcquisitionPresenter"]["sigActionDone"].connect(
-            self._on_action_done, thread="main"
-        )
+
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()

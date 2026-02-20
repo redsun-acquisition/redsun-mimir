@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from dependency_injector import providers
 from sunflare.log import Loggable
-from sunflare.virtual import HasShutdown, IsProvider, Signal, VirtualAware, VirtualBus
+from sunflare.presenter import Presenter
+from sunflare.virtual import HasShutdown, IsInjectable, IsProvider, Signal
 
 from ..protocols import MotorProtocol
 
@@ -15,11 +16,11 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
+    from sunflare.virtual import VirtualContainer
 
 
-class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
+class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown):
     """Presenter for motor stage control.
 
     Allows manual stage positioning by forwarding movement requests from
@@ -29,10 +30,10 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    virtual_bus :
-        Virtual bus for the session.
     **kwargs :
         Additional keyword arguments.
 
@@ -49,7 +50,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
             `thread="main"` to ensure the slot runs on the Qt main thread:
 
             ```python
-            virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
+            container.signals["MotorPresenter"]["sigNewPosition"].connect(
                 self.on_new_position, thread="main"
             )
             ```
@@ -65,14 +66,13 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         **kwargs: Any,
     ) -> None:
+        super().__init__(name, devices)
         self._timeout: float | None = kwargs.get("timeout", None)
-        self.virtual_bus = virtual_bus
-        self.devices = devices
         self._queue: Queue[tuple[str, str, float] | None] = Queue()
 
         self._motors = {
@@ -84,7 +84,6 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self.virtual_bus.register_signals(self)
         self.logger.info("Initialized")
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
@@ -189,15 +188,16 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         self._queue.put(None)
         self._queue.join()
 
-    def register_providers(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""
         container.motor_configuration = providers.Object(self.models_configuration())
         container.motor_description = providers.Object(self.models_description())
+        container.register_signals(self)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["MotorView"]["sigMotorMove"].connect(self.move)
-        self.virtual_bus.signals["MotorView"]["sigConfigChanged"].connect(
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect to the virtual container signals."""
+        container.signals["MotorView"]["sigMotorMove"].connect(self.move)
+        container.signals["MotorView"]["sigConfigChanged"].connect(
             self.configure
         )
 
