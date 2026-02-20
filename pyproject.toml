@@ -28,12 +28,12 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sunflare>=0.10.0",
+    "sunflare>=0.10.1",
     "napari>=0.6.6",
     "superqt>=0.7.4",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
-    "redsun>=0.6.1",
+    "redsun>=0.6.2",
 ]
 
 [dependency-groups]
