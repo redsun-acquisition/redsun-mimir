@@ -104,25 +104,24 @@ class MotorView(QtView):
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register motor view signals in the virtual container."""
-        pass  # signals registered after setup_ui
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        r"""Inject motor configuration from the DI container and build the UI.
-
-        Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by
-        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``name-property``
-        scheme, merging all motor devices.
-        """
+        """Build the UI and register motor view signals in the virtual container."""
         configuration: dict[str, Reading[Any]] = container.motor_configuration()
         description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
         container.register_signals(self)
-        sigs = find_signals(container, ["sigNewPosition"])
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        r"""Connect inbound signals from the motor presenter.
+
+        Retrieves signals registered by
+        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers]
+        and connects them to the appropriate view slots.
+        """
+        sigs = find_signals(container, ["sigNewPosition", "sigNewConfiguration"])
         if "sigNewPosition" in sigs:
             sigs["sigNewPosition"].connect(self._update_position, thread="main")
+        if "sigNewConfiguration" in sigs:
+            sigs["sigNewConfiguration"].connect(self._update_configuration, thread="main")
 
     def setup_ui(
         self,
@@ -242,6 +241,28 @@ class MotorView(QtView):
         dev_readings = self._device_readings.get(motor, {})
         egu: str = _get_prop(dev_readings, "egu", "")
         self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
+
+    def _update_configuration(self, motor: str, success_map: dict[str, bool]) -> None:
+        """Reset line-edit styling after a configuration update.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor device label (``name``).
+        success_map : ``dict[str, bool]``
+            Mapping of setting key to success flag as returned by
+            :meth:`MotorPresenter.configure`.
+        """
+        for key, success in success_map.items():
+            # key is e.g. "motor-step_size:X"; extract axis from suffix
+            if ":" in key:
+                axis = key.split(":")[-1]
+                edit_key = f"edit:{motor}:{axis}"
+                if edit_key in self._line_edits:
+                    color = "green" if success else "red"
+                    self._line_edits[edit_key].setStyleSheet(
+                        f"border: 2px solid {color};"
+                    )
 
     def _validate_and_notify(self, device_label: str, axis: str) -> None:
         r"""Validate the new step size value and notify the virtual bus.

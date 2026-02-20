@@ -46,15 +46,15 @@ class TestMotorView:
         """Widget creates without error before inject_dependencies."""
         assert widget is not None
 
-    def test_inject_dependencies_builds_ui(
+    def test_register_providers_builds_ui(
         self, widget: MotorView, motor: MockMotorDevice
     ) -> None:
-        """inject_dependencies() populates group boxes, labels, and buttons."""
+        """register_providers() populates group boxes, labels, and buttons."""
         container = _make_container(
             motor_configuration=motor.read_configuration(),
             motor_description=motor.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         assert "stage" in widget._groups
         assert "pos:stage:X" in widget._labels
@@ -70,7 +70,7 @@ class TestMotorView:
             motor_configuration=motor.read_configuration(),
             motor_description=motor.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         assert widget._line_edits["edit:stage:X"].text() == "1.0"
         assert widget._line_edits["edit:stage:Y"].text() == "0.5"
@@ -83,7 +83,7 @@ class TestMotorView:
             motor_configuration=motor.read_configuration(),
             motor_description=motor.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         widget._update_position("stage", "X", 7.5)
         assert "7.50" in widget._labels["pos:stage:X"].text()
@@ -96,7 +96,7 @@ class TestMotorView:
             motor_configuration=motor.read_configuration(),
             motor_description=motor.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
@@ -113,7 +113,7 @@ class TestMotorView:
             motor_configuration=motor.read_configuration(),
             motor_description=motor.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
@@ -128,7 +128,7 @@ class TestMotorView:
         motor: MockMotorDevice,
         virtual_container: VirtualContainer,
     ) -> None:
-        """inject_dependencies() registers the widget signals on the container."""
+        """register_providers() registers the widget signals; inject_dependencies() connects inbound signals."""
         from redsun_mimir.presenter._motor import MotorPresenter
 
         # Presenter registers first so its signals exist on the container
@@ -173,12 +173,12 @@ class TestLightView:
         assert widget is not None
 
     def test_inject_binary_light(self, widget: LightView, led: MockLightDevice) -> None:
-        """Binary device gets only an ON/OFF button, no slider."""
+        """register_providers() with binary device creates only an ON/OFF button."""
         container = _make_container(
             light_configuration=led.read_configuration(),
             light_description=led.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         assert "led" in widget._groups
         assert "on:led" in widget._buttons
@@ -187,12 +187,12 @@ class TestLightView:
     def test_inject_continuous_light(
         self, widget: LightView, laser: MockLightDevice
     ) -> None:
-        """Continuous device gets both a button and an intensity slider."""
+        """register_providers() with continuous device creates a button and slider."""
         container = _make_container(
             light_configuration=laser.read_configuration(),
             light_description=laser.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         assert "laser" in widget._groups
         assert "on:laser" in widget._buttons
@@ -206,7 +206,7 @@ class TestLightView:
             light_configuration=led.read_configuration(),
             light_description=led.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         received: list[str] = []
         widget.sigToggleLightRequest.connect(received.append)
@@ -222,7 +222,7 @@ class TestLightView:
             light_configuration=led.read_configuration(),
             light_description=led.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         btn = widget._buttons["on:led"]
         assert btn.text() == "ON"
@@ -241,7 +241,7 @@ class TestLightView:
             light_configuration=laser.read_configuration(),
             light_description=laser.describe_configuration(),
         )
-        widget.inject_dependencies(container)
+        widget.register_providers(container)
 
         received: list[tuple[str, Any]] = []
         widget.sigIntensityRequest.connect(lambda n, v: received.append((n, v)))
@@ -257,7 +257,7 @@ class TestLightView:
         led: MockLightDevice,
         virtual_container: VirtualContainer,
     ) -> None:
-        """inject_dependencies() registers the widget signals on the container."""
+        """register_providers() registers the widget signals; inject_dependencies() is a no-op."""
         from redsun_mimir.presenter._light import LightPresenter
 
         ctrl = LightPresenter("light_presenter", {"led": led})

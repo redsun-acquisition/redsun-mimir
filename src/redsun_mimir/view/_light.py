@@ -98,22 +98,15 @@ class LightView(QtView, Loggable):
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register light view signals in the virtual container."""
-        pass  # signals registered after setup_ui in inject_dependencies
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        r"""Inject light configuration from the DI container and build the UI.
-
-        Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by
-        [`LightPresenter.register_providers`][redsun_mimir.presenter.LightPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``prefix:name-property``
-        scheme, merging all light devices.
-        """
+        """Build the UI and register light view signals in the virtual container."""
         configuration: dict[str, Reading[Any]] = container.light_configuration()
         description: dict[str, Descriptor] = container.light_description()
         self.setup_ui(configuration, description)
         container.register_signals(self)
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect inbound signals from the light presenter."""
+        pass  # LightPresenter has no feedback signals back to LightView currently
 
     def setup_ui(
         self,
