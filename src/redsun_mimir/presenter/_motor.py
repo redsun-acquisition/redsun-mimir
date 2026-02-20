@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import HasShutdown, IsInjectable, IsProvider, Signal
+from sunflare.virtual import Signal
 
 from ..protocols import MotorProtocol
 from ..utils import find_signals
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualContainer
 
 
-class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown):
+class MotorPresenter(Presenter, Loggable):
     """Presenter for motor stage control.
 
     Allows manual stage positioning by forwarding movement requests from

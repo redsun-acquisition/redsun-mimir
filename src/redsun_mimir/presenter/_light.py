@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import IsInjectable, IsProvider
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 from redsun_mimir.utils import find_signals
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualContainer
 
 
-class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
+class LightPresenter(Presenter, Loggable):
     """Presenter for light source control.
 
     Forwards toggle and intensity requests from

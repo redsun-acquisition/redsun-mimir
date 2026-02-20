@@ -12,7 +12,7 @@ from dependency_injector import providers
 from sunflare.engine import RunEngine
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import IsInjectable, IsProvider, Signal
+from sunflare.virtual import Signal
 
 import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
@@ -218,7 +218,7 @@ def convert_to_target_egu(
     return old_step, new_step
 
 
-class AcquisitionPresenter(Presenter, IsProvider, IsInjectable, Loggable):
+class AcquisitionPresenter(Presenter, Loggable):
     """A centralized acquisition presenter to manage a Bluesky run engine.
 
     Parameters

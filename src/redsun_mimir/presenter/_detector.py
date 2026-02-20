@@ -9,7 +9,7 @@ from dependency_injector import providers
 from event_model import DocumentRouter
 from sunflare.log import Loggable
 from sunflare.presenter import Presenter
-from sunflare.virtual import IsInjectable, IsProvider, Signal
+from sunflare.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.utils import filter_devices, find_signals, parse_key
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualContainer
 
 
-class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Loggable):
+class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
     Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
