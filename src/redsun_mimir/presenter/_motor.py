@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from queue import Queue
+from queue import SimpleQueue
 from threading import Thread
 from typing import TYPE_CHECKING
 
@@ -73,7 +73,7 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
     ) -> None:
         super().__init__(name, devices)
         self._timeout: float | None = kwargs.get("timeout", 5.0)
-        self._queue: Queue[tuple[str, str, float] | None] = Queue()
+        self._queue: SimpleQueue[tuple[str, str, float] | None] = SimpleQueue()
 
         self._motors = {
             name: model
@@ -203,11 +203,10 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
     def shutdown(self) -> None:
         """Shutdown the presenter.
 
-        Close the daemon thread and wait
-        for it to finish its last task.
+        Send the sentinel and wait for the daemon thread to exit.
         """
         self._queue.put(None)
-        self._queue.join()
+        self._daemon.join()
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""
@@ -224,15 +223,12 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
 
     def _run_loop(self) -> None:
         while True:
-            # block until a task is available
             task = self._queue.get()
-            if task is not None:
-                motor, axis, position = task
-                self.logger.debug(f"Moving {motor} to {position} on {axis}")
-                self._do_move(self._motors[self._bare_name(motor)], axis, position)
-            self._queue.task_done()
             if task is None:
                 break
+            motor, axis, position = task
+            self.logger.debug(f"Moving {motor} to {position} on {axis}")
+            self._do_move(self._motors[self._bare_name(motor)], axis, position)
 
     def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
         """Move a motor to a given position.

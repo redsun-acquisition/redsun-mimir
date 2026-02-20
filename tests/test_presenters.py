@@ -59,11 +59,18 @@ class TestMotorPresenter:
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """move() enqueues and executes a position update."""
+        import threading
+
+        done = threading.Event()
         received: list[tuple[str, str, float]] = []
-        controller.sigNewPosition.connect(lambda m, a, p: received.append((m, a, p)))
+
+        def on_position(m: str, a: str, p: float) -> None:
+            received.append((m, a, p))
+            done.set()
+
+        controller.sigNewPosition.connect(on_position)
         controller.move("stage", "X", 10.0)
-        # Drain the daemon queue
-        controller._queue.join()
+        assert done.wait(timeout=5.0), "sigNewPosition was not emitted in time"
         assert len(received) == 1
         motor_name, axis, pos = received[0]
         assert motor_name == "stage"
@@ -75,8 +82,12 @@ class TestMotorPresenter:
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """move() accepts the bare device name."""
+        import threading
+
+        done = threading.Event()
+        controller.sigNewPosition.connect(lambda m, a, p: done.set())
         controller.move(mock_motor.name, "X", 5.0)
-        controller._queue.join()
+        assert done.wait(timeout=5.0), "sigNewPosition was not emitted in time"
         assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
 
     def test_configure_step_size(
