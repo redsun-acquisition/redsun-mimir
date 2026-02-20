@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, TypeVar, get_args, get_origin
+from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
 from sunflare.device import PDevice
 from typing_extensions import TypeIs
@@ -10,6 +10,10 @@ from redsun_mimir.utils.descriptors import (
     make_reading,
     parse_key,
 )
+
+if TYPE_CHECKING:
+    from psygnal import SignalInstance
+    from sunflare.virtual import VirtualContainer
 
 __all__ = [
     "filter_models",
@@ -106,7 +110,9 @@ def ismodel(ann: Any) -> TypeIs[PDevice]:
     return isinstance(ann, PDevice)
 
 
-def find_signal(container: "Any", signal_name: str) -> "Any | None":
+def find_signal(
+    container: "VirtualContainer", signal_name: str
+) -> "SignalInstance | None":
     """Find a signal in the virtual container by name, regardless of owner.
 
     Searches all registered signal caches for ``signal_name``,
