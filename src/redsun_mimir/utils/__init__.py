@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from sunflare.virtual import VirtualContainer
 
 __all__ = [
-    "filter_models",
+    "filter_devices",
     "get_choice_list",
     "issequence",
     "make_key",
@@ -31,22 +31,22 @@ __all__ = [
 P = TypeVar("P", bound=PDevice)
 
 
-def filter_models(
-    models: Mapping[str, PDevice],
+def filter_devices(
+    devices: Mapping[str, PDevice],
     proto: type[P],
     choices: Sequence[str] | None = None,
 ) -> dict[str, P]:
-    """Filter models by a specific protocol type and return a dictionary of names to instances.
+    """Filter devices by a specific protocol type and return a dictionary of names to instances.
 
     Parameters
     ----------
-    models : ``Mapping[str, PDevice]``
+    devices : ``Mapping[str, PDevice]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.
     choices : ``Sequence[str]``, optional
-        If provided, return only models associated with names in this sequence.
-        Default is ``None`` (all ``proto`` models are returned).
+        If provided, return only devices associated with names in this sequence.
+        Default is ``None`` (all ``proto`` devices are returned).
 
     Returns
     -------
@@ -56,20 +56,20 @@ def filter_models(
     if choices is not None:
         return {
             name: model
-            for name, model in models.items()
+            for name, model in devices.items()
             if isinstance(model, proto) and name in choices
         }
-    return {name: model for name, model in models.items() if isinstance(model, proto)}
+    return {name: model for name, model in devices.items() if isinstance(model, proto)}
 
 
 def get_choice_list(
-    models: Mapping[str, PDevice], proto: type[P], choices: Sequence[str]
+    devices: Mapping[str, PDevice], proto: type[P], choices: Sequence[str]
 ) -> list[P]:
     """Get a list of model names that implement a specific protocol.
 
     Parameters
     ----------
-    models : ``Mapping[str, PDevice]``
+    devices : ``Mapping[str, PDevice]``
         Mapping of model names to model instances.
     proto : ``type[P]``
         The protocol type to filter for.
@@ -83,7 +83,7 @@ def get_choice_list(
     """
     return [
         model
-        for name, model in models.items()
+        for name, model in devices.items()
         if isinstance(model, proto) and name in choices
     ]
 

@@ -12,7 +12,7 @@ from sunflare.presenter import Presenter
 from sunflare.virtual import IsInjectable, IsProvider, Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_models, find_signals, parse_key
+from redsun_mimir.utils import filter_devices, find_signals, parse_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -78,7 +78,7 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
         self.hints = hints or ["buffer", "roi"]
-        self.detectors = filter_models(devices, DetectorProtocol)
+        self.detectors = filter_devices(devices, DetectorProtocol)
         # data stream name,
         # extracted from the incoming
         # descriptor document
