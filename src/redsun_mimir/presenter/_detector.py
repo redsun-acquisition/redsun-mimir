@@ -12,7 +12,7 @@ from sunflare.presenter import Presenter
 from sunflare.virtual import IsInjectable, IsProvider, Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_models, find_signal, parse_key
+from redsun_mimir.utils import filter_models, find_signals, parse_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -114,9 +114,9 @@ class DetectorPresenter(Presenter, DocumentRouter, IsProvider, IsInjectable, Log
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        sig = find_signal(container, "sigPropertyChanged")
-        if sig is not None:
-            sig.connect(self.configure)
+        sigs = find_signals(container, ["sigPropertyChanged"])
+        if "sigPropertyChanged" in sigs:
+            sigs["sigPropertyChanged"].connect(self.configure)
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         r"""Configure a detector with confirmation feedback.

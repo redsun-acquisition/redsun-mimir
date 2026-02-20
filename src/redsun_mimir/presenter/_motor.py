@@ -10,7 +10,7 @@ from sunflare.presenter import Presenter
 from sunflare.virtual import HasShutdown, IsInjectable, IsProvider, Signal
 
 from ..protocols import MotorProtocol
-from ..utils import find_signal
+from ..utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -217,13 +217,11 @@ class MotorPresenter(Presenter, Loggable, IsProvider, IsInjectable, HasShutdown)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        for sig_name, slot in (
-            ("sigMotorMove", self.move),
-            ("sigConfigChanged", self.configure),
-        ):
-            sig = find_signal(container, sig_name)
-            if sig is not None:
-                sig.connect(slot)
+        sigs = find_signals(container, ["sigMotorMove", "sigConfigChanged"])
+        if "sigMotorMove" in sigs:
+            sigs["sigMotorMove"].connect(self.move)
+        if "sigConfigChanged" in sigs:
+            sigs["sigConfigChanged"].connect(self.configure)
 
     def _run_loop(self) -> None:
         while True:

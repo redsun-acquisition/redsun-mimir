@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
 from sunflare.device import PDevice
@@ -12,6 +12,8 @@ from redsun_mimir.utils.descriptors import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from psygnal import SignalInstance
     from sunflare.virtual import VirtualContainer
 
@@ -23,7 +25,7 @@ __all__ = [
     "parse_key",
     "make_descriptor",
     "make_reading",
-    "find_signal",
+    "find_signals",
 ]
 
 P = TypeVar("P", bound=PDevice)
@@ -110,28 +112,35 @@ def ismodel(ann: Any) -> TypeIs[PDevice]:
     return isinstance(ann, PDevice)
 
 
-def find_signal(
-    container: "VirtualContainer", signal_name: str
-) -> "SignalInstance | None":
-    """Find a signal in the virtual container by name, regardless of owner.
+def find_signals(
+    container: "VirtualContainer", signal_names: "Iterable[str]"
+) -> "dict[str, SignalInstance]":
+    """Find signals in the virtual container by name, regardless of owner.
 
-    Searches all registered signal caches for ``signal_name``,
-    returning the first match. This avoids coupling to the owner's
-    instance name, which is set at runtime by the application container.
+    Searches all registered signal caches for each name in
+    ``signal_names``, returning a mapping of signal name to instance.
+    Names not found in any cache are omitted from the result. This
+    avoids coupling to the owner's instance name, which is set at
+    runtime by the application container.
 
     Parameters
     ----------
     container :
         The virtual container holding registered signals.
-    signal_name :
-        The signal name to look for (e.g. ``"sigMotorMove"``).
+    signal_names :
+        The signal names to look for (e.g. ``["sigMotorMove", "sigConfigChanged"]``).
 
     Returns
     -------
-    Any | None
-        The signal instance, or ``None`` if not found.
+    dict[str, SignalInstance]
+        Mapping of signal name to signal instance for each name found.
     """
+    result: dict[str, SignalInstance] = {}
+    remaining = set(signal_names)
     for cache in container.signals.values():
-        if signal_name in cache:
-            return cache[signal_name]
-    return None
+        for name in remaining & cache.keys():
+            result[name] = cache[name]
+        remaining -= result.keys()
+        if not remaining:
+            break
+    return result

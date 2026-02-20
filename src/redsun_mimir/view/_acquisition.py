@@ -12,7 +12,7 @@ from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
 from redsun_mimir.actions import Action
-from redsun_mimir.utils import find_signal
+from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 
 if TYPE_CHECKING:
@@ -252,13 +252,11 @@ class AcquisitionView(QtView, Loggable):
         """Inject plan specs from the DI container and build the UI."""
         specs: set[PlanSpec] = container.plan_specs()
         self.setup_ui(specs)
-        for sig_name, slot, kwargs in (
-            ("sigPlanDone", self._on_plan_done, {}),
-            ("sigActionDone", self._on_action_done, {"thread": "main"}),
-        ):
-            sig = find_signal(container, sig_name)
-            if sig is not None:
-                sig.connect(slot, **kwargs)
+        sigs = find_signals(container, ["sigPlanDone", "sigActionDone"])
+        if "sigPlanDone" in sigs:
+            sigs["sigPlanDone"].connect(self._on_plan_done)
+        if "sigActionDone" in sigs:
+            sigs["sigActionDone"].connect(self._on_action_done, thread="main")
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """

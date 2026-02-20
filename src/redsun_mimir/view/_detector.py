@@ -9,7 +9,7 @@ from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
-from redsun_mimir.utils import find_signal
+from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.qt import DescriptorTreeView
 
@@ -134,9 +134,9 @@ class DetectorView(QtView, Loggable):
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self.setup_ui(descriptors, readings)
-        sig = find_signal(container, "sigConfigurationConfirmed")
-        if sig is not None:
-            sig.connect(self._handle_configuration_result)
+        sigs = find_signals(container, ["sigConfigurationConfirmed"])
+        if "sigConfigurationConfirmed" in sigs:
+            sigs["sigConfigurationConfirmed"].connect(self._handle_configuration_result)
 
     def setup_ui(
         self,

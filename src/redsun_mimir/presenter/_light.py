@@ -8,7 +8,7 @@ from sunflare.presenter import Presenter
 from sunflare.virtual import IsInjectable, IsProvider
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
-from redsun_mimir.utils import find_signal
+from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -94,13 +94,11 @@ class LightPresenter(Presenter, Loggable, IsProvider, IsInjectable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        for sig_name, slot in (
-            ("sigToggleLightRequest", self.trigger),
-            ("sigIntensityRequest", self.set),
-        ):
-            sig = find_signal(container, sig_name)
-            if sig is not None:
-                sig.connect(slot)
+        sigs = find_signals(container, ["sigToggleLightRequest", "sigIntensityRequest"])
+        if "sigToggleLightRequest" in sigs:
+            sigs["sigToggleLightRequest"].connect(self.trigger)
+        if "sigIntensityRequest" in sigs:
+            sigs["sigIntensityRequest"].connect(self.set)
 
     def _bare_name(self, device_label: str) -> str:
         """Resolve a device label to the bare device name used as dict key.
