@@ -33,7 +33,7 @@ dependencies = [
     "superqt>=0.7.4",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
-    "redsun>=0.6.0",
+    "redsun>=0.6.1",
 ]
 
 [dependency-groups]
@@ -168,4 +168,3 @@ include = ["src", "tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
-
