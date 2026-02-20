@@ -131,8 +131,9 @@ class TestMotorView:
         ctrl.register_providers(virtual_container)
 
         widget.inject_dependencies(virtual_container)
+        ctrl.shutdown()
 
-        assert "MotorView" in virtual_container.signals
+        assert "motor_view" in virtual_container.signals
         ctrl.shutdown()
 
 
@@ -252,4 +253,4 @@ class TestLightView:
         ctrl.register_providers(virtual_container)
         widget.inject_dependencies(virtual_container)
 
-        assert "LightView" in virtual_container.signals
+        assert "light_view" in virtual_container.signals

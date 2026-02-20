@@ -251,11 +251,13 @@ class AcquisitionView(QtView, Loggable):
         """Inject plan specs from the DI container and build the UI."""
         specs: set[PlanSpec] = container.plan_specs()
         self.setup_ui(specs)
-        container.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
-            self._on_plan_done
+        if "AcquisitionPresenter" in container.signals:
+            container.signals["AcquisitionPresenter"]["sigPlanDone"].connect(
+                self._on_plan_done
         )
-        container.signals["AcquisitionPresenter"]["sigActionDone"].connect(
-            self._on_action_done, thread="main"
+        if "AcquisitionPresenter" in container.signals:
+            container.signals["AcquisitionPresenter"]["sigActionDone"].connect(
+                self._on_action_done, thread="main"
         )
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:

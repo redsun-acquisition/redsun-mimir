@@ -133,8 +133,9 @@ class DetectorView(QtView, Loggable):
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self.setup_ui(descriptors, readings)
-        container.signals["DetectorPresenter"][
-            "sigConfigurationConfirmed"
+        if "DetectorPresenter" in container.signals:
+            container.signals["DetectorPresenter"][
+                "sigConfigurationConfirmed"
         ].connect(self._handle_configuration_result)
 
     def setup_ui(

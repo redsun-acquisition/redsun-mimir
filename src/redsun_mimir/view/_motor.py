@@ -117,9 +117,10 @@ class MotorView(QtView):
         description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
         container.register_signals(self)
-        container.signals["MotorPresenter"]["sigNewPosition"].connect(
-            self._update_position, thread="main"
-        )
+        if "MotorPresenter" in container.signals:
+            container.signals["MotorPresenter"]["sigNewPosition"].connect(
+                self._update_position, thread="main"
+            )
 
     def setup_ui(
         self,
