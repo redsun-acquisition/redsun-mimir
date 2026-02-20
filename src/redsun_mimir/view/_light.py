@@ -100,7 +100,7 @@ class LightView(QtView, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register light view signals in the virtual container."""
-        pass  # signals registered in inject_dependencies
+        container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         r"""Inject light configuration from the DI container and build the UI.
@@ -114,7 +114,6 @@ class LightView(QtView, Loggable):
         configuration: dict[str, Reading[Any]] = container.light_configuration()
         description: dict[str, Descriptor] = container.light_description()
         self.setup_ui(configuration, description)
-        container.register_signals(self)
 
     def setup_ui(
         self,
