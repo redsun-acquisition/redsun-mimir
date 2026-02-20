@@ -21,7 +21,7 @@ presenters:
   det_ctrl:
     timeout: 5.0
   acq_ctrl:
-    callbacks: [DetectorPresenter, MedianPresenter]
+    callbacks: [det_ctrl, median_ctrl]
 
 views:
   acq_widget: {}
