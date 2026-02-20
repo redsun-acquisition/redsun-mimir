@@ -55,11 +55,11 @@ dev = [
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.6.6",
-    "sunflare[pyqt]>=0.10.0",
+    "sunflare[pyqt]>=0.10.1",
 ]
 pyside = [
     "napari[pyside6]>=0.6.6",
-    "sunflare[pyside]>=0.10.0",
+    "sunflare[pyside]>=0.10.1",
 ]
 microscope = [
     "microscope>=0.7.0",
