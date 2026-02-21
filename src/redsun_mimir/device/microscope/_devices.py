@@ -3,13 +3,14 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from queue import Queue
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+import scipy.ndimage
 from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
-from microscope.abc import FilterWheel
+from microscope.abc import FilterWheel as _FilterWheel
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
 from microscope.simulators.stage_aware_camera import StageAwareCamera
 from sunflare.device import Device
@@ -45,17 +46,16 @@ if TYPE_CHECKING:
 #        for cb in _stage_callbacks.pop(name, []): cb(self)
 #
 # Declaration order in the container does not matter:
-#   - Stage built first  → callback list is empty, nothing to do; cameras that
-#     arrive later find the stage already in _stage_registry and call
-#     _on_stage_ready immediately in their own __init__.
-#   - Camera built first → callback is queued; fires when the stage arrives.
+#   - Stage built first  -> callback list is empty; cameras that arrive later
+#     find the stage in _stage_registry and call _on_stage_ready immediately.
+#   - Camera built first -> callback is queued; fires when the stage arrives.
 #
-# _stage_registry keeps a reference so cameras built *after* the stage can
-# still wire up without needing to re-register a callback.
+# _stage_registry keeps a reference so cameras built after the stage can wire
+# up without re-registering a callback.
 
-_stage_registry: dict[str, SimulatedStageDevice] = {}
-_stage_callbacks: dict[str, list[Callable[[SimulatedStageDevice], None]]] = defaultdict(
-    list
+_stage_registry: dict[str, "SimulatedStageDevice"] = {}
+_stage_callbacks: dict[str, list["Callable[[SimulatedStageDevice], None]"]] = (
+    defaultdict(list)
 )
 
 
@@ -68,12 +68,12 @@ def _make_world_image(
     height: int,
     width: int,
     n_blobs: int = 40,
-    rng: np.random.Generator | None = None,
-) -> npt.NDArray[np.uint16]:
+    rng: "np.random.Generator | None" = None,
+) -> "npt.NDArray[np.uint16]":
     """Generate a synthetic single-channel world image populated with Gaussian blobs.
 
     Returns a ``uint16`` array of shape ``(height, width, 1)`` — the trailing
-    channel axis is required by :class:`~microscope.simulators.stage_aware_camera.StageAwareCamera`.
+    channel axis is required by ``StageAwareCamera``.
 
     Parameters
     ----------
@@ -82,7 +82,7 @@ def _make_world_image(
     n_blobs:
         Number of Gaussian blobs to scatter across the image.
     rng:
-        Optional seeded :class:`numpy.random.Generator` for reproducibility.
+        Optional seeded generator for reproducibility.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -97,57 +97,30 @@ def _make_world_image(
         cy = rng.integers(0, height)
         sigma = float(rng.uniform(sigma_lo, sigma_hi))
         amplitude = float(rng.uniform(0.3, 1.0))
-        world += amplitude * np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
+        world += amplitude * np.exp(
+            -((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2)
+        )
 
     world_max = world.max()
     if world_max > 0:
         world /= world_max
-    # Add trailing channel axis (shape: H x W x 1)
     return (world * np.iinfo(np.uint16).max).astype(np.uint16)[:, :, np.newaxis]
 
 
 # ---------------------------------------------------------------------------
 # Minimal single-position FilterWheel stub
 # ---------------------------------------------------------------------------
-# StageAwareCamera requires a FilterWheel to select image channels.
-# Since our world image is always single-channel (grayscale), we supply a
-# trivial stub that satisfies the ABC without any real hardware machinery.
-# This is intentionally package-private — nothing outside this module needs
-# to know it exists.
+# StageAwareCamera requires a FilterWheel only to read filterwheel.position
+# as a channel index.  Since our world image is always single-channel we use
+# a trivial stub with n_positions=1 / position=0.  It bypasses Device.__init__
+# and is package-private — nothing outside this module needs it.
 
 
-class _SingleChannelFilterWheel(FilterWheel):
-    """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
-
-    _positions: int = 1
-
-    @property
-    def n_positions(self) -> int:
-        return 1
-
-    @property
-    def position(self) -> int:
-        return 0
-
-    def _do_get_position(self) -> int:
-        return 0
-
-    def _do_set_position(self, position: int) -> None:
-        pass
-
-    def _do_shutdown(self) -> None:
-        pass
-
-
-import microscope.abc as _abc  # noqa: E402
-
-
-class _SingleChannelFilterWheel(_abc.FilterWheel):  # type: ignore[no-redef]
-    """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
+class _SingleChannelFilterWheel(_FilterWheel):  # type: ignore[misc]
+    """Stub filterwheel with exactly one position, satisfying ``StageAwareCamera``."""
 
     def __init__(self) -> None:
-        # Bypass Device.__init__ — we only need the FilterWheel interface,
-        # not any real device lifecycle management.
+        # Bypass Device.__init__ — we only need the FilterWheel interface.
         self._positions = 1
 
     @property
@@ -175,15 +148,15 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
 
     Parameters
     ----------
-    name : str
+    name:
         Name of the device.
-    egu : str
+    egu:
         Engineering units.  Default ``"mm"``.
-    axis : list[str]
+    axis:
         Axis names.
-    step_sizes : dict[str, float]
+    step_sizes:
         Step sizes for each axis.
-    limits : dict[str, tuple[float, float]]
+    limits:
         Position limits for each axis.  Required for simulated stages.
     """
 
@@ -214,7 +187,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         metadata={"description": "Limits for each axis."},
     )
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
+    def __init__(self, name: str, /, **kwargs: "Any") -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
 
@@ -228,15 +201,16 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         SimulatedStage.__init__(self, axis_limits)
         self._active_axis = self.axis[0]
 
-        # Register in the stage registry so late-arriving cameras can find us.
+        # Register so late-arriving cameras can find us.
         _stage_registry[name] = self
 
-        # Fire any callbacks that cameras registered before we were built.
+        # Fire callbacks queued by cameras that were built before us.
         for cb in _stage_callbacks.pop(name, []):
             cb(self)
             self.logger.debug("Fired pending stage callback for '%s'.", name)
 
-    def describe_configuration(self) -> dict[str, Descriptor]:
+    def describe_configuration(self) -> "dict[str, Descriptor]":
+        """Describe the stage configuration."""
         descriptors: dict[str, Descriptor] = {
             make_key(self.name, "egu"): make_descriptor("settings", "string"),
             make_key(self.name, "axis"): make_descriptor(
@@ -254,7 +228,8 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
                 descriptors[key] = make_descriptor("settings", "number")
         return descriptors
 
-    def read_configuration(self) -> dict[str, Reading[Any]]:
+    def read_configuration(self) -> "dict[str, Reading[Any]]":
+        """Read the stage configuration."""
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {
             make_key(self.name, "egu"): make_reading(self.egu, timestamp),
@@ -266,7 +241,19 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
             )
         return config
 
-    def set(self, value: Any, **kwargs: Any) -> Status:
+    def set(self, value: "Any", **kwargs: "Any") -> Status:
+        """Move the stage or update a configuration property.
+
+        Parameters
+        ----------
+        value:
+            Target position, or the new value for the property specified by
+            ``prop``.
+        **kwargs:
+            ``prop="axis"`` switches the active axis (``value`` must be a
+            ``str`` axis name). ``prop="step_size"`` updates the step size
+            for the current axis (``value`` must be numeric).
+        """
         s = Status()
         propr = kwargs.get("prop", None)
         if propr is not None:
@@ -291,7 +278,8 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         s.set_finished()
         return s
 
-    def locate(self) -> Location[float]:
+    def locate(self) -> "Location[float]":
+        """Return the current setpoint and readback for the active axis."""
         return {
             "setpoint": self.position[self._active_axis],
             "readback": self.position[self._active_axis],
@@ -309,17 +297,17 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
     Parameters
     ----------
-    name : str
+    name:
         Name of the device.
-    binary : bool
-        Binary mode operation.  Not supported for simulated lights.
-    wavelength : int
+    binary:
+        Binary mode operation.  Not supported; always raises if ``True``.
+    wavelength:
         Wavelength in nm.
-    egu : str
+    egu:
         Engineering units.  Default ``"mW"``.
-    intensity_range : tuple[int | float, ...]
-        Intensity range ``(min, max)``.
-    step_size : int
+    intensity_range:
+        Intensity range as ``(min, max)``.
+    step_size:
         Step size for intensity control.
     """
 
@@ -356,7 +344,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         metadata={"description": "Step size for the intensity."},
     )
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
+    def __init__(self, name: str, /, **kwargs: "Any") -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
 
@@ -369,54 +357,53 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
                 f"{self.__class__.__name__} requires intensity range to be set."
             )
         SimulatedLightSource.__init__(self)
+        self.intensity: float = float(self.intensity_range[0])
 
-    def describe(self) -> dict[str, Descriptor]:
+    def describe(self) -> "dict[str, Descriptor]":
+        """Describe the data produced by the light source."""
         return {
-            "intensity": {
-                "source": self.name,
+            make_key(self.name, "intensity"): {
+                "source": "data",
                 "dtype": "number",
                 "shape": [],
-                "units": self.egu,
-                "limits": {
-                    "control": {
-                        "low": self.intensity_range[0],
-                        "high": self.intensity_range[1],
-                    }
-                },
             },
-            "enabled": {
-                "source": self.name,
+            make_key(self.name, "enabled"): {
+                "source": "data",
                 "dtype": "boolean",
                 "shape": [],
             },
         }
 
-    def read(self) -> dict[str, Reading[Any]]:
+    def read(self) -> "dict[str, Reading[Any]]":
+        """Read the current intensity and enabled state."""
+        ts = time.time()
         return {
-            "intensity": {
-                "value": self.intensity,
-                "timestamp": time.time(),
-            },
-            "enabled": {
-                "value": self.get_is_on(),
-                "timestamp": time.time(),
-            },
+            make_key(self.name, "intensity"): make_reading(self.intensity, ts),
+            make_key(self.name, "enabled"): make_reading(self.get_is_on(), ts),
         }
 
-    def describe_configuration(self) -> dict[str, Descriptor]:
+    def describe_configuration(self) -> "dict[str, Descriptor]":
+        """Describe the light source configuration."""
         return {
             make_key(self.name, "wavelength"): make_descriptor(
-                "settings", "integer", units="nm"
+                "settings", "integer", units="nm", readonly=True
             ),
-            make_key(self.name, "binary"): make_descriptor("settings", "string"),
-            make_key(self.name, "egu"): make_descriptor("settings", "string"),
+            make_key(self.name, "binary"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
+            make_key(self.name, "egu"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
             make_key(self.name, "intensity_range"): make_descriptor(
-                "settings", "array", shape=[2]
+                "settings", "array", shape=[2], readonly=True
             ),
-            make_key(self.name, "step_size"): make_descriptor("settings", "integer"),
+            make_key(self.name, "step_size"): make_descriptor(
+                "settings", "integer", readonly=True
+            ),
         }
 
-    def read_configuration(self) -> dict[str, Reading[Any]]:
+    def read_configuration(self) -> "dict[str, Reading[Any]]":
+        """Read the light source configuration."""
         timestamp = time.time()
         return {
             make_key(self.name, "wavelength"): make_reading(self.wavelength, timestamp),
@@ -429,6 +416,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         }
 
     def trigger(self) -> Status:
+        """Toggle the light source on or off."""
         s = Status()
         self.enable() if not self.get_is_on() else self.disable()
         self.logger.debug(
@@ -437,7 +425,17 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         s.set_finished()
         return s
 
-    def set(self, value: Any, **kwargs: Any) -> Status:
+    def set(self, value: "Any", **kwargs: "Any") -> Status:
+        """Set the intensity of the light source.
+
+        Parameters
+        ----------
+        value:
+            Target intensity value within ``intensity_range``.
+        **kwargs:
+            Property setting is not supported; passing ``prop`` raises an
+            error.
+        """
         s = Status()
         propr = kwargs.get("prop", None)
         if propr is not None:
@@ -463,35 +461,30 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
 @define(kw_only=True, init=False, eq=False)
 class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable):  # type: ignore[misc]
-    """Simulated microscope camera.
+    """Simulated microscope camera with optional stage-aware imaging.
 
-    Inherits from
-    [StageAwareCamera][microscope.simulators.stage_aware_camera.StageAwareCamera], which
-    handles all the crop-and-defocus logic given a
-    [Stage][microscope.abc.Stage].  The stage is provided by a
-    `SimulatedStageDevice` sibling, wired via an order-independent
-    callback mechanism: whichever of the two is constructed first sets up the
-    link, so declaration order in the container does not matter.
+    Inherits from ``StageAwareCamera``, which handles XY cropping from stage
+    position and Z-based Gaussian defocus.  The linked stage is provided by a
+    ``SimulatedStageDevice`` sibling through an order-independent callback
+    mechanism: whichever of the two is constructed first sets up the link, so
+    declaration order in the container does not matter.
 
-    If ``read()`` is called before a stage has been registered (e.g. the stage
-    was never configured), the camera returns a plain black frame at the
-    correct sensor shape rather than raising.
+    When no stage has been linked yet, ``_fetch_data`` returns a blank
+    ``uint16`` frame at the correct sensor shape rather than raising.
 
     Parameters
     ----------
-    name : str
+    name:
         Name of the detector.
-    sensor_shape : tuple[int, int]
+    sensor_shape:
         Sensor dimensions as ``(width, height)`` in pixels.
-    stage_name : str | None
-        Name of the :class:`SimulatedStageDevice` child to link to.
-        ``None`` disables stage-aware imaging; the camera will always return
-        blank frames from ``_fetch_data`` (which is unreachable in normal use
-        since ``StageAwareCamera._fetch_data`` requires a stage).
-    world_scale : int
-        World-image size multiplier relative to the sensor (default ``4``).
-    n_blobs : int
-        Gaussian blobs in the procedural world image (default ``40``).
+    stage_name:
+        Name of the ``SimulatedStageDevice`` child to link to.  ``None``
+        disables stage-aware imaging and the camera always returns blank frames.
+    world_scale:
+        World-image size multiplier relative to the sensor.  Default ``4``.
+    n_blobs:
+        Number of Gaussian blobs in the procedural world image.  Default ``40``.
     """
 
     name: str
@@ -522,23 +515,19 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
 
     storage = StorageDescriptor()
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
+    def __init__(self, name: str, /, **kwargs: "Any") -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
 
-        # Build the world image (H x W x 1, single channel for the stub filterwheel).
         w = self.sensor_shape[0] * self.world_scale
         h = self.sensor_shape[1] * self.world_scale
         world_image = _make_world_image(h, w, n_blobs=self.n_blobs)
 
-        # The filterwheel stub satisfies StageAwareCamera's interface check
-        # (image.shape[2] == filterwheel.n_positions == 1).
         self._filterwheel_stub = _SingleChannelFilterWheel()
 
-        # We cannot call StageAwareCamera.__init__ yet because we may not have
-        # a stage. Initialise SimulatedCamera (the grandparent) instead and
-        # store the world image for later.  StageAwareCamera.__init__ is
-        # called inside _on_stage_ready once the stage arrives.
+        # Call SimulatedCamera.__init__ (grandparent) to set up acquisition
+        # machinery.  StageAwareCamera.__init__ is deferred to _on_stage_ready
+        # so we can use it regardless of construction order.
         SimulatedCamera.__init__(self, sensor_shape=self.sensor_shape)
         self.initialize()
         self.roi = (0, 0, *self.sensor_shape)
@@ -556,25 +545,26 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
         self._complete_status = Status()
         self._assets_collected: bool = False
 
-        # Wire to stage — order-independent via callback registry.
         if self.stage_name is not None:
             if self.stage_name in _stage_registry:
-                # Stage already built: link immediately.
                 self._on_stage_ready(_stage_registry[self.stage_name])
             else:
-                # Stage not built yet: register callback for when it arrives.
                 _stage_callbacks[self.stage_name].append(self._on_stage_ready)
                 self.logger.debug(
                     "Stage '%s' not yet built; registered callback.", self.stage_name
                 )
 
     def _on_stage_ready(self, stage: SimulatedStageDevice) -> None:
-        """Initialize the stage of the camera once the stage is ready.
+        """Complete the ``StageAwareCamera`` initialisation once the stage exists.
 
-        Completes the StageAwareCamera initialisation now that we have both
-        the world image and a concrete stage reference.  Safe to call from
-        either thread (camera or stage construction happens on the main thread
-        in normal container use).
+        Called immediately from ``__init__`` when the stage is already
+        registered, or later as a callback fired by
+        ``SimulatedStageDevice.__init__``.
+
+        Parameters
+        ----------
+        stage:
+            The ``SimulatedStageDevice`` that has just been constructed.
         """
         required = {"x", "y", "z"}
         missing = required - stage.axes.keys()
@@ -587,8 +577,6 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             )
             return
 
-        # Finish StageAwareCamera initialisation: sets self._image, self._stage,
-        # self._filterwheel, self._pixel_size, and replaces self._settings.
         StageAwareCamera.__init__(
             self,
             image=self._world_image,
@@ -601,21 +589,18 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             "Stage '%s' linked; stage-aware imaging active.", self.stage_name
         )
 
-    # ------------------------------------------------------------------
-    # _fetch_data fallback when no stage is linked yet
-    # ------------------------------------------------------------------
+    def _fetch_data(self) -> "npt.NDArray[Any] | None":
+        """Return a stage-aware image or a blank frame if no stage is linked.
 
-    def _fetch_data(self) -> npt.NDArray[Any] | None:  # type: ignore[override]
-        """Return None (no data) when no stage is linked.
-
-        Once _on_stage_ready has run, StageAwareCamera._fetch_data takes over
-        via normal MRO — this override is only reached when stage_name is None
-        or the stage has not registered itself yet.
+        Delegates to ``StageAwareCamera._fetch_data`` when a stage has been
+        linked via ``_on_stage_ready``.  Returns a blank ``uint16`` frame
+        otherwise so callers never receive ``None`` from a triggered camera.
         """
         if self._stage_linked:
-            return StageAwareCamera._fetch_data(self)
+            return cast(
+                "npt.NDArray[Any] | None", StageAwareCamera._fetch_data(self)
+            )
 
-        # No stage yet: behave like a camera with nothing to acquire.
         if not self._acquiring or self._triggered == 0:
             return None
         self._triggered -= 1
@@ -629,8 +614,8 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
     # Bluesky protocol
     # ------------------------------------------------------------------
 
-    def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe the detector configuration."""
+    def describe_configuration(self) -> "dict[str, Descriptor]":
+        """Describe the camera configuration."""
         config: dict[str, Descriptor] = {}
         for setting_name in self.get_all_settings():
             config[make_key(self.name, setting_name)] = make_descriptor(
@@ -645,8 +630,8 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             )
         return config
 
-    def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read the detector configuration."""
+    def read_configuration(self) -> "dict[str, Reading[Any]]":
+        """Read the camera configuration."""
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {}
         for setting_name, setting_value in self.get_all_settings().items():
@@ -662,8 +647,18 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             )
         return config
 
-    def set(self, value: Any, **kwargs: Any) -> Status:
-        """Set detector parameters."""
+    def set(self, value: "Any", **kwargs: "Any") -> Status:
+        """Set camera parameters.
+
+        Parameters
+        ----------
+        value:
+            New setting value, or a 4-tuple ``(left, top, width, height)``
+            to update the ROI when no ``prop`` is given.
+        **kwargs:
+            ``prop`` selects a named camera setting from
+            ``get_all_settings()``.
+        """
         s = Status()
         try:
             prop = kwargs.get("prop", None)
@@ -692,7 +687,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             s.set_exception(e)
         return s
 
-    def stage(self) -> Status:  # type: ignore[override]
+    def stage(self) -> Status:
         """Prepare the detector for acquisition."""
         s = Status()
         try:
@@ -740,7 +735,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
         return s
 
     def trigger(self) -> Status:
-        """Trigger the detector to acquire an image."""
+        """Trigger the detector to acquire one image."""
         s = Status()
         try:
             super().trigger()
@@ -750,23 +745,23 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             s.set_exception(e)
         return s
 
-    def describe(self) -> dict[str, Descriptor]:
-        """Describe a reading from the detector."""
+    def describe(self) -> "dict[str, Descriptor]":
+        """Describe the data produced by the detector."""
         return {
             self._buffer_key: {
-                "source": self.name,
+                "source": "data",
                 "dtype": "array",
-                "shape": list(self.sensor_shape),
+                "shape": [1, *self.sensor_shape],
             },
             self._roi_key: {
-                "source": self.name,
+                "source": "data",
                 "dtype": "array",
                 "shape": [4],
             },
         }
 
-    def read(self) -> dict[str, Reading[Any]]:
-        """Read data from the detector."""
+    def read(self) -> "dict[str, Reading[Any]]":
+        """Read a triggered image from the detector."""
         queue_item = self._queue.get()
         if len(queue_item) == 2:
             data, timestamp = queue_item
@@ -778,13 +773,14 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             self._roi_key: {"value": self.roi, "timestamp": timestamp},
         }
 
-    def prepare(self, value: dict[str, Any]) -> Status:
-        """Prepare the detector for acquisition.
+    def prepare(self, value: "dict[str, Any]") -> Status:
+        """Prepare the detector for streaming acquisition.
 
         Parameters
         ----------
-        value : dict[str, Any]
-            Accepted keys: ``capacity`` (int, default 0 = unlimited).
+        value:
+            ``capacity`` (``int``, default ``0``) — maximum number of frames
+            to store; ``0`` means unlimited.
         """
         s = Status()
         try:
@@ -806,7 +802,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             s.set_exception(e)
         return s
 
-    def describe_collect(self) -> dict[str, Descriptor]:
+    def describe_collect(self) -> "dict[str, Descriptor]":
         """Describe the data collected during streaming acquisition."""
         height, width = self.sensor_shape
         return {
@@ -818,7 +814,9 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             }
         }
 
-    def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
+    def collect_asset_docs(
+        self, index: "int | None" = None
+    ) -> "Iterator[StreamAsset]":
         """Collect stream asset documents after a completed acquisition."""
         if self.storage is None or not self._complete_status.done:
             return
@@ -834,7 +832,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
         yield from self.storage.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
-        """Return the number of frames written since last acquisition."""
+        """Return the number of frames written since the last acquisition."""
         if self.storage is None:
             return 0
         return self.storage.get_indices_written(self.name)
