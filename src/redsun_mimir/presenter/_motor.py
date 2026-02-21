@@ -35,10 +35,8 @@ class MotorPresenter(Presenter, Loggable):
         Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    **kwargs :
-        Additional keyword arguments.
-
-        - `timeout` (`float | None`): Status wait timeout in seconds.
+    timeout :
+        Timeout for motor operations in seconds. Defaults to 2 seconds.
 
     Attributes
     ----------
@@ -70,10 +68,10 @@ class MotorPresenter(Presenter, Loggable):
         name: str,
         devices: Mapping[str, Device],
         /,
-        **kwargs: Any,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", 2.0)
+        self._timeout: float | None = timeout or 2.0
         self._queue: SimpleQueue[tuple[str, str, float] | None] = SimpleQueue()
 
         self._motors = {
