@@ -10,6 +10,7 @@ from sunflare.log import Loggable
 from sunflare.storage import StorageDescriptor
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
+from redsun_mimir.utils.descriptors import make_key
 
 if TYPE_CHECKING:
     from typing import Iterator
@@ -46,8 +47,14 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     reader: ReadableFlyer
         Reader object used to pull readings over which the median will be computed.
         It must implement both the `Readable` and `Flyer` protocols.
-    target: str, optional
-        The target key substring to look for in the detector readings.
+    describe_target: str, optional
+        The property suffix to look for in the reader's ``describe()`` output.
+        Combined with the reader name via ``make_key`` to form
+        ``{reader.name}-{describe_target}``. Defaults to ``"buffer"``.
+    collect_target: str, optional
+        The stream key suffix to look for in the reader's ``describe_collect()``
+        output.  Combined as ``{reader.name}:{collect_target}``.
+        Defaults to ``"buffer:stream"``.
     """
 
     storage = StorageDescriptor()
@@ -61,12 +68,18 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         collect_target: str = "buffer:stream",
     ) -> None:
         self._name = f"{reader.name}_median"
-        self._describe_target_key = f"{reader.name}:{describe_target}"
+        # Configuration/event keys use the {name}-{property} convention
+        # (produced by make_key) so that event-document parsers splitting on "-"
+        # can correctly extract the device name and property hint.
+        self._describe_target_key = make_key(reader.name, describe_target)
+        self._reading_key = make_key(self.name, describe_target)
+        # Streaming keys keep the {name}:{signal} convention used by
+        # describe_collect / collect_asset_docs / Writer.update_source.
         self._collect_target_key = f"{reader.name}:{collect_target}"
-        self._reading_key = f"{self.name}:{describe_target}"
         self._collect_key = f"{self.name}:{collect_target}"
         self._valid_readings = False
         self._median: dict[str, Reading[Any]] = {}
+        self._assets_collected: bool = False
         describe_descriptor = describe
         collect_descriptor: dict[str, Descriptor] = {}
 
@@ -87,11 +100,11 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         }
 
         old_describe_source = describe_descriptor[self._describe_target_key]["source"]
-        new_describe_source = f"{old_describe_source}\\median"
+        new_describe_source = f"{old_describe_source}/median"
         self._describe_descriptor[self._reading_key]["source"] = new_describe_source
 
         old_collect_source = collect_descriptor[self._collect_target_key]["source"]
-        new_collect_source = f"{old_collect_source}\\median"
+        new_collect_source = f"{old_collect_source}/median"
         self._collect_descriptor[self._collect_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists
@@ -159,10 +172,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             dtype = median_value.dtype
             if self.storage is not None:
                 self.storage.update_source(self.name, dtype, shape)
-            median_key = self._describe_target_key.replace(
-                self._describe_target_key, self._reading_key
-            )
-            self._median[median_key] = {"value": median_value, "timestamp": time.time()}
+            self._median[self._reading_key] = {"value": median_value, "timestamp": time.time()}
             self._valid_readings = True
         s.set_finished()
         return s
@@ -185,6 +195,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         """
         s = Status()
         if self._valid_readings:
+            self._assets_collected = False
             self._sink.write(self._median[self._reading_key]["value"])
         s.set_finished()
         return s
@@ -205,12 +216,17 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         if not self._valid_readings or self.storage is None:
             return
 
+        if self._assets_collected:
+            return
+
         frames_written = self.storage.get_indices_written(self.name)
         if frames_written == 0:
             return
 
         # Determine how many frames to report
-        frames_to_report = min(index, frames_written) if index else frames_written
+        frames_to_report = min(index, frames_written) if index is not None else frames_written
+
+        self._assets_collected = True
 
         # Delegate to writer
         yield from self.storage.collect_stream_docs(self.name, frames_to_report)

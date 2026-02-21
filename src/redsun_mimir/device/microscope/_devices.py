@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading as th
 import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
@@ -14,6 +15,7 @@ from microscope.simulators import SimulatedCamera, SimulatedLightSource, Simulat
 from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
+from sunflare.storage import StorageDescriptor
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
@@ -25,9 +27,10 @@ from redsun_mimir.utils.descriptors import (
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
-    from typing import Any, ClassVar
+    from typing import Any, ClassVar, Iterator
 
     import numpy.typing as npt
+    from bluesky.protocols import Reading, StreamAsset
     from bluesky.protocols import Descriptor, Location, Reading
 
 
@@ -368,6 +371,8 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         metadata={"description": "Shape of the sensor (width, height)."},
     )
 
+    storage = StorageDescriptor()
+
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -382,8 +387,12 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         self._queue: Queue[tuple[npt.NDArray[Any], float]] = Queue()
         self.set_client(self._queue)
         # Key names for data collection
-        self._buffer_key = f"{self.name}:buffer"
-        self._roi_key = f"{self.name}:roi"
+        self._buffer_key = make_key(self.name, "buffer")
+        self._roi_key = make_key(self.name, "roi")
+        self._buffer_stream_key = f"{self.name}:buffer:stream"
+
+        self._complete_status = Status()
+        self._assets_collected: bool = False
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Describe the detector configuration."""
@@ -566,3 +575,79 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
                 "timestamp": timestamp,
             },
         }
+
+    def prepare(self, value: dict[str, Any]) -> Status:
+        """Prepare the detector for acquisition.
+
+        Parameters
+        ----------
+        value : dict[str, Any]
+            Keyword arguments for preparation, including:
+            - capacity: int
+                The number of frames to store; if 0, unlimited.
+        """
+        s = Status()
+        try:
+            if self.storage is None:
+                raise RuntimeError(
+                    f"No storage backend configured for device '{self.name}'."
+                )
+            height, width = self.sensor_shape
+            capacity = value.get("capacity", 0)
+            self.storage.update_source(
+                name=self.name,
+                dtype=np.dtype("uint16"),
+                shape=(height, width),
+            )
+            self._sink = self.storage.prepare(self.name, capacity)
+            self._complete_status = Status()
+            self._assets_collected = False
+            s.set_finished()
+        except Exception as e:
+            s.set_exception(e)
+        return s
+
+    def describe_collect(self) -> dict[str, Descriptor]:
+        """Describe the data collected during streaming acquisition."""
+        height, width = self.sensor_shape
+        return {
+            self._buffer_stream_key: {
+                "source": "data",
+                "dtype": "array",
+                "shape": [None, height, width],
+                "external": "STREAM:",
+            }
+        }
+
+    def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
+        """Collect stream asset documents after a completed acquisition.
+
+        Parameters
+        ----------
+        index : int | None
+            If provided, only report frames up to this index.
+            If None, report all frames written so far.
+        """
+        if self.storage is None:
+            return
+
+        if not self._complete_status.done:
+            return
+
+        if self._assets_collected:
+            return
+
+        frames_written = self.storage.get_indices_written(self.name)
+        if frames_written == 0:
+            return
+
+        frames_to_report = min(index, frames_written) if index is not None else frames_written
+
+        self._assets_collected = True
+        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
+
+    def get_index(self) -> int:
+        """Return the number of frames written since last acquisition."""
+        if self.storage is None:
+            return 0
+        return self.storage.get_indices_written(self.name)
