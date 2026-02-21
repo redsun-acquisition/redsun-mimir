@@ -21,7 +21,8 @@ def run_light_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class LightApp(QtAppContainer, config=_CONFIG):
-        light = device(MockLightDevice, from_config="light")
+        led = device(MockLightDevice, from_config="led")
+        laser = device(MockLightDevice, from_config="laser")
         ctrl = presenter(LightPresenter, from_config="ctrl")
         widget = view(LightView, from_config="widget")
 
