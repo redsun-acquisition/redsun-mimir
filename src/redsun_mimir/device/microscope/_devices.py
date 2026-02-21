@@ -6,10 +6,10 @@ from queue import Queue
 from typing import TYPE_CHECKING
 
 import numpy as np
-import scipy.ndimage
 from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
+from microscope.abc import FilterWheel
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
 from microscope.simulators.stage_aware_camera import StageAwareCamera
 from sunflare.device import Device
@@ -54,12 +54,15 @@ if TYPE_CHECKING:
 # still wire up without needing to re-register a callback.
 
 _stage_registry: dict[str, SimulatedStageDevice] = {}
-_stage_callbacks: dict[str, list[Callable[[SimulatedStageDevice], None]]] = defaultdict(list)
+_stage_callbacks: dict[str, list[Callable[[SimulatedStageDevice], None]]] = defaultdict(
+    list
+)
 
 
 # ---------------------------------------------------------------------------
 # Procedural world-image generator
 # ---------------------------------------------------------------------------
+
 
 def _make_world_image(
     height: int,
@@ -94,9 +97,7 @@ def _make_world_image(
         cy = rng.integers(0, height)
         sigma = float(rng.uniform(sigma_lo, sigma_hi))
         amplitude = float(rng.uniform(0.3, 1.0))
-        world += amplitude * np.exp(
-            -((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2)
-        )
+        world += amplitude * np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
 
     world_max = world.max()
     if world_max > 0:
@@ -114,7 +115,8 @@ def _make_world_image(
 # This is intentionally package-private — nothing outside this module needs
 # to know it exists.
 
-class _SingleChannelFilterWheel(microscope.abc.FilterWheel if False else object):
+
+class _SingleChannelFilterWheel(FilterWheel):
     """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
 
     _positions: int = 1
@@ -138,6 +140,7 @@ class _SingleChannelFilterWheel(microscope.abc.FilterWheel if False else object)
 
 
 import microscope.abc as _abc  # noqa: E402
+
 
 class _SingleChannelFilterWheel(_abc.FilterWheel):  # type: ignore[no-redef]
     """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
@@ -231,9 +234,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         # Fire any callbacks that cameras registered before we were built.
         for cb in _stage_callbacks.pop(name, []):
             cb(self)
-            self.logger.debug(
-                "Fired pending stage callback for '%s'.", name
-            )
+            self.logger.debug("Fired pending stage callback for '%s'.", name)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptors: dict[str, Descriptor] = {
@@ -462,14 +463,13 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
 @define(kw_only=True, init=False, eq=False)
 class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable):  # type: ignore[misc]
-    """Simulated camera that returns stage-position-dependent sub-regions of a
-    procedurally generated world image.
+    """Simulated microscope camera.
 
     Inherits from
-    :class:`~microscope.simulators.stage_aware_camera.StageAwareCamera`, which
+    [StageAwareCamera][microscope.simulators.stage_aware_camera.StageAwareCamera], which
     handles all the crop-and-defocus logic given a
-    :class:`~microscope.abc.Stage`.  The stage is provided by a
-    :class:`SimulatedStageDevice` sibling, wired via an order-independent
+    [Stage][microscope.abc.Stage].  The stage is provided by a
+    `SimulatedStageDevice` sibling, wired via an order-independent
     callback mechanism: whichever of the two is constructed first sets up the
     link, so declaration order in the container does not matter.
 
@@ -569,7 +569,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
                 )
 
     def _on_stage_ready(self, stage: SimulatedStageDevice) -> None:
-        """Called (once) when the linked SimulatedStageDevice is constructed.
+        """Initialize the stage of the camera once the stage is ready.
 
         Completes the StageAwareCamera initialisation now that we have both
         the world image and a concrete stage reference.  Safe to call from
@@ -620,9 +620,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             return None
         self._triggered -= 1
         self._sent += 1
-        self.logger.debug(
-            "Stage not linked; returning blank frame for %s.", self.name
-        )
+        self.logger.debug("Stage not linked; returning blank frame for %s.", self.name)
         w = self._roi.width // self._binning.h
         h = self._roi.height // self._binning.v
         return np.zeros((h, w), dtype=np.uint16)
