@@ -158,6 +158,11 @@ class TestMockLightDevice:
         with pytest.raises((AttributeError, Exception)):
             MockLightDevice("bad", wavelength=500, intensity_range=(100, 0))
 
+    def test_degenerate_range_on_non_binary_raises(self) -> None:
+        """Non-binary device with intensity_range (x, x) raises AttributeError."""
+        with pytest.raises((AttributeError, Exception)):
+            MockLightDevice("bad", wavelength=500, binary=False, intensity_range=(0, 0))
+
     def test_read_configuration_contains_expected_keys(
         self, mock_led: MockLightDevice
     ) -> None:

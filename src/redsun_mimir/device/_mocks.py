@@ -75,6 +75,11 @@ class MockLightDevice(Device, LightProtocol, Loggable):
             )
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
+        if not self.binary and value[0] == value[1]:
+            raise AttributeError(
+                f"Non-binary device must have a non-degenerate intensity range "
+                f"(min != max), got: {value}"
+            )
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
