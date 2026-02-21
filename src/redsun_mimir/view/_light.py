@@ -7,7 +7,6 @@ from sunflare.log import Loggable
 from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
-from superqt import QLabeledDoubleSlider, QLabeledSlider
 
 from redsun_mimir.utils.descriptors import parse_key
 
@@ -22,6 +21,7 @@ _KEY_GROUP = "{label}"
 _KEY_BUTTON_ON = "on:{label}"
 _KEY_SLIDER_POWER = "power:{label}"
 _KEY_LABEL_EGU = "egu:{label}"
+_KEY_LABEL_VALUE = "value:{label}"
 
 
 def _group_key(label: str) -> str:
@@ -38,6 +38,10 @@ def _slider_power_key(label: str) -> str:
 
 def _label_egu_key(label: str) -> str:
     return _KEY_LABEL_EGU.format(label=label)
+
+
+def _label_value_key(label: str) -> str:
+    return _KEY_LABEL_VALUE.format(label=label)
 
 
 def _get_prop(
@@ -113,7 +117,7 @@ class LightView(QtView, Loggable):
 
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
-        self._sliders: dict[str, QLabeledDoubleSlider | QLabeledSlider] = {}
+        self._sliders: dict[str, QtWidgets.QSlider] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
 
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
@@ -183,25 +187,22 @@ class LightView(QtView, Loggable):
             )
 
             if not binary:
-                slider: QLabeledDoubleSlider | QLabeledSlider
-                if all(isinstance(i, int) for i in intensity_range):
-                    slider = QLabeledSlider(QtCore.Qt.Orientation.Horizontal)
-                elif all(isinstance(i, float) for i in intensity_range):
-                    slider = QLabeledDoubleSlider(QtCore.Qt.Orientation.Horizontal)
-                else:
-                    raise TypeError(
-                        "Intensity range must be either all integers or all floats."
-                    )
-                self._sliders[_slider_power_key(device_label)] = slider
-                self._sliders[_slider_power_key(device_label)].setRange(*intensity_range)
-                self._sliders[_slider_power_key(device_label)].setSingleStep(int(step_size))
-                self._sliders[_slider_power_key(device_label)].valueChanged.connect(
+                slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+                slider.setRange(int(intensity_range[0]), int(intensity_range[1]))
+                slider.setSingleStep(int(step_size))
+                slider.valueChanged.connect(
                     lambda value, lbl=device_label: self._on_slider_changed(value, lbl)
                 )
+                self._sliders[_slider_power_key(device_label)] = slider
+
+                value_label = QtWidgets.QLabel(f"{intensity_range[0]} {egu}")
+                self._labels[_label_value_key(device_label)] = value_label
+
                 self._labels[_label_egu_key(device_label)] = QtWidgets.QLabel(egu)
+
                 layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0)
                 layout.addWidget(self._sliders[_slider_power_key(device_label)], 0, 1, 1, 3)
-                layout.addWidget(self._labels[_label_egu_key(device_label)], 0, 4)
+                layout.addWidget(self._labels[_label_value_key(device_label)], 0, 4)
             else:
                 layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0, 1, 4)
 
@@ -221,6 +222,11 @@ class LightView(QtView, Loggable):
     def _on_slider_changed(self, value: int | float, device_label: str) -> None:
         """Change the intensity of the light source."""
         self.logger.debug(
-            f"Change intensity of light source {device_label} to {value:.2f}"
+            f"Change intensity of light source {device_label} to {value}"
         )
+        # Update the value label
+        if _label_value_key(device_label) in self._labels:
+            egu_label = self._labels.get(_label_egu_key(device_label))
+            egu = egu_label.text() if egu_label else ""
+            self._labels[_label_value_key(device_label)].setText(f"{value} {egu}")
         self.sigIntensityRequest.emit(device_label, value)
