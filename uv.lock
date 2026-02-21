@@ -3486,8 +3486,8 @@ requires-dist = [
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
     { name = "redsun", specifier = ">=0.6.2" },
     { name = "sunflare", specifier = ">=0.10.1" },
-    { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.10.0" },
-    { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.10.0" },
+    { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
+    { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.10.1" },
     { name = "superqt", specifier = ">=0.7.4" },
 ]
 provides-extras = ["microscope", "pyqt", "pyside", "sim", "uc2"]

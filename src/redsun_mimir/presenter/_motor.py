@@ -73,7 +73,7 @@ class MotorPresenter(Presenter, Loggable):
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", 5.0)
+        self._timeout: float | None = kwargs.get("timeout", 2.0)
         self._queue: SimpleQueue[tuple[str, str, float] | None] = SimpleQueue()
 
         self._motors = {
@@ -145,10 +145,9 @@ class MotorPresenter(Presenter, Loggable):
             Mapping of configuration parameter keys to success flags.
         """
         success_map: dict[str, bool] = {}
-        bare = self._bare_name(motor)
         for key, value in config.items():
             self.logger.debug(f"Configuring {key} of {motor} to {value}")
-            s = self._motors[bare].set(value, propr=key)
+            s = self._motors[motor].set(value, propr=key)
             try:
                 s.wait(self._timeout)
             except Exception as e:

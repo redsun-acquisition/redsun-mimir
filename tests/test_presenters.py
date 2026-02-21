@@ -60,7 +60,7 @@ class TestMotorPresenter:
 
         controller.sigNewPosition.connect(on_position)
         controller.move("stage", "X", 10.0)
-        assert done.wait(timeout=5.0), "sigNewPosition was not emitted in time"
+        assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert len(received) == 1
         motor_name, axis, pos = received[0]
         assert motor_name == "stage"
@@ -77,7 +77,7 @@ class TestMotorPresenter:
         done = threading.Event()
         controller.sigNewPosition.connect(lambda m, a, p: done.set())
         controller.move(mock_motor.name, "X", 5.0)
-        assert done.wait(timeout=5.0), "sigNewPosition was not emitted in time"
+        assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
 
     def test_configure_step_size(

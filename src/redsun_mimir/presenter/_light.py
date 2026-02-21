@@ -45,7 +45,7 @@ class LightPresenter(Presenter, Loggable):
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", 5.0)
+        self._timeout: float | None = kwargs.get("timeout", 2.0)
 
         self._lights = {
             name: model
@@ -99,17 +99,6 @@ class LightPresenter(Presenter, Loggable):
         if "sigIntensityRequest" in sigs:
             sigs["sigIntensityRequest"].connect(self.set)
 
-    def _bare_name(self, device_label: str) -> str:
-        """Resolve a device label to the bare device name used as dict key.
-
-        Returns the label unchanged since devices are now keyed by bare name only.
-
-        Parameters
-        ----------
-        device_label :
-            Device name.
-        """
-        return device_label
 
     def trigger(self, name: str) -> None:
         """Toggle the light.
@@ -120,13 +109,13 @@ class LightPresenter(Presenter, Loggable):
             Name of the light.
 
         """
-        s = self._lights[self._bare_name(name)].trigger()
+        s = self._lights[name].trigger()
         try:
             s.wait(self._timeout)
         except Exception as e:
             self.logger.error(f"Failed toggle on {name}: {e}")
         else:
-            light = self._lights[self._bare_name(name)]
+            light = self._lights[name]
             self.logger.debug(
                 f"Toggled source {name} {not light.enabled} -> {light.enabled}"
             )
@@ -142,7 +131,7 @@ class LightPresenter(Presenter, Loggable):
             Intensity to set.
 
         """
-        light = self._lights[self._bare_name(name)]
+        light = self._lights[name]
         s = light.set(intensity)
         try:
             s.wait(self._timeout)
