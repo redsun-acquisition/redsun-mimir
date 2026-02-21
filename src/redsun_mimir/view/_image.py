@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
+from napari.settings import get_settings
 from qtpy import QtCore, QtWidgets
 from sunflare.log import Loggable
 from sunflare.view import ViewPosition
@@ -107,7 +109,31 @@ class ImageView(QtView, Loggable):
 
         self.buffer_key: str = "buffer"
 
+        # Apply napari's stylesheet so icons and theme colours render correctly.
+        # Window.__init__ normally does this via _update_theme(); since we bypass
+        # Window entirely we do it here and re-apply on theme changes.
+        self._apply_napari_stylesheet()
+        get_settings().appearance.events.theme.connect(
+            lambda _: self._apply_napari_stylesheet()
+        )
+
         self.logger.info("Initialized")
+
+    def _apply_napari_stylesheet(self) -> None:
+        """Apply (or re-apply) napari's QSS theme to this widget and the canvas.
+
+        Normally ``Window._update_theme`` does this; since we bypass ``Window``
+        entirely we call it once at startup and reconnect it to the theme-change
+        event so that live theme switching keeps working.
+        """
+        settings = get_settings()
+        theme = settings.appearance.theme
+        font_size = f"{settings.appearance.font_size}pt"
+        stylesheet: str = get_stylesheet(
+            theme, extra_variables={"font_size": font_size}
+        )
+        self.setStyleSheet(stylesheet)
+        self._qt_viewer.setStyleSheet(stylesheet)
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register image view signals in the virtual container."""
