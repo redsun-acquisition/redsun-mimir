@@ -73,16 +73,18 @@ def _make_world_image(
     """Generate a synthetic single-channel world image populated with Gaussian blobs.
 
     Returns a ``uint16`` array of shape ``(height, width, 1)`` — the trailing
-    channel axis is required by ``StageAwareCamera``.
+    channel axis is required by `StageAwareCamera`.
 
     Parameters
     ----------
-    height, width:
-        Dimensions of the world image in pixels.
-    n_blobs:
-        Number of Gaussian blobs to scatter across the image.
-    rng:
-        Optional seeded generator for reproducibility.
+    height : ``int``
+        Height of the world image in pixels.
+    width : ``int``
+        Width of the world image in pixels.
+    n_blobs : ``int``, optional
+        Number of Gaussian blobs to scatter across the image. Default is ``40``.
+    rng : ``numpy.random.Generator``, optional
+        Seeded generator for reproducibility. Default is ``None``.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -117,7 +119,7 @@ def _make_world_image(
 
 
 class _SingleChannelFilterWheel(_FilterWheel):  # type: ignore[misc]
-    """Stub filterwheel with exactly one position, satisfying ``StageAwareCamera``."""
+    """Stub filterwheel with exactly one position, satisfying `StageAwareCamera`."""
 
     def __init__(self) -> None:
         # Bypass Device.__init__ — we only need the FilterWheel interface.
@@ -148,16 +150,16 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
 
     Parameters
     ----------
-    name:
+    name : ``str``
         Name of the device.
-    egu:
-        Engineering units.  Default ``"mm"``.
-    axis:
+    egu : ``str``, optional
+        Engineering units. Default is ``"mm"``.
+    axis : ``list[str]``
         Axis names.
-    step_sizes:
+    step_sizes : ``dict[str, float]``
         Step sizes for each axis.
-    limits:
-        Position limits for each axis.  Required for simulated stages.
+    limits : ``dict[str, tuple[float, float]]``
+        Position limits for each axis. Required for simulated stages.
     """
 
     name: str
@@ -246,10 +248,10 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
 
         Parameters
         ----------
-        value:
+        value : ``Any``
             Target position, or the new value for the property specified by
             ``prop``.
-        **kwargs:
+        **kwargs : ``Any``
             ``prop="axis"`` switches the active axis (``value`` must be a
             ``str`` axis name). ``prop="step_size"`` updates the step size
             for the current axis (``value`` must be numeric).
@@ -297,18 +299,18 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
     Parameters
     ----------
-    name:
+    name : ``str``
         Name of the device.
-    binary:
-        Binary mode operation.  Not supported; always raises if ``True``.
-    wavelength:
-        Wavelength in nm.
-    egu:
-        Engineering units.  Default ``"mW"``.
-    intensity_range:
+    binary : ``bool``, optional
+        Binary mode operation. Not supported; always raises if ``True``. Default is ``False``.
+    wavelength : ``int``, optional
+        Wavelength in nm. Default is ``0``.
+    egu : ``str``, optional
+        Engineering units. Default is ``"mW"``.
+    intensity_range : ``tuple[int | float, ...]``
         Intensity range as ``(min, max)``.
-    step_size:
-        Step size for intensity control.
+    step_size : ``int``, optional
+        Step size for intensity control. Default is ``1``.
     """
 
     name: str
@@ -430,9 +432,9 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
         Parameters
         ----------
-        value:
+        value : ``Any``
             Target intensity value within ``intensity_range``.
-        **kwargs:
+        **kwargs : ``Any``
             Property setting is not supported; passing ``prop`` raises an
             error.
         """
@@ -463,9 +465,9 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable):  # type: ignore[misc]
     """Simulated microscope camera with optional stage-aware imaging.
 
-    Inherits from ``StageAwareCamera``, which handles XY cropping from stage
-    position and Z-based Gaussian defocus.  The linked stage is provided by a
-    ``SimulatedStageDevice`` sibling through an order-independent callback
+    Inherits from `StageAwareCamera`, which handles XY cropping from stage
+    position and Z-based Gaussian defocus. The linked stage is provided by a
+    `SimulatedStageDevice` sibling through an order-independent callback
     mechanism: whichever of the two is constructed first sets up the link, so
     declaration order in the container does not matter.
 
@@ -474,17 +476,18 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
 
     Parameters
     ----------
-    name:
+    name : ``str``
         Name of the detector.
-    sensor_shape:
-        Sensor dimensions as ``(width, height)`` in pixels.
-    stage_name:
-        Name of the ``SimulatedStageDevice`` child to link to.  ``None``
-        disables stage-aware imaging and the camera always returns blank frames.
-    world_scale:
-        World-image size multiplier relative to the sensor.  Default ``4``.
-    n_blobs:
-        Number of Gaussian blobs in the procedural world image.  Default ``40``.
+    sensor_shape : ``tuple[int, int]``, optional
+        Sensor dimensions as ``(width, height)`` in pixels. Default is ``(512, 512)``.
+    stage_name : ``str``, optional
+        Name of the `SimulatedStageDevice` child to link to. ``None``
+        disables stage-aware imaging; the camera always returns blank frames.
+        Default is ``None``.
+    world_scale : ``int``, optional
+        World-image size multiplier relative to the sensor. Default is ``4``.
+    n_blobs : ``int``, optional
+        Number of Gaussian blobs in the procedural world image. Default is ``40``.
     """
 
     name: str
@@ -555,16 +558,15 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
                 )
 
     def _on_stage_ready(self, stage: SimulatedStageDevice) -> None:
-        """Complete the ``StageAwareCamera`` initialisation once the stage exists.
+        """Complete the `StageAwareCamera` initialisation once the stage exists.
 
         Called immediately from ``__init__`` when the stage is already
-        registered, or later as a callback fired by
-        ``SimulatedStageDevice.__init__``.
+        registered, or later as a callback fired by `SimulatedStageDevice.__init__`.
 
         Parameters
         ----------
-        stage:
-            The ``SimulatedStageDevice`` that has just been constructed.
+        stage : `SimulatedStageDevice`
+            The stage device that has just been constructed.
         """
         required = {"x", "y", "z"}
         missing = required - stage.axes.keys()
@@ -652,12 +654,11 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
 
         Parameters
         ----------
-        value:
+        value : ``Any``
             New setting value, or a 4-tuple ``(left, top, width, height)``
             to update the ROI when no ``prop`` is given.
-        **kwargs:
-            ``prop`` selects a named camera setting from
-            ``get_all_settings()``.
+        **kwargs : ``Any``
+            ``prop`` selects a named camera setting from ``get_all_settings()``.
         """
         s = Status()
         try:
@@ -778,7 +779,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
 
         Parameters
         ----------
-        value:
+        value : ``dict[str, Any]``
             ``capacity`` (``int``, default ``0``) — maximum number of frames
             to store; ``0`` means unlimited.
         """
