@@ -3408,15 +3408,15 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.6.2"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "platformdirs" },
     { name = "sunflare" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/8d/4234e8e3cef40314c6f314434d9e1dcb16bfa5f7b6ecd8b363ee412209ea/redsun-0.6.2.tar.gz", hash = "sha256:c654264094c07bc28dd4cf007ab56edfca56de351d59c7d332ee4ca36f405e34", size = 150215, upload-time = "2026-02-20T21:29:06.283Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/5d/0fb86eda430a67315d3f615bba011e2af76276fdf3af23a8144d4da5b4bb/redsun-0.7.0.tar.gz", hash = "sha256:2fea755bad2fa44e97eead46dee91a6b9f5a48d32609cb02b31af37ced0d9753", size = 154709, upload-time = "2026-02-21T14:55:53.12Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/00/62d4a15683e162501af4bf428f93c3da33f1910baa566731bd76679a8f24/redsun-0.6.2-py3-none-any.whl", hash = "sha256:4eed451d704bcaa676dfdc059a55473635443902ef0784ce8d63ae2600142f7f", size = 19614, upload-time = "2026-02-20T21:29:05.071Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/fa/fc0e519cfebbdb8d2dad49532745a30895b9b4a4787c5e6e646588054653/redsun-0.7.0-py3-none-any.whl", hash = "sha256:2abb14f4272baeba116229e5938606fd84471f9167cda27f84a9e77819f7ce63", size = 21087, upload-time = "2026-02-21T14:55:51.637Z" },
 ]
 
 [[package]]
@@ -3483,7 +3483,7 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", specifier = ">=0.6.2" },
+    { name = "redsun", specifier = ">=0.7.0" },
     { name = "sunflare", specifier = ">=0.11.0" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.11.0" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.11.0" },

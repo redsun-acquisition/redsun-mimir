@@ -32,7 +32,7 @@ dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
-    "redsun>=0.6.2",
+    "redsun>=0.7.0",
 ]
 
 [dependency-groups]

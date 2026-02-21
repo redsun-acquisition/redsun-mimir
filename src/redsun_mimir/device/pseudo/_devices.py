@@ -87,11 +87,11 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         }
 
         old_describe_source = describe_descriptor[self._describe_target_key]["source"]
-        new_describe_source = f"{old_describe_source}\median"
+        new_describe_source = f"{old_describe_source}\\median"
         self._describe_descriptor[self._reading_key]["source"] = new_describe_source
 
         old_collect_source = collect_descriptor[self._collect_target_key]["source"]
-        new_collect_source = f"{old_collect_source}\median"
+        new_collect_source = f"{old_collect_source}\\median"
         self._collect_descriptor[self._collect_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists

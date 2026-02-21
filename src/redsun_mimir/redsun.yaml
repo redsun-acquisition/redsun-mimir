@@ -1,37 +1,25 @@
 devices:
   # mimir models
-  mimir-serial:
-    class: redsun_mimir.device.youseetoo:MimirSerialDevice
-  mimir-motor:
-    class: redsun_mimir.device.youseetoo:MimirMotorDevice
-  mimir-laser:
-    class: redsun_mimir.device.youseetoo:MimirLaserDevice
-    info: redsun_mimir.device:LaserModelInfo
+  mimir-serial: redsun_mimir.device.youseetoo:MimirSerialDevice
+  mimir-motor: redsun_mimir.device.youseetoo:MimirMotorDevice
+  mimir-laser: redsun_mimir.device.youseetoo:MimirLaserDevice
 
   # microscope/mock models
-  mock-light:
-    class: redsun_mimir.device:MockLightDevice
-  mock-motor:
-    class: redsun_mimir.device:MockMotorDevice
-  mock-detector:
-    class: redsun_mimir.device.microscope:SimulatedCameraModel
+  mock-light: redsun_mimir.device:MockLightDevice
+  mock-motor: redsun_mimir.device:MockMotorDevice
+  mock-detector: redsun_mimir.device.microscope:SimulatedCameraDevice
+  mmcore-camera: redsun_mimir.device.mmcore:MMCoreCameraDevice
 
 presenters:
-  acquisition:
-    class: redsun_mimir.presenter:AcquisitionController
-  motor:
-    class: redsun_mimir.presenter:MotorController
-  light:
-    class: redsun_mimir.presenter:LightController
-  detector:
-    class: redsun_mimir.presenter:DetectorController
+  acquisition: redsun_mimir.presenter:AcquisitionPresenter
+  motor: redsun_mimir.presenter:MotorPresenter
+  light: redsun_mimir.presenter:LightPresenter
+  detector: redsun_mimir.presenter:DetectorPresenter
+  median: redsun_mimir.presenter:MedianPresenter
 
 views:
-  acquisition:
-    class: redsun_mimir.view:AcquisitionWidget
-  motor:
-    class: redsun_mimir.view:MotorWidget
-  light:
-    class: redsun_mimir.view:LightWidget
-  detector:
-    class: redsun_mimir.view:DetectorWidget
+  acquisition: redsun_mimir.view:AcquisitionView
+  image: redsun_mimir.view:ImageView
+  detector: redsun_mimir.view:DetectorView
+  motor: redsun_mimir.view:MotorView
+  light: redsun_mimir.view:LightView
