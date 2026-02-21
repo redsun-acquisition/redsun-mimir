@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import defaultdict
 from queue import Queue
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
+from microscope.simulators.stage_aware_camera import StageAwareCamera
 from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
@@ -24,34 +26,51 @@ from redsun_mimir.utils.descriptors import (
 )
 
 if TYPE_CHECKING:
-    from typing import Any, ClassVar, Iterator
+    from collections.abc import Callable
+    from typing import Any, Iterator
 
     import numpy.typing as npt
-    from bluesky.protocols import Reading, StreamAsset
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Location, Reading, StreamAsset
 
 
 # ---------------------------------------------------------------------------
-# Module-level stage registry
+# Stage callback registry
 # ---------------------------------------------------------------------------
-# SimulatedStageDevice registers itself here by name on construction.
-# SimulatedCameraDevice resolves its stage peer lazily on first trigger.
-# This replaces the old Factory class without class-level globals or
-# threading primitives.
-_stage_registry: dict[str, "SimulatedStageDevice"] = {}
+# Order-independent wiring between SimulatedStageDevice and SimulatedCameraDevice.
+#
+# Protocol:
+#   1. SimulatedCameraDevice.__init__ registers a callback keyed by stage_name:
+#        _stage_callbacks[stage_name].append(camera._on_stage_ready)
+#   2. SimulatedStageDevice.__init__ fires all pending callbacks for its name:
+#        for cb in _stage_callbacks.pop(name, []): cb(self)
+#
+# Declaration order in the container does not matter:
+#   - Stage built first  → callback list is empty, nothing to do; cameras that
+#     arrive later find the stage already in _stage_registry and call
+#     _on_stage_ready immediately in their own __init__.
+#   - Camera built first → callback is queued; fires when the stage arrives.
+#
+# _stage_registry keeps a reference so cameras built *after* the stage can
+# still wire up without needing to re-register a callback.
 
+_stage_registry: dict[str, SimulatedStageDevice] = {}
+_stage_callbacks: dict[str, list[Callable[[SimulatedStageDevice], None]]] = defaultdict(list)
+
+
+# ---------------------------------------------------------------------------
+# Procedural world-image generator
+# ---------------------------------------------------------------------------
 
 def _make_world_image(
     height: int,
     width: int,
     n_blobs: int = 40,
     rng: np.random.Generator | None = None,
-) -> "npt.NDArray[np.uint16]":
-    """Generate a synthetic grayscale world image with Gaussian blobs.
+) -> npt.NDArray[np.uint16]:
+    """Generate a synthetic single-channel world image populated with Gaussian blobs.
 
-    The image is larger than the sensor so the stage can navigate over it.
-    Blobs are placed at random positions with random amplitudes, giving a
-    realistic-looking sparse fluorescence sample.
+    Returns a ``uint16`` array of shape ``(height, width, 1)`` — the trailing
+    channel axis is required by :class:`~microscope.simulators.stage_aware_camera.StageAwareCamera`.
 
     Parameters
     ----------
@@ -60,25 +79,20 @@ def _make_world_image(
     n_blobs:
         Number of Gaussian blobs to scatter across the image.
     rng:
-        Optional seeded generator for reproducible output.
-
-    Returns
-    -------
-    np.ndarray of dtype uint16, shape (height, width).
+        Optional seeded :class:`numpy.random.Generator` for reproducibility.
     """
     if rng is None:
         rng = np.random.default_rng()
 
     world = np.zeros((height, width), dtype=np.float64)
-    sigma_range = (
-        max(1, min(height, width) // 80),
-        max(2, min(height, width) // 20),
-    )
+    sigma_lo = max(1, min(height, width) // 80)
+    sigma_hi = max(2, min(height, width) // 20)
+
     xx, yy = np.meshgrid(np.arange(width), np.arange(height))
     for _ in range(n_blobs):
         cx = rng.integers(0, width)
         cy = rng.integers(0, height)
-        sigma = float(rng.uniform(*sigma_range))
+        sigma = float(rng.uniform(sigma_lo, sigma_hi))
         amplitude = float(rng.uniform(0.3, 1.0))
         world += amplitude * np.exp(
             -((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2)
@@ -86,8 +100,70 @@ def _make_world_image(
 
     world_max = world.max()
     if world_max > 0:
-        world = world / world_max
-    return (world * np.iinfo(np.uint16).max).astype(np.uint16)
+        world /= world_max
+    # Add trailing channel axis (shape: H x W x 1)
+    return (world * np.iinfo(np.uint16).max).astype(np.uint16)[:, :, np.newaxis]
+
+
+# ---------------------------------------------------------------------------
+# Minimal single-position FilterWheel stub
+# ---------------------------------------------------------------------------
+# StageAwareCamera requires a FilterWheel to select image channels.
+# Since our world image is always single-channel (grayscale), we supply a
+# trivial stub that satisfies the ABC without any real hardware machinery.
+# This is intentionally package-private — nothing outside this module needs
+# to know it exists.
+
+class _SingleChannelFilterWheel(microscope.abc.FilterWheel if False else object):
+    """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
+
+    _positions: int = 1
+
+    @property
+    def n_positions(self) -> int:
+        return 1
+
+    @property
+    def position(self) -> int:
+        return 0
+
+    def _do_get_position(self) -> int:
+        return 0
+
+    def _do_set_position(self, position: int) -> None:
+        pass
+
+    def _do_shutdown(self) -> None:
+        pass
+
+
+import microscope.abc as _abc  # noqa: E402
+
+class _SingleChannelFilterWheel(_abc.FilterWheel):  # type: ignore[no-redef]
+    """Stub filterwheel with exactly one position, satisfying StageAwareCamera."""
+
+    def __init__(self) -> None:
+        # Bypass Device.__init__ — we only need the FilterWheel interface,
+        # not any real device lifecycle management.
+        self._positions = 1
+
+    @property
+    def position(self) -> int:
+        return 0
+
+    def _do_get_position(self) -> int:
+        return 0
+
+    def _do_set_position(self, position: int) -> None:
+        pass
+
+    def _do_shutdown(self) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# SimulatedStageDevice
+# ---------------------------------------------------------------------------
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -99,13 +175,13 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
     name : str
         Name of the device.
     egu : str
-        Engineering units. Default is "mm".
+        Engineering units.  Default ``"mm"``.
     axis : list[str]
         Axis names.
     step_sizes : dict[str, float]
         Step sizes for each axis.
     limits : dict[str, tuple[float, float]]
-        Position limits for each axis. Required for simulated stages.
+        Position limits for each axis.  Required for simulated stages.
     """
 
     name: str
@@ -149,8 +225,15 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         SimulatedStage.__init__(self, axis_limits)
         self._active_axis = self.axis[0]
 
-        # Register in the module-level registry so cameras can resolve us by name.
+        # Register in the stage registry so late-arriving cameras can find us.
         _stage_registry[name] = self
+
+        # Fire any callbacks that cameras registered before we were built.
+        for cb in _stage_callbacks.pop(name, []):
+            cb(self)
+            self.logger.debug(
+                "Fired pending stage callback for '%s'.", name
+            )
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         descriptors: dict[str, Descriptor] = {
@@ -184,7 +267,6 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
-
         propr = kwargs.get("prop", None)
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
@@ -199,10 +281,9 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
             else:
                 s.set_exception(ValueError(f"Invalid property: {propr}"))
                 return s
-        else:
-            if not isinstance(value, int | float):
-                s.set_exception(ValueError("Value must be a float or int."))
-                return s
+        if not isinstance(value, int | float):
+            s.set_exception(ValueError("Value must be a float or int."))
+            return s
         step_size = self.step_sizes[self._active_axis]
         new_position = step_size * np.round(value / step_size)
         self.move_to({self._active_axis: new_position})
@@ -216,6 +297,11 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
         }
 
 
+# ---------------------------------------------------------------------------
+# SimulatedLightDevice
+# ---------------------------------------------------------------------------
+
+
 @define(kw_only=True, init=False, eq=False)
 class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable):  # type: ignore[misc]
     """Simulated light source using the microscope library.
@@ -225,15 +311,15 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
     name : str
         Name of the device.
     binary : bool
-        Binary mode operation. Not supported for simulated lights.
+        Binary mode operation.  Not supported for simulated lights.
     wavelength : int
         Wavelength in nm.
     egu : str
-        Engineering units. Default is "mW".
+        Engineering units.  Default ``"mW"``.
     intensity_range : tuple[int | float, ...]
-        Intensity range (min, max).
+        Intensity range ``(min, max)``.
     step_size : int
-        Step size for the intensity.
+        Step size for intensity control.
     """
 
     name: str
@@ -277,7 +363,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
             raise AttributeError(
                 f"{self.__class__.__name__} does not support binary light sources."
             )
-        if self.intensity_range == (0, 0) or self.intensity_range == (0.0, 0.0):
+        if self.intensity_range in ((0, 0), (0.0, 0.0)):
             raise AttributeError(
                 f"{self.__class__.__name__} requires intensity range to be set."
             )
@@ -345,7 +431,7 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
         s = Status()
         self.enable() if not self.get_is_on() else self.disable()
         self.logger.debug(
-            f"Toggled light source {not self.get_is_on()} -> {self.get_is_on()}"
+            "Toggled light source %s -> %s", not self.get_is_on(), self.get_is_on()
         )
         s.set_finished()
         return s
@@ -358,13 +444,10 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
             self.logger.error(err_msg)
             s.set_exception(RuntimeError(err_msg))
             return s
-        else:
-            if not isinstance(value, int | float):
-                s.set_exception(ValueError("Value must be a float or int."))
-                return s
+        if not isinstance(value, int | float):
+            s.set_exception(ValueError("Value must be a float or int."))
+            return s
         self.intensity = value
-
-        # the actual power is set as a percentage of the intensity range
         self.power = (value - self.intensity_range[0]) / (
             self.intensity_range[1] - self.intensity_range[0]
         )
@@ -373,47 +456,42 @@ class SimulatedLightDevice(Device, LightProtocol, SimulatedLightSource, Loggable
 
 
 # ---------------------------------------------------------------------------
-# World-image scale factor
+# SimulatedCameraDevice
 # ---------------------------------------------------------------------------
-# Number of world-image pixels per stage unit.
-# Default: world image is 4× sensor in each dimension, so the stage can
-# navigate over a 2× radius around the centre before hitting the edges.
-_WORLD_SCALE: int = 4
 
 
 @define(kw_only=True, init=False, eq=False)
-class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable):  # type: ignore[misc]
-    """Simulated camera that produces stage-aware images when paired with a stage.
+class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable):  # type: ignore[misc]
+    """Simulated camera that returns stage-position-dependent sub-regions of a
+    procedurally generated world image.
 
-    When ``stage_name`` is set to the name of a
-    :class:`SimulatedStageDevice` that has already been constructed, each
-    triggered image is a cropped sub-region of a procedurally-generated
-    Gaussian-blob world image centred on the current stage X/Y position.
-    The Z axis position is used to simulate defocus via a Gaussian blur: the
-    image is sharpest at Z = 0 and blurs linearly with ``|Z|``.
+    Inherits from
+    :class:`~microscope.simulators.stage_aware_camera.StageAwareCamera`, which
+    handles all the crop-and-defocus logic given a
+    :class:`~microscope.abc.Stage`.  The stage is provided by a
+    :class:`SimulatedStageDevice` sibling, wired via an order-independent
+    callback mechanism: whichever of the two is constructed first sets up the
+    link, so declaration order in the container does not matter.
 
-    When ``stage_name`` is ``None`` (the default) or the named stage has not
-    been registered yet, the camera falls back to the standard
-    :class:`~microscope.simulators.SimulatedCamera` noise/gradient patterns.
+    If ``read()`` is called before a stage has been registered (e.g. the stage
+    was never configured), the camera returns a plain black frame at the
+    correct sensor shape rather than raising.
 
     Parameters
     ----------
     name : str
-        Name of the detector model.
+        Name of the detector.
     sensor_shape : tuple[int, int]
         Sensor dimensions as ``(width, height)`` in pixels.
     stage_name : str | None
-        Name of the :class:`SimulatedStageDevice` to use for stage-aware
-        imaging.  Must match the ``name`` parameter used when constructing
-        the stage device.  If ``None``, stage-aware mode is disabled.
+        Name of the :class:`SimulatedStageDevice` child to link to.
+        ``None`` disables stage-aware imaging; the camera will always return
+        blank frames from ``_fetch_data`` (which is unreachable in normal use
+        since ``StageAwareCamera._fetch_data`` requires a stage).
     world_scale : int
-        World-image size multiplier relative to the sensor (default 4).
-        A value of 4 means the world image is ``4 × sensor_shape``, giving
-        the stage room to navigate across a region twice the sensor size in
-        each direction from the centre.
+        World-image size multiplier relative to the sensor (default ``4``).
     n_blobs : int
-        Number of Gaussian blobs in the procedurally generated world image
-        (default 40).
+        Gaussian blobs in the procedural world image (default ``40``).
     """
 
     name: str
@@ -429,7 +507,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
     )
     stage_name: str | None = field(
         default=None,
-        metadata={"description": "Name of the SimulatedStageDevice to track."},
+        metadata={"description": "Name of the SimulatedStageDevice child to link."},
     )
     world_scale: int = field(
         default=4,
@@ -448,15 +526,29 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
 
+        # Build the world image (H x W x 1, single channel for the stub filterwheel).
+        w = self.sensor_shape[0] * self.world_scale
+        h = self.sensor_shape[1] * self.world_scale
+        world_image = _make_world_image(h, w, n_blobs=self.n_blobs)
+
+        # The filterwheel stub satisfies StageAwareCamera's interface check
+        # (image.shape[2] == filterwheel.n_positions == 1).
+        self._filterwheel_stub = _SingleChannelFilterWheel()
+
+        # We cannot call StageAwareCamera.__init__ yet because we may not have
+        # a stage. Initialise SimulatedCamera (the grandparent) instead and
+        # store the world image for later.  StageAwareCamera.__init__ is
+        # called inside _on_stage_ready once the stage arrives.
         SimulatedCamera.__init__(self, sensor_shape=self.sensor_shape)
         self.initialize()
-
         self.roi = (0, 0, *self.sensor_shape)
+
+        self._world_image = world_image
+        self._stage_linked: bool = False
 
         self._queue: Queue[tuple[npt.NDArray[Any], float]] = Queue()
         self.set_client(self._queue)
 
-        # Key names for data collection
         self._buffer_key = make_key(self.name, "buffer")
         self._roi_key = make_key(self.name, "roi")
         self._buffer_stream_key = f"{self.name}:buffer:stream"
@@ -464,148 +556,76 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         self._complete_status = Status()
         self._assets_collected: bool = False
 
-        # Stage reference — resolved lazily from the registry on first trigger.
-        self._stage: SimulatedStageDevice | None = None
+        # Wire to stage — order-independent via callback registry.
+        if self.stage_name is not None:
+            if self.stage_name in _stage_registry:
+                # Stage already built: link immediately.
+                self._on_stage_ready(_stage_registry[self.stage_name])
+            else:
+                # Stage not built yet: register callback for when it arrives.
+                _stage_callbacks[self.stage_name].append(self._on_stage_ready)
+                self.logger.debug(
+                    "Stage '%s' not yet built; registered callback.", self.stage_name
+                )
 
-        # World image — generated once, lazily, when stage mode is first used.
-        self._world_image: npt.NDArray[np.uint16] | None = None
+    def _on_stage_ready(self, stage: SimulatedStageDevice) -> None:
+        """Called (once) when the linked SimulatedStageDevice is constructed.
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _resolve_stage(self) -> SimulatedStageDevice | None:
-        """Return the stage device, resolving from the registry if needed."""
-        if self._stage is not None:
-            return self._stage
-        if self.stage_name is None:
-            return None
-        stage = _stage_registry.get(self.stage_name)
-        if stage is None:
-            self.logger.warning(
-                "Stage '%s' not found in registry; falling back to "
-                "standard image generation. Has the stage been constructed?",
-                self.stage_name,
-            )
-            return None
+        Completes the StageAwareCamera initialisation now that we have both
+        the world image and a concrete stage reference.  Safe to call from
+        either thread (camera or stage construction happens on the main thread
+        in normal container use).
+        """
         required = {"x", "y", "z"}
-        if not required.issubset(stage.axes.keys()):
-            missing = required - stage.axes.keys()
+        missing = required - stage.axes.keys()
+        if missing:
             self.logger.warning(
                 "Stage '%s' is missing axes %s; stage-aware mode requires "
-                "x, y, and z. Falling back to standard image generation.",
+                "x, y and z.  Camera will return blank frames.",
                 self.stage_name,
                 missing,
             )
-            return None
-        self._stage = stage
+            return
+
+        # Finish StageAwareCamera initialisation: sets self._image, self._stage,
+        # self._filterwheel, self._pixel_size, and replaces self._settings.
+        StageAwareCamera.__init__(
+            self,
+            image=self._world_image,
+            stage=stage,
+            filterwheel=self._filterwheel_stub,
+            sensor_shape=self.sensor_shape,
+        )
+        self._stage_linked = True
         self.logger.info(
-            "Resolved stage '%s' for stage-aware imaging.", self.stage_name
+            "Stage '%s' linked; stage-aware imaging active.", self.stage_name
         )
-        return self._stage
 
-    def _get_world_image(self) -> npt.NDArray[np.uint16]:
-        """Return the world image, generating it on first call."""
-        if self._world_image is None:
-            h = self.sensor_shape[1] * self.world_scale
-            w = self.sensor_shape[0] * self.world_scale
-            self._world_image = _make_world_image(h, w, n_blobs=self.n_blobs)
-            self.logger.debug(
-                "Generated world image (%d×%d) with %d blobs.",
-                w,
-                h,
-                self.n_blobs,
-            )
-        return self._world_image
+    # ------------------------------------------------------------------
+    # _fetch_data fallback when no stage is linked yet
+    # ------------------------------------------------------------------
 
-    def _fetch_data_stage_aware(
-        self, stage: SimulatedStageDevice
-    ) -> npt.NDArray[np.uint16]:
-        """Produce a stage-position-dependent crop of the world image.
+    def _fetch_data(self) -> npt.NDArray[Any] | None:  # type: ignore[override]
+        """Return None (no data) when no stage is linked.
 
-        The crop window is centred on the stage X/Y position (in world-image
-        pixels).  Z position drives a Gaussian blur to simulate defocus.
+        Once _on_stage_ready has run, StageAwareCamera._fetch_data takes over
+        via normal MRO — this override is only reached when stage_name is None
+        or the stage has not registered itself yet.
         """
-        world = self._get_world_image()
-        world_h, world_w = world.shape
-        sensor_w, sensor_h = self.sensor_shape
+        if self._stage_linked:
+            return StageAwareCamera._fetch_data(self)
 
-        # Map stage position to world-image coordinates.
-        # Stage axes limits define the navigable extent; we map the full
-        # limits range linearly onto the world image dimensions.
-        x_limits = stage.axes["x"].limits
-        y_limits = stage.axes["y"].limits
-        x_pos = stage.position["x"]
-        y_pos = stage.position["y"]
-        z_pos = stage.position["z"]
-
-        # Normalise position to [0, 1] within limits, then scale to world pixels.
-        x_norm = (x_pos - x_limits.lower) / max(
-            x_limits.upper - x_limits.lower, 1.0
-        )
-        y_norm = (y_pos - y_limits.lower) / max(
-            y_limits.upper - y_limits.lower, 1.0
-        )
-        cx = int(x_norm * world_w)
-        cy = int(y_norm * world_h)
-
-        # Compute bounding box, clamped to world image edges.
-        x0 = cx - sensor_w // 2
-        y0 = cy - sensor_h // 2
-        x1 = x0 + sensor_w
-        y1 = y0 + sensor_h
-
-        if x0 >= 0 and y0 >= 0 and x1 <= world_w and y1 <= world_h:
-            crop = world[y0:y1, x0:x1].copy()
-        else:
-            # Pad with zeros when the sensor window extends beyond the world.
-            crop = np.zeros((sensor_h, sensor_w), dtype=world.dtype)
-            img_x0, img_x1 = max(0, x0), min(x1, world_w)
-            img_y0, img_y1 = max(0, y0), min(y1, world_h)
-            sub_x0 = max(-x0, 0)
-            sub_y0 = max(-y0, 0)
-            sub_x1 = sub_x0 + (img_x1 - img_x0)
-            sub_y1 = sub_y0 + (img_y1 - img_y0)
-            crop[sub_y0:sub_y1, sub_x0:sub_x1] = world[img_y0:img_y1, img_x0:img_x1]
-
-        # Simulate defocus: Gaussian blur proportional to |Z|.
-        z_limits = stage.axes["z"].limits
-        z_range = max(z_limits.upper - z_limits.lower, 1.0)
-        blur = abs(z_pos) / z_range * 10.0  # max ~10 px sigma at range edges
-        if blur > 0.5:
-            blurred = scipy.ndimage.gaussian_filter(crop.astype(np.float64), blur)
-            crop = np.clip(blurred, 0, np.iinfo(np.uint16).max).astype(np.uint16)
-
-        return crop
-
-    # ------------------------------------------------------------------
-    # SimulatedCamera override
-    # ------------------------------------------------------------------
-
-    def _fetch_data(self) -> npt.NDArray[Any] | None:
-        """Override SimulatedCamera._fetch_data to add stage-awareness."""
+        # No stage yet: behave like a camera with nothing to acquire.
         if not self._acquiring or self._triggered == 0:
             return None
-
-        time.sleep(self._exposure_time)
         self._triggered -= 1
-
-        stage = self._resolve_stage()
-        if stage is not None:
-            image = self._fetch_data_stage_aware(stage)
-        else:
-            # Fallback: standard SimulatedCamera image generation.
-            dark = int(32 * np.random.rand())
-            light = int(255 - 128 * np.random.rand())
-            sensor_w, sensor_h = self.sensor_shape
-            width = self._roi.width // self._binning.h
-            height = self._roi.height // self._binning.v
-            image = self._image_generator.get_image(
-                width, height, dark, light, index=self._sent
-            )
-
         self._sent += 1
-        return image
+        self.logger.debug(
+            "Stage not linked; returning blank frame for %s.", self.name
+        )
+        w = self._roi.width // self._binning.h
+        h = self._roi.height // self._binning.v
+        return np.zeros((h, w), dtype=np.uint16)
 
     # ------------------------------------------------------------------
     # Bluesky protocol
@@ -652,40 +672,38 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
             if prop is not None:
                 if prop in self.get_all_settings():
                     self.set_setting(prop, value)
-                    self.logger.debug(f"Set {prop} to {value} for {self.name}")
+                    self.logger.debug("Set %s to %s for %s", prop, value, self.name)
                 else:
                     raise ValueError(f"Unknown property: {prop}")
+            elif isinstance(value, tuple) and len(value) == 4:
+                self.roi = value
+                self.set_roi(
+                    ROI(left=value[0], top=value[1], width=value[2], height=value[3])
+                )
+                self.logger.debug("Set ROI to %s for %s", value, self.name)
             else:
-                if isinstance(value, tuple) and len(value) == 4:
-                    self.roi = value
-                    roi_obj = ROI(
-                        left=value[0], top=value[1], width=value[2], height=value[3]
-                    )
-                    self.set_roi(roi_obj)
-                    self.logger.debug(f"Set ROI to {value} for {self.name}")
-                else:
-                    raise ValueError(
-                        "Value must specify a property via 'prop' keyword "
-                        "or be a 4-tuple for ROI"
-                    )
+                raise ValueError(
+                    "Value must specify a property via 'prop' keyword "
+                    "or be a 4-tuple for ROI"
+                )
             s.set_finished()
         except Exception as e:
             self.logger.error(
-                f"Failed to set {kwargs.get('prop', 'ROI')} to {value}: {e}"
+                "Failed to set %s to %s: %s", kwargs.get("prop", "ROI"), value, e
             )
             s.set_exception(e)
         return s
 
-    def stage(self) -> Status:
+    def stage(self) -> Status:  # type: ignore[override]
         """Prepare the detector for acquisition."""
         s = Status()
         try:
             self.enable()
             self._do_enable()
-            self.logger.debug(f"Staged {self.name}")
+            self.logger.debug("Staged %s", self.name)
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to stage {self.name}: {e}")
+            self.logger.error("Failed to stage %s: %s", self.name, e)
             s.set_exception(e)
         return s
 
@@ -694,10 +712,10 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         s = Status()
         try:
             self.disable()
-            self.logger.debug(f"Unstaged {self.name}")
+            self.logger.debug("Unstaged %s", self.name)
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to unstage {self.name}: {e}")
+            self.logger.error("Failed to unstage %s: %s", self.name, e)
             s.set_exception(e)
         return s
 
@@ -705,10 +723,10 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         """Kick off a continuous acquisition."""
         s = Status()
         try:
-            self.logger.debug(f"Kicked off acquisition for {self.name}")
+            self.logger.debug("Kicked off acquisition for %s", self.name)
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to kickoff {self.name}: {e}")
+            self.logger.error("Failed to kickoff %s: %s", self.name, e)
             s.set_exception(e)
         return s
 
@@ -716,10 +734,10 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         """Complete a continuous acquisition."""
         s = Status()
         try:
-            self.logger.debug(f"Completed acquisition for {self.name}")
+            self.logger.debug("Completed acquisition for %s", self.name)
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to complete {self.name}: {e}")
+            self.logger.error("Failed to complete %s: %s", self.name, e)
             s.set_exception(e)
         return s
 
@@ -730,7 +748,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
             super().trigger()
             s.set_finished()
         except Exception as e:
-            self.logger.error(f"Failed to trigger {self.name}: {e}")
+            self.logger.error("Failed to trigger %s: %s", self.name, e)
             s.set_exception(e)
         return s
 
@@ -751,8 +769,6 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
 
     def read(self) -> dict[str, Reading[Any]]:
         """Read data from the detector."""
-        timestamp: float
-        data: npt.NDArray[Any]
         queue_item = self._queue.get()
         if len(queue_item) == 2:
             data, timestamp = queue_item
@@ -770,7 +786,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         Parameters
         ----------
         value : dict[str, Any]
-            - capacity: int — max frames to store; 0 = unlimited.
+            Accepted keys: ``capacity`` (int, default 0 = unlimited).
         """
         s = Status()
         try:
@@ -779,13 +795,12 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
                     f"No storage backend configured for device '{self.name}'."
                 )
             height, width = self.sensor_shape
-            capacity = value.get("capacity", 0)
             self.storage.update_source(
                 name=self.name,
                 dtype=np.dtype("uint16"),
                 shape=(height, width),
             )
-            self._sink = self.storage.prepare(self.name, capacity)
+            self._sink = self.storage.prepare(self.name, value.get("capacity", 0))
             self._complete_status = Status()
             self._assets_collected = False
             s.set_finished()
@@ -807,9 +822,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
         """Collect stream asset documents after a completed acquisition."""
-        if self.storage is None:
-            return
-        if not self._complete_status.done:
+        if self.storage is None or not self._complete_status.done:
             return
         if self._assets_collected:
             return
