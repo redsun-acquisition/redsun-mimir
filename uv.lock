@@ -2979,7 +2979,7 @@ wheels = [
 
 [[package]]
 name = "pymmcore-plus"
-version = "0.17.2"
+version = "0.17.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2995,9 +2995,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "useq-schema" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/5d/d22c403260f70a91976c09f1c8b75028711190cf98e65f094e00bc8d9212/pymmcore_plus-0.17.2.tar.gz", hash = "sha256:7a59102a690c95af76256b2b2454beaaf9ef5c695f719561661f5d4d69966ac2", size = 272330, upload-time = "2026-02-18T22:43:24.111Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/c8/262b1f3eed32f04f1796281f5e4629cc0b3d6e936499a25a79a898f26e4b/pymmcore_plus-0.17.3.tar.gz", hash = "sha256:c247a386d954fa9467ca7793ac274cf48cec4f86a0575fb1d867eb32df1a7348", size = 275218, upload-time = "2026-02-21T00:35:03.21Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/92/463044373463903ba0b6f4450ea92bc222febe063e4afd85f0409c211677/pymmcore_plus-0.17.2-py3-none-any.whl", hash = "sha256:4abe1604d6e6811f55616f043333204bed37f80b8468aaa108d75b7a5e58ff0b", size = 246967, upload-time = "2026-02-18T22:43:22.149Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/44/b7d016601099e6b2bd5bb7c910f0e7fb290e172386afdfb798932bb72f8d/pymmcore_plus-0.17.3-py3-none-any.whl", hash = "sha256:c6d79d03957a68c43bc2124183d2ba8e2bb4c2bf30c7022652404e7f3967df77", size = 249016, upload-time = "2026-02-21T00:35:01.203Z" },
 ]
 
 [[package]]
@@ -3428,7 +3428,6 @@ dependencies = [
     { name = "napari" },
     { name = "redsun" },
     { name = "sunflare" },
-    { name = "superqt" },
 ]
 
 [package.optional-dependencies]
@@ -3488,7 +3487,6 @@ requires-dist = [
     { name = "sunflare", specifier = ">=0.10.1" },
     { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
     { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.10.1" },
-    { name = "superqt", specifier = ">=0.7.4" },
 ]
 provides-extras = ["microscope", "pyqt", "pyside", "sim", "uc2"]
 

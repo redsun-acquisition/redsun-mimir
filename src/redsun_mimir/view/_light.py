@@ -134,15 +134,15 @@ class LightView(QtView, Loggable):
         configuration: dict[str, Reading[Any]],
         description: dict[str, Descriptor],
     ) -> None:
-        r"""Build the UI from configuration readings and descriptors.
+        """Build the UI from configuration readings and descriptors.
 
         Parameters
         ----------
         configuration : ``dict[str, Reading[Any]]``
-            Flat mapping of canonical ``prefix:name\property`` keys to readings,
+            Flat mapping of canonical ``name-property`` keys to readings,
             merging all light devices.
         description : ``dict[str, Descriptor]``
-            Flat mapping of canonical ``prefix:name\property`` keys to
+            Flat mapping of canonical ``name-property`` keys to
             descriptors, merging all light devices.
         """
         self._configuration = configuration
@@ -193,17 +193,25 @@ class LightView(QtView, Loggable):
                         "Intensity range must be either all integers or all floats."
                     )
                 self._sliders[_slider_power_key(device_label)] = slider
-                self._sliders[_slider_power_key(device_label)].setRange(*intensity_range)
-                self._sliders[_slider_power_key(device_label)].setSingleStep(int(step_size))
+                self._sliders[_slider_power_key(device_label)].setRange(
+                    *intensity_range
+                )
+                self._sliders[_slider_power_key(device_label)].setSingleStep(
+                    int(step_size)
+                )
                 self._sliders[_slider_power_key(device_label)].valueChanged.connect(
                     lambda value, lbl=device_label: self._on_slider_changed(value, lbl)
                 )
                 self._labels[_label_egu_key(device_label)] = QtWidgets.QLabel(egu)
                 layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0)
-                layout.addWidget(self._sliders[_slider_power_key(device_label)], 0, 1, 1, 3)
+                layout.addWidget(
+                    self._sliders[_slider_power_key(device_label)], 0, 1, 1, 3
+                )
                 layout.addWidget(self._labels[_label_egu_key(device_label)], 0, 4)
             else:
-                layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0, 1, 4)
+                layout.addWidget(
+                    self._buttons[_button_on_key(device_label)], 0, 0, 1, 4
+                )
 
             self._groups[_group_key(device_label)].setLayout(layout)
             self.main_layout.addWidget(self._groups[_group_key(device_label)])
