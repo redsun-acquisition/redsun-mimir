@@ -72,16 +72,14 @@ class ImageView(QtView, Loggable):
         # bypass Window entirely we call it explicitly here.
         get_qapp()
 
-        self.viewer_model: ViewerModel = ViewerModel(
-            title="Image viewer", ndisplay=2, order=(), axis_labels=()
+        self.viewer_model = ViewerModel(
+            title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
 
         # QtViewer is a QSplitter containing the canvas and the dims bar.
         # It does not carry any main-window chrome (no menu bar, status bar,
         # activity dialog, etc.), making it safe to embed as a child widget.
-        self._qt_viewer: QtViewer = QtViewer(
-            self.viewer_model, show_welcome_screen=False
-        )
+        self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
         # Access the sub-panels via QtViewer's lazy properties so they are
         # initialised and correctly wired to the viewer model before we
