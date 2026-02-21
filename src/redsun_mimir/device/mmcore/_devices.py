@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from sunflare.storage import StorageProxy
 
 
 class PrepareKwargs(TypedDict):
@@ -441,10 +442,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
-            if self.storage is None:
-                s.set_exception(RuntimeError("Storage backend is not configured."))
-                return s
-            self.storage.kickoff()
+            cast("StorageProxy", self.storage).kickoff()
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -573,10 +571,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        if self.storage is None:
-            return
-
-        frames_written = self.storage.get_indices_written(self.name)
+        frames_written = cast("StorageProxy", self.storage).get_indices_written(
+            self.name
+        )
         if frames_written == 0:
             return
 
@@ -590,13 +587,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
+        yield from cast("StorageProxy", self.storage).collect_stream_docs(
+            self.name, frames_to_report
+        )
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        if self.storage is None:
-            return 0
-        return self.storage.get_indices_written(self.name)
+        return cast("StorageProxy", self.storage).get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.
