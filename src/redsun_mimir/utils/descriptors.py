@@ -55,7 +55,7 @@ def make_key(name: str, property_name: str) -> str:
     str
         Key in the form ``{name}\{property_name}``.
     """
-    return f"{name}\\{property_name}"
+    return f"{name}-{property_name}"
 
 
 def parse_key(key: str) -> tuple[str, str]:
@@ -77,12 +77,12 @@ def parse_key(key: str) -> tuple[str, str]:
         If the key does not conform to the expected format.
     """
     try:
-        name, property_name = key.split("\\", 1)
+        name, property_name = key.split("-", 1)
         return name, property_name
     except ValueError:
         raise ValueError(
             f"Key {key!r} does not conform to the expected "
-            f"'{{name}}\\\\{{property}}' format."
+            f"'{{name}}-{{property}}' format."
         )
 
 
@@ -154,14 +154,14 @@ def make_descriptor(
     shape : list[int | None] | None
         Array dimensions (required for ``"array"``).
     readonly : bool
-        When ``True``, the ``source`` field is suffixed with ``"\\readonly"``.
+        When ``True``, the ``source`` field is suffixed with ``":readonly"``.
 
     Returns
     -------
     Descriptor
         The constructed descriptor dictionary.
     """
-    source_field = f"{source}\\readonly" if readonly else source
+    source_field = f"{source}:readonly" if readonly else source
     d: Descriptor = {"source": source_field, "dtype": dtype, "shape": []}
     if units is not None:
         d["units"] = units

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import component
+from redsun.containers import device, presenter, view
 from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "motor_configuration.yaml"
@@ -21,9 +21,9 @@ def run_youseetoo_motor_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorUC2App(QtAppContainer, config=_CONFIG):
-        serial = component(MimirSerialDevice, layer="device", from_config="serial")
-        motor = component(MimirMotorDevice, layer="device", from_config="motor")
-        ctrl = component(MotorPresenter, layer="presenter", from_config="ctrl")
-        widget = component(MotorView, layer="view", from_config="widget")
+        serial = device(MimirSerialDevice, from_config="serial")
+        motor = device(MimirMotorDevice, from_config="motor")
+        ctrl = presenter(MotorPresenter, from_config="ctrl")
+        widget = view(MotorView, from_config="widget")
 
     MotorUC2App().run()

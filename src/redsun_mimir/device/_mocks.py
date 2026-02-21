@@ -75,6 +75,11 @@ class MockLightDevice(Device, LightProtocol, Loggable):
             )
         if value[0] > value[1]:
             raise AttributeError(f"Min value is greater than max value: {value}")
+        if not self.binary and value[0] == value[1]:
+            raise AttributeError(
+                f"Non-binary device must have a non-degenerate intensity range "
+                f"(min != max), got: {value}"
+            )
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -257,8 +262,8 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         - ``{ax}_step_size``: step size for a specific axis (e.g. ``"X_step_size"``).
 
         i.e. ``set(10)`` will set the motor position to 10,
-        ``set("Y", propr="MOCK:stage\\axis")`` will update the axis to "Y",
-        ``set(0.5, propr="MOCK:stage\\X_step_size")`` updates the X step size.
+        ``set("Y", propr="MOCK:stage-axis")`` will update the axis to "Y",
+        ``set(0.5, propr="MOCK:stage-X_step_size")`` updates the X step size.
 
         Parameters
         ----------
@@ -281,7 +286,7 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
 
         raw = kwargs.get("propr", None) or kwargs.get("prop", None)
         if raw is not None:
-            # Accept either a canonical key ("prefix:name\\property") or a bare name
+            # Accept either a canonical key ("prefix:name-property") or a bare name
             try:
                 _, propr = parse_key(str(raw))
             except ValueError:

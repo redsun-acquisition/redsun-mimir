@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import TYPE_CHECKING
 
 import pytest
 from qtpy.QtWidgets import QApplication
-from sunflare.virtual import VirtualBus
+from sunflare.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 
@@ -20,14 +21,16 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="session")
 def qapp() -> Generator[QCoreApplication, None, None]:
     """Session-scoped QApplication instance."""
+    if sys.platform == "linux" and not os.environ.get("DISPLAY"):
+        pytest.skip("requires a display (Qt) on Linux")
     app = QApplication.instance() or QApplication(sys.argv)
     yield app
 
 
 @pytest.fixture
-def virtual_bus() -> VirtualBus:
-    """Fresh VirtualBus for each test."""
-    return VirtualBus()
+def virtual_container() -> VirtualContainer:
+    """Fresh VirtualContainer for each test."""
+    return VirtualContainer()
 
 
 @pytest.fixture

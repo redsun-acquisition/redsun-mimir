@@ -1,4 +1,4 @@
-schema: 1.0
+schema_version: 1.0
 session: redsun-mimir
 frontend: pyqt
 
@@ -23,8 +23,8 @@ presenters:
   acq_ctrl:
     timeout: 5.0
     callbacks:
-      - DetectorPresenter
-      - MedianPresenter
+      - det_ctrl
+      - median_ctrl
 
 views:
   acq_widget: {}

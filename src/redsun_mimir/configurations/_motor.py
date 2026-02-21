@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import component
+from redsun.containers import device, presenter, view
 from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "motor_configuration.yaml"
@@ -21,8 +21,8 @@ def run_stage_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorApp(QtAppContainer, config=_CONFIG):
-        motor = component(MockMotorDevice, layer="device", from_config="motor")
-        ctrl = component(MotorPresenter, layer="presenter", from_config="ctrl")
-        widget = component(MotorView, layer="view", from_config="widget")
+        motor = device(MockMotorDevice, from_config="motor")
+        ctrl = presenter(MotorPresenter, from_config="ctrl")
+        widget = view(MotorView, from_config="widget")
 
     MotorApp().run()

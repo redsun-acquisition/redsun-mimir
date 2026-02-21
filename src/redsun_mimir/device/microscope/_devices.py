@@ -131,7 +131,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
             ),
         }
         for ax in self.axis:
-            key = make_key(self.name, rf"step_size\{ax}")
+            key = make_key(self.name, f"step_size-{ax}")
             if self.limits is not None and ax in self.limits:
                 low, high = self.limits[ax]
                 descriptors[key] = make_descriptor(
@@ -148,7 +148,7 @@ class SimulatedStageDevice(Device, MotorProtocol, SimulatedStage, Loggable):  # 
             make_key(self.name, "axis"): make_reading(self.axis, timestamp),
         }
         for ax, step in self.step_sizes.items():
-            config[make_key(self.name, rf"step_size\{ax}")] = make_reading(
+            config[make_key(self.name, f"step_size-{ax}")] = make_reading(
                 step, timestamp
             )
         return config

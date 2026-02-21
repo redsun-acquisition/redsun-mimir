@@ -2,26 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import numpy as np
 import pytest
-from dependency_injector import providers
-from dependency_injector.containers import DynamicContainer
-from sunflare.virtual import VirtualBus
+from sunflare.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.presenter._light import LightPresenter
 from redsun_mimir.presenter._median import MedianPresenter
 from redsun_mimir.presenter._motor import MotorPresenter
-
-
-def _make_di_container(**objects: Any) -> DynamicContainer:
-    """Build a minimal DynamicContainer seeded with Object providers."""
-    container = DynamicContainer()
-    for name, value in objects.items():
-        setattr(container, name, providers.Object(value))
-    return container
 
 
 class TestMotorPresenter:
@@ -33,34 +26,41 @@ class TestMotorPresenter:
 
     @pytest.fixture
     def controller(
-        self, devices: dict[str, MockMotorDevice], virtual_bus: VirtualBus
-    ) -> MotorPresenter:
-        ctrl = MotorPresenter(devices, virtual_bus)
-        return ctrl
+        self, devices: dict[str, MockMotorDevice], virtual_container: VirtualContainer
+    ) -> Generator[MotorPresenter, None, None]:
+        ctrl = MotorPresenter("motor_presenter", devices)
+        yield ctrl
+        ctrl.shutdown()
 
     def test_instantiation(self, controller: MotorPresenter) -> None:
         """Controller initialises and identifies motor devices."""
         assert "stage" in controller._motors
 
     def test_register_providers(
-        self, controller: MotorPresenter, virtual_bus: VirtualBus
+        self, controller: MotorPresenter, virtual_container: VirtualContainer
     ) -> None:
         """register_providers() populates motor_configuration on the container."""
-        container = _make_di_container()
-        controller.register_providers(container)
-        assert hasattr(container, "motor_configuration")
-        cfg = container.motor_configuration()
+        controller.register_providers(virtual_container)
+        assert hasattr(virtual_container, "motor_configuration")
+        cfg = virtual_container.motor_configuration()
         assert any("stage" in k for k in cfg)
 
     def test_move_updates_position(
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """move() enqueues and executes a position update."""
+        import threading
+
+        done = threading.Event()
         received: list[tuple[str, str, float]] = []
-        controller.sigNewPosition.connect(lambda m, a, p: received.append((m, a, p)))
+
+        def on_position(m: str, a: str, p: float) -> None:
+            received.append((m, a, p))
+            done.set()
+
+        controller.sigNewPosition.connect(on_position)
         controller.move("stage", "X", 10.0)
-        # Drain the daemon queue
-        controller._queue.join()
+        assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert len(received) == 1
         motor_name, axis, pos = received[0]
         assert motor_name == "stage"
@@ -72,8 +72,12 @@ class TestMotorPresenter:
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """move() accepts the bare device name."""
+        import threading
+
+        done = threading.Event()
+        controller.sigNewPosition.connect(lambda m, a, p: done.set())
         controller.move(mock_motor.name, "X", 5.0)
-        controller._queue.join()
+        assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
 
     def test_configure_step_size(
@@ -82,7 +86,7 @@ class TestMotorPresenter:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        step_key = "stage\\X_step_size"
+        step_key = "stage-X_step_size"
         result = controller.configure("stage", {step_key: 0.5})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
@@ -92,21 +96,16 @@ class TestMotorPresenter:
         self, controller: MotorPresenter, mock_motor: MockMotorDevice
     ) -> None:
         """configure() accepts the bare device name."""
-        step_key = f"{mock_motor.name}\\X_step_size"
+        step_key = f"{mock_motor.name}-X_step_size"
         result = controller.configure(mock_motor.name, {step_key: 2.0})
         assert result.get(step_key) is True
         assert mock_motor.step_sizes["X"] == pytest.approx(2.0)
 
     def test_shutdown_stops_daemon(self, controller: MotorPresenter) -> None:
         """shutdown() terminates the background thread gracefully."""
-        controller.shutdown()
-        controller._daemon.join(timeout=2.0)
-        assert not controller._daemon.is_alive()
-
-
-# ---------------------------------------------------------------------------
-# LightPresenter
-# ---------------------------------------------------------------------------
+        # shutdown() is called by the fixture teardown; just verify the
+        # daemon is alive before that happens.
+        assert controller._daemon.is_alive()
 
 
 class TestLightPresenter:
@@ -120,9 +119,9 @@ class TestLightPresenter:
 
     @pytest.fixture
     def controller(
-        self, devices: dict[str, MockLightDevice], virtual_bus: VirtualBus
-    ) -> LightPresenter:
-        return LightPresenter(devices, virtual_bus)
+        self, devices: dict[str, MockLightDevice], virtual_container: VirtualContainer
+    ) -> Generator[LightPresenter, None, None]:
+        yield LightPresenter("light_presenter", devices)
 
     def test_instantiation(self, controller: LightPresenter) -> None:
         """Controller identifies and stores light devices."""
@@ -130,13 +129,12 @@ class TestLightPresenter:
         assert "laser" in controller._lights
 
     def test_register_providers(
-        self, controller: LightPresenter, virtual_bus: VirtualBus
+        self, controller: LightPresenter, virtual_container: VirtualContainer
     ) -> None:
         """register_providers() populates light_configuration on the container."""
-        container = _make_di_container()
-        controller.register_providers(container)
-        assert hasattr(container, "light_configuration")
-        cfg = container.light_configuration()
+        controller.register_providers(virtual_container)
+        assert hasattr(virtual_container, "light_configuration")
+        cfg = virtual_container.light_configuration()
         assert any("led" in k for k in cfg)
 
     def test_trigger_toggles_led(
@@ -172,26 +170,23 @@ class TestLightPresenter:
         assert mock_laser.intensity == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
-        self, mock_motor: MockMotorDevice, virtual_bus: VirtualBus
+        self, mock_motor: MockMotorDevice, virtual_container: VirtualContainer
     ) -> None:
         """MotorDevice is not included in _lights even if passed in devices."""
         devices: dict[str, Any] = {"motor": mock_motor}
-        ctrl = LightPresenter(devices, virtual_bus)
+        ctrl = LightPresenter("light_presenter", devices)
         assert "motor" not in ctrl._lights
-
-
-# ---------------------------------------------------------------------------
-# MedianPresenter
-# ---------------------------------------------------------------------------
 
 
 class TestMedianPresenter:
     """Tests for MedianPresenter."""
 
     @pytest.fixture
-    def presenter(self, virtual_bus: VirtualBus) -> MedianPresenter:
-        return MedianPresenter(
-            {}, virtual_bus, streams=["square_scan"], hints=["buffer"]
+    def presenter(
+        self, virtual_container: VirtualContainer
+    ) -> Generator[MedianPresenter, None, None]:
+        yield MedianPresenter(
+            "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
         )
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -246,7 +241,7 @@ class TestMedianPresenter:
         presenter.uid_to_stream[desc_uid] = "square_scan"
 
         frame = np.ones((4, 4))
-        evt = self._make_event(desc_uid, {"cam\\buffer": frame})
+        evt = self._make_event(desc_uid, {"cam-buffer": frame})
 
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
@@ -270,14 +265,14 @@ class TestMedianPresenter:
         # Stack two identical frames so median == the frame itself
         frame = np.ones((4, 4)) * 2.0
         for _ in range(2):
-            presenter.event(self._make_event(scan_uid, {"cam\\buffer": frame}))  # type: ignore[arg-type]
+            presenter.event(self._make_event(scan_uid, {"cam-buffer": frame}))  # type: ignore[arg-type]
 
         # Now send a live event — median should be applied
         emitted: list[Any] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
 
         live_frame = np.ones((4, 4)) * 4.0
-        presenter.event(self._make_event(live_uid, {"cam\\buffer": live_frame}))  # type: ignore[arg-type]
+        presenter.event(self._make_event(live_uid, {"cam-buffer": live_frame}))  # type: ignore[arg-type]
 
         assert len(emitted) == 1
         result = emitted[0]

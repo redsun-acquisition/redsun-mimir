@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from event_model.documents import Event, EventDescriptor, RunStart
     from sunflare.device import Device
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):
@@ -30,10 +30,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances. Unused by this presenter.
-    virtual_bus :
-        Reference to the virtual bus.
     streams: list[str] | None, keyword-only, optional
         List of stream names to look for when stacking data for median calculation.
         If `None`, no computation will be performed. Defaults to `None`.
@@ -58,13 +58,13 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         streams: list[str] | None = None,
         hints: list[str] | None = None,
     ) -> None:
-        super().__init__(devices, virtual_bus)
+        super().__init__(name, devices)
         self.expected_streams = frozenset(streams or [])
         self.hints = frozenset(hints or [])
         self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
@@ -73,8 +73,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.register_callbacks(self)
         msg = "Initialized"
         if len(self.expected_streams) > 0 and len(self.hints) > 0:
             msg = (
@@ -85,6 +83,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         else:
             msg = msg + ": no streams or hints configured, presenter will be inactive"
             self.logger.warning(msg)
+
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Register this presenter as a callback in the virtual container."""
+        container.register_callbacks(self)
 
     def start(self, doc: RunStart) -> RunStart | None:
         """Process a new start document.
@@ -159,7 +161,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def _prepare_scan_data(self, doc: Event) -> Event:
         for key, value in doc["data"].items():
-            parts = key.split("\\")
+            parts = key.split("-")
             if len(parts) < 2:
                 continue
             obj_name, hint = parts[0], parts[1]
@@ -172,7 +174,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     def _apply_median(self, doc: Event) -> Event:
         if self.median_stacks:
             for key, value in doc["data"].items():
-                parts = key.split("\\")
+                parts = key.split("-")
                 if len(parts) < 2:
                     continue
                 obj_name, hint = parts[0], parts[1]

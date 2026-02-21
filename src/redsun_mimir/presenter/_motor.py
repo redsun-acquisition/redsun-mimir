@@ -1,25 +1,27 @@
 from __future__ import annotations
 
-from queue import Queue
+from queue import SimpleQueue
 from threading import Thread
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
 from sunflare.log import Loggable
-from sunflare.virtual import HasShutdown, IsProvider, Signal, VirtualAware, VirtualBus
+from sunflare.presenter import Presenter
+from sunflare.virtual import Signal
 
 from ..protocols import MotorProtocol
+from ..utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
     from sunflare.device import Device
+    from sunflare.virtual import VirtualContainer
 
 
-class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
+class MotorPresenter(Presenter, Loggable):
     """Presenter for motor stage control.
 
     Allows manual stage positioning by forwarding movement requests from
@@ -29,10 +31,10 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    virtual_bus :
-        Virtual bus for the session.
     **kwargs :
         Additional keyword arguments.
 
@@ -49,7 +51,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
             `thread="main"` to ensure the slot runs on the Qt main thread:
 
             ```python
-            virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
+            container.signals["MotorPresenter"]["sigNewPosition"].connect(
                 self.on_new_position, thread="main"
             )
             ```
@@ -65,15 +67,14 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         **kwargs: Any,
     ) -> None:
-        self._timeout: float | None = kwargs.get("timeout", None)
-        self.virtual_bus = virtual_bus
-        self.devices = devices
-        self._queue: Queue[tuple[str, str, float] | None] = Queue()
+        super().__init__(name, devices)
+        self._timeout: float | None = kwargs.get("timeout", 2.0)
+        self._queue: SimpleQueue[tuple[str, str, float] | None] = SimpleQueue()
 
         self._motors = {
             name: model
@@ -84,13 +85,12 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
-        self.virtual_bus.register_signals(self)
         self.logger.info("Initialized")
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
         r"""Get the current configuration readings of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
@@ -106,7 +106,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
     def models_description(self) -> dict[str, Descriptor]:
         r"""Get the configuration descriptors of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name\\property``
+        Returns a flat dict keyed by the canonical ``prefix:name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
@@ -125,6 +125,40 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
         Sends a new position to the daemon queue.
         """
         self._queue.put((motor, axis, position))
+
+    def _apply_config(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
+        """Apply configuration to a motor without emitting signals.
+
+        Used internally by :meth:`_do_move` to switch axis before a move
+        without triggering a UI update that would deadlock the daemon thread.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor name.
+        config : ``dict[str, Any]``
+            Mapping of configuration parameters to new values.
+
+        Returns
+        -------
+        dict[str, bool]
+            Mapping of configuration parameter keys to success flags.
+        """
+        success_map: dict[str, bool] = {}
+        for key, value in config.items():
+            self.logger.debug(f"Configuring {key} of {motor} to {value}")
+            s = self._motors[motor].set(value, propr=key)
+            try:
+                s.wait(self._timeout)
+            except Exception as e:
+                self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
+            finally:
+                if not s.success:
+                    self.logger.error(
+                        f"Failed to configure {key} of {motor}: {s.exception()}"
+                    )
+                success_map[key] = s.success
+        return success_map
 
     def configure(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
         """Configure a motor.
@@ -148,72 +182,40 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
             Mapping of configuration parameters to success status.
 
         """
-        success_map: dict[str, bool] = {}
-        bare = self._bare_name(motor)
-        for key, value in config.items():
-            self.logger.debug(f"Configuring {key} of {motor} to {value}")
-            s = self._motors[bare].set(value, propr=key)
-            try:
-                s.wait(self._timeout)
-            except Exception as e:
-                self.logger.exception(f"Failed to configure {key} of {motor}: {e}")
-            finally:
-                if not s.success:
-                    self.logger.error(
-                        f"Failed to configure {key} of {motor}: {s.exception()}"
-                    )
-                success_map[key] = s.success
+        success_map = self._apply_config(motor, config)
         self.sigNewConfiguration.emit(motor, success_map)
         return success_map
-
-    def _bare_name(self, device_label: str) -> str:
-        """Resolve a device label to the bare device name used as dict key.
-
-        Since keys are now keyed by bare device name only, this method
-        returns the label unchanged. Kept for compatibility with any
-        callers that may still pass a name.
-
-        Parameters
-        ----------
-        device_label :
-            Device name.
-        """
-        return device_label
 
     def shutdown(self) -> None:
         """Shutdown the presenter.
 
-        Close the daemon thread and wait
-        for it to finish its last task
+        Send the sentinel and wait for the daemon thread to exit.
         """
         self._queue.put(None)
-        self._queue.join()
+        self._daemon.join()
 
-    def register_providers(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""
         container.motor_configuration = providers.Object(self.models_configuration())
         container.motor_description = providers.Object(self.models_description())
+        container.register_signals(self)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["MotorView"]["sigMotorMove"].connect(self.move)
-        self.virtual_bus.signals["MotorView"]["sigConfigChanged"].connect(
-            self.configure
-        )
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect to the virtual container signals."""
+        sigs = find_signals(container, ["sigMotorMove", "sigConfigChanged"])
+        if "sigMotorMove" in sigs:
+            sigs["sigMotorMove"].connect(self.move)
+        if "sigConfigChanged" in sigs:
+            sigs["sigConfigChanged"].connect(self.configure)
 
     def _run_loop(self) -> None:
         while True:
-            # block until a task is available
             task = self._queue.get()
-            if task is not None:
-                motor, axis, position = task
-                self.logger.debug(f"Moving {motor} to {position} on {axis}")
-                self._do_move(self._motors[self._bare_name(motor)], axis, position)
-                self._queue.task_done()
-            else:
-                # ensure no pending task
-                self._queue.task_done()
+            if task is None:
                 break
+            motor, axis, position = task
+            self.logger.debug(f"Moving {motor} to {position} on {axis}")
+            self._do_move(self._motors[motor], axis, position)
 
     def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
         """Move a motor to a given position.
@@ -242,7 +244,7 @@ class MotorPresenter(Loggable, IsProvider, HasShutdown, VirtualAware):
                 f"Axis {axis!r} is not available for motor {motor.name!r}"
             )
             return
-        ret = self.configure(motor.name, {"axis": axis})
+        ret = self._apply_config(motor.name, {"axis": axis})
         if not ret:
             return
         s = motor.set(position)

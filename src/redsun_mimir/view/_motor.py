@@ -3,16 +3,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
-from redsun.config import ViewPositionTypes
+from sunflare.view import ViewPosition
 from sunflare.view.qt import QtView
 from sunflare.virtual import Signal
 
+from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from dependency_injector.containers import DynamicContainer
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 _T = TypeVar("_T")
 
@@ -39,7 +39,7 @@ def _get_prop(
     """
     for key, reading in readings.items():
         # canonical format: name\property  (backslash separator)
-        tail = key.rsplit("\\", 1)[-1]
+        tail = key.rsplit("-", 1)[-1]
         if tail == prop:
             return cast("_T", reading["value"])
     return default
@@ -73,15 +73,17 @@ class MotorView(QtView):
     sigMotorMove = Signal(str, str, float)
     sigConfigChanged = Signal(str, dict[str, Any])
 
-    position = ViewPositionTypes.CENTER
+    @property
+    def view_position(self) -> ViewPosition:
+        return ViewPosition.RIGHT
 
     def __init__(
         self,
-        virtual_bus: VirtualBus,
+        name: str,
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(virtual_bus, **kwargs)
+        super().__init__(name)
         # Flat canonical-keyed dicts for the full config
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}
@@ -101,18 +103,28 @@ class MotorView(QtView):
         vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
 
-    def inject_dependencies(self, container: DynamicContainer) -> None:
-        r"""Inject motor configuration from the DI container and build the UI.
+    def register_providers(self, container: VirtualContainer) -> None:
+        """Build the UI and register motor view signals in the virtual container."""
+        container.register_signals(self)
 
-        Retrieves configuration readings (current values) and descriptors
-        (metadata) registered by
-        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers].
-        Both are flat dicts keyed by the canonical ``name\\property``
-        scheme, merging all motor devices.
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect inbound signals from the motor presenter.
+
+        Retrieves signals registered by
+        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers]
+        and connects them to the appropriate view slots.
         """
         configuration: dict[str, Reading[Any]] = container.motor_configuration()
         description: dict[str, Descriptor] = container.motor_description()
         self.setup_ui(configuration, description)
+
+        sigs = find_signals(container, ["sigNewPosition", "sigNewConfiguration"])
+        if "sigNewPosition" in sigs:
+            sigs["sigNewPosition"].connect(self._update_position, thread="main")
+        if "sigNewConfiguration" in sigs:
+            sigs["sigNewConfiguration"].connect(
+                self._update_configuration, thread="main"
+            )
 
     def setup_ui(
         self,
@@ -195,13 +207,6 @@ class MotorView(QtView):
             self.main_layout.addWidget(self._groups[device_label])
 
         self.setLayout(self.main_layout)
-        self.virtual_bus.register_signals(self)
-
-    def connect_to_virtual(self) -> None:
-        """Register signals and connect to virtual bus."""
-        self.virtual_bus.signals["MotorPresenter"]["sigNewPosition"].connect(
-            self._update_position, thread="main"
-        )
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.
@@ -240,6 +245,28 @@ class MotorView(QtView):
         egu: str = _get_prop(dev_readings, "egu", "")
         self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
 
+    def _update_configuration(self, motor: str, success_map: dict[str, bool]) -> None:
+        """Reset line-edit styling after a configuration update.
+
+        Parameters
+        ----------
+        motor : ``str``
+            Motor device label (``name``).
+        success_map : ``dict[str, bool]``
+            Mapping of setting key to success flag as returned by
+            :meth:`MotorPresenter.configure`.
+        """
+        for key, success in success_map.items():
+            # key is e.g. "motor-step_size:X"; extract axis from suffix
+            if ":" in key:
+                axis = key.split(":")[-1]
+                edit_key = f"edit:{motor}:{axis}"
+                if edit_key in self._line_edits:
+                    color = "green" if success else "red"
+                    self._line_edits[edit_key].setStyleSheet(
+                        f"border: 2px solid {color};"
+                    )
+
     def _validate_and_notify(self, device_label: str, axis: str) -> None:
         r"""Validate the new step size value and notify the virtual bus.
 
@@ -269,18 +296,18 @@ class MotorView(QtView):
                 (
                     k
                     for k in self._configuration
-                    if k.startswith(device_label) and k.rsplit("\\", 1)[-1] == "axis"
+                    if k.startswith(device_label) and k.rsplit("-", 1)[-1] == "axis"
                 ),
-                f"{device_label}\\axis",
+                f"{device_label}-axis",
             )
             step_key = next(
                 (
                     k
                     for k in self._configuration
                     if k.startswith(device_label)
-                    and k.rsplit("\\", 1)[-1] == f"{axis}_step_size"
+                    and k.rsplit("-", 1)[-1] == f"{axis}_step_size"
                 ),
-                f"{device_label}\\{axis}_step_size",
+                f"{device_label}-{axis}_step_size",
             )
             self.sigConfigChanged.emit(
                 device_label,

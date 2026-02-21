@@ -35,8 +35,8 @@ Layout (two columns: *Setting* | *Value*)::
         …
 
 The ``source`` field of a :class:`~bluesky.protocols.Descriptor` is used as
-the group label.  When it carries the ``\\readonly`` suffix (e.g.
-``"settings\\readonly"``) the value cell is a greyed ``QLabel`` and cannot be
+the group label.  When it carries the ``:readonly`` suffix (e.g.
+``"settings:readonly"``) the value cell is a greyed ``QLabel`` and cannot be
 edited.
 
 The device-name root level is intentionally omitted — callers are expected to
@@ -87,7 +87,7 @@ def _make_value_widget(
     Parameters
     ----------
     key:
-        Canonical ``name\\property`` key (used when emitting changes).
+        Canonical ``name-property`` key (used when emitting changes).
     descriptor:
         Bluesky descriptor for this setting.
     initial_value:
@@ -243,14 +243,6 @@ def _update_widget_value(
         widget.blockSignals(False)
 
 
-# _OnChanged: (key: str, value: Any) -> None
-
-
-# ---------------------------------------------------------------------------
-# Public view widget
-# ---------------------------------------------------------------------------
-
-
 class DescriptorTreeView(QtWidgets.QTreeWidget):
     r"""Two-column property tree for browsing and editing device settings.
 
@@ -276,7 +268,7 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
     ----------
     descriptors:
         Flat ``describe_configuration()`` dict keyed by
-        ``name\\property`` canonical keys.
+        ``name-property`` canonical keys.
     readings:
         Flat ``read_configuration()`` dict matching the same keys.
     parent:
@@ -299,14 +291,12 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
     ) -> None:
         super().__init__(parent)
 
-        # ---- bookkeeping ------------------------------------------------
         self._descriptors = descriptors
         self._readings: dict[str, Any] = {k: v["value"] for k, v in readings.items()}
         self._pending: dict[str, Any] = {}  # key -> old value
         # key -> the widget embedded in the Value column
         self._widgets: dict[str, QtWidgets.QWidget] = {}
 
-        # ---- tree appearance --------------------------------------------
         self.setColumnCount(2)
         self.setHeaderLabels(["Setting", "Value"])
         self.setHeaderHidden(True)
@@ -325,12 +315,7 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-        # ---- populate ---------------------------------------------------
         self._build()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def update_reading(self, key: str, reading: Reading[Any]) -> None:
         r"""Push a live value update for *key* into the corresponding widget.
@@ -338,7 +323,7 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         Parameters
         ----------
         key:
-            Canonical ``name\\property`` key.
+            Canonical ``name-property`` key.
         reading:
             New reading dict; only ``reading["value"]`` is used.
         """
@@ -376,10 +361,6 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         """Return the set of all descriptor keys in this view."""
         return set(self._descriptors.keys())
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     def _on_changed(self, key: str, value: Any) -> None:
         """Slot wired to every editor widget's change signal."""
         self._pending[key] = self._readings.get(key)
@@ -390,7 +371,7 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         r"""Populate the tree from ``self._descriptors`` and ``self._readings``.
 
         Groups descriptors by ``source`` (stripping the optional
-        ``\\readonly`` suffix), then creates one bold top-level
+        ``:readonly`` suffix), then creates one bold top-level
         ``QTreeWidgetItem`` per group and one child item per setting.
         """
         self.clear()
@@ -400,10 +381,10 @@ class DescriptorTreeView(QtWidgets.QTreeWidget):
         groups: dict[str, list[tuple[str, str, Descriptor, bool]]] = {}
         for full_key, desc in self._descriptors.items():
             # strip the device prefix  (name\\property → prop)
-            prop = full_key.split("\\", 1)[-1] if "\\" in full_key else full_key
+            prop = full_key.split("-", 1)[-1] if "-" in full_key else full_key
 
             source_raw: str = desc.get("source", "unknown")
-            parts = source_raw.split("\\", 1)
+            parts = source_raw.split(":", 1)
             source = parts[0]
             readonly = len(parts) > 1 and parts[1] == "readonly"
 

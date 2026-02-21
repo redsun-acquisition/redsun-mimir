@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import component
+from redsun.containers import device, presenter, view
 from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "light_configuration.yaml"
@@ -21,8 +21,9 @@ def run_light_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class LightApp(QtAppContainer, config=_CONFIG):
-        light = component(MockLightDevice, layer="device", from_config="light")
-        ctrl = component(LightPresenter, layer="presenter", from_config="ctrl")
-        widget = component(LightView, layer="view", from_config="widget")
+        led = device(MockLightDevice, from_config="led")
+        laser = device(MockLightDevice, from_config="laser")
+        ctrl = presenter(LightPresenter, from_config="ctrl")
+        widget = view(LightView, from_config="widget")
 
     LightApp().run()

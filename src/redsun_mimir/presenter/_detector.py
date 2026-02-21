@@ -8,34 +8,34 @@ from bluesky.utils import maybe_await
 from dependency_injector import providers
 from event_model import DocumentRouter
 from sunflare.log import Loggable
-from sunflare.virtual import IsProvider, Signal, VirtualAware
+from sunflare.presenter import Presenter
+from sunflare.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_models, parse_key
+from redsun_mimir.utils import filter_devices, find_signals, parse_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Reading
-    from dependency_injector.containers import DynamicContainer
     from event_model import Event
     from sunflare.device import Device
-    from sunflare.virtual import VirtualBus
+    from sunflare.virtual import VirtualContainer
 
 
-class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
+class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
     Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
     event documents emitted by the run engine and forward new image data
-    to [`DetectorView`][redsun_mimir.view.DetectorView] via the virtual bus.
+    to [`DetectorView`][redsun_mimir.view.DetectorView] via the virtual container.
 
     Parameters
     ----------
+    name :
+        Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    virtual_bus :
-        Reference to the virtual bus.
     timeout: float | None, keyword-only, optional
         Status object wait time in seconds
         for configuration confirmation.
@@ -69,17 +69,16 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
 
     def __init__(
         self,
+        name: str,
         devices: Mapping[str, Device],
-        virtual_bus: VirtualBus,
         /,
         timeout: float | None = 1.0,
         hints: list[str] | None = ["buffer", "roi"],
     ) -> None:
-        super().__init__()
+        super().__init__(name, devices)
         self.timeout = timeout or 1.0
         self.hints = hints or ["buffer", "roi"]
-        self.virtual_bus = virtual_bus
-        self.detectors = filter_models(devices, DetectorProtocol)
+        self.detectors = filter_devices(devices, DetectorProtocol)
         # data stream name,
         # extracted from the incoming
         # descriptor document
@@ -87,19 +86,18 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
         self.current_stream = ""
         self.packet: dict[str, dict[str, Any]] = {}
 
-        self.virtual_bus.register_signals(self)
-        self.virtual_bus.register_callbacks(self)
-
-    def register_providers(self, container: DynamicContainer) -> None:
+    def register_providers(self, container: VirtualContainer) -> None:
         r"""Register detector info as providers in the DI container.
 
-        Injects two flat dicts keyed by the canonical ``prefix:name\\property``
+        Injects two flat dicts keyed by the canonical ``prefix:name-property``
         scheme so the view can populate its tree directly at construction:
 
         - ``detector_descriptors``: merged ``describe_configuration()`` output
           from all detectors.
         - ``detector_readings``: merged ``read_configuration()`` output from
           all detectors.
+
+        Also registers detector signals in the container.
         """
         descriptors: dict[str, Descriptor] = {}
         readings: dict[str, Reading[Any]] = {}
@@ -111,12 +109,14 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
 
         container.detector_descriptors = providers.Object(descriptors)
         container.detector_readings = providers.Object(readings)
+        container.register_signals(self)
+        container.register_callbacks(self)
 
-    def connect_to_virtual(self) -> None:
-        """Connect to the virtual bus signals."""
-        self.virtual_bus.signals["DetectorView"]["sigPropertyChanged"].connect(
-            self.configure
-        )
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Connect to the virtual container signals."""
+        sigs = find_signals(container, ["sigPropertyChanged"])
+        if "sigPropertyChanged" in sigs:
+            sigs["sigPropertyChanged"].connect(self.configure)
 
     def configure(self, detector: str, config: dict[str, Any]) -> None:
         r"""Configure a detector with confirmation feedback.
@@ -134,7 +134,7 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             Device label (``prefix:name``) as emitted by
             :class:`~redsun_mimir.view.DetectorView`.
         config : ``dict[str, Any]``
-            Mapping of canonical ``prefix:name\\property`` keys to new values.
+            Mapping of canonical ``prefix:name-property`` keys to new values.
 
         """
         # device_label is "name"; self.detectors is keyed by bare name
@@ -179,7 +179,7 @@ class DetectorPresenter(DocumentRouter, IsProvider, VirtualAware, Loggable):
             The event document.
         """
         for key, value in doc["data"].items():
-            parts = key.split("\\")
+            parts = key.split("-")
             if len(parts) < 2:
                 continue
             obj_name, hint = parts[0], parts[1]
