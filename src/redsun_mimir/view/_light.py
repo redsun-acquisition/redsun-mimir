@@ -17,6 +17,28 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 
+# Key format templates for widget dictionaries
+_KEY_GROUP = "{label}"
+_KEY_BUTTON_ON = "on:{label}"
+_KEY_SLIDER_POWER = "power:{label}"
+_KEY_LABEL_EGU = "egu:{label}"
+
+
+def _group_key(label: str) -> str:
+    return _KEY_GROUP.format(label=label)
+
+
+def _button_on_key(label: str) -> str:
+    return _KEY_BUTTON_ON.format(label=label)
+
+
+def _slider_power_key(label: str) -> str:
+    return _KEY_SLIDER_POWER.format(label=label)
+
+
+def _label_egu_key(label: str) -> str:
+    return _KEY_LABEL_EGU.format(label=label)
+
 
 def _get_prop(
     readings: dict[str, Reading[Any]],
@@ -144,60 +166,57 @@ class LightView(QtView, Loggable):
             )
             step_size: int | float = _get_prop(readings, "step_size", 1)
 
-            self._groups[device_label] = QtWidgets.QGroupBox(
+            self._groups[_group_key(device_label)] = QtWidgets.QGroupBox(
                 f"{device_label} ({wavelength} nm)"
             )
-            self._groups[device_label].setAlignment(
+            self._groups[_group_key(device_label)].setAlignment(
                 QtCore.Qt.AlignmentFlag.AlignHCenter
                 | QtCore.Qt.AlignmentFlag.AlignRight
             )
 
             layout = QtWidgets.QGridLayout()
 
-            self._buttons[f"on:{device_label}"] = QtWidgets.QPushButton("ON")
-            self._buttons[f"on:{device_label}"].setCheckable(True)
-            self._buttons[f"on:{device_label}"].clicked.connect(
+            self._buttons[_button_on_key(device_label)] = QtWidgets.QPushButton("ON")
+            self._buttons[_button_on_key(device_label)].setCheckable(True)
+            self._buttons[_button_on_key(device_label)].clicked.connect(
                 lambda _, lbl=device_label: self._on_toggle_button_checked(lbl)
             )
 
             if not binary:
                 slider: QLabeledDoubleSlider | QLabeledSlider
                 if all(isinstance(i, int) for i in intensity_range):
-                    slider = QLabeledSlider()
+                    slider = QLabeledSlider(QtCore.Qt.Orientation.Horizontal)
                 elif all(isinstance(i, float) for i in intensity_range):
-                    slider = QLabeledDoubleSlider()
+                    slider = QLabeledDoubleSlider(QtCore.Qt.Orientation.Horizontal)
                 else:
                     raise TypeError(
                         "Intensity range must be either all integers or all floats."
                     )
-                self._sliders[f"power:{device_label}"] = slider
-                self._sliders[f"power:{device_label}"].setOrientation(
-                    QtCore.Qt.Orientation.Horizontal
-                )
-                self._sliders[f"power:{device_label}"].setRange(*intensity_range)
-                self._sliders[f"power:{device_label}"].setSingleStep(int(step_size))
-                self._sliders[f"power:{device_label}"].valueChanged.connect(
+                self._sliders[_slider_power_key(device_label)] = slider
+                self._sliders[_slider_power_key(device_label)].setRange(*intensity_range)
+                self._sliders[_slider_power_key(device_label)].setSingleStep(int(step_size))
+                self._sliders[_slider_power_key(device_label)].valueChanged.connect(
                     lambda value, lbl=device_label: self._on_slider_changed(value, lbl)
                 )
-                self._labels[f"egu:{device_label}"] = QtWidgets.QLabel(egu)
-                layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0)
-                layout.addWidget(self._sliders[f"power:{device_label}"], 0, 1, 1, 3)
-                layout.addWidget(self._labels[f"egu:{device_label}"], 0, 4)
+                self._labels[_label_egu_key(device_label)] = QtWidgets.QLabel(egu)
+                layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0)
+                layout.addWidget(self._sliders[_slider_power_key(device_label)], 0, 1, 1, 3)
+                layout.addWidget(self._labels[_label_egu_key(device_label)], 0, 4)
             else:
-                layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0, 1, 4)
+                layout.addWidget(self._buttons[_button_on_key(device_label)], 0, 0, 1, 4)
 
-            self._groups[device_label].setLayout(layout)
-            self.main_layout.addWidget(self._groups[device_label])
+            self._groups[_group_key(device_label)].setLayout(layout)
+            self.main_layout.addWidget(self._groups[_group_key(device_label)])
 
         self.setLayout(self.main_layout)
 
     def _on_toggle_button_checked(self, device_label: str) -> None:
         """Toggle the light source."""
         self.sigToggleLightRequest.emit(device_label)
-        if self._buttons[f"on:{device_label}"].isChecked():
-            self._buttons[f"on:{device_label}"].setText("OFF")
+        if self._buttons[_button_on_key(device_label)].isChecked():
+            self._buttons[_button_on_key(device_label)].setText("OFF")
         else:
-            self._buttons[f"on:{device_label}"].setText("ON")
+            self._buttons[_button_on_key(device_label)].setText("ON")
 
     def _on_slider_changed(self, value: int | float, device_label: str) -> None:
         """Change the intensity of the light source."""
