@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
@@ -64,6 +65,12 @@ class ImageView(QtView, Loggable):
         hints: list[str] | None = None,
     ) -> None:
         super().__init__(name)
+
+        # Ensure the QApplication exists and napari's theme search paths
+        # (theme_<name>:/) are registered via QDir.addSearchPath.
+        # Normally Window.__init__ triggers this via get_qapp(); since we
+        # bypass Window entirely we call it explicitly here.
+        get_qapp()
 
         self.viewer_model: ViewerModel = ViewerModel(
             title="Image viewer", ndisplay=2, order=(), axis_labels=()
