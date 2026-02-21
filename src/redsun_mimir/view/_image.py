@@ -3,10 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from napari._qt.containers.qt_layer_list import QtLayerList
-from napari._qt.layer_controls import QtLayerControlsContainer
 from napari._qt.qt_viewer import QtViewer
-from napari._qt.widgets.qt_viewer_buttons import QtLayerButtons, QtViewerButtons
 from napari.components import ViewerModel
 from qtpy import QtCore, QtWidgets
 from sunflare.log import Loggable
@@ -80,10 +77,10 @@ class ImageView(QtView, Loggable):
         # Access the sub-panels via QtViewer's lazy properties so they are
         # initialised and correctly wired to the viewer model before we
         # reparent them into our own layout.
-        controls: QtLayerControlsContainer = self._qt_viewer.controls
-        layer_buttons: QtLayerButtons = self._qt_viewer.layerButtons
-        layer_list: QtLayerList = self._qt_viewer.layers
-        viewer_buttons: QtViewerButtons = self._qt_viewer.viewerButtons
+        controls = self._qt_viewer.controls
+        layer_buttons = self._qt_viewer.layerButtons
+        layer_list = self._qt_viewer.layers
+        viewer_buttons = self._qt_viewer.viewerButtons
 
         # Left panel: layer controls on top, layer list + buttons below.
         left_panel = QtWidgets.QWidget()
