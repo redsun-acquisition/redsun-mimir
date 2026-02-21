@@ -7,12 +7,11 @@ import numpy as np
 from bluesky.protocols import Reading, Triggerable
 from sunflare.engine import Status
 from sunflare.log import Loggable
+from sunflare.storage import StorageDescriptor
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
-from redsun_mimir.storage import ZarrWriter
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import Iterator
 
     import numpy.typing as npt
@@ -34,9 +33,6 @@ def is_flat_descriptor(
 class PrepareKwargs(TypedDict):
     """Keyword arguments for the `prepare` method of the `MedianPseudoDevice`."""
 
-    store_path: Path
-    """Path where the median readings are to be stored."""
-
 
 class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     """A pseudo-model representing a median processor.
@@ -53,6 +49,8 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     target: str, optional
         The target key substring to look for in the detector readings.
     """
+
+    storage = StorageDescriptor()
 
     def __init__(
         self,
@@ -98,8 +96,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
 
         # initialize the cache with empty lists
         self._cache: list[npt.NDArray[np.generic]] = []
-
-        self._writer = ZarrWriter.get("zarr-writer")
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Return the configuration descriptor.
@@ -161,7 +157,8 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             )
             shape = median_value.shape
             dtype = median_value.dtype
-            self._writer.update_source(self.name, dtype, shape)
+            if self.storage is not None:
+                self.storage.update_source(self.name, dtype, shape)
             median_key = self._describe_target_key.replace(
                 self._describe_target_key, self._reading_key
             )
@@ -173,10 +170,9 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     def prepare(self, value: PrepareKwargs) -> Status:
         """Prepare the pseudo model for flight by writing the median readings to disk."""
         s = Status()
-        if self._valid_readings:
+        if self._valid_readings and self.storage is not None:
             self.logger.debug(f"Valid median for {self.name}, preparing for flight.")
-            store_path = value.get("store_path")
-            self._frame_sink = self._writer.prepare(self.name, store_path, capacity=1)
+            self._sink = self.storage.prepare(self.name, capacity=1)
         s.set_finished()
         return s
 
@@ -189,7 +185,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         """
         s = Status()
         if self._valid_readings:
-            self._frame_sink.send(self._median[self._reading_key]["value"])
+            self._sink.write(self._median[self._reading_key]["value"])
         s.set_finished()
         return s
 
@@ -201,15 +197,15 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         """
         s = Status()
         if self._valid_readings:
-            self._writer.complete(self.name)
+            self._sink.close()
         s.set_finished()
         return s
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
-        if not self._valid_readings:
+        if not self._valid_readings or self.storage is None:
             return
 
-        frames_written = self._writer.get_indices_written()
+        frames_written = self.storage.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -217,12 +213,12 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         frames_to_report = min(index, frames_written) if index else frames_written
 
         # Delegate to writer
-        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
+        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
-        if not self._valid_readings:
+        if not self._valid_readings or self.storage is None:
             return 0
-        return self._writer.get_indices_written(self.name)
+        return self.storage.get_indices_written(self.name)
 
     @property
     def name(self) -> str:

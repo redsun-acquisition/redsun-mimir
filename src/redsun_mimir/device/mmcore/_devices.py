@@ -10,10 +10,10 @@ from pymmcore_plus import CMMCorePlus as Core
 from sunflare.device import Device
 from sunflare.engine import Status
 from sunflare.log import Loggable
+from sunflare.storage import StorageDescriptor
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.storage import ZarrWriter
 from redsun_mimir.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -22,7 +22,6 @@ from redsun_mimir.utils.descriptors import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import Any, ClassVar, Iterator
 
     import numpy.typing as npt
@@ -34,9 +33,6 @@ class PrepareKwargs(TypedDict):
 
     capacity: int
     """The number of frames to store; if 0, unlimited."""
-
-    store_path: Path
-    """The path to store the acquired data."""
 
     write_forever: bool
     """When True, write data indefinitely until stopped. Overrides `capacity`."""
@@ -121,6 +117,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     initialized: ClassVar[bool] = False
 
+    storage = StorageDescriptor()
+
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -182,8 +180,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._staged = th.Event()
         self._current_exposure: float = 0.0
 
-        # Writer for storage
-        self._writer = ZarrWriter.get("zarr-writer")
         self._stream_descriptors: dict[str, Descriptor] = {}
 
         self._complete_status = Status()
@@ -359,8 +355,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             Keyword arguments for preparation, including:
             - capacity: int
                 The number of frames to store; if 0, unlimited.
-            - store_path: Path
-                The path to store the acquired data.
             - write_forever: bool
                 If True, write data indefinitely until stopped.
                 Overrides `capacity`.
@@ -369,9 +363,12 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._fly_permit.clear()
         self._fly_stop.clear()
         try:
+            if self.storage is None:
+                raise RuntimeError(
+                    f"No storage backend configured for device '{self.name}'."
+                )
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
             capacity = value.get("capacity", 0)
-            store_path = value.get("store_path")
             write_forever = value.get("write_forever")
 
             if write_forever:
@@ -379,12 +376,12 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 capacity = 0  # unlimited
 
             # Update source info for this camera
-            self._writer.update_source(
+            self.storage.update_source(
                 name=self.name,
                 dtype=np.dtype(self.dtype),
                 shape=(height, width),
             )
-            self._frame_sink = self._writer.prepare(self.name, store_path, capacity)
+            self._sink = self.storage.prepare(self.name, capacity)
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
@@ -444,7 +441,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
-            self._writer.kickoff()
+            self.storage.kickoff()
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -573,7 +570,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        frames_written = self._writer.get_indices_written(self.name)
+        frames_written = self.storage.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -587,11 +584,11 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
+        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        return self._writer.get_indices_written(self.name)
+        return self.storage.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.
@@ -622,7 +619,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
-                self._frame_sink.send(img)
+                self._sink.write(img)
                 frames_written += 1
             self._core.stopSequenceAcquisition()
         else:
@@ -633,10 +630,10 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
-                self._frame_sink.send(img)
+                self._sink.write(img)
                 frames_written += 1
             self._core.stopSequenceAcquisition()
-        self._writer.complete(self.name)
+        self._sink.close()
         self._complete_status.set_finished()
         self.logger.debug(f"Streaming completed. Wrote {frames_written}.")
         if (last_frame + 1) > frames_written:
