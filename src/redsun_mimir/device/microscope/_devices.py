@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading as th
 import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
@@ -30,8 +29,7 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, Iterator
 
     import numpy.typing as npt
-    from bluesky.protocols import Reading, StreamAsset
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Location, Reading, StreamAsset
 
 
 class Factory:
@@ -641,7 +639,9 @@ class SimulatedCameraDevice(Device, DetectorProtocol, SimulatedCamera, Loggable)
         if frames_written == 0:
             return
 
-        frames_to_report = min(index, frames_written) if index is not None else frames_written
+        frames_to_report = (
+            min(index, frames_written) if index is not None else frames_written
+        )
 
         self._assets_collected = True
         yield from self.storage.collect_stream_docs(self.name, frames_to_report)

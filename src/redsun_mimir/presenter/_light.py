@@ -99,7 +99,6 @@ class LightPresenter(Presenter, Loggable):
         if "sigIntensityRequest" in sigs:
             sigs["sigIntensityRequest"].connect(self.set)
 
-
     def trigger(self, name: str) -> None:
         """Toggle the light.
 

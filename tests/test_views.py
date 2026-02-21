@@ -23,7 +23,9 @@ def _make_container(**objects: Any) -> VirtualContainer:
     return container
 
 
-def _build_motor_view(widget: MotorView, motor: MockMotorDevice, container: VirtualContainer | None = None) -> VirtualContainer:
+def _build_motor_view(
+    widget: MotorView, motor: MockMotorDevice, container: VirtualContainer | None = None
+) -> VirtualContainer:
     """Full build sequence: register_providers then inject_dependencies."""
     if container is None:
         container = _make_container(
@@ -35,7 +37,11 @@ def _build_motor_view(widget: MotorView, motor: MockMotorDevice, container: Virt
     return container
 
 
-def _build_light_view(widget: LightView, *devices: MockLightDevice, container: VirtualContainer | None = None) -> VirtualContainer:
+def _build_light_view(
+    widget: LightView,
+    *devices: MockLightDevice,
+    container: VirtualContainer | None = None,
+) -> VirtualContainer:
     """Full build sequence: register_providers then inject_dependencies."""
     if container is None:
         cfg: dict[str, Any] = {}

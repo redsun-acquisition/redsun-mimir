@@ -172,7 +172,10 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             dtype = median_value.dtype
             if self.storage is not None:
                 self.storage.update_source(self.name, dtype, shape)
-            self._median[self._reading_key] = {"value": median_value, "timestamp": time.time()}
+            self._median[self._reading_key] = {
+                "value": median_value,
+                "timestamp": time.time(),
+            }
             self._valid_readings = True
         s.set_finished()
         return s
@@ -224,7 +227,9 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             return
 
         # Determine how many frames to report
-        frames_to_report = min(index, frames_written) if index is not None else frames_written
+        frames_to_report = (
+            min(index, frames_written) if index is not None else frames_written
+        )
 
         self._assets_collected = True
 

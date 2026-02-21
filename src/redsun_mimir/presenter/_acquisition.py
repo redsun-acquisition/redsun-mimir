@@ -281,12 +281,15 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        sigs = find_signals(container, [
-            "sigLaunchPlanRequest",
-            "sigStopPlanRequest",
-            "sigPauseResumeRequest",
-            "sigActionRequest",
-        ])
+        sigs = find_signals(
+            container,
+            [
+                "sigLaunchPlanRequest",
+                "sigStopPlanRequest",
+                "sigPauseResumeRequest",
+                "sigActionRequest",
+            ],
+        )
         if "sigLaunchPlanRequest" in sigs:
             sigs["sigLaunchPlanRequest"].connect(self.launch_plan)
         if "sigStopPlanRequest" in sigs:
