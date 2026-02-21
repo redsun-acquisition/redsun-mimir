@@ -99,14 +99,13 @@ class LightView(QtView, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Build the UI and register light view signals in the virtual container."""
-        configuration: dict[str, Reading[Any]] = container.light_configuration()
-        description: dict[str, Descriptor] = container.light_description()
-        self.setup_ui(configuration, description)
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect inbound signals from the light presenter."""
-        pass  # LightPresenter has no feedback signals back to LightView currently
+        """Connect inbound signals from the light presenter and build the UI."""
+        configuration: dict[str, Reading[Any]] = container.light_configuration()
+        description: dict[str, Descriptor] = container.light_description()
+        self.setup_ui(configuration, description)
 
     def setup_ui(
         self,
@@ -179,9 +178,6 @@ class LightView(QtView, Loggable):
                 self._sliders[f"power:{device_label}"].setSingleStep(int(step_size))
                 self._sliders[f"power:{device_label}"].valueChanged.connect(
                     lambda value, lbl=device_label: self._on_slider_changed(value, lbl)
-                )
-                self._sliders[f"power:{device_label}"]._label.setAlignment(
-                    QtCore.Qt.AlignmentFlag.AlignHCenter
                 )
                 self._labels[f"egu:{device_label}"] = QtWidgets.QLabel(egu)
                 layout.addWidget(self._buttons[f"on:{device_label}"], 0, 0)

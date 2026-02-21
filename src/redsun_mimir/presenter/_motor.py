@@ -187,20 +187,6 @@ class MotorPresenter(Presenter, Loggable):
         self.sigNewConfiguration.emit(motor, success_map)
         return success_map
 
-    def _bare_name(self, device_label: str) -> str:
-        """Resolve a device label to the bare device name used as dict key.
-
-        Since keys are now keyed by bare device name only, this method
-        returns the label unchanged. Kept for compatibility with any
-        callers that may still pass a name.
-
-        Parameters
-        ----------
-        device_label :
-            Device name.
-        """
-        return device_label
-
     def shutdown(self) -> None:
         """Shutdown the presenter.
 
@@ -230,7 +216,7 @@ class MotorPresenter(Presenter, Loggable):
                 break
             motor, axis, position = task
             self.logger.debug(f"Moving {motor} to {position} on {axis}")
-            self._do_move(self._motors[self._bare_name(motor)], axis, position)
+            self._do_move(self._motors[motor], axis, position)
 
     def _do_move(self, motor: MotorProtocol, axis: str, position: float) -> None:
         """Move a motor to a given position.

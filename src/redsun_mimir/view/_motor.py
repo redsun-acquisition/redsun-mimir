@@ -105,23 +105,26 @@ class MotorView(QtView):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Build the UI and register motor view signals in the virtual container."""
-        configuration: dict[str, Reading[Any]] = container.motor_configuration()
-        description: dict[str, Descriptor] = container.motor_description()
-        self.setup_ui(configuration, description)
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        r"""Connect inbound signals from the motor presenter.
+        """Connect inbound signals from the motor presenter.
 
         Retrieves signals registered by
         [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers]
         and connects them to the appropriate view slots.
         """
+        configuration: dict[str, Reading[Any]] = container.motor_configuration()
+        description: dict[str, Descriptor] = container.motor_description()
+        self.setup_ui(configuration, description)
+
         sigs = find_signals(container, ["sigNewPosition", "sigNewConfiguration"])
         if "sigNewPosition" in sigs:
             sigs["sigNewPosition"].connect(self._update_position, thread="main")
         if "sigNewConfiguration" in sigs:
-            sigs["sigNewConfiguration"].connect(self._update_configuration, thread="main")
+            sigs["sigNewConfiguration"].connect(
+                self._update_configuration, thread="main"
+            )
 
     def setup_ui(
         self,
