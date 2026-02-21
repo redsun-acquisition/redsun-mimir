@@ -6,7 +6,6 @@ from queue import Queue
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import scipy.ndimage
 from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
@@ -99,9 +98,7 @@ def _make_world_image(
         cy = rng.integers(0, height)
         sigma = float(rng.uniform(sigma_lo, sigma_hi))
         amplitude = float(rng.uniform(0.3, 1.0))
-        world += amplitude * np.exp(
-            -((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2)
-        )
+        world += amplitude * np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
 
     world_max = world.max()
     if world_max > 0:
@@ -599,9 +596,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
         otherwise so callers never receive ``None`` from a triggered camera.
         """
         if self._stage_linked:
-            return cast(
-                "npt.NDArray[Any] | None", StageAwareCamera._fetch_data(self)
-            )
+            return cast("npt.NDArray[Any] | None", StageAwareCamera._fetch_data(self))
 
         if not self._acquiring or self._triggered == 0:
             return None
@@ -815,9 +810,7 @@ class SimulatedCameraDevice(Device, DetectorProtocol, StageAwareCamera, Loggable
             }
         }
 
-    def collect_asset_docs(
-        self, index: "int | None" = None
-    ) -> "Iterator[StreamAsset]":
+    def collect_asset_docs(self, index: "int | None" = None) -> "Iterator[StreamAsset]":
         """Collect stream asset documents after a completed acquisition."""
         if self.storage is None or not self._complete_status.done:
             return

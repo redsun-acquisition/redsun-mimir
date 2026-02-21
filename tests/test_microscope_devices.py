@@ -14,7 +14,6 @@ from redsun_mimir.device.microscope._devices import (
 )
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -41,7 +40,7 @@ def camera(request: pytest.FixtureRequest) -> SimulatedCameraDevice:
 
 @pytest.fixture
 def light() -> SimulatedLightDevice:
-    """Simulated 532 nm laser light source."""
+    """Return a simulated 532 nm laser light source."""
     return SimulatedLightDevice(
         "sim_light",
         wavelength=532,
@@ -122,9 +121,7 @@ class TestSimulatedStageDevice:
         assert status.success
         assert stage._active_axis == "y"
 
-    def test_set_step_size_prop_updates_step(
-        self, stage: SimulatedStageDevice
-    ) -> None:
+    def test_set_step_size_prop_updates_step(self, stage: SimulatedStageDevice) -> None:
         """prop='step_size' updates the step size for the active axis."""
         status = stage.set(2.5, prop="step_size")
         status.wait(timeout=1.0)
@@ -396,6 +393,7 @@ class TestSimulatedCameraDeviceStageWiring:
         """Camera built after stage links immediately without registering a callback."""
         stage = self._make_stage("sf_stage")
         cam = self._make_camera("sf_cam", stage_name="sf_stage")
+        assert stage is not None
         assert cam._stage_linked
         assert "sf_stage" not in _stage_callbacks
 
@@ -421,6 +419,8 @@ class TestSimulatedCameraDeviceStageWiring:
     def test_stage_aware_image_has_correct_shape_and_dtype(self) -> None:
         """_fetch_data() returns a uint16 frame at the sensor shape."""
         stage = self._make_stage("img_stage")
+        assert stage is not None
+
         cam = self._make_camera("img_cam", stage_name="img_stage")
         _enable(cam)
         cam._triggered = 1
