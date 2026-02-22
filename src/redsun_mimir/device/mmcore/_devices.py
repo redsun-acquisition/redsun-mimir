@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, TypedDict, cast
 import numpy as np
 from attrs import define, field, validators
 from pymmcore_plus import CMMCorePlus as Core
-from sunflare.device import Device
-from sunflare.engine import Status
-from sunflare.log import Loggable
+from redsun.device import Device
+from redsun.engine import Status
+from redsun.log import Loggable
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol

@@ -11,9 +11,9 @@ from attrs import define, field, setters, validators
 from bluesky.protocols import Descriptor
 from microscope import ROI, AxisLimits
 from microscope.simulators import SimulatedCamera, SimulatedLightSource, SimulatedStage
-from sunflare.device import Device
-from sunflare.engine import Status
-from sunflare.log import Loggable
+from redsun.device import Device
+from redsun.engine import Status
+from redsun.log import Loggable
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol, LightProtocol, MotorProtocol

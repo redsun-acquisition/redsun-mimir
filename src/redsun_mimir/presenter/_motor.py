@@ -5,9 +5,9 @@ from threading import Thread
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.virtual import Signal
 
 from ..protocols import MotorProtocol
 from ..utils import find_signals
@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
 
 class MotorPresenter(Presenter, Loggable):

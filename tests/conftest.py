@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from qtpy.QtWidgets import QApplication
-from sunflare.virtual import VirtualContainer
+from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 

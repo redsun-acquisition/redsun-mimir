@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
-from sunflare.engine import Status
-from sunflare.log import Loggable
+from redsun.engine import Status
+from redsun.log import Loggable
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
 from redsun_mimir.storage import ZarrWriter

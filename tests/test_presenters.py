@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pytest
-from sunflare.virtual import VirtualContainer
+from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.presenter._light import LightPresenter

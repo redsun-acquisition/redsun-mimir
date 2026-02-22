@@ -9,9 +9,9 @@ from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
 from qtpy import QtCore, QtWidgets
-from sunflare.log import Loggable
-from sunflare.view import ViewPosition
-from sunflare.view.qt import QtView
+from redsun.log import Loggable
+from redsun.view import ViewPosition
+from redsun.view.qt import QtView
 
 from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.descriptors import parse_key
@@ -24,7 +24,7 @@ from redsun_mimir.utils.napari import (
 if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 
 class ImageView(QtView, Loggable):

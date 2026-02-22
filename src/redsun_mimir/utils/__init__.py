@@ -1,7 +1,7 @@
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
-from sunflare.device import PDevice
+from redsun.device import PDevice
 from typing_extensions import TypeIs
 
 from redsun_mimir.utils.descriptors import (
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from psygnal import SignalInstance
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 __all__ = [
     "filter_devices",

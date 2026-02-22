@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading, Status
     from bluesky.utils import Msg
-    from sunflare.engine import RunEngine
+    from redsun.engine import RunEngine
 
     from redsun_mimir.actions import SRLatch
 

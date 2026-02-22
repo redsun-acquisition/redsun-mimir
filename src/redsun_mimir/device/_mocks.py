@@ -5,9 +5,9 @@ import time
 from typing import TYPE_CHECKING
 
 from attrs import define, field, setters, validators
-from sunflare.device import Device
-from sunflare.engine import Status
-from sunflare.log import Loggable
+from redsun.device import Device
+from redsun.engine import Status
+from redsun.log import Loggable
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol

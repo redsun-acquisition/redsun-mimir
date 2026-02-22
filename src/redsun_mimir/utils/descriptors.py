@@ -18,7 +18,7 @@ The same key convention applies to both configuration descriptor dicts
 (``read_configuration()``), so that the same ``parse_key`` / ``make_key``
 helpers can be reused uniformly across both.
 
-These helpers are intended to be ported to ``sunflare`` once the API
+These helpers are intended to be ported to ``redsun`` once the API
 stabilises.
 """
 

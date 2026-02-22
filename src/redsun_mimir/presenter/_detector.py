@@ -7,9 +7,9 @@ from bluesky.protocols import Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
 from dependency_injector import providers
 from event_model import DocumentRouter
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.utils import filter_devices, find_signals, parse_key
@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from event_model import Event
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
 
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeVar
 
-from sunflare.log import Loggable
+from redsun.log import Loggable
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator

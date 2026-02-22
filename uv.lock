@@ -3408,15 +3408,31 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.6.2"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "bluesky" },
+    { name = "dependency-injector" },
     { name = "platformdirs" },
-    { name = "sunflare" },
+    { name = "psygnal" },
+    { name = "pyyaml" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/8d/4234e8e3cef40314c6f314434d9e1dcb16bfa5f7b6ecd8b363ee412209ea/redsun-0.6.2.tar.gz", hash = "sha256:c654264094c07bc28dd4cf007ab56edfca56de351d59c7d332ee4ca36f405e34", size = 150215, upload-time = "2026-02-20T21:29:06.283Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/1f/51dc9be1589126f8015abfb96be902a428ece04b50c22db9043e00704a5d/redsun-0.8.0.tar.gz", hash = "sha256:c19b93dc0c8aded467dfc0cbf0ba118cb8093eacec232a763ebd5f712d58ae81", size = 38832, upload-time = "2026-02-22T11:48:39.553Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/00/62d4a15683e162501af4bf428f93c3da33f1910baa566731bd76679a8f24/redsun-0.6.2-py3-none-any.whl", hash = "sha256:4eed451d704bcaa676dfdc059a55473635443902ef0784ce8d63ae2600142f7f", size = 19614, upload-time = "2026-02-20T21:29:05.071Z" },
+    { url = "https://files.pythonhosted.org/packages/03/1e/106ca74ff7c693a54b438f9523f40325fd42b0031fb65f1dc5b49386a53a/redsun-0.8.0-py3-none-any.whl", hash = "sha256:e5290a3c8c5e2632cfcf5fec14847d325b44871db651bf61a5480b1899bc6d9c", size = 51461, upload-time = "2026-02-22T11:48:38.235Z" },
+]
+
+[package.optional-dependencies]
+pyqt = [
+    { name = "magicgui" },
+    { name = "pyqt6" },
+    { name = "qtpy" },
+]
+pyside = [
+    { name = "magicgui" },
+    { name = "pyside6" },
+    { name = "qtpy" },
 ]
 
 [[package]]
@@ -3427,7 +3443,6 @@ dependencies = [
     { name = "msgspec" },
     { name = "napari" },
     { name = "redsun" },
-    { name = "sunflare" },
 ]
 
 [package.optional-dependencies]
@@ -3436,11 +3451,11 @@ microscope = [
 ]
 pyqt = [
     { name = "napari", extra = ["pyqt6"] },
-    { name = "sunflare", extra = ["pyqt"] },
+    { name = "redsun", extra = ["pyqt"] },
 ]
 pyside = [
     { name = "napari", extra = ["pyside6"] },
-    { name = "sunflare", extra = ["pyside"] },
+    { name = "redsun", extra = ["pyside"] },
 ]
 sim = [
     { name = "microscope" },
@@ -3483,10 +3498,9 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", specifier = ">=0.6.2" },
-    { name = "sunflare", specifier = ">=0.10.1" },
-    { name = "sunflare", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
-    { name = "sunflare", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.10.1" },
+    { name = "redsun", specifier = ">=0.8.0" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.8.0" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.8.0" },
 ]
 provides-extras = ["microscope", "pyqt", "pyside", "sim", "uc2"]
 
@@ -4337,34 +4351,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
-]
-
-[[package]]
-name = "sunflare"
-version = "0.10.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bluesky" },
-    { name = "dependency-injector" },
-    { name = "psygnal" },
-    { name = "pyyaml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/44/2a/126fd16b2c2175e64e325be35f183aca5aedcc5f8dc70630a8f0227f14db/sunflare-0.10.1.tar.gz", hash = "sha256:5b7448d5f7c2796a7eb7381977e869f5f4fa211e98c46a24bddeed501e28f185", size = 21087, upload-time = "2026-02-20T21:20:57.29Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/07/6685fc3618795c30fca26a19417aaadb635dc963e6022ac3adf2cc8631f2/sunflare-0.10.1-py3-none-any.whl", hash = "sha256:e8ef1a658ab09f8d43675851d4fc4a6bafcfcc6d66c4517d487516528b849d32", size = 26488, upload-time = "2026-02-20T21:20:55.846Z" },
-]
-
-[package.optional-dependencies]
-pyqt = [
-    { name = "magicgui" },
-    { name = "pyqt6" },
-    { name = "qtpy" },
-]
-pyside = [
-    { name = "magicgui" },
-    { name = "pyside6" },
-    { name = "qtpy" },
 ]
 
 [[package]]
