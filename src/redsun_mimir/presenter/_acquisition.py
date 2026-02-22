@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import pathlib  # noqa: TC003
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
@@ -457,7 +455,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         self,
         detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
-        store_path: pathlib.Path,
         step: float = 1.0,
         step_egu: Literal["um", "mm", "nm"] = "um",
         scan_frames: int = 20,
@@ -489,10 +486,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         - motor: ``MotorProtocol``
             - The motor to use for the scan movement.
             - It must provide two axes of movement ("X" and "Y").
-        - store_path: ``pathlib.Path``
-            - The folder path on disk where to store the median frames.
-            - A Zarr subdirectory with a date-formatted name will be created
-            inside this folder for each stream.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
         - step_egu: ``Literal["um", "mm", "nm"]``, optional
@@ -583,13 +576,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # event triggered, start streaming to disk
                 self.logger.debug("Starting data streaming to disk")
 
-                # Create unique subdirectory for this streaming session
-                timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-                acquisition_path = store_path / f"{timestamp}.zarr"
-                acquisition_path.mkdir(parents=True, exist_ok=True)
-
                 prepare_values: dict[str, Any] = {
-                    "store_path": acquisition_path,
                     "capacity": stream_frames,
                     "write_forever": False,
                 }
@@ -614,7 +601,6 @@ class AcquisitionPresenter(Presenter, Loggable):
     def live_stream(
         self,
         detectors: Sequence[ReadableFlyer],
-        store_path: pathlib.Path,
         frames: int = 10,
         write_forever: bool = False,
         /,
@@ -633,10 +619,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         - detectors: ``Sequence[ReadableFlyer]``
             - The detectors to use for data collection.
             - Must implement the additional `Preparable` and `Flyable` protocols.
-        - store_path: ``pathlib.Path``
-            - The folder path on disk where to store the Zarr data.
-            - A Zarr subdirectory with a date-formatted name will be created
-            inside this folder for each streaming session.
         - frames: ``int``, optional
             - The number of images to stream to disk.
             - Default is 10.
@@ -662,13 +644,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             # event triggered, start streaming to disk
             self.logger.debug("Starting data streaming to disk")
 
-            # Create unique subdirectory for this streaming session
-            timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-            acquisition_path = store_path / f"{timestamp}.zarr"
-            acquisition_path.mkdir(parents=True, exist_ok=True)
-
             prepare_values: dict[str, Any] = {
-                "store_path": acquisition_path,
                 "capacity": frames,
                 "write_forever": write_forever,
             }
