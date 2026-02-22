@@ -2,6 +2,9 @@ schema_version: 1.0
 session: redsun-mimir
 frontend: pyqt
 
+storage:
+  backend: zarr
+
 devices:
   camera1:
     sensor_shape: [100, 100]
