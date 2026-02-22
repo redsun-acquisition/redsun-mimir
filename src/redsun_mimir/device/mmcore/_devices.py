@@ -363,7 +363,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._fly_permit.clear()
         self._fly_stop.clear()
         try:
-            if self.storage is None:
+            if not hasattr(self, "storage"):
                 raise RuntimeError(
                     f"No storage backend configured for device '{self.name}'."
                 )
@@ -443,7 +443,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # start the background thread
             self.storage.kickoff()
             self._fly_permit.set()
-            s.set_finished()
         return s
 
     def complete(self) -> Status:
@@ -570,7 +569,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        frames_written = self.storage.get_indices_written(self.name)
+        backend = self.storage
+        frames_written = backend.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -584,7 +584,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
+        yield from backend.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""

@@ -170,7 +170,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             )
             shape = median_value.shape
             dtype = median_value.dtype
-            if self.storage is not None:
+            if hasattr(self, "storage"):
                 self.storage.update_source(self.name, dtype, shape)
             self._median[self._reading_key] = {
                 "value": median_value,
@@ -183,7 +183,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     def prepare(self, value: PrepareKwargs) -> Status:
         """Prepare the pseudo model for flight by writing the median readings to disk."""
         s = Status()
-        if self._valid_readings and self.storage is not None:
+        if self._valid_readings and hasattr(self, "storage"):
             self.logger.debug(f"Valid median for {self.name}, preparing for flight.")
             self._sink = self.storage.prepare(self.name, capacity=1)
         s.set_finished()
@@ -216,7 +216,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         return s
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
-        if not self._valid_readings or self.storage is None:
+        if not self._valid_readings or not hasattr(self, "storage"):
             return
 
         if self._assets_collected:
@@ -237,7 +237,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         yield from self.storage.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
-        if not self._valid_readings or self.storage is None:
+        if not self._valid_readings or not hasattr(self, "storage"):
             return 0
         return self.storage.get_indices_written(self.name)
 
