@@ -18,6 +18,10 @@ def main() -> None:
     subparsers.add_parser("light", help="Run the mock light example")
     subparsers.add_parser("light-uc2", help="Run the UC2 light example")
     subparsers.add_parser(
+        "acquisition",
+        help="Run the example acquisition container",
+    )
+    subparsers.add_parser(
         "acquisition-uc2",
         help="Run the UC2 example acquisition container",
     )
@@ -31,6 +35,8 @@ def main() -> None:
         configurations.run_light_container()
     elif options.command == "light-uc2":
         configurations.run_youseetoo_light_container()
+    elif options.command == "acquisition":
+        configurations.run_acquisition_container()
     elif options.command == "acquisition-uc2":
         configurations.run_youseetoo_acquisition_container()
     else:
