@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
-from sunflare.engine import Status
-from sunflare.log import Loggable
-from sunflare.storage import StorageDescriptor
+from redsun.engine import Status
+from redsun.log import Loggable
+from redsun.storage import StorageDescriptor
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
 from redsun_mimir.utils.descriptors import make_key

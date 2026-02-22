@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 import msgspec
 from attrs import define, field, setters, validators
+from redsun.device import Device
+from redsun.engine import Status
+from redsun.log import Loggable
 from serial import Serial
-from sunflare.device import Device
-from sunflare.engine import Status
-from sunflare.log import Loggable
 
 import redsun_mimir.device.utils as utils
 import redsun_mimir.device.youseetoo.utils as uc2utils

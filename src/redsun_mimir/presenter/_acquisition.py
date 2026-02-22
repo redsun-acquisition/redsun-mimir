@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Literal
 import bluesky.plan_stubs as bps
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from dependency_injector import providers
-from sunflare.engine import RunEngine
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.engine import RunEngine
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.virtual import Signal
 
 import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Mapping
 
     from bluesky.protocols import Readable
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
     from redsun_mimir.actions import SRLatch
 

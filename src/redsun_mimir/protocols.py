@@ -13,11 +13,11 @@ from bluesky.protocols import (
     Triggerable,
     WritesStreamAssets,
 )
-from sunflare.device import PDevice
+from redsun.device import PDevice
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.engine import Status
+    from redsun.engine import Status
 
 
 @runtime_checkable

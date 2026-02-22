@@ -4,17 +4,17 @@ from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
 from qtpy import QtWidgets
-from sunflare.log import Loggable
-from sunflare.view import ViewPosition
-from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.view import ViewPosition
+from redsun.view.qt import QtView
+from redsun.virtual import Signal
 
 from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 
 class SettingsControlWidget(QtWidgets.QWidget):

@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.virtual import Signal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from event_model.documents import Event, EventDescriptor, RunStart
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):

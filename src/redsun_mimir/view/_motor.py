@@ -3,16 +3,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
-from sunflare.view import ViewPosition
-from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from redsun.view import ViewPosition
+from redsun.view.qt import QtView
+from redsun.virtual import Signal
 
 from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 _T = TypeVar("_T")
 

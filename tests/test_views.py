@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from dependency_injector import providers
 from qtpy.QtWidgets import QApplication
-from sunflare.virtual import VirtualContainer
+from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
 from redsun_mimir.view._light import LightView

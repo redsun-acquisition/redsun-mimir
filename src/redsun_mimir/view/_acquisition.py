@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, cast
 import magicgui.widgets as mgw
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
-from sunflare.log import Loggable
-from sunflare.view import ViewPosition
-from sunflare.view.qt import QtView
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.view import ViewPosition
+from redsun.view.qt import QtView
+from redsun.virtual import Signal
 
 from redsun_mimir.actions import Action
 from redsun_mimir.utils import find_signals
@@ -18,7 +18,7 @@ from redsun_mimir.utils.qt import InfoDialog, create_param_widget
 if TYPE_CHECKING:
     from typing import Any
 
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
     from redsun_mimir.common import PlanSpec
 

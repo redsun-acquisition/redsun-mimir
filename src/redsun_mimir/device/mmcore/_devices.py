@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, TypedDict, cast
 import numpy as np
 from attrs import define, field, validators
 from pymmcore_plus import CMMCorePlus as Core
-from sunflare.device import Device
-from sunflare.engine import Status
-from sunflare.log import Loggable
-from sunflare.storage import StorageDescriptor
+from redsun.device import Device
+from redsun.engine import Status
+from redsun.log import Loggable
+from redsun.storage import StorageDescriptor
 
 import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import DetectorProtocol
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from sunflare.storage import StorageProxy
 
 
 class PrepareKwargs(TypedDict):
@@ -442,7 +441,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
-            cast("StorageProxy", self.storage).kickoff()
+            self.storage.kickoff()
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -571,9 +570,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        frames_written = cast("StorageProxy", self.storage).get_indices_written(
-            self.name
-        )
+        frames_written = self.storage.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -587,13 +584,11 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from cast("StorageProxy", self.storage).collect_stream_docs(
-            self.name, frames_to_report
-        )
+        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        return cast("StorageProxy", self.storage).get_indices_written(self.name)
+        return self.storage.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.
