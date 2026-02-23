@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import pathlib  # noqa: TC003
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from dependency_injector import providers
-from sunflare.engine import RunEngine
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.engine import RunEngine
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.virtual import Signal
 
 import redsun_mimir.commands as cmds
 import redsun_mimir.plan_stubs as rps
@@ -32,12 +30,13 @@ from redsun_mimir.protocols import (  # noqa: TC001
 from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
+    from collections.abc import MutableSequence
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
     from bluesky.protocols import Readable
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
     from redsun_mimir.actions import SRLatch
 
@@ -267,7 +266,6 @@ class AcquisitionPresenter(Presenter, Loggable):
             "snap": self.snap,
             "live_count": self.live_count,
             "live_stream": self.live_stream,
-            "live_square_scan": self.live_square_scan,
             "live_median_scan": self.live_median_scan,
         }
         self.plan_specs: dict[str, PlanSpec] = {
@@ -281,12 +279,15 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        sigs = find_signals(container, [
-            "sigLaunchPlanRequest",
-            "sigStopPlanRequest",
-            "sigPauseResumeRequest",
-            "sigActionRequest",
-        ])
+        sigs = find_signals(
+            container,
+            [
+                "sigLaunchPlanRequest",
+                "sigStopPlanRequest",
+                "sigPauseResumeRequest",
+                "sigActionRequest",
+            ],
+        )
         if "sigLaunchPlanRequest" in sigs:
             sigs["sigLaunchPlanRequest"].connect(self.launch_plan)
         if "sigStopPlanRequest" in sigs:
@@ -305,6 +306,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.callback_tokens[name] = token
 
     def plans_specificiers(self) -> set[PlanSpec]:
+        """Return the current set of plan specifications for the available plans."""
         return set(self.plan_specs.values())
 
     @continous(togglable=True, pausable=True)
@@ -355,106 +357,11 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
-    @continous(togglable=True)
-    def live_square_scan(
-        self,
-        detectors: Sequence[DetectorProtocol],
-        motor: MotorProtocol,
-        step: float = 1.0,
-        step_egu: Literal["um", "mm", "nm"] = "um",
-        frames: int = 20,
-        direction: Literal["xy", "yx"] = "xy",
-        /,
-        action: Action = ScanAction(),
-    ) -> MsgGenerator[None]:
-        """Perform live data collection with optional, triggerable square scan movement.
-
-        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
-        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
-        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
-        movement step, a frame is collected from each detector. After completing the square scan,
-        the plan will resume live acquisition.
-
-        Parameters
-        ----------
-        - detectors: ``Sequence[DetectorProtocol]``
-            - The detectors to use for data collection.
-        - motor: ``MotorProtocol``
-            - The motor to use for the scan movement.
-            - It must provide two axes of movement ("X" and "Y").
-        - step: ``float``, optional
-            The step size for motor movement. Default is 1.0.
-        - step_egu: ``Literal["um", "mm", "nm"]``, optional
-            - The engineering unit for the step size.
-            - Default is "um".
-        - frames: ``int``, optional
-            - The number of frames to collect for median filtering.
-            - The rectangular movement will be divided into four sides,
-            each side collecting `frames / 4` frames, one frame per motor step.
-            - Default is 20 (resulting in 4 frames per side).
-        - direction: ``Literal["xy", "yx"]``, optional
-            - The order of motor movement.
-            - `xy`: move along X axis first, then Y axis.
-            - `yx`: move along Y axis first, then X axis.
-
-        Raises
-        ------
-        - ``TypeError``
-            - If `motor` does not provide both "X" and "Y" axis of movement.
-        """
-        if len(motor.axis) < 2 or not all(ax in motor.axis for ax in ["X", "Y"]):
-            raise TypeError(
-                "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {motor.axis}"
-            )
-
-        old_step, step = convert_to_target_egu(
-            step,
-            from_egu=step_egu,
-            to_egu=motor.egu,
-        )
-        self.event_map.update(action.event_map)
-        frames_per_side = frames // 4
-        axis = ("X", "Y") if direction == "xy" else ("Y", "X")
-
-        yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-
-        # main loop; it can only be interrupted when
-        # a stop request is issued from the view and handled
-        # by the presenter
-        while True:
-            # live acquisition; wait for scan action
-            name, event = yield from rps.read_while_waiting(
-                detectors,
-                self.event_map,
-                "live",
-            )
-            # if the plan has provided a different engineering unit
-            # for the step size, set it accordingly
-            if motor.egu != step_egu:
-                yield from rps.set_property(motor, step, propr="step_size")
-
-            yield from square_scan(
-                detectors,
-                motor,
-                step,
-                frames_per_side,
-                axis,
-            )
-
-            if step != old_step:
-                yield from rps.set_property(motor, old_step, propr="step_size")
-            # clear the event and notify the action is done
-            self.clear_and_notify(name, event)
-            # then resume live acquisition (go back to the top of the loop)
-
     @continous
     def live_median_scan(
         self,
         detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
-        store_path: pathlib.Path,
         step: float = 1.0,
         step_egu: Literal["um", "mm", "nm"] = "um",
         scan_frames: int = 20,
@@ -466,10 +373,14 @@ class AcquisitionPresenter(Presenter, Loggable):
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
-        The plan combines the square scan movement in `live_square_scan`
-        with the live streaming to disk in `live_stream`.
-        Additionally, each detector will have a corresponding
-        pseudo-model object that will compute the median
+        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
+        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
+        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
+        movement step, a frame is collected from each detector. After completing the square scan,
+        the plan will resume live acquisition.
+
+        Each detector has have a corresponding
+        pseudo-device that will compute the median
         of the frames collected during the square scan, making
         them available as stashed readings during the stream action,
         so that the computed medians are stored for post-processing and visualization
@@ -486,10 +397,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         - motor: ``MotorProtocol``
             - The motor to use for the scan movement.
             - It must provide two axes of movement ("X" and "Y").
-        - store_path: ``pathlib.Path``
-            - The folder path on disk where to store the median frames.
-            - A Zarr subdirectory with a date-formatted name will be created
-            inside this folder for each stream.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
         - step_egu: ``Literal["um", "mm", "nm"]``, optional
@@ -520,11 +427,11 @@ class AcquisitionPresenter(Presenter, Loggable):
                 f" Available axes: {motor.axis}"
             )
 
-        medians: set[MedianPseudoDevice] = set()
+        medians: MutableSequence[MedianPseudoDevice] = list()
         for det in detectors:
             describe = yield from rps.describe(det)
             collect = yield from rps.describe_collect(det)
-            medians.add(MedianPseudoDevice(det, describe, collect))
+            medians.append(MedianPseudoDevice(det, describe, collect))
 
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
@@ -549,7 +456,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             name, event = yield from rps.read_while_waiting(
-                detectors,
+                objs,
                 self.event_map,
                 live_stream,
             )
@@ -562,7 +469,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from scan_and_stash(
                     detectors,
                     motor,
-                    medians,  # type: ignore[arg-type]
+                    medians,
                     step,
                     scan_frames // 4,
                     axis,
@@ -580,13 +487,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # event triggered, start streaming to disk
                 self.logger.debug("Starting data streaming to disk")
 
-                # Create unique subdirectory for this streaming session
-                timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-                acquisition_path = store_path / f"{timestamp}.zarr"
-                acquisition_path.mkdir(parents=True, exist_ok=True)
-
                 prepare_values: dict[str, Any] = {
-                    "store_path": acquisition_path,
                     "capacity": stream_frames,
                     "write_forever": False,
                 }
@@ -611,7 +512,6 @@ class AcquisitionPresenter(Presenter, Loggable):
     def live_stream(
         self,
         detectors: Sequence[ReadableFlyer],
-        store_path: pathlib.Path,
         frames: int = 10,
         write_forever: bool = False,
         /,
@@ -630,10 +530,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         - detectors: ``Sequence[ReadableFlyer]``
             - The detectors to use for data collection.
             - Must implement the additional `Preparable` and `Flyable` protocols.
-        - store_path: ``pathlib.Path``
-            - The folder path on disk where to store the Zarr data.
-            - A Zarr subdirectory with a date-formatted name will be created
-            inside this folder for each streaming session.
         - frames: ``int``, optional
             - The number of images to stream to disk.
             - Default is 10.
@@ -659,13 +555,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             # event triggered, start streaming to disk
             self.logger.debug("Starting data streaming to disk")
 
-            # Create unique subdirectory for this streaming session
-            timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-            acquisition_path = store_path / f"{timestamp}.zarr"
-            acquisition_path.mkdir(parents=True, exist_ok=True)
-
             prepare_values: dict[str, Any] = {
-                "store_path": acquisition_path,
                 "capacity": frames,
                 "write_forever": write_forever,
             }
@@ -738,6 +628,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.sigActionDone.emit(name)
 
     def toggle_action_event(self, action_name: str, state: bool) -> None:
+        """Toggle the event associated with the given action name."""
         event = self.event_map[action_name]
         if state:
             self.engine.loop.call_soon_threadsafe(event.set)

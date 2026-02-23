@@ -9,12 +9,11 @@ from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
 from qtpy import QtCore, QtWidgets
-from sunflare.log import Loggable
-from sunflare.view import ViewPosition
-from sunflare.view.qt import QtView
+from redsun.log import Loggable
+from redsun.utils.descriptors import parse_key
+from redsun.view import ViewPosition
+from redsun.view.qt import QtView
 
-from redsun_mimir.utils import find_signals
-from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -24,7 +23,7 @@ from redsun_mimir.utils.napari import (
 if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 
 class ImageView(QtView, Loggable):
@@ -41,21 +40,18 @@ class ImageView(QtView, Loggable):
     [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies];
     layers are updated in real-time as new frames arrive from the presenter.
 
-    Property editing lives in the companion
-    [`DetectorView`][redsun_mimir.view.DetectorView], which is wired
-    independently through the virtual bus.
-
     Parameters
     ----------
     name :
         Identity key of the view.
     hints :
         Data key suffixes to watch for in incoming data packets.
-        Currently unused; reserved for future filtering.
+        Defaults to ``["buffer"]``, which is the conventional suffix for raw frame arrays.
     """
 
     @property
     def view_position(self) -> ViewPosition:
+        """The position in the main view."""
         return ViewPosition.CENTER
 
     def __init__(
@@ -63,8 +59,9 @@ class ImageView(QtView, Loggable):
         name: str,
         /,
         hints: list[str] | None = None,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(name)
+        super().__init__(name, **kwargs)
 
         # Ensure the QApplication exists and napari's theme search paths
         # (theme_<name>:/) are registered via QDir.addSearchPath.
@@ -87,7 +84,6 @@ class ImageView(QtView, Loggable):
         controls = self._qt_viewer.controls
         layer_buttons = self._qt_viewer.layerButtons
         layer_list = self._qt_viewer.layers
-        viewer_buttons = self._qt_viewer.viewerButtons
 
         # Left panel: layer controls on top, layer list + buttons below.
         left_panel = QtWidgets.QWidget()
@@ -97,7 +93,6 @@ class ImageView(QtView, Loggable):
         left_layout.addWidget(controls)
         left_layout.addWidget(layer_buttons)
         left_layout.addWidget(layer_list)
-        left_layout.addWidget(viewer_buttons)
         left_panel.setLayout(left_layout)
 
         # Horizontal splitter: left panel | canvas+dims
@@ -112,15 +107,12 @@ class ImageView(QtView, Loggable):
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
 
-        self.buffer_key: str = "buffer"
+        self.hints = frozenset(hints or ["buffer"])
 
         # Apply napari's stylesheet so icons and theme colours render correctly.
         # Window.__init__ normally does this via _update_theme(); since we bypass
         # Window entirely we do it here and re-apply on theme changes.
         self._apply_napari_stylesheet()
-        get_settings().appearance.events.theme.connect(
-            lambda _: self._apply_napari_stylesheet()
-        )
 
         self.logger.info("Initialized")
 
@@ -149,16 +141,16 @@ class ImageView(QtView, Loggable):
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self._setup_layers(descriptors, readings)
-        sigs = find_signals(container, ["sigNewData"])
-        if "sigNewData" in sigs:
-            sigs["sigNewData"].connect(self._update_layers, thread="main")
+        for cache in container.signals.values():
+            if "sigNewData" in cache:
+                cache["sigNewData"].connect(self._update_layers, thread="main")
 
     def _setup_layers(
         self,
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
     ) -> None:
-        r"""Create one napari image layer per device.
+        """Create one napari image layer per device.
 
         Parameters
         ----------
@@ -192,7 +184,9 @@ class ImageView(QtView, Loggable):
 
             dtype: str = "uint8"
             for key, desc in dev_descriptors.items():
-                if desc.get("dtype") == "array" and "buffer" in key:
+                if desc.get("dtype") == "array" and any(
+                    hint in key for hint in self.hints
+                ):
                     dtype = str(desc.get("dtype_numpy", "uint8"))
                     break
 
@@ -221,9 +215,12 @@ class ImageView(QtView, Loggable):
             ``"roi"`` (a 4-tuple ``(x_start, x_end, y_start, y_end)``).
         """
         for obj_name, packet in data.items():
-            buffer: npt.NDArray[Any] = packet[self.buffer_key]
-            if obj_name not in self.viewer_model.layers:
-                self.logger.debug(f"Adding new layer for {obj_name}")
-                self.viewer_model.add_image(name=obj_name, data=buffer)
-            else:
-                self.viewer_model.layers[obj_name].data = buffer
+            for hint in self.hints:
+                if hint not in packet:
+                    continue
+                buffer: npt.NDArray[Any] = packet[hint]
+                if obj_name not in self.viewer_model.layers:
+                    self.logger.debug(f"Adding new layer for {obj_name}")
+                    self.viewer_model.add_image(name=obj_name, data=buffer)
+                else:
+                    self.viewer_model.layers[obj_name].data = buffer

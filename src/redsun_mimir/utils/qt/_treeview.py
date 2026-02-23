@@ -58,7 +58,7 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
-from sunflare.virtual import Signal
+from redsun.virtual import Signal
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading

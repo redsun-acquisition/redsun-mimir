@@ -28,47 +28,37 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sunflare>=0.10.1",
     "napari>=0.6.6",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
-    "redsun>=0.6.2",
+    "redsun>=0.8.2",
 ]
 
 [dependency-groups]
 dev = [
-    "redsun-mimir[microscope,uc2,pyqt,sim]",
+    "redsun-mimir[uc2,pyqt,sim]",
     "mypy>=1.19",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
     "pytest-qt>=4.5.0",
     "ruff>=0.14.2",
-    "sphinx>=8.1.3",
-    "pydata-sphinx-theme>=0.16.1",
-    "sphinx-design>=0.6.1",
-    "myst-parser>=4.0.1",
-    "microscope>=0.7.0",
 ]
 
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.6.6",
-    "sunflare[pyqt]>=0.10.1",
+    "redsun[pyqt]",
 ]
 pyside = [
     "napari[pyside6]>=0.6.6",
-    "sunflare[pyside]>=0.10.1",
-]
-microscope = [
-    "microscope>=0.7.0",
+    "redsun[pyside]",
 ]
 uc2 = [
     "pymmcore-plus>=0.16.0",
     "pyserial>=3.5",
 ]
 sim = [
-    "microscope>=0.7.0",
     "pymmcore-plus>=0.16.0",
 ]
 
@@ -110,8 +100,7 @@ omit = [
 files = "src/**/*.py"
 disable_error_code = [
     "import-untyped",
-    "no-untyped-call",
-    "type-abstract"
+    "no-untyped-call"
 ]
 pretty = true
 

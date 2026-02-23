@@ -10,8 +10,6 @@ __all__ = [
     "run_youseetoo_acquisition_container",
     "run_stage_container",
     "run_light_container",
-    "run_detector_container",
-    "run_youseetoo_detector_container",
     "run_youseetoo_light_container",
     "run_youseetoo_motor_container",
 ]

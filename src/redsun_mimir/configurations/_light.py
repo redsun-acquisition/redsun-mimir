@@ -15,8 +15,8 @@ def run_light_container() -> None:
     Launches a Qt ``LightView`` app with a mock light device.
     """
     from redsun_mimir.device import MockLightDevice
-    from redsun_mimir.presenter import LightPresenter
-    from redsun_mimir.view import LightView
+    from redsun_mimir.presenter.light import LightPresenter
+    from redsun_mimir.view.light import LightView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 

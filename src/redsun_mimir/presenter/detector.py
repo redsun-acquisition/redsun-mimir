@@ -7,20 +7,21 @@ from bluesky.protocols import Descriptor  # noqa: TC002
 from bluesky.utils import maybe_await
 from dependency_injector import providers
 from event_model import DocumentRouter
-from sunflare.log import Loggable
-from sunflare.presenter import Presenter
-from sunflare.virtual import Signal
+from redsun.log import Loggable
+from redsun.presenter import Presenter
+from redsun.utils.descriptors import parse_key
+from redsun.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_devices, find_signals, parse_key
+from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Reading
     from event_model import Event
-    from sunflare.device import Device
-    from sunflare.virtual import VirtualContainer
+    from redsun.device import Device
+    from redsun.virtual import VirtualContainer
 
 
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):
@@ -78,7 +79,11 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
         self.hints = hints or ["buffer", "roi"]
-        self.detectors = filter_devices(devices, DetectorProtocol)
+        self.detectors = {
+            name: device
+            for name, device in devices.items()
+            if isinstance(device, DetectorProtocol)
+        }
         # data stream name,
         # extracted from the incoming
         # descriptor document

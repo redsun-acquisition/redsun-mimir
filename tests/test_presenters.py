@@ -9,12 +9,12 @@ if TYPE_CHECKING:
 
 import numpy as np
 import pytest
-from sunflare.virtual import VirtualContainer
+from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
-from redsun_mimir.presenter._light import LightPresenter
-from redsun_mimir.presenter._median import MedianPresenter
-from redsun_mimir.presenter._motor import MotorPresenter
+from redsun_mimir.presenter.light import LightPresenter
+from redsun_mimir.presenter.median import MedianPresenter
+from redsun_mimir.presenter.motor import MotorPresenter
 
 
 class TestMotorPresenter:
@@ -186,7 +186,11 @@ class TestMedianPresenter:
         self, virtual_container: VirtualContainer
     ) -> Generator[MedianPresenter, None, None]:
         yield MedianPresenter(
-            "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
+            "median_presenter",
+            {},
+            median_streams=["square_scan"],
+            live_streams=["primary"],
+            hints=["buffer"],
         )
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -213,20 +217,6 @@ class TestMedianPresenter:
 
     def test_instantiation(self, presenter: MedianPresenter) -> None:
         """Presenter initialises with empty state."""
-        assert presenter.median_stacks == {}
-        assert presenter.medians == {}
-
-    def test_start_clears_state(self, presenter: MedianPresenter) -> None:
-        """start() resets all cached data."""
-        presenter.median_stacks["obj"] = {"buffer": [np.zeros((4, 4))]}
-        start_doc: dict[str, Any] = {
-            "uid": "run-uid",
-            "time": 0.0,
-            "hints": {},
-            "plan_name": "test",
-        }
-        presenter.start(start_doc)  # type: ignore[arg-type]
-        assert presenter.median_stacks == {}
         assert presenter.medians == {}
 
     def test_descriptor_stores_stream_name(self, presenter: MedianPresenter) -> None:
@@ -249,11 +239,9 @@ class TestMedianPresenter:
         presenter.event(evt)  # type: ignore[arg-type]
 
         # Data should be stacked, not emitted yet
-        assert "cam" in presenter.median_stacks
-        assert len(presenter.median_stacks["cam"]["buffer"]) == 1
         assert emitted == []
 
-    def test_non_expected_stream_computes_and_emits_median(
+    def test_live_stream_computes_and_emits_median(
         self, presenter: MedianPresenter
     ) -> None:
         """Events from a non-expected stream trigger median computation and emission."""
@@ -278,3 +266,40 @@ class TestMedianPresenter:
         result = emitted[0]
         # cam-median key should be present
         assert any("median" in k for k in result)
+
+    def test_inactive_presenter_does_nothing(
+        self, virtual_container: VirtualContainer
+    ) -> None:
+        """Presenter with no streams configured ignores all events."""
+        p = MedianPresenter("median_presenter", {})
+        desc_uid = "desc-1"
+        p.uid_to_stream[desc_uid] = "square_scan"
+        frame = np.ones((4, 4))
+        evt = self._make_event(desc_uid, {"cam-buffer": frame})
+        emitted: list[Any] = []
+        p.sigNewData.connect(lambda d: emitted.append(d))
+        p.event(evt)  # type: ignore[arg-type]
+        assert emitted == []
+
+    def test_apply_median_skips_missing_device(
+        self, presenter: MedianPresenter
+    ) -> None:
+        """_apply_median does not raise if a device has no stacked median."""
+        live_uid = "live-desc"
+        presenter.uid_to_stream[live_uid] = "primary"
+        # Force median computation to only have "cam"
+        presenter.medians["cam"] = {"buffer": np.ones((4, 4)) * 2.0}
+        emitted: list[Any] = []
+        presenter.sigNewData.connect(lambda d: emitted.append(d))
+        # Send live event with both "cam" and "cam2" keys
+        evt = self._make_event(
+            live_uid,
+            {
+                "cam-buffer": np.ones((4, 4)) * 4.0,
+                "cam2-buffer": np.ones((4, 4)) * 4.0,
+            },
+        )
+        presenter.event(evt)  # type: ignore[arg-type]
+        assert len(emitted) == 1
+        assert "cam_median" in emitted[0]
+        assert "cam2_median" not in emitted[0]

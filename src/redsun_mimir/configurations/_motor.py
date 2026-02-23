@@ -15,8 +15,8 @@ def run_stage_container() -> None:
     Launches a Qt ``MotorView`` app with a mock motor device.
     """
     from redsun_mimir.device import MockMotorDevice
-    from redsun_mimir.presenter import MotorPresenter
-    from redsun_mimir.view import MotorView
+    from redsun_mimir.presenter.motor import MotorPresenter
+    from redsun_mimir.view.motor import MotorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 

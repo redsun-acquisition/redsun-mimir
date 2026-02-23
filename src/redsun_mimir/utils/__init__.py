@@ -1,65 +1,24 @@
+from __future__ import annotations
+
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
-from sunflare.device import PDevice
+from redsun.device import PDevice
 from typing_extensions import TypeIs
-
-from redsun_mimir.utils.descriptors import (
-    make_descriptor,
-    make_key,
-    make_reading,
-    parse_key,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from psygnal import SignalInstance
-    from sunflare.virtual import VirtualContainer
+    from redsun.virtual import VirtualContainer
 
 __all__ = [
-    "filter_devices",
     "get_choice_list",
     "issequence",
-    "make_key",
-    "parse_key",
-    "make_descriptor",
-    "make_reading",
     "find_signals",
 ]
 
 P = TypeVar("P", bound=PDevice)
-
-
-def filter_devices(
-    devices: Mapping[str, PDevice],
-    proto: type[P],
-    choices: Sequence[str] | None = None,
-) -> dict[str, P]:
-    """Filter devices by a specific protocol type and return a dictionary of names to instances.
-
-    Parameters
-    ----------
-    devices : ``Mapping[str, PDevice]``
-        Mapping of model names to model instances.
-    proto : ``type[P]``
-        The protocol type to filter for.
-    choices : ``Sequence[str]``, optional
-        If provided, return only devices associated with names in this sequence.
-        Default is ``None`` (all ``proto`` devices are returned).
-
-    Returns
-    -------
-    ``dict[str, P]``
-        Dictionary mapping model names to model instances that implement the given protocol.
-    """
-    if choices is not None:
-        return {
-            name: model
-            for name, model in devices.items()
-            if isinstance(model, proto) and name in choices
-        }
-    return {name: model for name, model in devices.items() if isinstance(model, proto)}
 
 
 def get_choice_list(
@@ -113,8 +72,8 @@ def ismodel(ann: Any) -> TypeIs[PDevice]:
 
 
 def find_signals(
-    container: "VirtualContainer", signal_names: "Iterable[str]"
-) -> "dict[str, SignalInstance]":
+    container: VirtualContainer, signal_names: Iterable[str]
+) -> dict[str, SignalInstance]:
     """Find signals in the virtual container by name, regardless of owner.
 
     Searches all registered signal caches for each name in

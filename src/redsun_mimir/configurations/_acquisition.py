@@ -16,20 +16,18 @@ def run_acquisition_container() -> None:
     ``DetectorPresenter`` and ``MedianPresenter``.
     """
     from redsun_mimir.device import MockMotorDevice
-    from redsun_mimir.device.microscope import SimulatedCameraDevice
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
-    from redsun_mimir.presenter import (
-        AcquisitionPresenter,
-        DetectorPresenter,
-        MedianPresenter,
-    )
-    from redsun_mimir.view import AcquisitionView, DetectorView, ImageView
+    from redsun_mimir.presenter.acquisition import AcquisitionPresenter
+    from redsun_mimir.presenter.detector import DetectorPresenter
+    from redsun_mimir.presenter.median import MedianPresenter
+    from redsun_mimir.view.acquisition import AcquisitionView
+    from redsun_mimir.view.detector import DetectorView
+    from redsun_mimir.view.image import ImageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
         mmcore = device(MMCoreCameraDevice, from_config="camera1")
-        microscope = device(SimulatedCameraDevice, from_config="camera2")
         motor = device(MockMotorDevice, from_config="motor")
         median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
         det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")

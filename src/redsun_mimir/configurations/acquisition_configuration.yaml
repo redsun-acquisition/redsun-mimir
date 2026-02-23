@@ -2,10 +2,12 @@ schema_version: 1.0
 session: redsun-mimir
 frontend: pyqt
 
+storage:
+  backend: zarr
+
 devices:
   camera1:
     sensor_shape: [100, 100]
-  camera2:
   motor:
     axis: [X, Y, Z]
     step_sizes:
@@ -16,7 +18,8 @@ devices:
 
 presenters:
   median_ctrl:
-    streams: [square_scan]
+    median_streams: [square_scan]
+    live_streams: [live]
     hints: [buffer]
   det_ctrl:
     timeout: 5.0

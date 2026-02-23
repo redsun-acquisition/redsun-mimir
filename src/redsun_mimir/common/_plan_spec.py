@@ -16,7 +16,7 @@ from typing import (
     get_type_hints,
 )
 
-from sunflare.device import PDevice
+from redsun.device import PDevice
 
 from redsun_mimir.actions import Action, ContinousPlan
 from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
