@@ -113,9 +113,6 @@ class ImageView(QtView, Loggable):
         # Window.__init__ normally does this via _update_theme(); since we bypass
         # Window entirely we do it here and re-apply on theme changes.
         self._apply_napari_stylesheet()
-        get_settings().appearance.events.theme.connect(
-            lambda _: self._apply_napari_stylesheet()
-        )
 
         self.logger.info("Initialized")
 
@@ -187,7 +184,9 @@ class ImageView(QtView, Loggable):
 
             dtype: str = "uint8"
             for key, desc in dev_descriptors.items():
-                if desc.get("dtype") == "array" and "buffer" in key:
+                if desc.get("dtype") == "array" and any(
+                    hint in key for hint in self.hints
+                ):
                     dtype = str(desc.get("dtype_numpy", "uint8"))
                     break
 

@@ -266,7 +266,6 @@ class AcquisitionPresenter(Presenter, Loggable):
             "snap": self.snap,
             "live_count": self.live_count,
             "live_stream": self.live_stream,
-            "live_square_scan": self.live_square_scan,
             "live_median_scan": self.live_median_scan,
         }
         self.plan_specs: dict[str, PlanSpec] = {
@@ -358,101 +357,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
-    @continous(togglable=True)
-    def live_square_scan(
-        self,
-        detectors: Sequence[DetectorProtocol],
-        motor: MotorProtocol,
-        step: float = 1.0,
-        step_egu: Literal["um", "mm", "nm"] = "um",
-        frames: int = 20,
-        direction: Literal["xy", "yx"] = "xy",
-        /,
-        action: Action = ScanAction(),
-    ) -> MsgGenerator[None]:
-        """Perform live data collection with optional, triggerable square scan movement.
-
-        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
-        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
-        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
-        movement step, a frame is collected from each detector. After completing the square scan,
-        the plan will resume live acquisition.
-
-        Parameters
-        ----------
-        - detectors: ``Sequence[DetectorProtocol]``
-            - The detectors to use for data collection.
-        - motor: ``MotorProtocol``
-            - The motor to use for the scan movement.
-            - It must provide two axes of movement ("X" and "Y").
-        - step: ``float``, optional
-            The step size for motor movement. Default is 1.0.
-        - step_egu: ``Literal["um", "mm", "nm"]``, optional
-            - The engineering unit for the step size.
-            - Default is "um".
-        - frames: ``int``, optional
-            - The number of frames to collect for median filtering.
-            - The rectangular movement will be divided into four sides,
-            each side collecting `frames / 4` frames, one frame per motor step.
-            - Default is 20 (resulting in 4 frames per side).
-        - direction: ``Literal["xy", "yx"]``, optional
-            - The order of motor movement.
-            - `xy`: move along X axis first, then Y axis.
-            - `yx`: move along Y axis first, then X axis.
-
-        Raises
-        ------
-        - ``TypeError``
-            - If `motor` does not provide both "X" and "Y" axis of movement.
-        """
-        if len(motor.axis) < 2 or not all(ax in motor.axis for ax in ["X", "Y"]):
-            raise TypeError(
-                "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {motor.axis}"
-            )
-
-        old_step, step = convert_to_target_egu(
-            step,
-            from_egu=step_egu,
-            to_egu=motor.egu,
-        )
-        self.event_map.update(action.event_map)
-        frames_per_side = frames // 4
-        axis = ("X", "Y") if direction == "xy" else ("Y", "X")
-        live_stream = "live"
-
-        yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-
-        # main loop; it can only be interrupted when
-        # a stop request is issued from the view and handled
-        # by the presenter
-        while True:
-            # live acquisition; wait for scan action
-            name, event = yield from rps.read_while_waiting(
-                detectors,
-                self.event_map,
-                live_stream,
-            )
-            # if the plan has provided a different engineering unit
-            # for the step size, set it accordingly
-            if motor.egu != step_egu:
-                yield from rps.set_property(motor, step, propr="step_size")
-
-            yield from square_scan(
-                detectors,
-                motor,
-                step,
-                frames_per_side,
-                axis,
-            )
-
-            if step != old_step:
-                yield from rps.set_property(motor, old_step, propr="step_size")
-            # clear the event and notify the action is done
-            self.clear_and_notify(name, event)
-            # then resume live acquisition (go back to the top of the loop)
-
     @continous
     def live_median_scan(
         self,
@@ -469,10 +373,14 @@ class AcquisitionPresenter(Presenter, Loggable):
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
-        The plan combines the square scan movement in `live_square_scan`
-        with the live streaming to disk in `live_stream`.
-        Additionally, each detector will have a corresponding
-        pseudo-model object that will compute the median
+        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
+        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
+        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
+        movement step, a frame is collected from each detector. After completing the square scan,
+        the plan will resume live acquisition.
+
+        Each detector has have a corresponding
+        pseudo-device that will compute the median
         of the frames collected during the square scan, making
         them available as stashed readings during the stream action,
         so that the computed medians are stored for post-processing and visualization

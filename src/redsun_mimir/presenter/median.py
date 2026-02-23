@@ -74,7 +74,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.median_streams = frozenset(median_streams or [])
         self.live_streams = frozenset(live_streams or [])
         self.hints = frozenset(hints or [])
-        self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
         self.medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.packet: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.uid_to_stream: dict[str, str] = {}
@@ -112,7 +111,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
         Clear the local cache.
         """
-        self.median_stacks.clear()
         self.medians.clear()
         self.packet.clear()
         self.previous_stream = ""
@@ -156,55 +154,32 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         stream_name = self.uid_to_stream[doc["descriptor"]]
         if stream_name in self.median_streams:
             if self.previous_stream != stream_name:
-                self.median_stacks.clear()
                 self.medians.clear()
                 self.previous_stream = stream_name
-            if any(key.endswith("_median") for key in doc["data"]):
-                doc = self._store_precomputed(doc)
-            else:
-                doc = self._prepare_scan_data(doc)
+            doc = self._store_precomputed(doc)
         elif stream_name in self.live_streams:
-            if self.median_stacks and not self.medians:
-                self.medians = {
-                    obj_name: {
-                        data_key: np.median(np.stack(data_values, axis=0), axis=0)
-                        for data_key, data_values in data_dict.items()
-                    }
-                    for obj_name, data_dict in self.median_stacks.items()
-                }
             doc = self._apply_median(doc)
         return doc
 
-    def _prepare_scan_data(self, doc: Event) -> Event:
+    def _apply_median(self, doc: Event) -> Event:
+        if len(self.medians) == 0:
+            return doc
+        self.packet.clear()
         for key, value in doc["data"].items():
             try:
                 obj_name, hint = parse_key(key)
             except ValueError:
                 continue
-            if hint in self.hints:
-                self.median_stacks.setdefault(obj_name, {})
-                self.median_stacks[obj_name].setdefault(hint, [])
-                self.median_stacks[obj_name][hint].append(value)
-        return doc
-
-    def _apply_median(self, doc: Event) -> Event:
-        if self.median_stacks:
-            self.packet.clear()
-            for key, value in doc["data"].items():
-                try:
-                    obj_name, hint = parse_key(key)
-                except ValueError:
-                    continue
-                if hint not in self.hints:
-                    continue
-                if obj_name not in self.medians or hint not in self.medians[obj_name]:
-                    continue
-                median_applied: npt.NDArray[Any] = value / self.medians[obj_name][hint]
-                suffixed = f"{obj_name}_median"
-                self.packet.setdefault(suffixed, {})
-                self.packet[suffixed][hint] = median_applied
-            if len(self.packet) > 0:
-                self.sigNewData.emit(self.packet)
+            if hint not in self.hints:
+                continue
+            if obj_name not in self.medians or hint not in self.medians[obj_name]:
+                continue
+            median_applied: npt.NDArray[Any] = value / self.medians[obj_name][hint]
+            suffixed = f"{obj_name}_median"
+            self.packet.setdefault(suffixed, {})
+            self.packet[suffixed][hint] = median_applied
+        if self.packet:
+            self.sigNewData.emit(self.packet)
         return doc
 
     def _store_precomputed(self, doc: Event) -> Event:

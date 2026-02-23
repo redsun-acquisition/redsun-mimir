@@ -166,7 +166,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         if self._cache and not self._valid_readings:
             stack = np.stack(self._cache, axis=0)
             median_value: npt.NDArray[np.generic] = np.median(stack, axis=0)
-            median_value = median_value.astype(stack.dtype)
             shape = median_value.shape
             dtype = median_value.dtype
             self._median[self._reading_key] = {
@@ -216,7 +215,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         return s
 
     def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
-        if not self._valid_readings or not hasattr(self, "storage"):
+        if not self._valid_readings:
             return
 
         if self._assets_collected:
