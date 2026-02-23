@@ -443,6 +443,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # start the background thread
             self.storage.kickoff()
             self._fly_permit.set()
+            s.set_finished()
         return s
 
     def complete(self) -> Status:
