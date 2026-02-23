@@ -217,20 +217,6 @@ class TestMedianPresenter:
 
     def test_instantiation(self, presenter: MedianPresenter) -> None:
         """Presenter initialises with empty state."""
-        assert presenter.median_stacks == {}
-        assert presenter.medians == {}
-
-    def test_start_clears_state(self, presenter: MedianPresenter) -> None:
-        """start() resets all cached data."""
-        presenter.median_stacks["obj"] = {"buffer": [np.zeros((4, 4))]}
-        start_doc: dict[str, Any] = {
-            "uid": "run-uid",
-            "time": 0.0,
-            "hints": {},
-            "plan_name": "test",
-        }
-        presenter.start(start_doc)  # type: ignore[arg-type]
-        assert presenter.median_stacks == {}
         assert presenter.medians == {}
 
     def test_descriptor_stores_stream_name(self, presenter: MedianPresenter) -> None:
@@ -253,8 +239,6 @@ class TestMedianPresenter:
         presenter.event(evt)  # type: ignore[arg-type]
 
         # Data should be stacked, not emitted yet
-        assert "cam" in presenter.median_stacks
-        assert len(presenter.median_stacks["cam"]["buffer"]) == 1
         assert emitted == []
 
     def test_live_stream_computes_and_emits_median(
@@ -296,7 +280,6 @@ class TestMedianPresenter:
         p.sigNewData.connect(lambda d: emitted.append(d))
         p.event(evt)  # type: ignore[arg-type]
         assert emitted == []
-        assert p.median_stacks == {}
 
     def test_apply_median_skips_missing_device(
         self, presenter: MedianPresenter
@@ -304,8 +287,6 @@ class TestMedianPresenter:
         """_apply_median does not raise if a device has no stacked median."""
         live_uid = "live-desc"
         presenter.uid_to_stream[live_uid] = "primary"
-        # Populate stacks for "cam" but not "cam2"
-        presenter.median_stacks["cam"] = {"buffer": [np.ones((4, 4))]}
         # Force median computation to only have "cam"
         presenter.medians["cam"] = {"buffer": np.ones((4, 4)) * 2.0}
         emitted: list[Any] = []
