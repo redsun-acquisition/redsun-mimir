@@ -18,7 +18,7 @@ devices:
 
 presenters:
   median_ctrl:
-    scan_streams: [square_scan]
+    median_streams: [square_scan]
     live_streams: [live]
     hints: [buffer]
   det_ctrl:

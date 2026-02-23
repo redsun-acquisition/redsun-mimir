@@ -188,7 +188,7 @@ class TestMedianPresenter:
         yield MedianPresenter(
             "median_presenter",
             {},
-            scan_streams=["square_scan"],
+            median_streams=["square_scan"],
             live_streams=["primary"],
             hints=["buffer"],
         )

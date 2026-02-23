@@ -35,12 +35,13 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         Identity key of the presenter.
     devices :
         Mapping of device names to device instances. Unused by this presenter.
-    scan_streams: list[str] | None, keyword-only, optional
-        List of stream names to look for in event descriptors when directly
-        computing the median from scan data. If `None`, no scan data will be processed.
     live_streams: list[str] | None, keyword-only, optional
         List of stream names to look for in event descriptors when
         applying the median correction using pre-computed medians. If `None`, no live data will be processed.
+    median_streams: list[str] | None, keyword-only, optional
+        List of stream names to look for in event descriptors when directly
+        computing the median from scan data, or displaying pre-computed median
+        data from a MedianPseudoDevice. If `None`, no scan data will be processed.
     hints: list[str] | None, keyword-only, optional
         List of data key suffixes to look for in event documents when applying
         the median correction. If `None`, no data will be processed. Defaults to `None`.
@@ -65,12 +66,12 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         name: str,
         devices: Mapping[str, Device],
         /,
-        scan_streams: list[str] | None = None,
         live_streams: list[str] | None = None,
+        median_streams: list[str] | None = None,
         hints: list[str] | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self.scan_streams = frozenset(scan_streams or [])
+        self.median_streams = frozenset(median_streams or [])
         self.live_streams = frozenset(live_streams or [])
         self.hints = frozenset(hints or [])
         self.median_stacks: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
@@ -79,16 +80,16 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-        active = (self.scan_streams or self.live_streams) and self.hints
+        active = (self.median_streams or self.live_streams) and self.hints
 
         if active:
             self.logger.info(
-                f"Initialized: scan streams {', '.join(self.scan_streams)}, "
+                f"Initialized: scan streams {', '.join(self.median_streams)}, "
                 f"live streams {', '.join(self.live_streams)}, "
                 f"hints {', '.join(self.hints)}"
             )
         else:
-            if self.scan_streams or self.live_streams:
+            if self.median_streams or self.live_streams:
                 self.logger.warning(
                     "Initialized: no hints detected; presenter will be inactive"
                 )
@@ -149,18 +150,19 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         doc : ``Event``
             Processed event document with median calculated.
         """
-        if not (self.scan_streams and self.live_streams and self.hints):
+        if not (self.median_streams and self.live_streams and self.hints):
             return doc
 
         stream_name = self.uid_to_stream[doc["descriptor"]]
-        if stream_name in self.scan_streams:
+        if stream_name in self.median_streams:
             if self.previous_stream != stream_name:
-                # clear the stack and the median
-                # when a new stream is detected
                 self.median_stacks.clear()
                 self.medians.clear()
                 self.previous_stream = stream_name
-            doc = self._prepare_scan_data(doc)
+            if any(key.endswith("_median") for key in doc["data"]):
+                doc = self._emit_precomputed(doc)
+            else:
+                doc = self._prepare_scan_data(doc)
         elif stream_name in self.live_streams:
             if self.median_stacks and not self.medians:
                 self.medians = {
@@ -198,9 +200,24 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 if obj_name not in self.medians or hint not in self.medians[obj_name]:
                     continue
                 median_applied: npt.NDArray[Any] = value / self.medians[obj_name][hint]
-                suffixed = f"{obj_name}-median"
+                suffixed = f"{obj_name}_median"
                 self.packet.setdefault(suffixed, {})
                 self.packet[suffixed][hint] = median_applied
             if len(self.packet) > 0:
                 self.sigNewData.emit(self.packet)
+        return doc
+
+    def _emit_precomputed(self, doc: Event) -> Event:
+        self.packet.clear()
+        for key, value in doc["data"].items():
+            try:
+                obj_name, hint = parse_key(key)
+            except ValueError:
+                continue
+            if hint not in self.hints:
+                continue
+            self.packet.setdefault(obj_name, {})
+            self.packet[obj_name][hint] = value
+        if self.packet:
+            self.sigNewData.emit(self.packet)
         return doc
