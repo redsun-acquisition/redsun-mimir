@@ -183,7 +183,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._complete_status = Status()
         self._assets_collected = False  # Track if stream assets have been collected
 
-        self.logger.debug(f"Initialized {self.adapter}\{self.device}")
+        self.logger.debug(f"Initialized {self.adapter} -> {self.device}")
 
         self._read_buffer: npt.NDArray[Any] = np.zeros(
             (self.roi[2], self.roi[3]), dtype=self.dtype
