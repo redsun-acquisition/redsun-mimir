@@ -40,17 +40,13 @@ class ImageView(QtView, Loggable):
     [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies];
     layers are updated in real-time as new frames arrive from the presenter.
 
-    Property editing lives in the companion
-    [`DetectorView`][redsun_mimir.view.DetectorView], which is wired
-    independently through the virtual bus.
-
     Parameters
     ----------
     name :
         Identity key of the view.
     hints :
         Data key suffixes to watch for in incoming data packets.
-        Currently unused; reserved for future filtering.
+        Defaults to ``["buffer"]``, which is the conventional suffix for raw frame arrays.
     """
 
     @property
@@ -62,8 +58,9 @@ class ImageView(QtView, Loggable):
         name: str,
         /,
         hints: list[str] | None = None,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(name)
+        super().__init__(name, **kwargs)
 
         # Ensure the QApplication exists and napari's theme search paths
         # (theme_<name>:/) are registered via QDir.addSearchPath.
@@ -86,7 +83,6 @@ class ImageView(QtView, Loggable):
         controls = self._qt_viewer.controls
         layer_buttons = self._qt_viewer.layerButtons
         layer_list = self._qt_viewer.layers
-        viewer_buttons = self._qt_viewer.viewerButtons
 
         # Left panel: layer controls on top, layer list + buttons below.
         left_panel = QtWidgets.QWidget()
@@ -96,7 +92,6 @@ class ImageView(QtView, Loggable):
         left_layout.addWidget(controls)
         left_layout.addWidget(layer_buttons)
         left_layout.addWidget(layer_list)
-        left_layout.addWidget(viewer_buttons)
         left_panel.setLayout(left_layout)
 
         # Horizontal splitter: left panel | canvas+dims
@@ -111,7 +106,7 @@ class ImageView(QtView, Loggable):
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
 
-        self.buffer_key: str = "buffer"
+        self.hints = frozenset(hints or ["buffer"])
 
         # Apply napari's stylesheet so icons and theme colours render correctly.
         # Window.__init__ normally does this via _update_theme(); since we bypass
@@ -220,9 +215,12 @@ class ImageView(QtView, Loggable):
             ``"roi"`` (a 4-tuple ``(x_start, x_end, y_start, y_end)``).
         """
         for obj_name, packet in data.items():
-            buffer: npt.NDArray[Any] = packet[self.buffer_key]
-            if obj_name not in self.viewer_model.layers:
-                self.logger.debug(f"Adding new layer for {obj_name}")
-                self.viewer_model.add_image(name=obj_name, data=buffer)
-            else:
-                self.viewer_model.layers[obj_name].data = buffer
+            for hint in self.hints:
+                if hint not in packet:
+                    continue
+                buffer: npt.NDArray[Any] = packet[hint]
+                if obj_name not in self.viewer_model.layers:
+                    self.logger.debug(f"Adding new layer for {obj_name}")
+                    self.viewer_model.add_image(name=obj_name, data=buffer)
+                else:
+                    self.viewer_model.layers[obj_name].data = buffer
