@@ -18,7 +18,8 @@ devices:
 
 presenters:
   median_ctrl:
-    streams: [square_scan]
+    scan_streams: [square_scan]
+    live_streams: [live]
     hints: [buffer]
   det_ctrl:
     timeout: 5.0

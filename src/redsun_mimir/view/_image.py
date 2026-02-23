@@ -10,11 +10,11 @@ from napari.components import ViewerModel
 from napari.settings import get_settings
 from qtpy import QtCore, QtWidgets
 from redsun.log import Loggable
+from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 
 from redsun_mimir.utils import find_signals
-from redsun_mimir.utils.descriptors import parse_key
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,

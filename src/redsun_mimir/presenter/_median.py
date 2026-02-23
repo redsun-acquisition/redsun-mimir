@@ -7,9 +7,8 @@ from event_model import DocumentRouter
 from event_model.documents.event_descriptor import EventDescriptor
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.utils.descriptors import parse_key
 from redsun.virtual import Signal
-
-from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -84,10 +83,9 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
         if active:
             self.logger.info(
-                "Initialized",
-                f"Scan streams: {', '.join(self.scan_streams) if self.scan_streams else 'None'}",
-                f"Live streams: {', '.join(self.live_streams) if self.live_streams else 'None'}",
-                f"Hints: {', '.join(self.hints)}",
+                f"Initialized: scan streams {', '.join(self.scan_streams)}, "
+                f"live streams {', '.join(self.live_streams)}, "
+                f"hints {', '.join(self.hints)}"
             )
         else:
             if self.scan_streams or self.live_streams:
@@ -140,12 +138,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     def event(self, doc: Event) -> Event:
         """Process new event documents.
 
-        If the event descriptor UID corresponds to an expected stream,
-        the data is stacked for median calculation. Otherwise,
-        the median is calculated and emitted to the viewer.
-        If no expected stream is found and the median has not been calculated yet,
-        does nothing.
-
         Parameters
         ----------
         doc : ``Event``
@@ -156,7 +148,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         doc : ``Event``
             Processed event document with median calculated.
         """
-        if (not self.scan_streams and not self.live_streams) and not self.hints:
+        if not (self.scan_streams and self.live_streams and self.hints):
             return doc
 
         stream_name = self.uid_to_stream[doc["descriptor"]]
@@ -194,6 +186,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def _apply_median(self, doc: Event) -> Event:
         if self.median_stacks:
+            self.packet.clear()
             for key, value in doc["data"].items():
                 try:
                     obj_name, hint = parse_key(key)
@@ -207,5 +200,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 suffixed = f"{obj_name}-median"
                 self.packet.setdefault(suffixed, {})
                 self.packet[suffixed][hint] = median_applied
-            self.sigNewData.emit(self.packet)
+            if len(self.packet) > 0:
+                self.sigNewData.emit(self.packet)
         return doc

@@ -18,13 +18,14 @@ devices:
 
 presenters:
   median_ctrl: {}
+    # scan_streams: [square_scan]
+    # live_streams: [live]
+    # hints: [buffer]
   det_ctrl:
     timeout: 5.0
   acq_ctrl:
     timeout: 5.0
-    callbacks:
-      - det_ctrl
-      - median_ctrl
+    callbacks: [det_ctrl, median_ctrl]
 
 views:
   acq_widget: {}

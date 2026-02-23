@@ -4,12 +4,11 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
+from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal
 from superqt import QLabeledDoubleSlider, QLabeledSlider
-
-from redsun_mimir.utils.descriptors import parse_key
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading

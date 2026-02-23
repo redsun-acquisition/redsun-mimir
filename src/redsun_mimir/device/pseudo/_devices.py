@@ -8,9 +8,9 @@ from bluesky.protocols import Reading, Triggerable
 from redsun.engine import Status
 from redsun.log import Loggable
 from redsun.storage import StorageDescriptor
+from redsun.utils.descriptors import make_key
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
-from redsun_mimir.utils.descriptors import make_key
 
 if TYPE_CHECKING:
     from typing import Iterator
@@ -61,7 +61,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         describe: dict[str, Descriptor],
         collect: dict[str, Descriptor] | dict[str, dict[str, Descriptor]],
         describe_target: str = "buffer",
-        collect_target: str = "buffer:stream",
+        collect_target: str = "buffer_stream",
     ) -> None:
         self._name = f"{reader.name}_median"
         # Configuration/event keys use the {name}-{property} convention
@@ -69,10 +69,11 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         # can correctly extract the device name and property hint.
         self._describe_target_key = make_key(reader.name, describe_target)
         self._reading_key = make_key(self.name, describe_target)
-        # Streaming keys keep the {name}:{signal} convention used by
+
+        # Streaming keys keep the {name}-{signal} convention used by
         # describe_collect / collect_asset_docs / Writer.update_source.
-        self._collect_target_key = f"{reader.name}:{collect_target}"
-        self._collect_key = f"{self.name}:{collect_target}"
+        self._collect_target_key = make_key(reader.name, collect_target)
+        self._collect_key = make_key(self.name, collect_target)
         self._valid_readings = False
         self._median: dict[str, Reading[Any]] = {}
         self._assets_collected: bool = False
@@ -166,8 +167,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             )
             shape = median_value.shape
             dtype = median_value.dtype
-            if hasattr(self, "storage"):
-                self.storage.update_source(self.name, dtype, shape)
+            self.storage.update_source(self.name, self._collect_key, dtype, shape)
             self._median[self._reading_key] = {
                 "value": median_value,
                 "timestamp": time.time(),

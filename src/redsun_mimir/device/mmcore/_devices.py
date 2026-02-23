@@ -11,15 +11,15 @@ from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
 from redsun.storage import StorageDescriptor
-
-import redsun_mimir.device.utils as utils
-from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils.descriptors import (
+from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
     make_reading,
     parse_key,
 )
+
+import redsun_mimir.device.utils as utils
+from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
     from typing import Any, ClassVar, Iterator
@@ -122,9 +122,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
-
-        self._name = name
         self._core = Core.instance()
+        self._device_schema = self._core.getDeviceSchema(self.name)
         self._pixelprop = list(self.numpy_dtype.keys())[0]
         try:
             if MMCoreCameraDevice.initialized:
@@ -132,13 +131,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                     "MMCoreCameraDevice has already been initialized once; "
                     "multiple instances are not supported."
                 )
-            self._core.loadDevice(name, self.adapter, self.device)
-            self._core.initializeDevice(name)
-            self._core.setCameraDevice(name)
+            self._core.loadDevice(self.name, self.adapter, self.device)
+            self._core.initializeDevice(self.name)
+            self._core.setCameraDevice(self.name)
 
             MMCoreCameraDevice.initialized = True
         except Exception as e:
-            self.logger.error(f"Failed to initialize device {name}")
+            self.logger.error(f"Failed to initialize device {self.name}")
             raise e
 
         # always reset the ROI to the full frame
@@ -161,20 +160,20 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 # if the property is not in the allowed properties, skip it
                 if prop not in self.allowed_properties:
                     continue
-                self._core.setProperty(name, prop, value)
+                self._core.setProperty(self.name, prop, value)
 
         self._core.setExposure(self.name, self.starting_exposure)
 
         self.roi = (0, 0, *self.sensor_shape)
         self._properties = {
-            propr_name: self._core.getPropertyObject(name, propr_name)
+            propr_name: self._core.getPropertyObject(self.name, propr_name)
             for propr_name in self.allowed_properties
         }
 
-        self._device_schema = self._core.getDeviceSchema(name)
+        self._device_schema = self._core.getDeviceSchema(self.name)
         self._buffer_key = make_key(self.name, "buffer")
         self._roi_key = make_key(self.name, "roi")
-        self._buffer_stream_key = f"{self.name}:buffer:stream"
+        self._buffer_stream_key = make_key(self.name, "buffer_stream")
         self._fly_permit = th.Event()
         self._fly_stop = th.Event()
         self._staged = th.Event()
@@ -378,6 +377,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # Update source info for this camera
             self.storage.update_source(
                 name=self.name,
+                data_key=self._buffer_stream_key,
                 dtype=np.dtype(self.dtype),
                 shape=(height, width),
             )

@@ -8,15 +8,15 @@ from attrs import define, field, setters, validators
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-
-import redsun_mimir.device.utils as utils
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
-from redsun_mimir.utils.descriptors import (
+from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
     make_reading,
     parse_key,
 )
+
+import redsun_mimir.device.utils as utils
+from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any

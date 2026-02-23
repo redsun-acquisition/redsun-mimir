@@ -1,15 +1,10 @@
+from __future__ import annotations
+
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
 from redsun.device import PDevice
 from typing_extensions import TypeIs
-
-from redsun_mimir.utils.descriptors import (
-    make_descriptor,
-    make_key,
-    make_reading,
-    parse_key,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -21,10 +16,6 @@ __all__ = [
     "filter_devices",
     "get_choice_list",
     "issequence",
-    "make_key",
-    "parse_key",
-    "make_descriptor",
-    "make_reading",
     "find_signals",
 ]
 
