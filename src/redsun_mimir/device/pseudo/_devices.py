@@ -163,20 +163,19 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         """Compute the median of the cached readings."""
         s = Status()
         # compute the median for the target key and store it in the _median dict
-        if self._cache:
-            median_value: npt.NDArray[np.generic] = np.median(
-                np.stack(self._cache, axis=0), axis=0
-            )
+        if self._cache and not self._valid_readings:
+            stack = np.stack(self._cache, axis=0)
+            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0)
+            median_value = median_value.astype(stack.dtype)
             shape = median_value.shape
             dtype = median_value.dtype
             self._median[self._reading_key] = {
                 "value": median_value,
                 "timestamp": time.time(),
             }
-            if not self._valid_readings:
-                self.storage.update_source(
-                    self.name, self._collect_key, shape=shape, dtype=dtype
-                )
+            self.storage.update_source(
+                self.name, self._collect_key, shape=shape, dtype=dtype
+            )
             self._valid_readings = True
         s.set_finished()
         return s

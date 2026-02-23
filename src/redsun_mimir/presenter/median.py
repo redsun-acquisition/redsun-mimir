@@ -160,7 +160,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 self.medians.clear()
                 self.previous_stream = stream_name
             if any(key.endswith("_median") for key in doc["data"]):
-                doc = self._emit_precomputed(doc)
+                doc = self._store_precomputed(doc)
             else:
                 doc = self._prepare_scan_data(doc)
         elif stream_name in self.live_streams:
@@ -207,8 +207,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 self.sigNewData.emit(self.packet)
         return doc
 
-    def _emit_precomputed(self, doc: Event) -> Event:
-        self.packet.clear()
+    def _store_precomputed(self, doc: Event) -> Event:
         for key, value in doc["data"].items():
             try:
                 obj_name, hint = parse_key(key)
@@ -216,8 +215,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 continue
             if hint not in self.hints:
                 continue
-            self.packet.setdefault(obj_name, {})
-            self.packet[obj_name][hint] = value
-        if self.packet:
-            self.sigNewData.emit(self.packet)
+            # strip the _median suffix to match the obj_name used in _apply_median
+            base_name = obj_name.removesuffix("_median")
+            self.medians.setdefault(base_name, {})
+            self.medians[base_name][hint] = np.asarray(value)
         return doc
