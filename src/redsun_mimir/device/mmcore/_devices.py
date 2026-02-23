@@ -123,7 +123,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
         self._core = Core.instance()
-        self._device_schema = self._core.getDeviceSchema(self.name)
         self._pixelprop = list(self.numpy_dtype.keys())[0]
         try:
             if MMCoreCameraDevice.initialized:
