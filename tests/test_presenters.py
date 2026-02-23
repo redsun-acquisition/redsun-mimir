@@ -12,9 +12,9 @@ import pytest
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
-from redsun_mimir.presenter._light import LightPresenter
-from redsun_mimir.presenter._median import MedianPresenter
-from redsun_mimir.presenter._motor import MotorPresenter
+from redsun_mimir.presenter.light import LightPresenter
+from redsun_mimir.presenter.median import MedianPresenter
+from redsun_mimir.presenter.motor import MotorPresenter
 
 
 class TestMotorPresenter:

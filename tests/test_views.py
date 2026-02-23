@@ -12,8 +12,8 @@ from qtpy.QtWidgets import QApplication
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
-from redsun_mimir.view._light import LightView
-from redsun_mimir.view._motor import MotorView
+from redsun_mimir.view.light import LightView
+from redsun_mimir.view.motor import MotorView
 
 
 def _make_container(**objects: Any) -> VirtualContainer:
@@ -144,7 +144,7 @@ class TestMotorView:
         virtual_container: VirtualContainer,
     ) -> None:
         """register_providers() registers the widget signals; inject_dependencies() connects inbound signals."""
-        from redsun_mimir.presenter._motor import MotorPresenter
+        from redsun_mimir.presenter.motor import MotorPresenter
 
         # Presenter registers first so its signals and providers exist on the container
         ctrl = MotorPresenter("motor_presenter", {"stage": motor})
@@ -253,7 +253,7 @@ class TestLightView:
         virtual_container: VirtualContainer,
     ) -> None:
         """register_providers() registers the widget signals; inject_dependencies() builds the UI."""
-        from redsun_mimir.presenter._light import LightPresenter
+        from redsun_mimir.presenter.light import LightPresenter
 
         ctrl = LightPresenter("light_presenter", {"led": led})
         ctrl.register_providers(virtual_container)

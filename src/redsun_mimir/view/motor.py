@@ -75,6 +75,7 @@ class MotorView(QtView):
 
     @property
     def view_position(self) -> ViewPosition:
+        """The position in the main view."""
         return ViewPosition.RIGHT
 
     def __init__(

@@ -51,6 +51,7 @@ class ImageView(QtView, Loggable):
 
     @property
     def view_position(self) -> ViewPosition:
+        """The position in the main view."""
         return ViewPosition.CENTER
 
     def __init__(

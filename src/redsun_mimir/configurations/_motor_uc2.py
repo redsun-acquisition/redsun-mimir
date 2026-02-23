@@ -15,8 +15,8 @@ def run_youseetoo_motor_container() -> None:
     Launches a Qt ``MotorView`` app with UC2 serial and motor devices.
     """
     from redsun_mimir.device.youseetoo import MimirMotorDevice, MimirSerialDevice
-    from redsun_mimir.presenter import MotorPresenter
-    from redsun_mimir.view import MotorView
+    from redsun_mimir.presenter.motor import MotorPresenter
+    from redsun_mimir.view.motor import MotorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 

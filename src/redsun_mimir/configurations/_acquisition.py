@@ -17,12 +17,12 @@ def run_acquisition_container() -> None:
     """
     from redsun_mimir.device import MockMotorDevice
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
-    from redsun_mimir.presenter import (
-        AcquisitionPresenter,
-        DetectorPresenter,
-        MedianPresenter,
-    )
-    from redsun_mimir.view import AcquisitionView, DetectorView, ImageView
+    from redsun_mimir.presenter.acquisition import AcquisitionPresenter
+    from redsun_mimir.presenter.detector import DetectorPresenter
+    from redsun_mimir.presenter.median import MedianPresenter
+    from redsun_mimir.view.acquisition import AcquisitionView
+    from redsun_mimir.view.detector import DetectorView
+    from redsun_mimir.view.image import ImageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 

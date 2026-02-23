@@ -307,6 +307,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.callback_tokens[name] = token
 
     def plans_specificiers(self) -> set[PlanSpec]:
+        """Return the current set of plan specifications for the available plans."""
         return set(self.plan_specs.values())
 
     @continous(togglable=True, pausable=True)
@@ -719,6 +720,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.sigActionDone.emit(name)
 
     def toggle_action_event(self, action_name: str, state: bool) -> None:
+        """Toggle the event associated with the given action name."""
         event = self.event_map[action_name]
         if state:
             self.engine.loop.call_soon_threadsafe(event.set)

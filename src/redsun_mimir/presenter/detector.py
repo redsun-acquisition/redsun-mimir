@@ -13,7 +13,7 @@ from redsun.utils.descriptors import parse_key
 from redsun.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import filter_devices, find_signals
+from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -79,7 +79,11 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
         self.hints = hints or ["buffer", "roi"]
-        self.detectors = filter_devices(devices, DetectorProtocol)
+        self.detectors = {
+            name: device
+            for name, device in devices.items()
+            if isinstance(device, DetectorProtocol)
+        }
         # data stream name,
         # extracted from the incoming
         # descriptor document
