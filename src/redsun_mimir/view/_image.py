@@ -14,7 +14,6 @@ from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 
-from redsun_mimir.utils import find_signals
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -149,16 +148,16 @@ class ImageView(QtView, Loggable):
         descriptors: dict[str, Descriptor] = container.detector_descriptors()
         readings: dict[str, Reading[Any]] = container.detector_readings()
         self._setup_layers(descriptors, readings)
-        sigs = find_signals(container, ["sigNewData"])
-        if "sigNewData" in sigs:
-            sigs["sigNewData"].connect(self._update_layers, thread="main")
+        for cache in container.signals.values():
+            if "sigNewData" in cache:
+                cache["sigNewData"].connect(self._update_layers, thread="main")
 
     def _setup_layers(
         self,
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
     ) -> None:
-        r"""Create one napari image layer per device.
+        """Create one napari image layer per device.
 
         Parameters
         ----------

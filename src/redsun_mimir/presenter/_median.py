@@ -103,6 +103,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register this presenter as a callback in the virtual container."""
+        container.register_signals(self)
         container.register_callbacks(self)
 
     def start(self, doc: RunStart) -> RunStart | None:
