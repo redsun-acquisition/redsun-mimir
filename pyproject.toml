@@ -31,7 +31,7 @@ dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.20.0",
     "acquire-zarr>=0.6.0",
-    "redsun>=0.8.0",
+    "redsun>=0.8.2",
 ]
 
 [dependency-groups]
@@ -43,23 +43,16 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-qt>=4.5.0",
     "ruff>=0.14.2",
-    "sphinx>=8.1.3",
-    "pydata-sphinx-theme>=0.16.1",
-    "sphinx-design>=0.6.1",
-    "myst-parser>=4.0.1",
 ]
 
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.6.6",
-    "redsun[pyqt]>=0.8.0",
+    "redsun[pyqt]",
 ]
 pyside = [
     "napari[pyside6]>=0.6.6",
-    "redsun[pyside]>=0.8.0",
-]
-microscope = [
-    "microscope>=0.7.0",
+    "redsun[pyside]",
 ]
 uc2 = [
     "pymmcore-plus>=0.16.0",
@@ -107,8 +100,7 @@ omit = [
 files = "src/**/*.py"
 disable_error_code = [
     "import-untyped",
-    "no-untyped-call",
-    "type-abstract"
+    "no-untyped-call"
 ]
 pretty = true
 
