@@ -30,8 +30,7 @@ requires-python = ">=3.10"
 dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.20.0",
-    "acquire-zarr>=0.6.0",
-    "redsun>=0.8.2",
+    "redsun[zarr]>=0.8.2",
 ]
 
 [dependency-groups]
