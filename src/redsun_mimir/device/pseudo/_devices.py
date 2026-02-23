@@ -64,6 +64,8 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         collect_target: str = "buffer_stream",
     ) -> None:
         self._name = f"{reader.name}_median"
+        self._reader_shape = reader.sensor_shape
+        self.storage = reader.storage
         # Configuration/event keys use the {name}-{property} convention
         # (produced by make_key) so that event-document parsers splitting on "-"
         # can correctly extract the device name and property hint.
@@ -96,16 +98,10 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             if self._collect_target_key in key
         }
 
-        old_describe_source = describe_descriptor[self._describe_target_key]["source"]
-        new_describe_source = f"{old_describe_source}-median"
-        self._describe_descriptor[self._reading_key]["source"] = new_describe_source
-
-        old_collect_source = collect_descriptor[self._collect_target_key]["source"]
-        new_collect_source = f"{old_collect_source}-median"
-        self._collect_descriptor[self._collect_key]["source"] = new_collect_source
-
         # initialize the cache with empty lists
         self._cache: list[npt.NDArray[np.generic]] = []
+
+        self._empty_median = np.zeros(self._reader_shape, dtype=np.float32)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Return the configuration descriptor.
@@ -134,11 +130,17 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     def read(self) -> dict[str, Reading[Any]]:
         """Read the current value of the pseudo model.
 
-        If no valid readings are available, returns an empty dictionary.
+        If no valid readings are available, a dictionary with
+        an empty array with the same size as the reference reader.
         """
         if not self._valid_readings:
             # return an empty dict
-            return {}
+            return {
+                self._reading_key: {
+                    "value": self._empty_median,
+                    "timestamp": time.time(),
+                }
+            }
 
         return self._median
 
@@ -167,11 +169,14 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             )
             shape = median_value.shape
             dtype = median_value.dtype
-            self.storage.update_source(self.name, self._collect_key, dtype, shape)
             self._median[self._reading_key] = {
                 "value": median_value,
                 "timestamp": time.time(),
             }
+            if not self._valid_readings:
+                self.storage.update_source(
+                    self.name, self._collect_key, shape=shape, dtype=dtype
+                )
             self._valid_readings = True
         s.set_finished()
         return s

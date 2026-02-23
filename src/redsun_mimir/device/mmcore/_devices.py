@@ -506,7 +506,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             self._buffer_key: {
                 "source": "data",
                 "dtype": "array",
-                "shape": [1, *self.roi[3:4]],
+                "shape": [1, *self.roi[2:]],
             },
             self._roi_key: {
                 "source": "data",

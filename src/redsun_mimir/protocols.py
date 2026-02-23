@@ -14,6 +14,7 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from redsun.device import PDevice
+from redsun.storage import HasStorage
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
@@ -204,6 +205,7 @@ class ReadableFlyer(
     Flyable,
     Collectable,
     WritesStreamAssets,
+    HasStorage,
     Protocol,
 ):
     """Protocol for objects that are both Readable and Flyable.
@@ -221,6 +223,8 @@ class ReadableFlyer(
     - ``Collectable`` (describe_collect() method)
     - ``WritesStreamAssets`` (collect_asset_docs() method)
     """
+
+    sensor_shape: tuple[int, int]
 
 
 @runtime_checkable
