@@ -320,5 +320,5 @@ class TestMedianPresenter:
         )
         presenter.event(evt)  # type: ignore[arg-type]
         assert len(emitted) == 1
-        assert "cam-median" in emitted[0]
-        assert "cam2-median" not in emitted[0]
+        assert "cam_median" in emitted[0]
+        assert "cam2_median" not in emitted[0]
