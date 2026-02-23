@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
@@ -29,10 +29,6 @@ def is_flat_descriptor(
         key in first_value for key in ("source", "dtype", "shape")
     )
     return has_descriptor_keys
-
-
-class PrepareKwargs(TypedDict):
-    """Keyword arguments for the `prepare` method of the `MedianPseudoDevice`."""
 
 
 class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
@@ -100,11 +96,11 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         }
 
         old_describe_source = describe_descriptor[self._describe_target_key]["source"]
-        new_describe_source = f"{old_describe_source}/median"
+        new_describe_source = f"{old_describe_source}-median"
         self._describe_descriptor[self._reading_key]["source"] = new_describe_source
 
         old_collect_source = collect_descriptor[self._collect_target_key]["source"]
-        new_collect_source = f"{old_collect_source}/median"
+        new_collect_source = f"{old_collect_source}-median"
         self._collect_descriptor[self._collect_key]["source"] = new_collect_source
 
         # initialize the cache with empty lists
@@ -180,7 +176,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         s.set_finished()
         return s
 
-    def prepare(self, value: PrepareKwargs) -> Status:
+    def prepare(self, value: Any) -> Status:
         """Prepare the pseudo model for flight by writing the median readings to disk."""
         s = Status()
         if self._valid_readings and hasattr(self, "storage"):

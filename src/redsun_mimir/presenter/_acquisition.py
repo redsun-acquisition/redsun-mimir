@@ -30,6 +30,7 @@ from redsun_mimir.protocols import (  # noqa: TC001
 from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
+    from collections.abc import MutableSequence
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
@@ -417,6 +418,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.event_map.update(action.event_map)
         frames_per_side = frames // 4
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
+        live_stream = "live"
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
@@ -429,7 +431,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             name, event = yield from rps.read_while_waiting(
                 detectors,
                 self.event_map,
-                "live",
+                live_stream,
             )
             # if the plan has provided a different engineering unit
             # for the step size, set it accordingly
@@ -516,11 +518,11 @@ class AcquisitionPresenter(Presenter, Loggable):
                 f" Available axes: {motor.axis}"
             )
 
-        medians: set[MedianPseudoDevice] = set()
+        medians: MutableSequence[MedianPseudoDevice] = list()
         for det in detectors:
             describe = yield from rps.describe(det)
             collect = yield from rps.describe_collect(det)
-            medians.add(MedianPseudoDevice(det, describe, collect))
+            medians.append(MedianPseudoDevice(det, describe, collect))
 
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
@@ -545,7 +547,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             name, event = yield from rps.read_while_waiting(
-                detectors,
+                objs,
                 self.event_map,
                 live_stream,
             )
@@ -558,7 +560,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from scan_and_stash(
                     detectors,
                     motor,
-                    medians,  # type: ignore[arg-type]
+                    medians,
                     step,
                     scan_frames // 4,
                     axis,

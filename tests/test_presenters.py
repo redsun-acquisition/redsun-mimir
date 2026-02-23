@@ -186,7 +186,11 @@ class TestMedianPresenter:
         self, virtual_container: VirtualContainer
     ) -> Generator[MedianPresenter, None, None]:
         yield MedianPresenter(
-            "median_presenter", {}, streams=["square_scan"], hints=["buffer"]
+            "median_presenter",
+            {},
+            scan_streams=["square_scan"],
+            live_streams=["primary"],
+            hints=["buffer"],
         )
 
     def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -253,7 +257,7 @@ class TestMedianPresenter:
         assert len(presenter.median_stacks["cam"]["buffer"]) == 1
         assert emitted == []
 
-    def test_non_expected_stream_computes_and_emits_median(
+    def test_live_stream_computes_and_emits_median(
         self, presenter: MedianPresenter
     ) -> None:
         """Events from a non-expected stream trigger median computation and emission."""
@@ -278,3 +282,43 @@ class TestMedianPresenter:
         result = emitted[0]
         # cam-median key should be present
         assert any("median" in k for k in result)
+
+    def test_inactive_presenter_does_nothing(
+        self, virtual_container: VirtualContainer
+    ) -> None:
+        """Presenter with no streams configured ignores all events."""
+        p = MedianPresenter("median_presenter", {})
+        desc_uid = "desc-1"
+        p.uid_to_stream[desc_uid] = "square_scan"
+        frame = np.ones((4, 4))
+        evt = self._make_event(desc_uid, {"cam-buffer": frame})
+        emitted: list[Any] = []
+        p.sigNewData.connect(lambda d: emitted.append(d))
+        p.event(evt)  # type: ignore[arg-type]
+        assert emitted == []
+        assert p.median_stacks == {}
+
+    def test_apply_median_skips_missing_device(
+        self, presenter: MedianPresenter
+    ) -> None:
+        """_apply_median does not raise if a device has no stacked median."""
+        live_uid = "live-desc"
+        presenter.uid_to_stream[live_uid] = "primary"
+        # Populate stacks for "cam" but not "cam2"
+        presenter.median_stacks["cam"] = {"buffer": [np.ones((4, 4))]}
+        # Force median computation to only have "cam"
+        presenter.medians["cam"] = {"buffer": np.ones((4, 4)) * 2.0}
+        emitted: list[Any] = []
+        presenter.sigNewData.connect(lambda d: emitted.append(d))
+        # Send live event with both "cam" and "cam2" keys
+        evt = self._make_event(
+            live_uid,
+            {
+                "cam-buffer": np.ones((4, 4)) * 4.0,
+                "cam2-buffer": np.ones((4, 4)) * 4.0,
+            },
+        )
+        presenter.event(evt)  # type: ignore[arg-type]
+        assert len(emitted) == 1
+        assert "cam-median" in emitted[0]
+        assert "cam2-median" not in emitted[0]
