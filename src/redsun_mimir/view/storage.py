@@ -46,7 +46,7 @@ class FileStorageView(QtView, Loggable):
         base_dir_row.addWidget(self._base_dir_btn)
 
         form = QtW.QFormLayout()
-        form.addRow("Output directory", base_dir_row)
+        form.addRow("Root directory", base_dir_row)
 
         root = QtW.QVBoxLayout(self)
         root.addLayout(form)
