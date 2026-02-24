@@ -45,12 +45,8 @@ class FileStorageView(QtView, Loggable):
         base_dir_row.addWidget(self._base_dir_edit)
         base_dir_row.addWidget(self._base_dir_btn)
 
-        self._session_edit = QtW.QLineEdit(self._provider.session)
-        self._session_edit.editingFinished.connect(self._on_session_changed)
-
         form = QtW.QFormLayout()
         form.addRow("Output directory", base_dir_row)
-        form.addRow("Session", self._session_edit)
 
         root = QtW.QVBoxLayout(self)
         root.addLayout(form)
@@ -61,12 +57,10 @@ class FileStorageView(QtView, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Write the initial StorageInfo onto the container."""
+        self._container = container
+        self._provider.session = container.session
         container.storage_info = self._storage_info
         container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Store container reference for later updates."""
-        self._container = container
 
     def _on_browse_clicked(self) -> None:
         """Open a native folder-picker and update the base directory."""
@@ -78,15 +72,6 @@ class FileStorageView(QtView, Loggable):
         if not chosen:
             return
         self._update_base_dir(Path(chosen))
-
-    def _on_session_changed(self) -> None:
-        """Apply the session name typed by the user."""
-        session = self._session_edit.text().strip()
-        if not session or session == self._provider.session:
-            return
-        self._provider.session = session
-        self._push_storage_info()
-        self.logger.info(f"Session updated to: {session!r}")
 
     def _update_base_dir(self, base_dir: Path) -> None:
         self._provider.base_dir = base_dir

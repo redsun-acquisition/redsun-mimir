@@ -603,7 +603,12 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
-        kwargs.update({"storage_info": self._container.storage_info})
+
+        if "storage_info" in kwargs.keys():
+            # if storage info is required by a plan,
+            # push the current storage info from the container
+            # to keep it up to date
+            kwargs["storage_info"] = self._container.storage_info
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
