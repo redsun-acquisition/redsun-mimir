@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from redsun.log import Loggable
@@ -11,7 +12,6 @@ from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from redsun.device import Device
     from redsun.virtual import VirtualContainer
@@ -20,7 +20,18 @@ if TYPE_CHECKING:
 class FileStoragePresenter(Presenter, Loggable):
     """Presenter that owns the application-level storage location.
 
-    The URI produced by `next_storage_info` follows the structure::
+    Holds a [`SessionPathProvider`][redsun.storage.SessionPathProvider] and exposes a
+    [`StorageInfo`][redsun.storage.StorageInfo] on the
+    [`VirtualContainer`][redsun.virtual.VirtualContainer] whose ``uri`` reflects the
+    current base directory.  The plan body calls
+    [`next_storage_info`][redsun_mimir.presenter.storage.FileStoragePresenter.next_storage_info]
+    to obtain a fresh [`StorageInfo`][redsun.storage.StorageInfo] with a unique,
+    session-scoped URI for each acquisition — the counter is only advanced
+    at that point, not at construction time.
+
+    The URI produced by
+    [`next_storage_info`][redsun_mimir.presenter.storage.FileStoragePresenter.next_storage_info]
+    follows the structure::
 
         file:///<base_dir>/<session>/<YYYY_MM_DD>/<plan_name>_<counter>
 
@@ -29,10 +40,11 @@ class FileStoragePresenter(Presenter, Loggable):
     name : str
         Identity key of the presenter.
     devices : Mapping[str, Device]
-        Session devices.
-    base_dir : Path | None
-        Root directory for all output files.
-        Defaults to ``~/redsun-storage``.
+        Mapping of device names to device instances (unused; required by
+        the [`Presenter`][redsun.presenter.Presenter] base class).
+    base_dir : str | None, optional
+        Absolute root directory for all output files.
+        Defaults to ``~/redsun-storage``
 
     Attributes
     ----------
@@ -49,10 +61,14 @@ class FileStoragePresenter(Presenter, Loggable):
         name: str,
         devices: Mapping[str, Device],
         /,
-        base_dir: Path | None = None,
+        base_dir: str | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self._provider = SessionPathProvider(base_dir=base_dir)
+        if base_dir is not None:
+            _base_dir = Path(base_dir)
+        else:
+            _base_dir = Path.home() / "redsun-storage"
+        self._provider = SessionPathProvider(base_dir=_base_dir)
         self._storage_info = StorageInfo(uri=str(self._provider.base_dir))
         self.logger.info(f"Initialized with base dir: {self._provider.base_dir}")
 
@@ -90,13 +106,20 @@ class FileStoragePresenter(Presenter, Loggable):
     def update_base_dir(self, base_dir: Path) -> None:
         """Replace the output base directory.
 
+        Updates the [`SessionPathProvider`][redsun.storage.SessionPathProvider] base
+        directory (which rescans for existing directories), refreshes
+        the container's [`StorageInfo`][redsun.storage.StorageInfo], and emits
+        [`sigStorageInfoChanged`][redsun_mimir.presenter.storage.FileStoragePresenter.sigStorageInfoChanged].
+
+        Called when the user selects a new output directory from the view.
+
         Parameters
         ----------
         base_dir :
             New root output directory.
         """
         self._provider.base_dir = base_dir
-        self._storage_info = StorageInfo(uri=str(base_dir))
+        self._storage_info = StorageInfo(uri=base_dir.as_posix())
         self._container.storage_info = self._storage_info
         self.sigStorageInfoChanged.emit(self._storage_info)
         self.logger.info(f"Storage base dir updated to: {base_dir}")
@@ -104,13 +127,18 @@ class FileStoragePresenter(Presenter, Loggable):
     def update_session(self, session: str) -> None:
         """Update the session name used in the output path.
 
+        Updates the [`SessionPathProvider`][redsun.storage.SessionPathProvider] session
+        (which rescans the new session directory), refreshes the container's
+        [`StorageInfo`][redsun.storage.StorageInfo], and emits
+        [`sigStorageInfoChanged`][redsun_mimir.presenter.storage.FileStoragePresenter.sigStorageInfoChanged].
+
         Parameters
         ----------
         session : str
             New session name (e.g. ``"experiment_01"``).
         """
         self._provider.session = session
-        self._storage_info = StorageInfo(uri=str(self._provider.base_dir))
+        self._storage_info = StorageInfo(uri=self._provider.base_dir.as_posix())
         self._container.storage_info = self._storage_info
         self.sigStorageInfoChanged.emit(self._storage_info)
         self.logger.info(f"Storage session updated to: {session}")
