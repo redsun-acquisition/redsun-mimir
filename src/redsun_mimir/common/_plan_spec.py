@@ -17,6 +17,7 @@ from typing import (
 )
 
 from redsun.device import PDevice
+from redsun.storage import StorageInfo
 
 from redsun_mimir.actions import Action, ContinousPlan
 from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
@@ -422,6 +423,8 @@ def create_plan_spec(
         if pkind is None:
             raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
 
+        hidden = ann is StorageInfo
+
         params.append(
             ParamDescription(
                 name=name,
@@ -431,6 +434,7 @@ def create_plan_spec(
                 choices=choices,
                 actions=actions_meta,
                 model_proto=model_proto,
+                hidden=hidden,
             )
         )
 
