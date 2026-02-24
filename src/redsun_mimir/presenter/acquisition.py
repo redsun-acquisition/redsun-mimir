@@ -10,6 +10,7 @@ from dependency_injector import providers
 from redsun.engine import RunEngine
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.storage import DeviceStorageInfo, PrepareInfo, StorageInfo
 from redsun.virtual import Signal
 
 import redsun_mimir.commands as cmds
@@ -279,6 +280,8 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
+        self._container = container
+
         sigs = find_signals(
             container,
             [
@@ -370,6 +373,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         /,
         scan: Action = ScanAction(),
         stream: Action = StreamAction(togglable=False),
+        storage_info: StorageInfo = StorageInfo(),
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
@@ -484,27 +488,26 @@ class AcquisitionPresenter(Presenter, Loggable):
             elif name == stream.name:
                 # update the set of detectors to include the median models,
                 # so that the stream action can use the pre-computed median values
-                # event triggered, start streaming to disk
                 self.logger.debug("Starting data streaming to disk")
 
-                prepare_values: dict[str, Any] = {
-                    "capacity": stream_frames,
-                    "write_forever": False,
-                }
-
+                # pre-seed capacity for writing devices; non-writers (motor) prepare first
+                prepare_info = PrepareInfo(storage=storage_info)
                 for obj in objs:
-                    yield from bps.prepare(obj, prepare_values, wait=True)
+                    prepare_info.storage.devices[obj.name] = DeviceStorageInfo(
+                        extra={"capacity": stream_frames, "write_forever": False}
+                    )
+                yield from bps.prepare(motor, prepare_info, wait=True)
+                for obj in objs:
+                    yield from bps.prepare(obj, prepare_info, wait=True)
 
                 if not stream_declared:
                     yield from bps.declare_stream(*objs, name=stream_name, collect=True)
                     stream_declared = True
                 yield from bps.kickoff_all(*objs)
 
-                # complete the streaming
                 yield from bps.complete_all(*objs, wait=True)
                 self.logger.debug("Flight complete.")
 
-                # Explicitly collect the stream assets from all objects
                 yield from bps.collect(*objs, name=stream_name)
             self.clear_and_notify(name, event)
 
@@ -516,6 +519,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         write_forever: bool = False,
         /,
         action: Action = StreamAction(),
+        storage_info: StorageInfo = StorageInfo(),
     ) -> MsgGenerator[None]:
         """Perform live data collection and optionally store data to disk.
 
@@ -552,16 +556,16 @@ class AcquisitionPresenter(Presenter, Loggable):
             name, event = yield from rps.read_while_waiting(
                 detectors, self.event_map, stream_name=live_stream, wait_for="set"
             )
-            # event triggered, start streaming to disk
             self.logger.debug("Starting data streaming to disk")
 
-            prepare_values: dict[str, Any] = {
-                "capacity": frames,
-                "write_forever": write_forever,
-            }
-
+            # pre-seed capacity for writing devices, then prepare
+            prepare_info = PrepareInfo(storage=storage_info)
             for detector in detectors:
-                yield from bps.prepare(detector, prepare_values, wait=True)
+                prepare_info.storage.devices[detector.name] = DeviceStorageInfo(
+                    extra={"capacity": frames, "write_forever": write_forever}
+                )
+            for detector in detectors:
+                yield from bps.prepare(detector, prepare_info, wait=True)
 
             if not stream_declared:
                 yield from bps.declare_stream(
@@ -574,18 +578,12 @@ class AcquisitionPresenter(Presenter, Loggable):
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"
                 )
                 self.logger.debug("Done. Stopping streaming.")
-            # Complete the streaming (wait for background thread to finish)
             yield from bps.complete_all(*detectors, wait=True)
             self.logger.debug("Flight complete.")
 
-            # Explicitly collect the stream assets
             yield from bps.collect(*detectors, name=stream_name)
 
-            # Mark stream as declared so future declarations skip
             stream_declared = True
-
-            # we finished streaming;
-            # clear the event and notify the action is done
             self.clear_and_notify(name, event)
             self.logger.debug("Finished data streaming to disk.")
 
@@ -603,9 +601,11 @@ class AcquisitionPresenter(Presenter, Loggable):
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
+        storage_info = self._container.storage_info
+
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
-        fut = self.engine(plan(*args, **kwargs))
+        fut = self.engine(plan(*args, storage_info=storage_info, **kwargs))
         self.futures.add(fut)
 
         if not spec.togglable:
