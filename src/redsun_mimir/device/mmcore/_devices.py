@@ -572,8 +572,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        backend = self._writer
-        frames_written = backend.get_indices_written(self.name)
+        frames_written = self._writer.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -587,7 +586,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from backend.collect_stream_docs(self.name, frames_to_report)
+        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
