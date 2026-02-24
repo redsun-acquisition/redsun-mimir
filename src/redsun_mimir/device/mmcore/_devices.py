@@ -590,8 +590,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        if not hasattr(self, "_writer"):
-            return 0
         return self._writer.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
