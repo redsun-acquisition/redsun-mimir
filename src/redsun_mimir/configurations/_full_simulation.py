@@ -25,7 +25,6 @@ def run_simulation_container() -> None:
     from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
     from redsun_mimir.presenter.motor import MotorPresenter
-    from redsun_mimir.presenter.storage import FileStoragePresenter
 
     # views
     from redsun_mimir.view.acquisition import AcquisitionView
@@ -33,6 +32,7 @@ def run_simulation_container() -> None:
     from redsun_mimir.view.image import ImageView
     from redsun_mimir.view.light import LightView
     from redsun_mimir.view.motor import MotorView
+    from redsun_mimir.view.storage import FileStorageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -49,7 +49,6 @@ def run_simulation_container() -> None:
         acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
         light_ctrl = presenter(LightPresenter, from_config="light_ctrl")
         motor_ctrl = presenter(MotorPresenter, from_config="motor_ctrl")
-        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
 
         # views
         acq_widget = view(AcquisitionView, from_config="acq_widget")
@@ -57,5 +56,6 @@ def run_simulation_container() -> None:
         det_widget = view(DetectorView, from_config="det_widget")
         light_widget = view(LightView, from_config="light_widget")
         motor_widget = view(MotorView, from_config="motor_widget")
+        storage_widget = view(FileStorageView, from_config="storage_widget")
 
     MimirSimulator().run()
