@@ -14,7 +14,7 @@ devices:
     step_size: 1
 
 presenters:
-  ctrl:
+  light_ctrl:
     timeout: 2.0
 
 views:

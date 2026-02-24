@@ -69,7 +69,7 @@ def has_only_one_key(
         )
 
 
-def convert_shape(value: Sequence[int]) -> tuple[int, int]:
+def convert_shape(value: Sequence[int] | None) -> tuple[int, int]:
     """Convert an input sequence to a tuple of ints.
 
     Used for converting the sensor shape from the configuration file.
@@ -85,6 +85,9 @@ def convert_shape(value: Sequence[int]) -> tuple[int, int]:
         Tuple of ints.
 
     """
+    if value is None:
+        return (0, 0)
+
     if len(value) != 2:
         raise ValueError("The tuple must contain exactly two values.")
     else:

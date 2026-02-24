@@ -87,6 +87,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     )
     defaults: dict[str, Any] = field(factory=dict)
     sensor_shape: tuple[int, int] = field(
+        default=None,
         converter=utils.convert_shape,
     )
     starting_exposure: float = field(
@@ -143,16 +144,25 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         # on initialization; if the input specifies a smaller ROI,
         # update it
         self._core.clearROI()
-        full_frame = self._core.getROI()[2:]
+        full_frame = tuple(self._core.getROI()[2:4])
 
-        if self.sensor_shape[0] > full_frame[0] or self.sensor_shape[1] > full_frame[1]:
-            raise ValueError(
-                f"Requested sensor shape {self.sensor_shape} exceeds "
-                f"full frame size {full_frame[0]}x{full_frame[1]} of the camera."
+        if self.sensor_shape == (0, 0):
+            self.sensor_shape = (full_frame[0], full_frame[1])
+            self.logger.info(
+                f"No sensor shape specified; using full frame size {full_frame[0]}x{full_frame[1]}."
             )
+        else:
+            if (
+                self.sensor_shape[0] > full_frame[0]
+                or self.sensor_shape[1] > full_frame[1]
+            ):
+                raise ValueError(
+                    f"Requested sensor shape {self.sensor_shape} exceeds "
+                    f"full frame size {full_frame[0]}x{full_frame[1]} of the camera."
+                )
 
-        if self.sensor_shape[0:] != tuple(full_frame):
-            self._core.setROI(0, 0, *self.sensor_shape)
+            if self.sensor_shape[0:] != tuple(full_frame):
+                self._core.setROI(0, 0, *self.sensor_shape)
 
         if self.defaults:
             for prop, value in self.defaults.items():

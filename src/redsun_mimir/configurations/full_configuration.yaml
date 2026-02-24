@@ -1,0 +1,47 @@
+schema_version: 1.0
+session: redsun-mimir
+frontend: pyqt
+
+storage:
+  backend: zarr
+
+devices:
+  camera1:
+  motor:
+    axis: [X, Y, Z]
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
+  led:
+    wavelength: 300
+    binary: true
+    intensity_range: [0, 0]
+  laser:
+    wavelength: 650
+    egu: mW
+    intensity_range: [0, 100]
+    step_size: 1
+
+presenters:
+  acq_ctrl:
+    callbacks: [det_ctrl, median_ctrl]
+  median_ctrl:
+    median_streams: [square_scan]
+    live_streams: [live]
+    hints: [buffer]
+  light_ctrl:
+    timeout: 2.0
+  motor_ctrl:
+    timeout: 2.0
+  det_ctrl:
+    timeout: 2.0
+
+
+views:
+  light_widget: {}
+  motor_widget: {}
+  acq_widget: {}
+  img_widget: {}
+  det_widget: {}

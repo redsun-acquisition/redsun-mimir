@@ -15,8 +15,7 @@ devices:
     egu: um
 
 presenters:
-  ctrl:
-    timeout: 5.0
+  motor_ctrl
 
 views:
   widget: {}

@@ -13,6 +13,7 @@ def main() -> None:
     """Run main function to run the script."""
     parser = ArgumentParser(description="CLI for redsun-mimir examples")
     subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("sim", help="Run the full simulation example")
     subparsers.add_parser("motor", help="Run the mock motor example")
     subparsers.add_parser("motor-uc2", help="Run the UC2 motor example")
     subparsers.add_parser("light", help="Run the mock light example")
@@ -27,7 +28,9 @@ def main() -> None:
     )
 
     options = parser.parse_args(namespace=Options())
-    if options.command == "motor":
+    if options.command == "sim":
+        configurations.run_simulation_container()
+    elif options.command == "motor":
         configurations.run_stage_container()
     elif options.command == "motor-uc2":
         configurations.run_youseetoo_motor_container()
