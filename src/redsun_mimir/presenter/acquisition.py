@@ -601,11 +601,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
-        storage_info = self._container.storage_info
-
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
-        fut = self.engine(plan(*args, storage_info=storage_info, **kwargs))
+        kwargs.update({"storage_info": self._container.storage_info})
+        fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
         if not spec.togglable:
