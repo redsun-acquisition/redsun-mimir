@@ -151,7 +151,7 @@ convention = "numpy"
 source = "vcs"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests"]
+include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
