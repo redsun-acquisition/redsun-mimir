@@ -188,7 +188,7 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         try:
             storage = value.storage
             storage.devices[self.name] = self.storage_info()
-            self._writer = make_writer(self.name, storage)
+            self._writer = make_writer(storage.uri, self.storage_info().mimetype)
             self._writer.update_source(
                 self.name,
                 self._collect_key,

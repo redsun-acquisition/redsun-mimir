@@ -378,7 +378,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
 
-            self._writer = make_writer(self.name, storage)
+            self._writer = make_writer(storage.uri, self.storage_info().mimetype)
             self._writer.update_source(
                 name=self.name,
                 data_key=self._buffer_stream_key,
