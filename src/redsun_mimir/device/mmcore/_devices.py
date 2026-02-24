@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading as th
 import time
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from attrs import define, field, validators
@@ -10,7 +10,7 @@ from pymmcore_plus import CMMCorePlus as Core
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import StorageDescriptor
+from redsun.storage import DeviceStorageInfo, PrepareInfo, make_writer
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -26,16 +26,6 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-
-
-class PrepareKwargs(TypedDict):
-    """Keyword arguments for preparing the model for flight."""
-
-    capacity: int
-    """The number of frames to store; if 0, unlimited."""
-
-    write_forever: bool
-    """When True, write data indefinitely until stopped. Overrides `capacity`."""
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -117,8 +107,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     )
 
     initialized: ClassVar[bool] = False
-
-    storage = StorageDescriptor()
 
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
@@ -354,49 +342,54 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         s.set_finished()
         return s
 
-    def prepare(self, value: PrepareKwargs) -> Status:
+    def storage_info(self) -> DeviceStorageInfo:
+        """Return storage capability declaration for this detector."""
+        return DeviceStorageInfo(mimetype="application/x-zarr")
+
+    def prepare(self, value: PrepareInfo) -> Status:
         """Prepare the detector for acquisition.
 
         Parameters
         ----------
-        value: PrepareKwargs
-            Keyword arguments for preparation, including:
-            - capacity: int
-                The number of frames to store; if 0, unlimited.
-            - write_forever: bool
-                If True, write data indefinitely until stopped.
-                Overrides `capacity`.
+        value : PrepareInfo
+            Typed container carrying the shared ``StorageInfo`` for this
+            acquisition.  The detector reads ``capacity`` and
+            ``write_forever`` from ``value.storage.devices[self.name].extra``
+            (both optional, defaulting to ``0`` and ``False``), injects its
+            own :class:`~redsun.storage.DeviceStorageInfo` into
+            ``value.storage.devices``, then constructs its writer.
         """
         s = Status()
         self._fly_permit.clear()
         self._fly_stop.clear()
         try:
-            if not hasattr(self, "storage"):
-                raise RuntimeError(
-                    f"No storage backend configured for device '{self.name}'."
-                )
-            width, height = self._core.getImageWidth(), self._core.getImageHeight()
-            capacity = value.get("capacity", 0)
-            write_forever = value.get("write_forever")
-
+            storage = value.storage
+            existing_extra = storage.devices.get(self.name, DeviceStorageInfo()).extra
+            capacity: int = existing_extra.get("capacity", 0)
+            write_forever: bool = existing_extra.get("write_forever", False)
             if write_forever:
-                # override any previous setting
-                capacity = 0  # unlimited
+                capacity = 0
 
-            # Update source info for this camera
-            self.storage.update_source(
+            # inject own device info, preserving any extra metadata already set
+            storage.devices[self.name] = DeviceStorageInfo(
+                mimetype="application/x-zarr",
+                extra=existing_extra,
+            )
+
+            width, height = self._core.getImageWidth(), self._core.getImageHeight()
+
+            self._writer = make_writer(self.name, storage)
+            self._writer.update_source(
                 name=self.name,
                 data_key=self._buffer_stream_key,
                 dtype=np.dtype(self.dtype),
                 shape=(height, width),
             )
-            self._sink = self.storage.prepare(self.name, capacity)
+            self._sink = self._writer.prepare(self.name, capacity)
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
-                kwargs={
-                    "frames": capacity,
-                },
+                kwargs={"frames": capacity},
                 daemon=True,
             )
             self._thread.start()
@@ -450,7 +443,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
-            self.storage.kickoff()
+            self._writer.kickoff()
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -579,7 +572,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        backend = self.storage
+        backend = self._writer
         frames_written = backend.get_indices_written(self.name)
         if frames_written == 0:
             return
@@ -598,7 +591,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        return self.storage.get_indices_written(self.name)
+        if not hasattr(self, "_writer"):
+            return 0
+        return self._writer.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.

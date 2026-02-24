@@ -37,6 +37,7 @@ presenters:
     timeout: 2.0
   det_ctrl:
     timeout: 2.0
+  storage_ctrl: {}
 
 
 views:

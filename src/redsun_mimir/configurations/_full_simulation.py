@@ -25,6 +25,7 @@ def run_simulation_container() -> None:
     from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
     from redsun_mimir.presenter.motor import MotorPresenter
+    from redsun_mimir.presenter.storage import FileStoragePresenter
 
     # views
     from redsun_mimir.view.acquisition import AcquisitionView
@@ -48,6 +49,7 @@ def run_simulation_container() -> None:
         acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
         light_ctrl = presenter(LightPresenter, from_config="light_ctrl")
         motor_ctrl = presenter(MotorPresenter, from_config="motor_ctrl")
+        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
 
         # views
         acq_widget = view(AcquisitionView, from_config="acq_widget")

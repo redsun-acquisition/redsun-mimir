@@ -147,6 +147,7 @@ class FileStoragePresenter(Presenter, Loggable):
         """Push the initial StorageInfo to the container and register signals."""
         self._container = container
         container.storage_info = self._storage_info
+        container.storage_presenter = self
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:

@@ -25,6 +25,7 @@ presenters:
     timeout: 5.0
   acq_ctrl:
     callbacks: [det_ctrl, median_ctrl]
+  storage_ctrl: {}
 
 views:
   acq_widget: {}
