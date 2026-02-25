@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.storage import SessionPathProvider
 from redsun.storage.presenter import get_available_writers
 
 from redsun_mimir.utils import find_signals
@@ -15,7 +16,6 @@ if TYPE_CHECKING:
     from typing import Any
 
     from redsun.device import Device
-    from redsun.storage import SessionPathProvider
     from redsun.virtual import VirtualContainer
 
 
@@ -51,12 +51,18 @@ class FileStoragePresenter(Presenter, Loggable):
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(name, devices)
+        super().__init__(name, devices, **kwargs)
+        root_directory = Path.home() / "redsun-storage"
+        self._path_provider = SessionPathProvider(
+            base_dir=root_directory, session="default"
+        )
+
         self.available_writers = get_available_writers()
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """No providers to register; signals are wired in inject_dependencies."""
-        container.register_signals(self)
+        """Provide the root directory and a string view of the available writers."""
+        self._path_provider.session = container.session
+        container.root_directory = providers.Object(str(self._path_provider.base_dir))
 
         # extract the available writers by mimetype and group
         available_writers_map: dict[str, list[str]] = {}
@@ -66,14 +72,7 @@ class FileStoragePresenter(Presenter, Loggable):
         container.available_writers = providers.Object(available_writers_map)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect to the launch-plan signal and cache the path provider."""
-        self._path_provider: SessionPathProvider | None = container.path_provider()
-        if self._path_provider is None:
-            self.logger.warning(
-                "No path_provider found on container; "
-                "writer URIs will not be set automatically."
-            )
-
+        """Connect pre-launch and root change signals."""
         sigs = find_signals(container, ["sigPreLaunchPlanRequest", "sigRootDirChanged"])
         if "sigPreLaunchPlanRequest" in sigs:
             sigs["sigPreLaunchPlanRequest"].connect(self._set_writer_uris)
@@ -88,9 +87,6 @@ class FileStoragePresenter(Presenter, Loggable):
         plan_name : str
             Name of the plan about to be launched.
         """
-        if self._path_provider is None:
-            return
-
         if not self.available_writers:
             self.logger.debug("No writers registered; skipping URI assignment.")
             return
@@ -113,10 +109,4 @@ class FileStoragePresenter(Presenter, Loggable):
         new_base_dir : str
             The new base directory to set on the path provider.
         """
-        if self._path_provider is None:
-            self.logger.warning(
-                "No path provider found on container; cannot update base directory."
-            )
-            return
-
         self._path_provider.base_dir = Path(new_base_dir)

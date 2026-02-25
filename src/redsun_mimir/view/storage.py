@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from dependency_injector import providers
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
-from redsun.storage import SessionPathProvider
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal
@@ -48,9 +45,7 @@ class FileStorageView(QtView, Loggable):
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
 
-        root_directory = Path.home() / "redsun-storage"
-
-        self._root_dir_edit = QtW.QLineEdit(str(root_directory))
+        self._root_dir_edit = QtW.QLineEdit()
         self._root_dir_edit.setReadOnly(True)
         self._root_dir_btn = QtW.QPushButton("Browse...")
         self._root_dir_btn.clicked.connect(self._on_browse_clicked)
@@ -81,25 +76,24 @@ class FileStorageView(QtView, Loggable):
         root.addStretch()
         self.setLayout(root)
 
-        self.logger.info(f"Initialized with base dir: {root_directory}")
-
     def register_providers(self, container: VirtualContainer) -> None:
-        """Push the current root directory as path onto the container."""
-        container.root_dir = providers.Object(Path(self._root_dir_edit.text()))
-        container.path_provider = providers.Object(
-            SessionPathProvider(
-                base_dir=Path(self._root_dir_edit.text()), session=container.session
-            )
-        )
+        """Register the signals."""
+        container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Get the available writers, grouped by mimetype."""
+        """Get the root directory from the presenter if available."""
+        root_dir: str | None = container.root_directory()
         self.available_writers: dict[str, list[str]] | None = (
             container.available_writers()
         )
+        if root_dir is None:
+            self._root_dir_edit.setText("No root directory provided.")
+        else:
+            self._root_dir_edit.setText(root_dir)
         if self.available_writers is None:
             self.logger.warning("No available writers found.")
-        self._refresh_writers()
+        else:
+            self._refresh_writers()
 
     def _on_browse_clicked(self) -> None:
         """Open a native folder-picker and update the base directory."""
