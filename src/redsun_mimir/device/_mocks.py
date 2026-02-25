@@ -8,7 +8,7 @@ from attrs import define, field, setters, validators
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import DeviceStorageInfo, PrepareInfo
+from redsun.storage import PrepareInfo, register_metadata
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -164,16 +164,16 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def shutdown(self) -> None: ...
 
     def prepare(self, value: PrepareInfo) -> Status:
-        """Inject light metadata into the shared StorageInfo."""
+        """Contribute light metadata to the acquisition metadata registry."""
         s = Status()
-        if value.storage is not None:
-            value.storage.devices[self.name] = DeviceStorageInfo(
-                extra={
-                    "light_wavelength": self.wavelength,
-                    "light_intensity": self.intensity,
-                    "light_enabled": self.enabled,
-                }
-            )
+        register_metadata(
+            self.name,
+            {
+                "light_wavelength": self.wavelength,
+                "light_intensity": self.intensity,
+                "light_enabled": self.enabled,
+            },
+        )
         s.set_finished()
         return s
 
@@ -365,17 +365,17 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
     def shutdown(self) -> None: ...
 
     def prepare(self, value: PrepareInfo) -> Status:
-        """Inject motor metadata into the shared StorageInfo."""
+        """Contribute motor metadata to the acquisition metadata registry."""
         s = Status()
-        if value.storage is not None:
-            location = self._positions[self._active_axis]
-            value.storage.devices[self.name] = DeviceStorageInfo(
-                extra={
-                    f"position_{self._active_axis.lower()}": location["readback"],
-                    "motor_egu": self.egu,
-                    "motor_step_size": self.step_sizes.get(self._active_axis, 0.0),
-                }
-            )
+        location = self._positions[self._active_axis]
+        register_metadata(
+            self.name,
+            {
+                f"position_{self._active_axis.lower()}": location["readback"],
+                "motor_egu": self.egu,
+                "motor_step_size": self.step_sizes.get(self._active_axis, 0.0),
+            },
+        )
         s.set_finished()
         return s
 
