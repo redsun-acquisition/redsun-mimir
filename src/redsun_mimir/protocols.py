@@ -14,6 +14,7 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from redsun.device import PDevice
+from redsun.storage import HasWriter
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
@@ -205,6 +206,7 @@ class ReadableFlyer(
     Collectable,
     WritesStreamAssets,
     Protocol,
+    HasWriter,
 ):
     """Protocol for objects that are both Readable and Flyable.
 
