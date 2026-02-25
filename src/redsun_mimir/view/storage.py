@@ -82,18 +82,25 @@ class FileStorageView(QtView, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Get the root directory from the presenter if available."""
-        root_dir: str | None = container.root_directory()
-        self.available_writers: dict[str, list[str]] | None = (
-            container.available_writers()
-        )
-        if root_dir is None:
-            self._root_dir_edit.setText("No root directory provided.")
-        else:
-            self._root_dir_edit.setText(root_dir)
-        if self.available_writers is None:
-            self.logger.warning("No available writers found.")
-        else:
-            self._refresh_writers()
+        try:
+            root_dir: str | None = container.root_directory()
+        except AttributeError as e:
+            self.logger.warning(
+                "Could not retrieve root directory from container: %s", e
+            )
+            root_dir = None
+        try:
+            self.available_writers: dict[str, list[str]] | None = (
+                container.available_writers()
+            )
+        except AttributeError as e:
+            self.available_writers = None
+            self.logger.warning(
+                "Could not retrieve available writers from container: %s", e
+            )
+            self.available_writers = None
+        self._root_dir_edit.setText(root_dir or "No root directory provided.")
+        self._refresh_writers()
 
     def _on_browse_clicked(self) -> None:
         """Open a native folder-picker and update the base directory."""
@@ -113,7 +120,7 @@ class FileStorageView(QtView, Loggable):
     def _refresh_writers(self) -> None:
         """Repopulate the writer groups list from the current registry."""
         self._writers_list.clear()
-        if not self.available_writers:
+        if self.available_writers is None:
             self._writers_list.addItem("(no writers registered)")
             return
         for mimetype, groups in sorted(self.available_writers.items()):

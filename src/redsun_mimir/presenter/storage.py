@@ -73,9 +73,9 @@ class FileStoragePresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect pre-launch and root change signals."""
-        sigs = find_signals(container, ["sigPreLaunchPlanRequest", "sigRootDirChanged"])
-        if "sigPreLaunchPlanRequest" in sigs:
-            sigs["sigPreLaunchPlanRequest"].connect(self._set_writer_uris)
+        sigs = find_signals(container, ["sigPreLaunchNotify", "sigRootDirChanged"])
+        if "sigPreLaunchNotify" in sigs:
+            sigs["sigPreLaunchNotify"].connect(self._set_writer_uris)
         if "sigRootDirChanged" in sigs:
             sigs["sigRootDirChanged"].connect(self._refresh_path_provider)
 

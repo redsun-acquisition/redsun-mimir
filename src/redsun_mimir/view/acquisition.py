@@ -396,6 +396,7 @@ class AcquisitionView(QtView, Loggable):
         plan_widget.toggle(toggled)
         if toggled:
             parameters = plan_widget.parameters
+            self.sigPreLaunchNotify.emit(plan)
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
             self.sigStopPlanRequest.emit()
