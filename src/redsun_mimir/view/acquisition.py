@@ -166,20 +166,25 @@ class AcquisitionView(QtView, Loggable):
 
     Attributes
     ----------
-    sigLaunchPlanRequest :
+    sigPreLaunchNotify : Signal[str]
+        Emitted to notify a plan launch before execution, providing the
+        plan name. Useful to inform presenters that need to prepare
+        in advance before the plan starts.
+    sigLaunchPlanRequest : Signal[str, dict[str, Any]]
         Emitted when the user starts a plan.
         Carries the plan name (`str`) and its resolved parameters
         (`dict[str, Any]`).
-    sigStopPlanRequest :
+    sigStopPlanRequest : Signal
         Emitted when the user requests plan stop.
-    sigPauseResumeRequest :
+    sigPauseResumeRequest : Signal[bool]
         Emitted when the user toggles pause/resume.
         Carries `True` to pause, `False` to resume.
-    sigActionRequest :
+    sigActionRequest : Signal[str, bool]
         Emitted when the user triggers an action button.
         Carries the action name (`str`) and toggle state (`bool`).
     """
 
+    sigPreLaunchNotify = Signal(str)
     sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
@@ -196,7 +201,7 @@ class AcquisitionView(QtView, Loggable):
         /,
         **kwargs: Any,
     ):
-        super().__init__(name)
+        super().__init__(name, **kwargs)
         self.plans_info: dict[str, str] = {}
 
         # root layout
@@ -406,6 +411,10 @@ class AcquisitionView(QtView, Loggable):
         parameters = self.plan_widgets[plan].parameters
         self.plan_widgets[plan].setEnabled(False)
         self.plan_widgets[plan].enable_actions(False)
+
+        # notify anyone who needs to prepare in advance
+        # that a plan is about to be launched (e.g. to set up writers)
+        self.sigPreLaunchNotify.emit(plan)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
     def _on_plan_done(self) -> None:
