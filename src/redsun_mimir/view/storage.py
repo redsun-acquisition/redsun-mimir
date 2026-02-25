@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
-from redsun.storage import SessionPathProvider, StorageInfo
+from redsun.storage import SessionPathProvider
+from redsun.storage.presenter import get_available_writers
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 
@@ -15,6 +16,13 @@ if TYPE_CHECKING:
 
 class FileStorageView(QtView, Loggable):
     """View for configuring the output storage location.
+
+    Displays the root output directory and the currently registered
+    writer groups, grouped by mimetype.  The path provider is pushed
+    onto the container so that the ``StoragePresenter`` can call it
+    at acquisition time to generate per-writer URIs of the form::
+
+        <base_dir>/<session>/<date>/<plan_key>_<group>_<counter>
 
     Parameters
     ----------
@@ -34,8 +42,8 @@ class FileStorageView(QtView, Loggable):
 
         _base_dir = Path.home() / "redsun-storage"
         self._provider = SessionPathProvider(base_dir=_base_dir)
-        self._storage_info = StorageInfo(uri=_base_dir.as_uri())
 
+        # --- root directory row ---
         self._base_dir_edit = QtW.QLineEdit(str(_base_dir))
         self._base_dir_edit.setReadOnly(True)
         self._base_dir_btn = QtW.QPushButton("Browse...")
@@ -45,22 +53,38 @@ class FileStorageView(QtView, Loggable):
         base_dir_row.addWidget(self._base_dir_edit)
         base_dir_row.addWidget(self._base_dir_btn)
 
+        # --- writer groups list ---
+        self._writers_list = QtW.QListWidget()
+        self._writers_list.setSelectionMode(
+            QtW.QAbstractItemView.SelectionMode.NoSelection
+        )
+        self._refresh_btn = QtW.QPushButton("Refresh writers")
+        self._refresh_btn.clicked.connect(self._refresh_writers)
+
+        writers_header = QtW.QLabel("Registered writer groups")
+        writers_header.setStyleSheet("font-weight: bold;")
+
+        # --- layout ---
         form = QtW.QFormLayout()
         form.addRow("Root directory", base_dir_row)
 
         root = QtW.QVBoxLayout(self)
         root.addLayout(form)
+        root.addWidget(writers_header)
+        root.addWidget(self._writers_list)
+        root.addWidget(self._refresh_btn)
         root.addStretch()
         self.setLayout(root)
 
         self.logger.info(f"Initialized with base dir: {_base_dir}")
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Write the initial StorageInfo onto the container."""
+        """Push the path provider onto the container."""
         self._container = container
         self._provider.session = container.session
-        container.storage_info = self._storage_info
+        container.path_provider = self._provider
         container.register_signals(self)
+        self._refresh_writers()
 
     def _on_browse_clicked(self) -> None:
         """Open a native folder-picker and update the base directory."""
@@ -76,10 +100,15 @@ class FileStorageView(QtView, Loggable):
     def _update_base_dir(self, base_dir: Path) -> None:
         self._provider.base_dir = base_dir
         self._base_dir_edit.setText(str(base_dir))
-        self._push_storage_info()
         self.logger.info(f"Base dir updated to: {base_dir}")
 
-    def _push_storage_info(self) -> None:
-        """Rebuild StorageInfo from current provider state and push to container."""
-        self._storage_info = StorageInfo(uri=self._provider.base_dir.as_uri())
-        self._container.storage_info = self._storage_info
+    def _refresh_writers(self) -> None:
+        """Repopulate the writer groups list from the current registry."""
+        self._writers_list.clear()
+        writers = get_available_writers()
+        if not writers:
+            self._writers_list.addItem("(no writers registered)")
+            return
+        for mimetype, groups in sorted(writers.items()):
+            for group_name in sorted(groups):
+                self._writers_list.addItem(f"{group_name}  [{mimetype}]")
