@@ -7,7 +7,7 @@ import numpy as np
 from bluesky.protocols import Reading, Triggerable
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import DeviceStorageInfo, PrepareInfo, make_writer
+from redsun.storage.device import make_writer
 from redsun.utils.descriptors import make_key
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from redsun.storage import PrepareInfo
     from typing_extensions import TypeIs
 
 
@@ -63,7 +64,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     ) -> None:
         self._name = f"{reader.name}_median"
         self._reader_shape = reader.sensor_shape
-        self._reader_storage_info = reader.storage_info()
         # Configuration/event keys use the {name}-{property} convention
         # (produced by make_key) so that event-document parsers splitting on "-"
         # can correctly extract the device name and property hint.
@@ -157,10 +157,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         s.set_finished()
         return s
 
-    def storage_info(self) -> DeviceStorageInfo:
-        """Delegate storage capability to the backing reader."""
-        return self._reader_storage_info
-
     def trigger(self) -> Status:
         """Compute the median of the cached readings."""
         s = Status()
@@ -180,22 +176,20 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         return s
 
     def prepare(self, value: PrepareInfo) -> Status:
-        """Prepare for flight by constructing a writer from the shared StorageInfo."""
+        """Prepare for flight by constructing a writer for the median frame."""
         s = Status()
         if not self._valid_readings:
             s.set_finished()
             return s
         try:
-            storage = value.storage
-            storage.devices[self.name] = self.storage_info()
-            self._writer = make_writer(storage.uri, self.storage_info().mimetype)
-            self._writer.update_source(
+            self._writer = make_writer("application/x-zarr")
+            self._sink = self._writer.prepare(
                 self.name,
                 self._collect_key,
                 shape=self._median_shape,
                 dtype=self._median_dtype,
+                capacity=1,
             )
-            self._sink = self._writer.prepare(self.name, capacity=1)
         except Exception as e:
             s.set_exception(e)
         else:
