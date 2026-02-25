@@ -75,12 +75,14 @@ class FileStoragePresenter(Presenter, Loggable):
         """Connect pre-launch and root change signals."""
         sigs = find_signals(container, ["sigPreLaunchNotify", "sigRootDirChanged"])
         if "sigPreLaunchNotify" in sigs:
-            sigs["sigPreLaunchNotify"].connect(self._set_writer_uris)
+            sigs["sigPreLaunchNotify"].connect(self._prepare_writers)
         if "sigRootDirChanged" in sigs:
             sigs["sigRootDirChanged"].connect(self._refresh_path_provider)
 
-    def _set_writer_uris(self, plan_name: str) -> None:
+    def _prepare_writers(self, plan_name: str) -> None:
         """Set a fresh URI on every registered writer before the plan starts.
+
+        Clear also the writer source cache.
 
         Parameters
         ----------
@@ -94,6 +96,7 @@ class FileStoragePresenter(Presenter, Loggable):
         for mimetype, groups in self.available_writers.items():
             for group_name, writer in groups.items():
                 path_info = self._path_provider(plan_name, group_name)
+                writer.clear_sources()
                 writer.set_uri(path_info.store_uri)
                 self.logger.debug(
                     f"Set URI for writer ({group_name!r}, {mimetype!r}): "
