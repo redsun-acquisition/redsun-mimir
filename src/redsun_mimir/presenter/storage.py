@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.storage.presenter import get_available_writers
@@ -13,11 +15,11 @@ if TYPE_CHECKING:
     from typing import Any
 
     from redsun.device import Device
-    from redsun.storage import PathProvider
+    from redsun.storage import SessionPathProvider
     from redsun.virtual import VirtualContainer
 
 
-class StoragePresenter(Presenter, Loggable):
+class FileStoragePresenter(Presenter, Loggable):
     """Presenter responsible for wiring writer URIs before each acquisition.
 
     Before each plan launch, iterates all registered writers and calls
@@ -50,48 +52,71 @@ class StoragePresenter(Presenter, Loggable):
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices)
-        self._path_provider: PathProvider | None = None
+        self.available_writers = get_available_writers()
 
     def register_providers(self, container: VirtualContainer) -> None:
         """No providers to register; signals are wired in inject_dependencies."""
         container.register_signals(self)
 
+        # extract the available writers by mimetype and group
+        available_writers_map: dict[str, list[str]] = {}
+        for mimetype, groups in self.available_writers.items():
+            available_writers_map[mimetype] = list(groups.keys())
+
+        container.available_writers = providers.Object(available_writers_map)
+
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the launch-plan signal and cache the path provider."""
-        self._path_provider = getattr(container, "path_provider", None)
+        self._path_provider: SessionPathProvider | None = container.path_provider()
         if self._path_provider is None:
             self.logger.warning(
                 "No path_provider found on container; "
                 "writer URIs will not be set automatically."
             )
 
-        sigs = find_signals(container, ["sigLaunchPlanRequest"])
-        if "sigLaunchPlanRequest" in sigs:
-            sigs["sigLaunchPlanRequest"].connect(self._set_writer_uris)
+        sigs = find_signals(container, ["sigPreLaunchPlanRequest", "sigRootDirChanged"])
+        if "sigPreLaunchPlanRequest" in sigs:
+            sigs["sigPreLaunchPlanRequest"].connect(self._set_writer_uris)
+        if "sigRootDirChanged" in sigs:
+            sigs["sigRootDirChanged"].connect(self._refresh_path_provider)
 
-    def _set_writer_uris(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
+    def _set_writer_uris(self, plan_name: str) -> None:
         """Set a fresh URI on every registered writer before the plan starts.
 
         Parameters
         ----------
         plan_name : str
             Name of the plan about to be launched.
-        param_values : Mapping[str, Any]
-            Plan parameter values (unused; forwarded by the signal).
         """
         if self._path_provider is None:
             return
 
-        writers = get_available_writers()
-        if not writers:
+        if not self.available_writers:
             self.logger.debug("No writers registered; skipping URI assignment.")
             return
 
-        for mimetype, groups in writers.items():
+        for mimetype, groups in self.available_writers.items():
             for group_name, writer in groups.items():
-                path_info = self._path_provider(plan_name, group=group_name)
+                key = f"{plan_name}_{group_name}"
+                path_info = self._path_provider(key)
                 writer.set_uri(path_info.store_uri)
                 self.logger.debug(
                     f"Set URI for writer ({group_name!r}, {mimetype!r}): "
                     f"{path_info.store_uri}"
                 )
+
+    def _refresh_path_provider(self, new_base_dir: str) -> None:
+        """Update the base directory of the path provider when it changes.
+
+        Parameters
+        ----------
+        new_base_dir : str
+            The new base directory to set on the path provider.
+        """
+        if self._path_provider is None:
+            self.logger.warning(
+                "No path provider found on container; cannot update base directory."
+            )
+            return
+
+        self._path_provider.base_dir = Path(new_base_dir)
