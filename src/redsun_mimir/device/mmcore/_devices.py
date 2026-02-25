@@ -10,7 +10,7 @@ from pymmcore_plus import CMMCorePlus as Core
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import DeviceStorageInfo, PrepareInfo, make_writer
+from redsun.storage.device import make_writer
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from redsun.storage import PrepareInfo
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -186,6 +187,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._read_buffer: npt.NDArray[Any] = np.zeros(
             (self.roi[2], self.roi[3]), dtype=self.dtype
         )
+        self._writer = make_writer("application/x-zarr")
 
     @property
     def dtype(self) -> str:
@@ -342,50 +344,28 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         s.set_finished()
         return s
 
-    def storage_info(self) -> DeviceStorageInfo:
-        """Return storage capability declaration for this detector."""
-        return DeviceStorageInfo(mimetype="application/x-zarr")
-
     def prepare(self, value: PrepareInfo) -> Status:
         """Prepare the detector for acquisition.
 
         Parameters
         ----------
         value : PrepareInfo
-            Typed container carrying the shared ``StorageInfo`` for this
-            acquisition.  The detector reads ``capacity`` and
-            ``write_forever`` from ``value.storage.devices[self.name].extra``
-            (both optional, defaulting to ``0`` and ``False``), injects its
-            own :class:`~redsun.storage.DeviceStorageInfo` into
-            ``value.storage.devices``, then constructs its writer.
+            Plan-time information carrying ``capacity`` and ``write_forever``.
         """
         s = Status()
         self._fly_permit.clear()
         self._fly_stop.clear()
         try:
-            storage = value.storage
-            existing_extra = storage.devices.get(self.name, DeviceStorageInfo()).extra
-            capacity: int = existing_extra.get("capacity", 0)
-            write_forever: bool = existing_extra.get("write_forever", False)
-            if write_forever:
-                capacity = 0
-
-            # inject own device info, preserving any extra metadata already set
-            storage.devices[self.name] = DeviceStorageInfo(
-                mimetype="application/x-zarr",
-                extra=existing_extra,
-            )
-
+            capacity = 0 if value.write_forever else value.capacity
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
 
-            self._writer = make_writer(storage.uri, self.storage_info().mimetype)
-            self._writer.update_source(
+            self._sink = self._writer.prepare(
                 name=self.name,
                 data_key=self._buffer_stream_key,
                 dtype=np.dtype(self.dtype),
                 shape=(height, width),
+                capacity=capacity,
             )
-            self._sink = self._writer.prepare(self.name, capacity)
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
