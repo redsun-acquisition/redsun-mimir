@@ -93,8 +93,7 @@ class FileStoragePresenter(Presenter, Loggable):
 
         for mimetype, groups in self.available_writers.items():
             for group_name, writer in groups.items():
-                key = f"{plan_name}_{group_name}"
-                path_info = self._path_provider(key)
+                path_info = self._path_provider(plan_name, group_name)
                 writer.set_uri(path_info.store_uri)
                 self.logger.debug(
                     f"Set URI for writer ({group_name!r}, {mimetype!r}): "
