@@ -233,13 +233,19 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     Attributes
     ----------
-    sigPlanDone :
+    sigPreLaunchNotify : Signal[str]
+        Emitted before launching a plan,
+        carrying the name of the plan to be launched as a `str`.
+        Useful to notify other presenters to prepare
+        for the upcoming plan launch (e.g., to set up writers).
+    sigPlanDone : Signal[None]
         Emitted when a non-togglable plan completes.
-    sigActionDone :
+    sigActionDone : Signal[str]
         Emitted when an action event is cleared.
         Carries the name of the action as a `str`.
     """
 
+    sigPreLaunchNotify = Signal(str)
     sigPlanDone = Signal()
     sigActionDone = Signal(str)
 
@@ -272,6 +278,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.plan_specs: dict[str, PlanSpec] = {
             name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
         }
+        self._is_single_shot_plan = False
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register plan specs as a provider in the DI container."""
@@ -457,6 +464,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
+        prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
+
+        # ensure to prepare the devices in case we have
+        # a possible stream action request
+        # TODO: in acquire-zarr the motor metadata is not shown;
+        # why is that?
+        yield from bps.prepare(motor, prepare_info, wait=True)
+        for obj in objs:
+            yield from bps.prepare(obj, prepare_info, wait=True)
+
         while True:
             name, event = yield from rps.read_while_waiting(
                 objs,
@@ -488,11 +505,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # update the set of detectors to include the median models,
                 # so that the stream action can use the pre-computed median values
                 self.logger.debug("Starting data streaming to disk")
-
-                prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
-                yield from bps.prepare(motor, prepare_info, wait=True)
-                for obj in objs:
-                    yield from bps.prepare(obj, prepare_info, wait=True)
 
                 if not stream_declared:
                     yield from bps.declare_stream(*objs, name=stream_name, collect=True)
@@ -592,11 +604,11 @@ class AcquisitionPresenter(Presenter, Loggable):
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
 
+        self.sigPreLaunchNotify.emit(plan_name)
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
         if not spec.togglable:
-            # Single-shot plan: emit done when finished
             fut.add_done_callback(self.sigPlanDone)
 
         fut.add_done_callback(self._discard_future)

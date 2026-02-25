@@ -184,7 +184,6 @@ class AcquisitionView(QtView, Loggable):
         Carries the action name (`str`) and toggle state (`bool`).
     """
 
-    sigPreLaunchNotify = Signal(str)
     sigLaunchPlanRequest = Signal(str, object)
     sigStopPlanRequest = Signal()
     sigPauseResumeRequest = Signal(bool)
@@ -396,7 +395,6 @@ class AcquisitionView(QtView, Loggable):
         plan_widget.toggle(toggled)
         if toggled:
             parameters = plan_widget.parameters
-            self.sigPreLaunchNotify.emit(plan)
             self.sigLaunchPlanRequest.emit(plan, parameters)
         else:
             self.sigStopPlanRequest.emit()
@@ -415,7 +413,6 @@ class AcquisitionView(QtView, Loggable):
 
         # notify anyone who needs to prepare in advance
         # that a plan is about to be launched (e.g. to set up writers)
-        self.sigPreLaunchNotify.emit(plan)
         self.sigLaunchPlanRequest.emit(plan, parameters)
 
     def _on_plan_done(self) -> None:
