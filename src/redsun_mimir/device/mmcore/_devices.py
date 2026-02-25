@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from redsun.storage import PrepareInfo
+    from redsun.storage import PrepareInfo, Writer
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -629,3 +629,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         """
         while self._core.getRemainingImageCount() < 1:
             time.sleep(self._current_exposure)
+
+    def get_writer(self) -> Writer:
+        """Get the writer associated with this device."""
+        return self._writer

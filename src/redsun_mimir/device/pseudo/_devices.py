@@ -7,7 +7,6 @@ import numpy as np
 from bluesky.protocols import Reading, Triggerable
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage.device import make_writer
 from redsun.utils.descriptors import make_key
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
@@ -64,6 +63,10 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     ) -> None:
         self._name = f"{reader.name}_median"
         self._reader_shape = reader.sensor_shape
+
+        # hijack the internal writer
+        # to write the median frame to disk
+        self._writer = reader.get_writer()
         # Configuration/event keys use the {name}-{property} convention
         # (produced by make_key) so that event-document parsers splitting on "-"
         # can correctly extract the device name and property hint.
@@ -182,7 +185,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
             s.set_finished()
             return s
         try:
-            self._writer = make_writer("application/x-zarr")
             self._sink = self._writer.prepare(
                 self.name,
                 self._collect_key,
