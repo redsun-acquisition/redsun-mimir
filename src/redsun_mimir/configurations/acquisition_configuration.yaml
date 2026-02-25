@@ -17,6 +17,7 @@ devices:
     egu: um
 
 presenters:
+  storage_ctrl: {}
   median_ctrl:
     median_streams: [square_scan]
     live_streams: [live]
