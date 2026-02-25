@@ -10,7 +10,7 @@ from dependency_injector import providers
 from redsun.engine import RunEngine
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import DeviceStorageInfo, PrepareInfo, StorageInfo
+from redsun.storage import PrepareInfo
 from redsun.virtual import Signal
 
 import redsun_mimir.commands as cmds
@@ -373,7 +373,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         /,
         scan: Action = ScanAction(),
         stream: Action = StreamAction(togglable=False),
-        storage_info: StorageInfo = StorageInfo(),
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
@@ -490,12 +489,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # so that the stream action can use the pre-computed median values
                 self.logger.debug("Starting data streaming to disk")
 
-                # pre-seed capacity for writing devices; non-writers (motor) prepare first
-                prepare_info = PrepareInfo(storage=storage_info)
-                for obj in objs:
-                    prepare_info.storage.devices[obj.name] = DeviceStorageInfo(
-                        extra={"capacity": stream_frames, "write_forever": False}
-                    )
+                prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
                 yield from bps.prepare(motor, prepare_info, wait=True)
                 for obj in objs:
                     yield from bps.prepare(obj, prepare_info, wait=True)
@@ -519,7 +513,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         write_forever: bool = False,
         /,
         action: Action = StreamAction(),
-        storage_info: StorageInfo = StorageInfo(),
     ) -> MsgGenerator[None]:
         """Perform live data collection and optionally store data to disk.
 
@@ -558,12 +551,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
             self.logger.debug("Starting data streaming to disk")
 
-            # pre-seed capacity for writing devices, then prepare
-            prepare_info = PrepareInfo(storage=storage_info)
-            for detector in detectors:
-                prepare_info.storage.devices[detector.name] = DeviceStorageInfo(
-                    extra={"capacity": frames, "write_forever": write_forever}
-                )
+            prepare_info = PrepareInfo(capacity=frames, write_forever=write_forever)
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
 
@@ -604,11 +592,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
 
-        if "storage_info" in kwargs.keys():
-            # if storage info is required by a plan,
-            # push the current storage info from the container
-            # to keep it up to date
-            kwargs["storage_info"] = self._container.storage_info
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
