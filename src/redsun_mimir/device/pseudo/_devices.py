@@ -102,7 +102,8 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         # initialize the cache with empty lists
         self._cache: list[npt.NDArray[np.generic]] = []
 
-        self._empty_median = np.zeros(self._reader_shape, dtype=np.float32)
+        self._target_dtype = np.float64
+        self._empty_median = np.zeros(self._reader_shape, dtype=np.float64)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Return the configuration descriptor.
@@ -165,7 +166,9 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         s = Status()
         if self._cache and not self._valid_readings:
             stack = np.stack(self._cache, axis=0)
-            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0)
+            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0).astype(
+                self._target_dtype
+            )
             shape = median_value.shape
             dtype = median_value.dtype
             self._median[self._reading_key] = {
@@ -178,18 +181,15 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         s.set_finished()
         return s
 
-    def prepare(self, value: PrepareInfo) -> Status:
+    def prepare(self, _: PrepareInfo) -> Status:
         """Prepare for flight by constructing a writer for the median frame."""
         s = Status()
-        if not self._valid_readings:
-            s.set_finished()
-            return s
         try:
             self._sink = self._writer.prepare(
                 self.name,
                 self._collect_key,
-                shape=self._median_shape,
-                dtype=self._median_dtype,
+                shape=self._reader_shape,
+                dtype=np.dtype(self._target_dtype),
                 capacity=1,
             )
         except Exception as e:
