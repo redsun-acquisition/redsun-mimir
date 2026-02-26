@@ -8,8 +8,7 @@ from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.storage import SessionPathProvider
 from redsun.storage.presenter import get_available_writers
-
-from redsun_mimir.utils import find_signals
+from redsun.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

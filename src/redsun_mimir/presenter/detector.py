@@ -9,11 +9,11 @@ from dependency_injector import providers
 from event_model import DocumentRouter
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.utils import find_signals
 from redsun.utils.descriptors import parse_key
 from redsun.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
