@@ -278,11 +278,27 @@ class AcquisitionPresenter(Presenter, Loggable):
         }
         self.plan_specs: dict[str, PlanSpec] = {}
         for name, plan in self.plans.items():
-            try:
-                self.plan_specs[name] = create_plan_spec(plan, devices)
-            except UnresolvableAnnotationError as exc:  # noqa: PERF203
-                self.logger.warning(str(exc))
+            spec = self._try_build_plan_spec(plan, devices)
+            if spec is not None:
+                self.plan_specs[name] = spec
         self._is_single_shot_plan = False
+
+    def _try_build_plan_spec(
+        self,
+        plan: Callable[..., MsgGenerator[Any]],
+        devices: Mapping[str, Device],
+    ) -> PlanSpec | None:
+        """Attempt to build a ``PlanSpec`` for *plan*; return ``None`` on failure.
+
+        Isolating the try/except here keeps it out of the ``for`` loop body in
+        ``__init__``, satisfying ruff's PERF203 rule without suppressing it via
+        ``noqa``.
+        """
+        try:
+            return create_plan_spec(plan, devices)
+        except UnresolvableAnnotationError as exc:
+            self.logger.warning(str(exc))
+            return None
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register plan specs as a provider in the DI container."""
