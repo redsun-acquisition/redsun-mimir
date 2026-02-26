@@ -5,31 +5,30 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
+import redsun.engine.plan_stubs as rps
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from dependency_injector import providers
 from redsun.engine import RunEngine
+from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import PrepareInfo
-from redsun.virtual import Signal
-
-import redsun_mimir.commands as cmds
-import redsun_mimir.plan_stubs as rps
-from redsun_mimir.actions import Action, continous
-from redsun_mimir.common import (
+from redsun.presenter.plan_spec import (
     PlanSpec,
     UnresolvableAnnotationError,
     collect_arguments,
     create_plan_spec,
     resolve_arguments,
 )
+from redsun.storage import PrepareInfo
+from redsun.utils import find_signals
+from redsun.virtual import Signal
+
 from redsun_mimir.device.pseudo import MedianPseudoDevice
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,
     ReadableFlyer,
 )
-from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import MutableSequence
@@ -38,9 +37,8 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Readable
     from redsun.device import Device
+    from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
-
-    from redsun_mimir.actions import SRLatch
 
 
 @dataclass
@@ -261,9 +259,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.models = devices
         self.engine = RunEngine()
 
-        for command in [cmds.wait_for_actions, cmds.stash, cmds.clear_cache]:
-            cmds.register_bound_command(self.engine, command)
-
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
@@ -288,12 +283,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         plan: Callable[..., MsgGenerator[Any]],
         devices: Mapping[str, Device],
     ) -> PlanSpec | None:
-        """Attempt to build a ``PlanSpec`` for *plan*; return ``None`` on failure.
-
-        Isolating the try/except here keeps it out of the ``for`` loop body in
-        ``__init__``, satisfying ruff's PERF203 rule without suppressing it via
-        ``noqa``.
-        """
+        """Attempt to build a ``PlanSpec`` for *plan*; return ``None`` on failure."""
         try:
             return create_plan_spec(plan, devices)
         except UnresolvableAnnotationError as exc:

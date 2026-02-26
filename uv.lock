@@ -3173,6 +3173,7 @@ wheels = [
 name = "redsun"
 source = { editable = "../redsun" }
 dependencies = [
+    { name = "beartype" },
     { name = "bluesky" },
     { name = "dependency-injector" },
     { name = "platformdirs" },
@@ -3199,6 +3200,7 @@ zarr = [
 [package.metadata]
 requires-dist = [
     { name = "acquire-zarr", marker = "extra == 'zarr'", specifier = ">=0.6.0" },
+    { name = "beartype", specifier = ">=0.22.9" },
     { name = "bluesky", specifier = ">=1.14.6" },
     { name = "dependency-injector", specifier = ">=4.48.3" },
     { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
@@ -3236,7 +3238,6 @@ dev = [
 name = "redsun-mimir"
 source = { editable = "." }
 dependencies = [
-    { name = "beartype" },
     { name = "msgspec" },
     { name = "napari" },
     { name = "redsun", extra = ["zarr"] },
@@ -3272,7 +3273,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "beartype", specifier = ">=0.22.9" },
     { name = "msgspec", specifier = ">=0.20.0" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },

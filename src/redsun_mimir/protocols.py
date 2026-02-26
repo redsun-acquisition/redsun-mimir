@@ -14,24 +14,12 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from redsun.device import PDevice
-from redsun.storage import HasWriter
+from redsun.device.protocols import HasCache
+from redsun.storage.protocols import HasWriter
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from redsun.engine import Status
-
-
-@runtime_checkable
-class HasCache(Protocol):
-    """Protocol for models that can cache values while inside a plan."""
-
-    def stash(self, values: dict[str, Reading[Any]]) -> Status:
-        """Stash the readings associated with the given object name in the model cache."""
-        ...
-
-    def clear(self) -> Status:
-        """Clear the model cache."""
-        ...
 
 
 @runtime_checkable

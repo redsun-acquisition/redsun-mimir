@@ -5,13 +5,12 @@ from typing import TYPE_CHECKING, Any
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
 from qtpy import QtWidgets
 from redsun.log import Loggable
+from redsun.presenter.utils import find_signals
 from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
+from redsun.view.qt.treeview import DescriptorTreeView
 from redsun.virtual import Signal
-
-from redsun_mimir.utils import find_signals
-from redsun_mimir.utils.qt import DescriptorTreeView
 
 if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer

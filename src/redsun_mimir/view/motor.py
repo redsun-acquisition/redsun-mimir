@@ -3,12 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun.utils import find_signals
 from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal
-
-from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
@@ -84,7 +83,7 @@ class MotorView(QtView):
         /,
         **kwargs: Any,
     ) -> None:
-        super().__init__(name)
+        super().__init__(name, **kwargs)
         # Flat canonical-keyed dicts for the full config
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}

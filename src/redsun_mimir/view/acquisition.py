@@ -5,21 +5,15 @@ from typing import TYPE_CHECKING, Any, cast
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
+from redsun.utils import find_signals
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
+from redsun.view.qt.utils import InfoDialog, PlanWidget, create_plan_widget
 from redsun.virtual import Signal
 
-from redsun_mimir.utils import find_signals
-from redsun_mimir.utils.qt import (
-    InfoDialog,
-    PlanWidget,
-    create_plan_widget,
-)
-
 if TYPE_CHECKING:
+    from redsun.presenter.plan_spec import PlanSpec
     from redsun.virtual import VirtualContainer
-
-    from redsun_mimir.common import PlanSpec
 
 
 class AcquisitionView(QtView, Loggable):
