@@ -15,30 +15,30 @@ shape, define a predicate and a factory function, then insert a
 
 Widget types used
 -----------------
-* ``magicgui.widgets.Select``   – multi-select list (``PDevice`` sequences)
-* ``magicgui.widgets.ComboBox`` – single-select dropdown (single ``PDevice``
+* ``magicgui.widgets.Select``   multi-select list (``PDevice`` sequences)
+* ``magicgui.widgets.ComboBox`` single-select dropdown (single ``PDevice``
   or ``Literal`` choices)
-* ``magicgui.widgets.ListEdit`` – editable list for non-model ``Sequence[T]``
-* ``magicgui.widgets.FileEdit`` – file/directory picker for ``Path``
-* ``magicgui.widgets.create_widget`` – catch-all via magicgui's type map
-* ``magicgui.widgets.LineEdit``  – last-resort fallback
+* ``magicgui.widgets.ListEdit`` editable list for non-model ``Sequence[T]``
+* ``magicgui.widgets.FileEdit`` file/directory picker for ``Path``
+* ``magicgui.widgets.create_widget`` catch-all via magicgui's type map
+* ``magicgui.widgets.LineEdit``  last-resort fallback
 """
+
 # mypy: disable-error-code="union-attr"
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, get_args
+from typing import Any, TypeAlias, get_args
 
 from magicgui import widgets as mgw
 from qtpy import QtWidgets
 
+from redsun_mimir.common import ParamDescription
 from redsun_mimir.common._plan_spec import ParamKind
 from redsun_mimir.utils import ismodel, ismodelsequence, issequence
 
 from ._treeview import DescriptorTreeView
-
-if TYPE_CHECKING:
-    from redsun_mimir.common import ParamDescription
 
 __all__ = [
     "InfoDialog",
@@ -56,12 +56,12 @@ app_name = "redsun-mimir"
 
 
 def _is_hidden_or_action(p: ParamDescription) -> bool:
-    """True for parameters that should not get a normal input widget."""
+    """Return true for parameters that should not get a normal input widget."""
     return p.actions is not None or p.hidden
 
 
 def _is_multiselect_model(p: ParamDescription) -> bool:
-    """True for ``Sequence[PDevice]`` or variadic ``*args: PDevice`` parameters."""
+    """Return true for ``Sequence[PDevice]`` or variadic ``*args: PDevice`` parameters."""
     if p.choices is None:
         return False
     is_ann_model_seq = ismodelsequence(p.annotation)
@@ -70,17 +70,21 @@ def _is_multiselect_model(p: ParamDescription) -> bool:
 
 
 def _is_singleselect_model(p: ParamDescription) -> bool:
-    """True for single ``PDevice`` parameters with a choices list."""
+    """Return true for single ``PDevice`` parameters with a choices list."""
     return p.choices is not None and ismodel(p.annotation)
 
 
 def _is_literal_choices(p: ParamDescription) -> bool:
-    """True for parameters whose choices come from a ``Literal`` annotation."""
-    return p.choices is not None and not ismodel(p.annotation) and not ismodelsequence(p.annotation)
+    """Return true for parameters whose choices come from a ``Literal`` annotation."""
+    return (
+        p.choices is not None
+        and not ismodel(p.annotation)
+        and not ismodelsequence(p.annotation)
+    )
 
 
 def _is_non_model_sequence(p: ParamDescription) -> bool:
-    """True for ``Sequence[T]`` parameters where ``T`` is not a ``PDevice`` type."""
+    """Return true for ``Sequence[T]`` parameters where ``T`` is not a ``PDevice`` type."""
     return (
         issequence(p.annotation)
         and not ismodelsequence(p.annotation)
@@ -89,7 +93,7 @@ def _is_non_model_sequence(p: ParamDescription) -> bool:
 
 
 def _is_path(p: ParamDescription) -> bool:
-    """True if the annotation is ``Path`` or a subclass."""
+    """Return true if the annotation is ``Path`` or a subclass."""
     try:
         return isinstance(p.annotation, type) and issubclass(p.annotation, Path)
     except TypeError:
@@ -99,12 +103,6 @@ def _is_path(p: ParamDescription) -> bool:
 def _always(p: ParamDescription) -> bool:
     """Catch-all predicate — always matches."""
     return True
-
-
-# ---------------------------------------------------------------------------
-# Widget factories
-# ---------------------------------------------------------------------------
-# Each factory takes a ``ParamDescription`` and returns an ``mgw.Widget``.
 
 
 def _make_dummy(p: ParamDescription) -> mgw.Widget:
@@ -150,7 +148,7 @@ def _make_literal_combobox(p: ParamDescription) -> mgw.Widget:
 
 def _make_list_edit(p: ParamDescription) -> mgw.Widget:
     """``ListEdit`` widget for non-model ``Sequence[T]`` parameters."""
-    actual_annotation: type[Any] = Any  # type: ignore[assignment]
+    actual_annotation: type[Any] = Any
     args: tuple[type[Any], ...] = get_args(p.annotation)
     arg = args[0] if args else None
     if arg is not None:
@@ -211,24 +209,17 @@ def _make_generic(p: ParamDescription) -> mgw.Widget:
 # To extend: insert a ``(predicate, factory)`` pair at the right priority.
 # ---------------------------------------------------------------------------
 
-_WidgetPredicate = Any  # Callable[[ParamDescription], bool]
-_WidgetFactory = Any    # Callable[[ParamDescription], mgw.Widget]
+_WidgetPredicate: TypeAlias = Callable[[ParamDescription], bool]
+_WidgetFactory: TypeAlias = Callable[[ParamDescription], mgw.Widget]
 
 _WIDGET_FACTORY_MAP: list[tuple[_WidgetPredicate, _WidgetFactory]] = [
-    # 1. Hidden or Action params → dummy placeholder (should rarely be called)
-    (_is_hidden_or_action,      _make_dummy),
-    # 2. Sequence[PDevice] / *args: PDevice → multi-select list
-    (_is_multiselect_model,     _make_multiselect),
-    # 3. Single PDevice with choices → single-select combo
-    (_is_singleselect_model,    _make_singleselect_model),
-    # 4. Literal[...] choices → combo box
-    (_is_literal_choices,       _make_literal_combobox),
-    # 5. Non-model Sequence[T] → editable list
-    (_is_non_model_sequence,    _make_list_edit),
-    # 6. Path / subclass → directory/file picker
-    (_is_path,                  _make_file_edit),
-    # 7. Everything else → magicgui type-map, with LineEdit fallback
-    (_always,                   _make_generic),
+    (_is_hidden_or_action, _make_dummy),
+    (_is_multiselect_model, _make_multiselect),
+    (_is_singleselect_model, _make_singleselect_model),
+    (_is_literal_choices, _make_literal_combobox),
+    (_is_non_model_sequence, _make_list_edit),
+    (_is_path, _make_file_edit),
+    (_always, _make_generic),
 ]
 
 
@@ -257,7 +248,7 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
         try:
             if predicate(param):
                 return factory(param)
-        except Exception:
+        except Exception:  # noqa: PERF203
             # If a predicate or factory raises unexpectedly, move to the next
             # entry rather than crashing the entire UI build.
             continue
