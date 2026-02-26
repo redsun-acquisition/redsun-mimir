@@ -90,15 +90,15 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         else:
             if self.median_streams or self.live_streams:
                 self.logger.warning(
-                    "Initialized: no hints detected; presenter will be inactive"
+                    "Initialized: no hints declared; presenter will be inactive"
                 )
             elif self.hints:
                 self.logger.warning(
-                    "Initialized: no active streams detected; presenter will be inactive"
+                    "Initialized: no streams declared; presenter will be inactive"
                 )
             else:
                 self.logger.warning(
-                    "Initialized: with no active streams hints detected; presenter will be inactive"
+                    "Initialized: with no streams or hints declared; presenter will be inactive"
                 )
 
     def register_providers(self, container: VirtualContainer) -> None:
