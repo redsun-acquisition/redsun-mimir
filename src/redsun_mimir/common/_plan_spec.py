@@ -1,30 +1,10 @@
-"""Plan specification: inspect a MsgGenerator signature into a structured PlanSpec.
-
-Design
-------
-``create_plan_spec`` is the public entry point.  Internally it delegates
-annotation classification to a **dispatch table** —
-``_ANN_HANDLER_MAP`` — which is an ordered list of
-``(predicate, handler)`` pairs.  Each predicate accepts the *unwrapped*
-annotation (after stripping ``Annotated``) and returns ``bool``.  The
-first matching handler is called and must return a
-``_FieldsFromAnnotation`` named-tuple that fills the relevant fields of
-``ParamDescription``.
-
-**Extending the system**: to handle a new annotation shape, add one
-entry to ``_ANN_HANDLER_MAP``.  Nothing else needs to change.
-
-Runtime type validation uses `beartype <https://beartype.rtfd.io>`_
-via its ``TypeHint`` algebra (``beartype.door``), which gives us a
-clean, structured representation of any PEP-compliant annotation
-without the fragile ``get_origin`` / ``get_args`` ladders that were
-here before.
-"""
+"""Plan specification: inspect a MsgGenerator signature into a structured PlanSpec."""
 
 from __future__ import annotations
 
 import collections.abc as cabc
 import datetime
+import enum
 import inspect
 from dataclasses import dataclass
 from enum import IntEnum
@@ -47,29 +27,9 @@ from redsun.device import PDevice
 from redsun_mimir.actions import Action
 from redsun_mimir.utils import get_choice_list, isdevice, isdevicesequence
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
-
 
 class UnresolvableAnnotationError(TypeError):
-    """Raised when a plan parameter's annotation cannot be mapped to a widget.
-
-    Raised by ``create_plan_spec`` when a required parameter (no default,
-    not an Action) has an annotation that falls through the entire dispatch
-    table *and* that magicgui cannot handle either.  Callers should catch
-    this, emit a warning, and skip the plan rather than registering it with
-    a broken or misleading UI.
-
-    Parameters
-    ----------
-    plan_name : str
-        Name of the plan whose parameter could not be resolved.
-    param_name : str
-        Name of the offending parameter.
-    annotation : Any
-        The annotation that could not be resolved.
-    """
+    """Raised when a plan parameter's annotation cannot be mapped to a widget."""
 
     def __init__(self, plan_name: str, param_name: str, annotation: Any) -> None:
         self.plan_name = plan_name
@@ -82,11 +42,6 @@ class UnresolvableAnnotationError(TypeError):
             f"Path, and magicgui-supported primitives (int, float, str, bool, …). "
             f"The plan will be skipped."
         )
-
-
-# ---------------------------------------------------------------------------
-# Public data structures
-# ---------------------------------------------------------------------------
 
 
 class ParamKind(IntEnum):
@@ -185,11 +140,6 @@ class PlanSpec:
     pausable: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Annotation dispatch table
-# ---------------------------------------------------------------------------
-
-
 class _FieldsFromAnnotation(NamedTuple):
     """Structured result returned by each annotation handler.
 
@@ -204,7 +154,7 @@ class _FieldsFromAnnotation(NamedTuple):
 
 def _handle_literal(
     ann: Any,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
     th = TypeHint(ann)
     choices = [str(a) for a in th.args]
@@ -213,10 +163,10 @@ def _handle_literal(
 
 def _handle_device_sequence(
     ann: Any,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
     elem_ann: Any = get_args(ann)[0]
-    matching = [key for key, obj in models.items() if isinstance(obj, elem_ann)]
+    matching = [key for key, obj in devices.items() if isinstance(obj, elem_ann)]
     if not matching:
         return _FieldsFromAnnotation()
     return _FieldsFromAnnotation(
@@ -228,9 +178,9 @@ def _handle_device_sequence(
 
 def _handle_device(
     ann: Any,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    matching = [key for key, obj in models.items() if isinstance(obj, ann)]
+    matching = [key for key, obj in devices.items() if isinstance(obj, ann)]
     if not matching:
         return _FieldsFromAnnotation()
     return _FieldsFromAnnotation(
@@ -242,9 +192,9 @@ def _handle_device(
 
 def _handle_var_positional_device(
     ann: Any,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    matching = [key for key, obj in models.items() if isinstance(obj, ann)]
+    matching = [key for key, obj in devices.items() if isinstance(obj, ann)]
     if not matching:
         return _FieldsFromAnnotation()
     return _FieldsFromAnnotation(
@@ -259,7 +209,7 @@ def _handle_var_positional_device(
 # ---------------------------------------------------------------------------
 # Each entry is (predicate, handler).
 # Predicates: (annotation, ParamKind) -> bool
-# Handlers:   (annotation, models)    -> _FieldsFromAnnotation
+# Handlers:   (annotation, devices)    -> _FieldsFromAnnotation
 #
 # Entries are checked in order; the first matching handler is called.
 # To support a new annotation shape: insert a (predicate, handler) pair
@@ -293,7 +243,7 @@ _ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
     # 5. Catch-all fallback → no choices, no model
     (
         lambda ann, kind: True,
-        lambda ann, models: _FieldsFromAnnotation(),
+        lambda ann, devices: _FieldsFromAnnotation(),
     ),
 ]
 
@@ -303,7 +253,7 @@ def _try_dispatch_entry(
     handler: _AnnHandler,
     ann: Any,
     kind: ParamKind,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation | None:
     """Attempt one ``(predicate, handler)`` entry; return ``None`` on any exception.
 
@@ -313,7 +263,7 @@ def _try_dispatch_entry(
     """
     try:
         if predicate(ann, kind):
-            return handler(ann, models)
+            return handler(ann, devices)
         return None
     except Exception:
         return None
@@ -322,7 +272,7 @@ def _try_dispatch_entry(
 def _dispatch_annotation(
     ann: Any,
     kind: ParamKind,
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
     """Walk ``_ANN_HANDLER_MAP`` and call the first matching handler.
 
@@ -330,15 +280,10 @@ def _dispatch_annotation(
     annotation), that entry is skipped and the next one is tried.
     """
     for predicate, handler in _ANN_HANDLER_MAP:
-        result = _try_dispatch_entry(predicate, handler, ann, kind, models)
+        result = _try_dispatch_entry(predicate, handler, ann, kind, devices)
         if result is not None:
             return result
     return _FieldsFromAnnotation()
-
-
-# ---------------------------------------------------------------------------
-# Action metadata extraction
-# ---------------------------------------------------------------------------
 
 
 def _extract_action_meta(
@@ -412,12 +357,7 @@ def _safe_issubclass(cls: Any, parent: type) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Signature iteration helper
-# ---------------------------------------------------------------------------
-
-
-def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
+def _iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
     """Iterate over a function signature's parameters, skipping ``self``/``cls``.
 
     Yields
@@ -444,31 +384,13 @@ _MAGICGUI_NATIVE_TYPES: frozenset[type] = frozenset(
         bool,
         bytes,
         range,
-        # datetime family
         datetime.datetime,
         datetime.date,
         datetime.time,
         datetime.timedelta,
-        # pathlib — handled by the _is_path factory, but harmless to include
         Path,
     }
 )
-"""Types that magicgui can map to a widget without any extra configuration.
-
-This set is intentionally conservative.  The purpose is only to distinguish
-"safe primitive" parameters (which fall through to ``_make_generic`` and will
-produce a real widget) from truly exotic annotations that no factory can
-handle.
-
-Rules for extending:
-- Add a type here only if ``magicgui.widgets.create_widget(annotation=T)``
-  succeeds reliably for all values of ``T``.
-- ``Enum`` subclasses are resolvable too, but we cannot list them
-  exhaustively; they are handled via ``isinstance(ann, type) and
-  issubclass(ann, Enum)`` in ``_is_magicgui_resolvable``.
-- Do **not** add ``Any`` — magicgui creates a ``LineEdit`` for it, which is
-  the old silent-fallback behaviour we are explicitly avoiding.
-"""
 
 
 def _is_magicgui_resolvable(ann: Any) -> bool:
@@ -481,8 +403,6 @@ def _is_magicgui_resolvable(ann: Any) -> bool:
     silently produces a ``LineEdit`` for it — the same opaque behaviour we
     are trying to eliminate.
     """
-    import enum
-
     if ann is Any:
         return False
     if ann in _MAGICGUI_NATIVE_TYPES:
@@ -494,14 +414,9 @@ def _is_magicgui_resolvable(ann: Any) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Public API: create_plan_spec
-# ---------------------------------------------------------------------------
-
-
 def create_plan_spec(
     plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
-    models: cabc.Mapping[str, PDevice],
+    devices: cabc.Mapping[str, PDevice],
 ) -> PlanSpec:
     """Inspect *plan* and return a ``PlanSpec`` with one ``ParamDescription`` per parameter.
 
@@ -510,7 +425,7 @@ def create_plan_spec(
     plan : Callable[..., Any]
         The plan function (or bound method) to inspect.
         Must be a generator function whose return annotation is a ``MsgGenerator``.
-    models : Mapping[str, PDevice]
+    devices : Mapping[str, PDevice]
         Registry of active devices; used to compute ``choices`` for parameters
         annotated with a ``PDevice`` subtype.
 
@@ -555,10 +470,8 @@ def create_plan_spec(
 
     params: list[ParamDescription] = []
 
-    for name, param in iterate_signature(sig):
-        # -----------------------------------------------------------------
-        # 1. Resolve the raw annotation, stripping Annotated[T, ...] → T
-        # -----------------------------------------------------------------
+    for name, param in _iterate_signature(sig):
+        # Resolve the raw annotation, stripping Annotated[T, ...] → T
         raw_ann: Any = type_hints.get(name, param.annotation)
         if raw_ann is _empty:
             raw_ann = Any
@@ -569,42 +482,34 @@ def create_plan_spec(
         else:
             ann = raw_ann
 
-        # -----------------------------------------------------------------
-        # 2. Extract Action metadata (validated against the annotation)
-        # -----------------------------------------------------------------
+        # Extract Action metadata (validated against the annotation)
         actions_meta = _extract_action_meta(param, ann)
 
-        # -----------------------------------------------------------------
-        # 3. Map inspect kind → our ParamKind
-        # -----------------------------------------------------------------
+        # Map inspect kind -> our ParamKind
         pkind = _PARAM_KIND_MAP.get(param.kind)
         if pkind is None:
             raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
 
-        # -----------------------------------------------------------------
-        # 4. Dispatch annotation → choices / device_proto / multiselect
-        #    (skip for Action parameters — they get no normal widget)
-        # -----------------------------------------------------------------
+        # Dispatch annotation -> choices / device_proto / multiselect
+        # (skip for Action parameters — they get no normal widget)
         if actions_meta is not None:
             fields = _FieldsFromAnnotation()
         else:
-            fields = _dispatch_annotation(ann, pkind, models)
+            fields = _dispatch_annotation(ann, pkind, devices)
 
-        # -----------------------------------------------------------------
-        # 5. Reject unresolvable required parameters (Option B)
+        # Reject unresolvable required parameters
+        # If dispatch produced no choices and no device_proto, the param
+        # will fall through to the magicgui generic path at widget-creation
+        # time. Probe that path now so we can fail fast here with a clear
+        # error, rather than silently producing a broken LineEdit widget or
+        # crashing later during plan execution.
         #
-        #    If dispatch produced no choices and no device_proto, the param
-        #    will fall through to the magicgui generic path at widget-creation
-        #    time.  Probe that path now so we can fail fast here with a clear
-        #    error, rather than silently producing a broken LineEdit widget or
-        #    crashing later during plan execution.
-        #
-        #    Parameters that are exempt from this check:
-        #      - Action params: never get a widget
-        #      - VAR_KEYWORD (**kwargs): no generic widget is ever built
-        #      - Params with a dispatch hit (choices set): already handled
-        #      - Params with a default: the default will be used if the widget
-        #        can't be built, so the plan can still run
+        # Parameters that are exempt from this check:
+        # - Action params: never get a widget
+        # - VAR_KEYWORD (**kwargs): no generic widget is ever built
+        # - Params with a dispatch hit (choices set): already handled
+        # - Params with a default: the default will be used if the widget
+        #   can't be built, so the plan can still run
         # -----------------------------------------------------------------
         is_required = param.default is _empty
         needs_widget_probe = (
@@ -640,11 +545,6 @@ def create_plan_spec(
         togglable=togglable,
         pausable=pausable,
     )
-
-
-# ---------------------------------------------------------------------------
-# Public API: argument collection & resolution helpers
-# ---------------------------------------------------------------------------
 
 
 def collect_arguments(
@@ -707,14 +607,14 @@ def collect_arguments(
 def resolve_arguments(
     spec: PlanSpec,
     param_values: Mapping[str, Any],
-    models: Mapping[str, PDevice],
+    devices: Mapping[str, PDevice],
 ) -> dict[str, Any]:
     """Resolve raw UI parameter values into plan-callable values.
 
     Handles:
     * **Action parameters** — injected from metadata when absent from the UI.
     * **Model-backed parameters** — string labels are resolved to live
-      ``PDevice`` instances via the ``models`` registry.
+      ``PDevice`` instances via the ``devices`` registry.
     * **Everything else** — passed through unchanged.
 
     Parameters
@@ -723,7 +623,7 @@ def resolve_arguments(
         The plan specification containing parameter metadata.
     param_values : Mapping[str, Any]
         Raw parameter values from the UI.
-    models : Mapping[str, PDevice]
+    devices : Mapping[str, PDevice]
         Active device registry.
 
     Returns
@@ -754,7 +654,7 @@ def resolve_arguments(
             else:
                 labels = [str(val)]
 
-            device_list = get_choice_list(models, p.device_proto, labels)
+            device_list = get_choice_list(devices, p.device_proto, labels)
 
             if p.kind is ParamKind.VAR_POSITIONAL or isdevicesequence(p.annotation):
                 resolved[p.name] = device_list
