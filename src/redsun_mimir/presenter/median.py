@@ -44,7 +44,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         data from a MedianPseudoDevice. If `None`, no scan data will be processed.
     hints: list[str] | None, keyword-only, optional
         List of data key suffixes to look for in event documents when applying
-        the median correction. If `None`, no data will be processed. Defaults to `None`.
+        the median correction. If `None`, no data will be processed.
 
     Attributes
     ----------
