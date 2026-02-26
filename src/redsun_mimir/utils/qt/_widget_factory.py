@@ -29,18 +29,65 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias, get_args
+from typing import Any, TypeAlias, get_args
 
 from magicgui import widgets as mgw
+from qtpy import QtCore
+from qtpy import QtWidgets as QtW
 
 from redsun_mimir.common import ParamDescription
-
-if TYPE_CHECKING:
-    from qtpy import QtWidgets
 from redsun_mimir.common._plan_spec import ParamKind
 from redsun_mimir.utils import isdevice, isdevicesequence, issequence
 
 _app_name = "redsun-mimir"
+
+
+# ---------------------------------------------------------------------------
+# Compact multi-select widget
+# ---------------------------------------------------------------------------
+
+
+class _CompactListWidget(QtW.QListWidget):
+    """A ``QListWidget`` whose ``sizeHint`` fits its content exactly.
+
+    The default ``QListWidget.sizeHint`` returns a fixed 256×192 regardless
+    of item count.  This subclass computes the minimum bounding size from the
+    actual row heights and column width, so the widget shrinks to fit one item
+    or expands naturally for many items.
+    """
+
+    _PADDING: int = 6  # extra px added to total height (top + bottom breathing room)
+
+    def sizeHint(self) -> QtCore.QSize:
+        """Return a size that fits all current items."""
+        width = self.sizeHintForColumn(0) + self.frameWidth() * 2 + 20
+        height = (
+            sum(self.sizeHintForRow(i) for i in range(self.count()))
+            + self.frameWidth() * 2
+            + self._PADDING
+        )
+        return QtCore.QSize(max(width, 60), max(height, 20))
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        """Minimum size equals the full content size (no clipping)."""
+        return self.sizeHint()
+
+
+class CompactSelect(mgw.Select):
+    """A ``Select`` widget that shrinks to fit its items.
+
+    Replaces the inner ``QListWidget`` with a ``_CompactListWidget`` so the
+    widget height reflects the actual number of choices rather than using
+    Qt's fixed 192 px default.
+
+    All parameters are forwarded unchanged to ``magicgui.widgets.Select``.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        inner: QtW.QListWidget = self.native
+        inner.__class__ = _CompactListWidget
+        inner.updateGeometry()
 
 
 def _is_hidden_or_action(p: ParamDescription) -> bool:
@@ -99,18 +146,19 @@ def _make_dummy(p: ParamDescription) -> mgw.Widget:
 
 
 def _make_multiselect(p: ParamDescription) -> mgw.Widget:
-    """Select widget allowing multiple device selections."""
+    """``CompactSelect`` widget allowing multiple device selections.
+
+    Uses ``CompactSelect`` rather than ``mgw.Select`` so the widget height
+    reflects the actual number of choices instead of the fixed 192 px default.
+    """
     assert p.choices is not None
-    w = mgw.Select(
+    return CompactSelect(
         name=p.name,
         choices=p.choices,
         allow_multiple=True,
         annotation=p.annotation,
         value=p.default if p.has_default else p.choices[0],
     )
-    inner: QtWidgets.QListWidget = w.native
-    inner.setFixedWidth(inner.sizeHintForColumn(0) + inner.frameWidth() * 2 + 5)
-    return w
 
 
 def _make_singleselect_device(p: ParamDescription) -> mgw.Widget:

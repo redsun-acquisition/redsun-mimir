@@ -26,10 +26,11 @@ from redsun_mimir.utils.qt._plan_widget import (
     create_plan_widget,
 )
 from redsun_mimir.utils.qt._treeview import DescriptorTreeView
-from redsun_mimir.utils.qt._widget_factory import create_param_widget
+from redsun_mimir.utils.qt._widget_factory import CompactSelect, create_param_widget
 
 __all__ = [
     "ActionButton",
+    "CompactSelect",
     "DescriptorTreeView",
     "InfoDialog",
     "PlanWidget",

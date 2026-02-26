@@ -13,14 +13,23 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from inspect import Parameter
 from typing import Literal
 
+import magicgui.widgets as mgw
 import pytest
 from bluesky.utils import MsgGenerator
 
 from redsun_mimir.actions import Action, continous
-from redsun_mimir.common import PlanSpec, create_plan_spec
-from redsun_mimir.utils.qt import ActionButton, PlanWidget, create_plan_widget
+from redsun_mimir.common import ParamDescription, ParamKind, PlanSpec, create_plan_spec
+from redsun_mimir.protocols import MotorProtocol
+from redsun_mimir.utils.qt import (
+    ActionButton,
+    CompactSelect,
+    PlanWidget,
+    create_param_widget,
+    create_plan_widget,
+)
 
 # ---------------------------------------------------------------------------
 # Skip the entire module when there is no display
@@ -377,3 +386,42 @@ class TestPlanWidgetControlAPI:
         pw = _make_minimal_plan_widget(_simple_spec())
         pw.enable_actions(True)  # must not raise
         pw.enable_actions(False)
+
+
+# ---------------------------------------------------------------------------
+# CompactSelect: sizeHint reflects content
+# ---------------------------------------------------------------------------
+
+
+class TestCompactSelect:
+    """Tests for CompactSelect content-fitting sizeHint."""
+
+    def test_singleitem_shorter_than_default_select(self) -> None:
+        default = mgw.Select(choices=["mmcore"], allow_multiple=True)
+        compact = CompactSelect(choices=["mmcore"], allow_multiple=True)
+        assert compact.native.sizeHint().height() < default.native.sizeHint().height()
+
+    def test_height_grows_with_more_items(self) -> None:
+        w1 = CompactSelect(choices=["a"], allow_multiple=True)
+        w3 = CompactSelect(choices=["a", "b", "c"], allow_multiple=True)
+        assert w3.native.sizeHint().height() > w1.native.sizeHint().height()
+
+    def test_empty_choices_uses_minimum_size(self) -> None:
+        w = CompactSelect(choices=[], allow_multiple=True)
+        hint = w.native.sizeHint()
+        assert hint.width() >= 60
+        assert hint.height() >= 20
+
+    def test_multiselect_factory_produces_compact_select(self) -> None:
+        """_make_multiselect should produce a CompactSelect, not a plain Select."""
+        p = ParamDescription(
+            name="motor",
+            kind=ParamKind.POSITIONAL_OR_KEYWORD,
+            annotation=MotorProtocol,
+            default=Parameter.empty,
+            choices=["stage"],
+            multiselect=True,
+            device_proto=MotorProtocol,
+        )
+        w = create_param_widget(p)
+        assert isinstance(w, CompactSelect)
