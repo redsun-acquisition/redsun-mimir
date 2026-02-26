@@ -24,6 +24,7 @@ here before.
 from __future__ import annotations
 
 import collections.abc as cabc
+import datetime
 import inspect
 from dataclasses import dataclass
 from enum import IntEnum
@@ -444,10 +445,10 @@ _MAGICGUI_NATIVE_TYPES: frozenset[type] = frozenset(
         bytes,
         range,
         # datetime family
-        __import__("datetime").datetime,
-        __import__("datetime").date,
-        __import__("datetime").time,
-        __import__("datetime").timedelta,
+        datetime.datetime,
+        datetime.date,
+        datetime.time,
+        datetime.timedelta,
         # pathlib — handled by the _is_path factory, but harmless to include
         Path,
     }
