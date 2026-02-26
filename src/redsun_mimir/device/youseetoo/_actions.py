@@ -17,7 +17,7 @@ def _tag_action(class_name: str) -> str:
 
     i.e.
 
-    .. code-block:: python
+    ```python
 
         class LaserAction(_Action):
             pass
@@ -25,18 +25,19 @@ def _tag_action(class_name: str) -> str:
 
         tag_name = _tag_action(LaserAction.__name__)
         # tag_name will be "/laser_act"
+    ```
 
     The `tag` field is automatically generated
     when subclassing the `_Action` struct.
 
     Parameters
     ----------
-    class_name: `str`
+    class_name: str
         Class name to convert.
 
     Returns
     -------
-    `str`
+    str
         Converted command name.
     """
     return "".join(["/", class_name.lower().replace("action", "_act")])
@@ -52,20 +53,20 @@ def tag_response(class_name: str) -> str:
 
     Parameters
     ----------
-    name: `str`
+    name: str
         Camel case class name to convert.
 
     Returns
     -------
-    `str`
+    str
         Snake case class name.
 
     Examples
     --------
-    >>> camel_to_snake("_ActionResponse")
-    'action_response'
-    >>> camel_to_snake("_MotorActionResponse")
-    'motor_action_response'
+    ```python
+        camel_to_snake("_ActionResponse") # output: "action_response"
+        camel_to_snake("_MotorActionResponse") # output: "motor_action_response"
+    ```
     """
     # Find all capital letters, and add an underscore before them
     # The lookahead (?=[A-Z]) ensures we don't add underscore after the last match
@@ -166,7 +167,7 @@ class Movement(Struct):
 
     Attributes
     ----------
-    steppers: `list[MovementInfo]`
+    steppers: list[MovementInfo]
         List of movements to perform.
         Each movement is described by the `MovementInfo` struct.
     """
