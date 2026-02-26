@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from qtpy import QtWidgets as QtW
+from qtpy.QtCore import QUrl
+from qtpy.QtGui import QDesktopServices
 from redsun.log import Loggable
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
@@ -61,6 +63,9 @@ class FileStorageView(QtView, Loggable):
         self._refresh_btn = QtW.QPushButton("Refresh writers")
         self._refresh_btn.clicked.connect(self._refresh_writers)
 
+        self._open_dir_btn = QtW.QPushButton("Open root directory")
+        self._open_dir_btn.clicked.connect(self._on_open_dir_clicked)
+
         writers_header = QtW.QLabel("Registered writer groups")
         writers_header.setStyleSheet("font-weight: bold;")
 
@@ -72,7 +77,14 @@ class FileStorageView(QtView, Loggable):
         root.addLayout(form)
         root.addWidget(writers_header)
         root.addWidget(self._writers_list)
-        root.addWidget(self._refresh_btn)
+
+        # buttons layout
+        btns_widget = QtW.QWidget()
+        btn_layout = QtW.QHBoxLayout()
+        btn_layout.addWidget(self._open_dir_btn)
+        btn_layout.addWidget(self._refresh_btn)
+        btns_widget.setLayout(btn_layout)
+        root.addWidget(btns_widget)
         root.addStretch()
         self.setLayout(root)
 
@@ -112,6 +124,11 @@ class FileStorageView(QtView, Loggable):
         if not chosen:
             return
         self._update_base_dir(chosen)
+
+    def _on_open_dir_clicked(self) -> None:
+        """Open the current base directory in the system file explorer."""
+        path = self._root_dir_edit.text()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _update_base_dir(self, base_dir: str) -> None:
         self.sigRootDirChanged.emit(base_dir)
