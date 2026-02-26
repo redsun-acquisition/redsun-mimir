@@ -31,7 +31,6 @@ from inspect import Parameter, _empty, signature
 from typing import (
     Annotated,
     Any,
-    Literal,
     Mapping,
     NamedTuple,
     Sequence,
@@ -41,12 +40,10 @@ from typing import (
 )
 
 from beartype.door import LiteralTypeHint, TypeHint
-
 from redsun.device import PDevice
 
-from redsun_mimir.actions import Action, ContinousPlan
+from redsun_mimir.actions import Action
 from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
-
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -170,10 +167,6 @@ def _handle_literal(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    """Handler for ``Literal[v1, v2, ...]`` annotations.
-
-    Extracts the literal values as string choices; no model look-up needed.
-    """
     th = TypeHint(ann)
     choices = [str(a) for a in th.args]
     return _FieldsFromAnnotation(choices=choices)
@@ -183,12 +176,6 @@ def _handle_model_sequence(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    """Handler for ``Sequence[T]`` where ``T`` is a ``PDevice`` protocol/class.
-
-    Scans the ``models`` registry for instances that satisfy ``T`` via
-    ``isinstance``, collecting their names as choices.  The widget should
-    allow multiple selections.
-    """
     elem_ann: Any = get_args(ann)[0]
     matching = [key for key, obj in models.items() if isinstance(obj, elem_ann)]
     if not matching:
@@ -204,11 +191,6 @@ def _handle_model(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    """Handler for a bare ``PDevice`` protocol/class (single device selection).
-
-    Scans the ``models`` registry for instances that satisfy ``ann`` via
-    ``isinstance``, collecting their names as choices.
-    """
     matching = [key for key, obj in models.items() if isinstance(obj, ann)]
     if not matching:
         return _FieldsFromAnnotation()
@@ -223,11 +205,6 @@ def _handle_var_positional_model(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
-    """Handler for ``*args: PDevice`` parameters (variadic device selection).
-
-    These are treated as multi-select even though the annotation is a bare
-    PDevice type — the ``VAR_POSITIONAL`` kind implies the variadic nature.
-    """
     matching = [key for key, obj in models.items() if isinstance(obj, ann)]
     if not matching:
         return _FieldsFromAnnotation()
@@ -256,12 +233,12 @@ _AnnPredicate = cabc.Callable[[Any, ParamKind], bool]
 _ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
     # 1. Literal[...] → fixed string choices (no model look-up)
     (
-        lambda ann, kind: isinstance(TypeHint(ann), LiteralTypeHint),
+        lambda ann, _: isinstance(TypeHint(ann), LiteralTypeHint),
         _handle_literal,
     ),
     # 2. Sequence[PDevice] → multi-select device widget
     (
-        lambda ann, kind: ismodelsequence(ann),
+        lambda ann, _: ismodelsequence(ann),
         _handle_model_sequence,
     ),
     # 3. *args: PDevice  (VAR_POSITIONAL + bare device type) → multi-select
@@ -271,7 +248,7 @@ _ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
     ),
     # 4. Bare PDevice type → single-select device widget
     (
-        lambda ann, kind: ismodel(ann),
+        lambda ann, _: ismodel(ann),
         _handle_model,
     ),
     # 5. Catch-all fallback → no choices, no model
@@ -297,7 +274,7 @@ def _dispatch_annotation(
         try:
             if predicate(ann, kind):
                 return handler(ann, models)
-        except Exception:
+        except Exception:  # noqa: PERF203
             continue
     return _FieldsFromAnnotation()
 
