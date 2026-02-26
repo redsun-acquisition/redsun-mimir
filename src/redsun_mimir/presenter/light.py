@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.utils import find_signals
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
-from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
