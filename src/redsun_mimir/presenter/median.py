@@ -55,7 +55,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Notes
     -----
-    The presenter expects both `streams` and `hints` to be configured.
+    The presenter expects both `*_streams` and `hints` to be configured.
     If either is missing, the presenter will be inactive.
     """
 
