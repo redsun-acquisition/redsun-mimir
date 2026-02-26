@@ -13,6 +13,8 @@ Covers:
 
 from __future__ import annotations
 
+import os
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from inspect import Parameter
@@ -21,9 +23,10 @@ from typing import Any, Literal
 
 import pytest
 from bluesky.utils import MsgGenerator
+from magicgui import widgets as mgw
 from redsun.engine import Status
 
-from redsun_mimir.actions import Action
+from redsun_mimir.actions import Action, continous
 from redsun_mimir.common import (
     ParamDescription,
     ParamKind,
@@ -295,8 +298,6 @@ class TestCreatePlanSpec:
     # ---- toggleable / pausable flags --------------------------------------
 
     def test_togglable_flag(self) -> None:
-        from redsun_mimir.actions import continous
-
         @continous(togglable=True, pausable=True)
         def plan() -> MsgGenerator[None]:
             yield  # type: ignore
@@ -653,12 +654,12 @@ class TestResolveArguments:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "linux" and not os.environ.get("DISPLAY"),
+    reason="requires a display (Qt) on Linux",
+)
 class TestCreateParamWidget:
     """Tests for ``create_param_widget`` — requires a Qt platform."""
-
-    @pytest.fixture(autouse=True)
-    def _require_qt(self, qapp: object) -> None:  # noqa: PT004
-        """Ensure a QApplication exists; skip if no display is available."""
 
     def _param(
         self,
@@ -668,8 +669,8 @@ class TestCreateParamWidget:
         default: object = Parameter.empty,
         choices: list[str] | None = None,
         multiselect: bool = False,
-        device_proto: object = None,
-        actions: object = None,
+        device_proto: type[Any] | None = None,
+        actions: Sequence[Action] | Action | None = None,
         hidden: bool = False,
     ) -> ParamDescription:
         return ParamDescription(
@@ -685,33 +686,23 @@ class TestCreateParamWidget:
         )
 
     def test_int_creates_spinbox(self) -> None:
-        from magicgui import widgets as mgw
-
         w = create_param_widget(self._param("n", int))
         assert isinstance(w, mgw.SpinBox)
 
     def test_float_creates_float_spinbox(self) -> None:
-        from magicgui import widgets as mgw
-
         w = create_param_widget(self._param("x", float))
         assert isinstance(w, mgw.FloatSpinBox)
 
     def test_bool_creates_checkbox(self) -> None:
-        from magicgui import widgets as mgw
-
         w = create_param_widget(self._param("flag", bool, default=False))
         assert isinstance(w, mgw.CheckBox)
 
     def test_literal_creates_combobox(self) -> None:
-        from magicgui import widgets as mgw
-
         p = self._param("egu", Literal["um", "mm"], choices=["um", "mm"])
         w = create_param_widget(p)
         assert isinstance(w, mgw.ComboBox)
 
     def test_single_device_creates_combobox(self) -> None:
-        from magicgui import widgets as mgw
-
         p = self._param(
             "motor",
             MotorProtocol,
@@ -722,8 +713,6 @@ class TestCreateParamWidget:
         assert isinstance(w, mgw.ComboBox)
 
     def test_multiselect_device_creates_select(self) -> None:
-        from magicgui import widgets as mgw
-
         p = self._param(
             "dets",
             Sequence[DetectorProtocol],
@@ -735,27 +724,19 @@ class TestCreateParamWidget:
         assert isinstance(w, mgw.Select)
 
     def test_path_creates_file_edit(self) -> None:
-        from magicgui import widgets as mgw
-
         w = create_param_widget(self._param("output", Path))
         assert isinstance(w, mgw.FileEdit)
 
     def test_sequence_int_creates_list_edit(self) -> None:
-        from magicgui import widgets as mgw
-
         w = create_param_widget(self._param("vals", Sequence[int]))
         assert isinstance(w, mgw.ListEdit)
 
     def test_hidden_param_creates_line_edit_placeholder(self) -> None:
-        from magicgui import widgets as mgw
-
         p = self._param("secret", int, hidden=True)
         w = create_param_widget(p)
         assert isinstance(w, mgw.LineEdit)
 
     def test_action_param_creates_line_edit_placeholder(self) -> None:
-        from magicgui import widgets as mgw
-
         @dataclass
         class Snap(Action):
             name: str = "snap"
