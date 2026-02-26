@@ -28,6 +28,7 @@ import inspect
 from dataclasses import dataclass
 from enum import IntEnum
 from inspect import Parameter, _empty, signature
+from pathlib import Path
 from typing import (
     Annotated,
     Any,
@@ -434,31 +435,61 @@ def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parame
     yield from items
 
 
+_MAGICGUI_NATIVE_TYPES: frozenset[type] = frozenset(
+    {
+        int,
+        float,
+        str,
+        bool,
+        bytes,
+        range,
+        # datetime family
+        __import__("datetime").datetime,
+        __import__("datetime").date,
+        __import__("datetime").time,
+        __import__("datetime").timedelta,
+        # pathlib — handled by the _is_path factory, but harmless to include
+        Path,
+    }
+)
+"""Types that magicgui can map to a widget without any extra configuration.
+
+This set is intentionally conservative.  The purpose is only to distinguish
+"safe primitive" parameters (which fall through to ``_make_generic`` and will
+produce a real widget) from truly exotic annotations that no factory can
+handle.
+
+Rules for extending:
+- Add a type here only if ``magicgui.widgets.create_widget(annotation=T)``
+  succeeds reliably for all values of ``T``.
+- ``Enum`` subclasses are resolvable too, but we cannot list them
+  exhaustively; they are handled via ``isinstance(ann, type) and
+  issubclass(ann, Enum)`` in ``_is_magicgui_resolvable``.
+- Do **not** add ``Any`` — magicgui creates a ``LineEdit`` for it, which is
+  the old silent-fallback behaviour we are explicitly avoiding.
+"""
+
+
 def _is_magicgui_resolvable(ann: Any) -> bool:
-    """Return ``True`` if magicgui can create a widget for *ann*.
+    """Return ``True`` if *ann* is known to produce a real widget via magicgui.
 
-    Performs a dry-run ``create_widget`` call with no value, relying on
-    magicgui's own type registry.  This is the single authoritative check
-    for whether an annotation will produce a usable widget through the
-    generic factory path.
+    This is a pure-Python check with no Qt dependency, safe to call at plan
+    construction time before a ``QApplication`` exists.
 
-    The probe is intentionally narrow: it returns ``False`` for any
-    annotation that raises ``TypeError`` or ``ValueError`` inside magicgui,
-    which is what the old ``LineEdit`` fallback was silently swallowing.
-
-    Notes
-    -----
-    Importing ``magicgui`` inside this module is intentional — the check
-    is only performed during plan spec construction (once at startup), not
-    at widget-creation time, so the import cost is negligible.  Keeping it
-    here avoids a circular-import between ``common`` and ``utils.qt``.
+    We do **not** include ``Any`` in the resolvable set, because magicgui
+    silently produces a ``LineEdit`` for it — the same opaque behaviour we
+    are trying to eliminate.
     """
-    from magicgui import widgets as mgw  # local import to avoid circular dependency
+    import enum
 
-    try:
-        mgw.create_widget(annotation=ann)
+    if ann is Any:
+        return False
+    if ann in _MAGICGUI_NATIVE_TYPES:
         return True
-    except (TypeError, ValueError):
+    # Enum subclasses produce a ComboBox in magicgui
+    try:
+        return isinstance(ann, type) and issubclass(ann, enum.Enum)
+    except TypeError:
         return False
 
 
