@@ -8,7 +8,7 @@ from redsun.log import Loggable
 from redsun.utils import find_signals
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
-from redsun.view.qt.utils import InfoDialog, PlanWidget, create_plan_widget
+from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
 from redsun.virtual import Signal
 
 if TYPE_CHECKING:
@@ -194,4 +194,4 @@ class AcquisitionView(QtView, Loggable):
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]
-        InfoDialog.show_dialog("Plan information", widget.spec.docs, parent=self)
+        PlanInfoDialog.show_dialog("Plan information", widget.spec.docs, parent=self)
