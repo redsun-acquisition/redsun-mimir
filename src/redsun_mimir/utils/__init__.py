@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "get_choice_list",
-    "ismodel",
-    "ismodelsequence",
+    "isdevice",
+    "isdevicesequence",
     "issequence",
     "find_signals",
 ]
@@ -48,7 +48,7 @@ def get_choice_list(
     ]
 
 
-def _is_pdevice_type(ann: Any) -> bool:
+def _is_pdevice_annotation(ann: Any) -> bool:
     """Return True if *ann* is a class or Protocol that has ``PDevice`` in its MRO.
 
     This is the correct way to ask "is this annotation a device protocol/class?"
@@ -78,15 +78,15 @@ def issequence(ann: Any) -> bool:
         return False
 
 
-def ismodelsequence(ann: Any) -> bool:
+def isdevicesequence(ann: Any) -> bool:
     """Return True if *ann* is a ``Sequence[T]`` where ``T`` is a ``PDevice`` type."""
     if not issequence(ann):
         return False
     args = get_args(ann)
-    return len(args) == 1 and _is_pdevice_type(args[0])
+    return len(args) == 1 and _is_pdevice_annotation(args[0])
 
 
-def ismodel(ann: Any) -> bool:
+def isdevice(ann: Any) -> bool:
     """Return True if *ann* is a class/Protocol that is a subtype of ``PDevice``.
 
     This operates on *type annotations* (i.e. the class/protocol itself), not on
@@ -94,7 +94,7 @@ def ismodel(ann: Any) -> bool:
     which checked whether the type object is itself a structural instance of the
     PDevice protocol — always ``False``.
     """
-    return _is_pdevice_type(ann)
+    return _is_pdevice_annotation(ann)
 
 
 def find_signals(

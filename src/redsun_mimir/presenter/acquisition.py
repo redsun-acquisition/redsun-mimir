@@ -18,6 +18,7 @@ import redsun_mimir.plan_stubs as rps
 from redsun_mimir.actions import Action, continous
 from redsun_mimir.common import (
     PlanSpec,
+    UnresolvableAnnotationError,
     collect_arguments,
     create_plan_spec,
     resolve_arguments,
@@ -275,9 +276,12 @@ class AcquisitionPresenter(Presenter, Loggable):
             "live_stream": self.live_stream,
             "live_median_scan": self.live_median_scan,
         }
-        self.plan_specs: dict[str, PlanSpec] = {
-            name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
-        }
+        self.plan_specs: dict[str, PlanSpec] = {}
+        for name, plan in self.plans.items():
+            try:
+                self.plan_specs[name] = create_plan_spec(plan, devices)
+            except UnresolvableAnnotationError as exc:
+                self.logger.warning(str(exc))
         self._is_single_shot_plan = False
 
     def register_providers(self, container: VirtualContainer) -> None:

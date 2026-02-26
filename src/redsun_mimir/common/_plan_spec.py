@@ -43,7 +43,44 @@ from beartype.door import LiteralTypeHint, TypeHint
 from redsun.device import PDevice
 
 from redsun_mimir.actions import Action
-from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
+from redsun_mimir.utils import get_choice_list, isdevice, isdevicesequence
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class UnresolvableAnnotationError(TypeError):
+    """Raised when a plan parameter's annotation cannot be mapped to a widget.
+
+    Raised by ``create_plan_spec`` when a required parameter (no default,
+    not an Action) has an annotation that falls through the entire dispatch
+    table *and* that magicgui cannot handle either.  Callers should catch
+    this, emit a warning, and skip the plan rather than registering it with
+    a broken or misleading UI.
+
+    Parameters
+    ----------
+    plan_name : str
+        Name of the plan whose parameter could not be resolved.
+    param_name : str
+        Name of the offending parameter.
+    annotation : Any
+        The annotation that could not be resolved.
+    """
+
+    def __init__(self, plan_name: str, param_name: str, annotation: Any) -> None:
+        self.plan_name = plan_name
+        self.param_name = param_name
+        self.annotation = annotation
+        super().__init__(
+            f"Plan {plan_name!r}: cannot resolve annotation for parameter "
+            f"{param_name!r} ({annotation!r}). "
+            f"Supported types are: Literal, PDevice subtype, Sequence[PDevice], "
+            f"Path, and magicgui-supported primitives (int, float, str, bool, …). "
+            f"The plan will be skipped."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Public data structures
@@ -99,7 +136,7 @@ class ParamDescription:
         If ``True``, this parameter should not be exposed as a normal input widget.
     actions : Sequence[Action] | Action | None
         Action metadata extracted from the parameter's default value.
-    model_proto : type[PDevice] | None
+    device_proto : type[PDevice] | None
         The concrete ``PDevice`` protocol/class for model-backed parameters.
         Used by ``resolve_arguments`` to look up live device instances.
     """
@@ -112,7 +149,7 @@ class ParamDescription:
     multiselect: bool = False
     hidden: bool = False
     actions: Sequence[Action] | Action | None = None
-    model_proto: type[PDevice] | None = None
+    device_proto: type[PDevice] | None = None
 
     @property
     def has_default(self) -> bool:
@@ -160,7 +197,7 @@ class _FieldsFromAnnotation(NamedTuple):
 
     choices: list[str] | None = None
     multiselect: bool = False
-    model_proto: type[PDevice] | None = None
+    device_proto: type[PDevice] | None = None
 
 
 def _handle_literal(
@@ -172,7 +209,7 @@ def _handle_literal(
     return _FieldsFromAnnotation(choices=choices)
 
 
-def _handle_model_sequence(
+def _handle_device_sequence(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
@@ -183,11 +220,11 @@ def _handle_model_sequence(
     return _FieldsFromAnnotation(
         choices=matching,
         multiselect=True,
-        model_proto=elem_ann,
+        device_proto=elem_ann,
     )
 
 
-def _handle_model(
+def _handle_device(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
@@ -197,11 +234,11 @@ def _handle_model(
     return _FieldsFromAnnotation(
         choices=matching,
         multiselect=False,
-        model_proto=ann,
+        device_proto=ann,
     )
 
 
-def _handle_var_positional_model(
+def _handle_var_positional_device(
     ann: Any,
     models: cabc.Mapping[str, PDevice],
 ) -> _FieldsFromAnnotation:
@@ -211,7 +248,7 @@ def _handle_var_positional_model(
     return _FieldsFromAnnotation(
         choices=matching,
         multiselect=True,
-        model_proto=ann,
+        device_proto=ann,
     )
 
 
@@ -238,18 +275,18 @@ _ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
     ),
     # 2. Sequence[PDevice] → multi-select device widget
     (
-        lambda ann, _: ismodelsequence(ann),
-        _handle_model_sequence,
+        lambda ann, _: isdevicesequence(ann),
+        _handle_device_sequence,
     ),
     # 3. *args: PDevice  (VAR_POSITIONAL + bare device type) → multi-select
     (
-        lambda ann, kind: kind is ParamKind.VAR_POSITIONAL and ismodel(ann),
-        _handle_var_positional_model,
+        lambda ann, kind: kind is ParamKind.VAR_POSITIONAL and isdevice(ann),
+        _handle_var_positional_device,
     ),
     # 4. Bare PDevice type → single-select device widget
     (
-        lambda ann, _: ismodel(ann),
-        _handle_model,
+        lambda ann, _: isdevice(ann),
+        _handle_device,
     ),
     # 5. Catch-all fallback → no choices, no model
     (
@@ -259,6 +296,27 @@ _ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
 ]
 
 
+def _try_dispatch_entry(
+    predicate: _AnnPredicate,
+    handler: _AnnHandler,
+    ann: Any,
+    kind: ParamKind,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation | None:
+    """Attempt one ``(predicate, handler)`` entry; return ``None`` on any exception.
+
+    Isolating the try/except here keeps it out of the ``for`` loop body in
+    ``_dispatch_annotation``, satisfying ruff's PERF203 rule without
+    suppressing it via ``noqa``.
+    """
+    try:
+        if predicate(ann, kind):
+            return handler(ann, models)
+        return None
+    except Exception:
+        return None
+
+
 def _dispatch_annotation(
     ann: Any,
     kind: ParamKind,
@@ -266,16 +324,13 @@ def _dispatch_annotation(
 ) -> _FieldsFromAnnotation:
     """Walk ``_ANN_HANDLER_MAP`` and call the first matching handler.
 
-    If a predicate or handler raises an exception (e.g. beartype cannot
-    handle an exotic annotation), that entry is silently skipped and the
-    next one is tried.
+    If a predicate or handler raises (e.g. beartype cannot handle an exotic
+    annotation), that entry is skipped and the next one is tried.
     """
     for predicate, handler in _ANN_HANDLER_MAP:
-        try:
-            if predicate(ann, kind):
-                return handler(ann, models)
-        except Exception:  # noqa: PERF203
-            continue
+        result = _try_dispatch_entry(predicate, handler, ann, kind, models)
+        if result is not None:
+            return result
     return _FieldsFromAnnotation()
 
 
@@ -379,6 +434,34 @@ def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parame
     yield from items
 
 
+def _is_magicgui_resolvable(ann: Any) -> bool:
+    """Return ``True`` if magicgui can create a widget for *ann*.
+
+    Performs a dry-run ``create_widget`` call with no value, relying on
+    magicgui's own type registry.  This is the single authoritative check
+    for whether an annotation will produce a usable widget through the
+    generic factory path.
+
+    The probe is intentionally narrow: it returns ``False`` for any
+    annotation that raises ``TypeError`` or ``ValueError`` inside magicgui,
+    which is what the old ``LineEdit`` fallback was silently swallowing.
+
+    Notes
+    -----
+    Importing ``magicgui`` inside this module is intentional — the check
+    is only performed during plan spec construction (once at startup), not
+    at widget-creation time, so the import cost is negligible.  Keeping it
+    here avoids a circular-import between ``common`` and ``utils.qt``.
+    """
+    from magicgui import widgets as mgw  # local import to avoid circular dependency
+
+    try:
+        mgw.create_widget(annotation=ann)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Public API: create_plan_spec
 # ---------------------------------------------------------------------------
@@ -467,13 +550,39 @@ def create_plan_spec(
             raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
 
         # -----------------------------------------------------------------
-        # 4. Dispatch annotation → choices / model_proto / multiselect
+        # 4. Dispatch annotation → choices / device_proto / multiselect
         #    (skip for Action parameters — they get no normal widget)
         # -----------------------------------------------------------------
         if actions_meta is not None:
             fields = _FieldsFromAnnotation()
         else:
             fields = _dispatch_annotation(ann, pkind, models)
+
+        # -----------------------------------------------------------------
+        # 5. Reject unresolvable required parameters (Option B)
+        #
+        #    If dispatch produced no choices and no device_proto, the param
+        #    will fall through to the magicgui generic path at widget-creation
+        #    time.  Probe that path now so we can fail fast here with a clear
+        #    error, rather than silently producing a broken LineEdit widget or
+        #    crashing later during plan execution.
+        #
+        #    Parameters that are exempt from this check:
+        #      - Action params: never get a widget
+        #      - VAR_KEYWORD (**kwargs): no generic widget is ever built
+        #      - Params with a dispatch hit (choices set): already handled
+        #      - Params with a default: the default will be used if the widget
+        #        can't be built, so the plan can still run
+        # -----------------------------------------------------------------
+        is_required = param.default is _empty
+        needs_widget_probe = (
+            actions_meta is None
+            and is_required
+            and pkind is not ParamKind.VAR_KEYWORD
+            and fields.choices is None
+        )
+        if needs_widget_probe and not _is_magicgui_resolvable(ann):
+            raise UnresolvableAnnotationError(func_obj.__name__, name, ann)
 
         params.append(
             ParamDescription(
@@ -484,7 +593,7 @@ def create_plan_spec(
                 choices=fields.choices,
                 multiselect=fields.multiselect,
                 actions=actions_meta,
-                model_proto=fields.model_proto,
+                device_proto=fields.device_proto,
                 hidden=False,
             )
         )
@@ -604,7 +713,7 @@ def resolve_arguments(
             continue
         val = values[p.name]
 
-        if p.choices is not None and p.model_proto is not None:
+        if p.choices is not None and p.device_proto is not None:
             # Coerce widget value (string or sequence of strings) → list of labels
             if isinstance(val, str):
                 labels = [val]
@@ -613,12 +722,12 @@ def resolve_arguments(
             else:
                 labels = [str(val)]
 
-            model_list = get_choice_list(models, p.model_proto, labels)
+            device_list = get_choice_list(models, p.device_proto, labels)
 
-            if p.kind is ParamKind.VAR_POSITIONAL or ismodelsequence(p.annotation):
-                resolved[p.name] = model_list
+            if p.kind is ParamKind.VAR_POSITIONAL or isdevicesequence(p.annotation):
+                resolved[p.name] = device_list
             else:
-                resolved[p.name] = model_list[0] if model_list else None
+                resolved[p.name] = device_list[0] if device_list else None
         else:
             resolved[p.name] = val
 

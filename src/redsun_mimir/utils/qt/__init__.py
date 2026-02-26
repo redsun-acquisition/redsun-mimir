@@ -13,15 +13,24 @@ shape, define a predicate and a factory function, then insert a
 ``(predicate, factory)`` tuple at the appropriate position in
 ``_WIDGET_FACTORY_MAP``.  Nothing else needs to change.
 
+Unresolvable annotations
+------------------------
+``create_plan_spec`` (in ``common._plan_spec``) pre-validates that every
+required parameter in a plan can be mapped to a widget before the plan is
+registered.  Plans with unresolvable required parameters raise
+``UnresolvableAnnotationError`` at construction time and are skipped by
+the presenter.  Therefore ``create_param_widget`` should never encounter
+an annotation it cannot handle; if it does, a ``RuntimeError`` is raised
+(not a silent fallback) to surface the bug clearly.
+
 Widget types used
 -----------------
-* ``magicgui.widgets.Select``   multi-select list (``PDevice`` sequences)
-* ``magicgui.widgets.ComboBox`` single-select dropdown (single ``PDevice``
+* ``magicgui.widgets.Select``   – multi-select list (``PDevice`` sequences)
+* ``magicgui.widgets.ComboBox`` – single-select dropdown (single ``PDevice``
   or ``Literal`` choices)
-* ``magicgui.widgets.ListEdit`` editable list for non-model ``Sequence[T]``
-* ``magicgui.widgets.FileEdit`` file/directory picker for ``Path``
-* ``magicgui.widgets.create_widget`` catch-all via magicgui's type map
-* ``magicgui.widgets.LineEdit``  last-resort fallback
+* ``magicgui.widgets.ListEdit`` – editable list for non-device ``Sequence[T]``
+* ``magicgui.widgets.FileEdit`` – file/directory picker for ``Path``
+* ``magicgui.widgets.create_widget`` – catch-all via magicgui's type map
 """
 
 # mypy: disable-error-code="union-attr"
@@ -36,7 +45,7 @@ from qtpy import QtWidgets
 
 from redsun_mimir.common import ParamDescription
 from redsun_mimir.common._plan_spec import ParamKind
-from redsun_mimir.utils import ismodel, ismodelsequence, issequence
+from redsun_mimir.utils import isdevice, isdevicesequence, issequence
 
 from ._treeview import DescriptorTreeView
 
@@ -60,34 +69,34 @@ def _is_hidden_or_action(p: ParamDescription) -> bool:
     return p.actions is not None or p.hidden
 
 
-def _is_multiselect_model(p: ParamDescription) -> bool:
+def _is_multiselect_device(p: ParamDescription) -> bool:
     """Return true for ``Sequence[PDevice]`` or variadic ``*args: PDevice`` parameters."""
     if p.choices is None:
         return False
-    is_ann_model_seq = ismodelsequence(p.annotation)
-    is_var_model = p.kind is ParamKind.VAR_POSITIONAL and ismodel(p.annotation)
+    is_ann_model_seq = isdevicesequence(p.annotation)
+    is_var_model = p.kind is ParamKind.VAR_POSITIONAL and isdevice(p.annotation)
     return is_ann_model_seq or is_var_model
 
 
-def _is_singleselect_model(p: ParamDescription) -> bool:
+def _is_singleselect_device(p: ParamDescription) -> bool:
     """Return true for single ``PDevice`` parameters with a choices list."""
-    return p.choices is not None and ismodel(p.annotation)
+    return p.choices is not None and isdevice(p.annotation)
 
 
 def _is_literal_choices(p: ParamDescription) -> bool:
     """Return true for parameters whose choices come from a ``Literal`` annotation."""
     return (
         p.choices is not None
-        and not ismodel(p.annotation)
-        and not ismodelsequence(p.annotation)
+        and not isdevice(p.annotation)
+        and not isdevicesequence(p.annotation)
     )
 
 
-def _is_non_model_sequence(p: ParamDescription) -> bool:
+def _is_non_device_sequence(p: ParamDescription) -> bool:
     """Return true for ``Sequence[T]`` parameters where ``T`` is not a ``PDevice`` type."""
     return (
         issequence(p.annotation)
-        and not ismodelsequence(p.annotation)
+        and not isdevicesequence(p.annotation)
         and not isinstance(p.annotation, (str, bytes))
     )
 
@@ -126,7 +135,7 @@ def _make_multiselect(p: ParamDescription) -> mgw.Widget:
     return w
 
 
-def _make_singleselect_model(p: ParamDescription) -> mgw.Widget:
+def _make_singleselect_device(p: ParamDescription) -> mgw.Widget:
     """``ComboBox`` widget for single ``PDevice`` selection."""
     assert p.choices is not None
     return mgw.ComboBox(
@@ -183,20 +192,20 @@ def _make_file_edit(p: ParamDescription) -> mgw.Widget:
 def _make_generic(p: ParamDescription) -> mgw.Widget:
     """Delegate to ``magicgui.create_widget`` for all other annotation types.
 
-    Falls back to a plain ``LineEdit`` if magicgui does not know the type.
+    Raises ``TypeError`` or ``ValueError`` if magicgui does not support the
+    annotation.  This should never be reached for required parameters because
+    ``create_plan_spec`` pre-checks resolvability via
+    ``_is_magicgui_resolvable`` and raises ``UnresolvableAnnotationError``
+    before a plan with such a parameter is registered.
     """
-    try:
-        options: dict[str, Any] = {}
-        w = mgw.create_widget(
-            annotation=p.annotation,
-            name=p.name,
-            param_kind=p.kind.name,
-            value=p.default if p.has_default else None,
-            options=options,
-        )
-    except (TypeError, ValueError):
-        w = mgw.LineEdit(name=p.name)
-    return w
+    options: dict[str, Any] = {}
+    return mgw.create_widget(
+        annotation=p.annotation,
+        name=p.name,
+        param_kind=p.kind.name,
+        value=p.default if p.has_default else None,
+        options=options,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -214,13 +223,32 @@ _WidgetFactory: TypeAlias = Callable[[ParamDescription], mgw.Widget]
 
 _WIDGET_FACTORY_MAP: list[tuple[_WidgetPredicate, _WidgetFactory]] = [
     (_is_hidden_or_action, _make_dummy),
-    (_is_multiselect_model, _make_multiselect),
-    (_is_singleselect_model, _make_singleselect_model),
+    (_is_multiselect_device, _make_multiselect),
+    (_is_singleselect_device, _make_singleselect_device),
     (_is_literal_choices, _make_literal_combobox),
-    (_is_non_model_sequence, _make_list_edit),
+    (_is_non_device_sequence, _make_list_edit),
     (_is_path, _make_file_edit),
     (_always, _make_generic),
 ]
+
+
+def _try_factory_entry(
+    predicate: _WidgetPredicate,
+    factory: _WidgetFactory,
+    param: ParamDescription,
+) -> mgw.Widget | None:
+    """Attempt one ``(predicate, factory)`` entry; return ``None`` on any exception.
+
+    Isolating the try/except here keeps it out of the ``for`` loop body in
+    ``create_param_widget``, satisfying ruff's PERF203 rule without
+    suppressing it via ``noqa``.
+    """
+    try:
+        if predicate(param):
+            return factory(param)
+        return None
+    except Exception:
+        return None
 
 
 def create_param_widget(param: ParamDescription) -> mgw.Widget:
@@ -239,21 +267,23 @@ def create_param_widget(param: ParamDescription) -> mgw.Widget:
     mgw.Widget
         The created widget.
 
-    Notes
-    -----
-    The ``View`` should not normally request a widget for hidden or Action
-    parameters, but if it does, a ``LineEdit`` placeholder is returned.
+    Raises
+    ------
+    RuntimeError
+        If every entry in ``_WIDGET_FACTORY_MAP`` fails.  This should not
+        happen in normal usage because ``create_plan_spec`` pre-validates
+        that all required parameters are resolvable before the plan is
+        registered.
     """
     for predicate, factory in _WIDGET_FACTORY_MAP:
-        try:
-            if predicate(param):
-                return factory(param)
-        except Exception:  # noqa: PERF203
-            # If a predicate or factory raises unexpectedly, move to the next
-            # entry rather than crashing the entire UI build.
-            continue
-    # Ultimate fallback — should only be reached if every factory raises.
-    return mgw.LineEdit(name=param.name)
+        widget = _try_factory_entry(predicate, factory, param)
+        if widget is not None:
+            return widget
+    raise RuntimeError(
+        f"No widget factory matched parameter {param.name!r} "
+        f"(annotation: {param.annotation!r}). "
+        f"This is a bug — create_plan_spec should have caught this."
+    )
 
 
 # ---------------------------------------------------------------------------
