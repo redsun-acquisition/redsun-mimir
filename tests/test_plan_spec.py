@@ -17,10 +17,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from inspect import Parameter
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Any, Literal
 
 import pytest
 from bluesky.utils import MsgGenerator
+from redsun.engine import Status
 
 from redsun_mimir.actions import Action
 from redsun_mimir.common import (
@@ -36,10 +37,7 @@ from redsun_mimir.common._plan_spec import _dispatch_annotation, _FieldsFromAnno
 from redsun_mimir.device._mocks import MockMotorDevice
 from redsun_mimir.protocols import DetectorProtocol, MotorProtocol
 from redsun_mimir.utils import isdevice, isdevicesequence, issequence
-
-if TYPE_CHECKING:
-    pass
-
+from redsun_mimir.utils.qt import create_param_widget
 
 # ---------------------------------------------------------------------------
 # Helpers: minimal mock devices that satisfy runtime-checkable protocols
@@ -57,26 +55,29 @@ class _MockDetector:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def describe_configuration(self) -> dict:
+    def describe_configuration(self) -> dict[str, Any]:
         return {}
 
-    def read_configuration(self) -> dict:
+    def read_configuration(self) -> dict[str, Any]:
         return {}
 
-    def describe(self) -> dict:
+    def describe(self) -> dict[str, Any]:
         return {}
 
-    def read(self) -> dict:
+    def read(self) -> dict[str, Any]:
         return {}
 
-    def stage(self) -> list:
-        return []
+    def stage(self) -> Status:
+        s = Status()
+        return s
 
-    def unstage(self) -> list:
-        return []
+    def unstage(self) -> Status:
+        s = Status()
+        return s
 
-    def set(self, value: object) -> object:
-        return None
+    def set(self, value: object) -> Status:
+        s = Status()
+        return s
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +115,6 @@ class TestTypePredicates:
         assert not isdevice(float)
 
     def test_isdevice_false_for_instance(self) -> None:
-        """isdevice operates on type annotations, not instances."""
         assert not isdevice(42)
         assert not isdevice("hello")
 
@@ -134,7 +134,6 @@ class TestTypePredicates:
         assert issequence(list[float])
 
     def test_issequence_false_for_str(self) -> None:
-        """str is NOT returned as a generic alias by get_origin."""
         assert not issequence(str)
 
     def test_issequence_false_for_bare_class(self) -> None:
@@ -299,7 +298,7 @@ class TestCreatePlanSpec:
         from redsun_mimir.actions import continous
 
         @continous(togglable=True, pausable=True)
-        def plan() -> MsgGenerator[None]:  # type: ignore[misc]
+        def plan() -> MsgGenerator[None]:
             yield  # type: ignore
 
         spec = create_plan_spec(plan, {})
@@ -339,11 +338,11 @@ class TestCreatePlanSpec:
             yield
 
         with pytest.raises(TypeError, match="return type annotation"):
-            create_plan_spec(plan, {})  # type: ignore[arg-type]
+            create_plan_spec(plan, {})
 
     def test_wrong_return_type_raises(self) -> None:
-        def plan(x: int) -> list[int]:  # not a generator
-            yield x  # type: ignore[misc]
+        def plan(x: int) -> list[int]:  # type: ignore[misc]
+            yield x
 
         with pytest.raises(TypeError, match="MsgGenerator"):
             create_plan_spec(plan, {})  # type: ignore[arg-type]
@@ -386,6 +385,7 @@ class TestUnresolvableAnnotation:
 
     def test_var_keyword_exotic_does_not_raise(self) -> None:
         """**kwargs are never turned into widgets; no probe needed."""
+
         def ok_plan(**kw: TestUnresolvableAnnotation._Exotic) -> MsgGenerator[None]:
             yield  # type: ignore
 

@@ -280,7 +280,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         for name, plan in self.plans.items():
             try:
                 self.plan_specs[name] = create_plan_spec(plan, devices)
-            except UnresolvableAnnotationError as exc:
+            except UnresolvableAnnotationError as exc:  # noqa: PERF203
                 self.logger.warning(str(exc))
         self._is_single_shot_plan = False
 
