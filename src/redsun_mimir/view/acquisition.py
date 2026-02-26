@@ -141,10 +141,6 @@ class AcquisitionView(QtView, Loggable):
 
         self.stack_widget.setCurrentIndex(0)
 
-    # ------------------------------------------------------------------
-    # Slot implementations
-    # ------------------------------------------------------------------
-
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self.plans_combobox.currentText()
         plan_widget = self.plan_widgets[plan]
