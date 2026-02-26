@@ -1,3 +1,26 @@
+"""Plan specification: inspect a MsgGenerator signature into a structured PlanSpec.
+
+Design
+------
+``create_plan_spec`` is the public entry point.  Internally it delegates
+annotation classification to a **dispatch table** —
+``_ANN_HANDLER_MAP`` — which is an ordered list of
+``(predicate, handler)`` pairs.  Each predicate accepts the *unwrapped*
+annotation (after stripping ``Annotated``) and returns ``bool``.  The
+first matching handler is called and must return a
+``_FieldsFromAnnotation`` named-tuple that fills the relevant fields of
+``ParamDescription``.
+
+**Extending the system**: to handle a new annotation shape, add one
+entry to ``_ANN_HANDLER_MAP``.  Nothing else needs to change.
+
+Runtime type validation uses `beartype <https://beartype.rtfd.io>`_
+via its ``TypeHint`` algebra (``beartype.door``), which gives us a
+clean, structured representation of any PEP-compliant annotation
+without the fragile ``get_origin`` / ``get_args`` ladders that were
+here before.
+"""
+
 from __future__ import annotations
 
 import collections.abc as cabc
@@ -10,11 +33,14 @@ from typing import (
     Any,
     Literal,
     Mapping,
+    NamedTuple,
     Sequence,
     get_args,
     get_origin,
     get_type_hints,
 )
+
+from beartype.door import LiteralTypeHint, TypeHint
 
 from redsun.device import PDevice
 
@@ -22,12 +48,16 @@ from redsun_mimir.actions import Action, ContinousPlan
 from redsun_mimir.utils import get_choice_list, ismodel, ismodelsequence
 
 
-class ParamKind(IntEnum):
-    """
-    Public enum describing the "kind" of a parameter.
+# ---------------------------------------------------------------------------
+# Public data structures
+# ---------------------------------------------------------------------------
 
-    Mirrors inspect._ParameterKind, but is a public IntEnum we can use
-    in our own type hints and match/case statements.
+
+class ParamKind(IntEnum):
+    """Public mirror of ``inspect._ParameterKind`` as a proper ``IntEnum``.
+
+    Using our own enum keeps the public API stable and allows use in
+    ``match``/``case`` statements without importing private stdlib symbols.
     """
 
     POSITIONAL_ONLY = 0
@@ -56,22 +86,25 @@ class ParamDescription:
     name : str
         Name of the parameter.
     kind : ParamKind
-        Kind of the parameter (from `inspect.Parameter`).
+        Kind of the parameter (from ``inspect.Parameter``).
     annotation : Any
-        Type annotation of the parameter.
+        Unwrapped type annotation (``Annotated`` metadata has been stripped).
     default : Any
-        Default value of the parameter.
+        Default value of the parameter (may be ``inspect.Parameter.empty``).
     choices : list[str] | None
-        Names of possible choices for this parameter (for PDevice types).
+        String labels for selectable values.
+        Set for ``Literal`` types (the literal values) and for
+        ``PDevice``-backed parameters (the names of matching registered devices).
     multiselect : bool
-        If True, this parameter allows multiple selections (for PDevice types).
+        If ``True``, the widget should allow multiple simultaneous selections
+        (applies to ``Sequence[PDevice]`` parameters).
     hidden : bool
-        If True, this parameter should not be exposed as a normal input widget.
+        If ``True``, this parameter should not be exposed as a normal input widget.
     actions : Sequence[Action] | Action | None
-        If this parameter is annotated with `Action` metadata, this holds the associated action object(s).
+        Action metadata extracted from the parameter's default value.
     model_proto : type[PDevice] | None
-        If this parameter is associated with a PDevice type,
-        this holds the actual type.
+        The concrete ``PDevice`` protocol/class for model-backed parameters.
+        Used by ``resolve_arguments`` to look up live device instances.
     """
 
     name: str
@@ -86,6 +119,7 @@ class ParamDescription:
 
     @property
     def has_default(self) -> bool:
+        """Return ``True`` if this parameter carries a default value."""
         return self.default is not _empty
 
 
@@ -96,14 +130,16 @@ class PlanSpec:
     Parameters
     ----------
     name: str
-        Plan name.
+        Plan name (``__name__`` of the underlying function).
     docs : str
         Plan docstring.
     parameters: list[ParamDescription]
-        List of parameter specifications.
+        Ordered list of parameter specifications.
     togglable : bool
-        Whether the plan is togglable,
-        for example an infinite loop that the run engine can stop.
+        Whether the plan is togglable (e.g. an infinite loop that the run
+        engine can stop via a toggle button).
+    pausable : bool
+        Whether a running togglable plan can be paused/resumed.
     """
 
     name: str
@@ -113,37 +149,411 @@ class PlanSpec:
     pausable: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Annotation dispatch table
+# ---------------------------------------------------------------------------
+
+
+class _FieldsFromAnnotation(NamedTuple):
+    """Structured result returned by each annotation handler.
+
+    Fields not relevant to a particular annotation shape should be left
+    at their defaults (``None`` / ``False``).
+    """
+
+    choices: list[str] | None = None
+    multiselect: bool = False
+    model_proto: type[PDevice] | None = None
+
+
+def _handle_literal(
+    ann: Any,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation:
+    """Handler for ``Literal[v1, v2, ...]`` annotations.
+
+    Extracts the literal values as string choices; no model look-up needed.
+    """
+    th = TypeHint(ann)
+    choices = [str(a) for a in th.args]
+    return _FieldsFromAnnotation(choices=choices)
+
+
+def _handle_model_sequence(
+    ann: Any,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation:
+    """Handler for ``Sequence[T]`` where ``T`` is a ``PDevice`` protocol/class.
+
+    Scans the ``models`` registry for instances that satisfy ``T`` via
+    ``isinstance``, collecting their names as choices.  The widget should
+    allow multiple selections.
+    """
+    elem_ann: Any = get_args(ann)[0]
+    matching = [key for key, obj in models.items() if isinstance(obj, elem_ann)]
+    if not matching:
+        return _FieldsFromAnnotation()
+    return _FieldsFromAnnotation(
+        choices=matching,
+        multiselect=True,
+        model_proto=elem_ann,
+    )
+
+
+def _handle_model(
+    ann: Any,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation:
+    """Handler for a bare ``PDevice`` protocol/class (single device selection).
+
+    Scans the ``models`` registry for instances that satisfy ``ann`` via
+    ``isinstance``, collecting their names as choices.
+    """
+    matching = [key for key, obj in models.items() if isinstance(obj, ann)]
+    if not matching:
+        return _FieldsFromAnnotation()
+    return _FieldsFromAnnotation(
+        choices=matching,
+        multiselect=False,
+        model_proto=ann,
+    )
+
+
+def _handle_var_positional_model(
+    ann: Any,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation:
+    """Handler for ``*args: PDevice`` parameters (variadic device selection).
+
+    These are treated as multi-select even though the annotation is a bare
+    PDevice type — the ``VAR_POSITIONAL`` kind implies the variadic nature.
+    """
+    matching = [key for key, obj in models.items() if isinstance(obj, ann)]
+    if not matching:
+        return _FieldsFromAnnotation()
+    return _FieldsFromAnnotation(
+        choices=matching,
+        multiselect=True,
+        model_proto=ann,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dispatch table
+# ---------------------------------------------------------------------------
+# Each entry is (predicate, handler).
+# Predicates: (annotation, ParamKind) -> bool
+# Handlers:   (annotation, models)    -> _FieldsFromAnnotation
+#
+# Entries are checked in order; the first matching handler is called.
+# To support a new annotation shape: insert a (predicate, handler) pair
+# at the appropriate priority. Nothing else needs to change.
+# ---------------------------------------------------------------------------
+
+_AnnHandler = cabc.Callable[[Any, cabc.Mapping[str, PDevice]], _FieldsFromAnnotation]
+_AnnPredicate = cabc.Callable[[Any, ParamKind], bool]
+
+_ANN_HANDLER_MAP: list[tuple[_AnnPredicate, _AnnHandler]] = [
+    # 1. Literal[...] → fixed string choices (no model look-up)
+    (
+        lambda ann, kind: isinstance(TypeHint(ann), LiteralTypeHint),
+        _handle_literal,
+    ),
+    # 2. Sequence[PDevice] → multi-select device widget
+    (
+        lambda ann, kind: ismodelsequence(ann),
+        _handle_model_sequence,
+    ),
+    # 3. *args: PDevice  (VAR_POSITIONAL + bare device type) → multi-select
+    (
+        lambda ann, kind: kind is ParamKind.VAR_POSITIONAL and ismodel(ann),
+        _handle_var_positional_model,
+    ),
+    # 4. Bare PDevice type → single-select device widget
+    (
+        lambda ann, kind: ismodel(ann),
+        _handle_model,
+    ),
+    # 5. Catch-all fallback → no choices, no model
+    (
+        lambda ann, kind: True,
+        lambda ann, models: _FieldsFromAnnotation(),
+    ),
+]
+
+
+def _dispatch_annotation(
+    ann: Any,
+    kind: ParamKind,
+    models: cabc.Mapping[str, PDevice],
+) -> _FieldsFromAnnotation:
+    """Walk ``_ANN_HANDLER_MAP`` and call the first matching handler.
+
+    If a predicate or handler raises an exception (e.g. beartype cannot
+    handle an exotic annotation), that entry is silently skipped and the
+    next one is tried.
+    """
+    for predicate, handler in _ANN_HANDLER_MAP:
+        try:
+            if predicate(ann, kind):
+                return handler(ann, models)
+        except Exception:
+            continue
+    return _FieldsFromAnnotation()
+
+
+# ---------------------------------------------------------------------------
+# Action metadata extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_action_meta(
+    param: Parameter,
+    ann: Any,
+) -> Sequence[Action] | Action | None:
+    """Extract ``Action`` instances from a parameter's default value.
+
+    Returns the ``Action`` (or list of ``Action``) if the default value is
+    action metadata, ``None`` otherwise.  Also validates that the annotation
+    is compatible (``Action``, ``Sequence[Action]``, or a union containing
+    ``Action``).
+
+    Raises
+    ------
+    TypeError
+        If the default contains ``Action`` instances but the annotation is
+        incompatible.
+    """
+    if param.default is _empty:
+        return None
+    if isinstance(param.default, Action):
+        actions_meta: Sequence[Action] | Action = param.default
+    elif isinstance(param.default, cabc.Sequence) and all(
+        isinstance(a, Action) for a in param.default
+    ):
+        actions_meta = list(param.default)
+    else:
+        return None
+
+    # Validate annotation compatibility
+    origin = get_origin(ann)
+    is_action_type = ann is Action or (
+        isinstance(ann, type) and issubclass(ann, Action)
+    )
+    is_sequence_action = (
+        origin is not None
+        and (
+            # try/except because issubclass on Protocols can raise
+            _safe_issubclass(origin, cabc.Sequence)
+        )
+        and bool(get_args(ann))
+        and (
+            get_args(ann)[0] is Action
+            or (
+                isinstance(get_args(ann)[0], type)
+                and issubclass(get_args(ann)[0], Action)
+            )
+        )
+    )
+    is_union_containing_action = any(
+        arg is Action or (isinstance(arg, type) and issubclass(arg, Action))
+        for arg in get_args(ann)
+        if arg is not type(None)
+    )
+
+    if not (is_action_type or is_sequence_action or is_union_containing_action):
+        raise TypeError(
+            f"Parameter {param.name!r} has Action instances in its default value "
+            f"but is not annotated as Action, Sequence[Action], or a union "
+            f"containing Action; got {ann!r}"
+        )
+    return actions_meta
+
+
+def _safe_issubclass(cls: Any, parent: type) -> bool:
+    """``issubclass`` wrapper that returns ``False`` on ``TypeError``."""
+    try:
+        return issubclass(cls, parent)
+    except TypeError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Signature iteration helper
+# ---------------------------------------------------------------------------
+
+
+def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
+    """Iterate over a function signature's parameters, skipping ``self``/``cls``.
+
+    Yields
+    ------
+    Iterator[tuple[str, Parameter]]
+        Tuples of (parameter name, ``Parameter`` object).
+    """
+    items = list(sig.parameters.items())
+    if items:
+        first_name, first_param = items[0]
+        if first_name in {"self", "cls"} and first_param.kind in (
+            Parameter.POSITIONAL_ONLY,
+            Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            items = items[1:]
+    yield from items
+
+
+# ---------------------------------------------------------------------------
+# Public API: create_plan_spec
+# ---------------------------------------------------------------------------
+
+
+def create_plan_spec(
+    plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
+    models: cabc.Mapping[str, PDevice],
+) -> PlanSpec:
+    """Inspect *plan* and return a ``PlanSpec`` with one ``ParamDescription`` per parameter.
+
+    Parameters
+    ----------
+    plan : Callable[..., Any]
+        The plan function (or bound method) to inspect.
+        Must be a generator function whose return annotation is a ``MsgGenerator``.
+    models : Mapping[str, PDevice]
+        Registry of active devices; used to compute ``choices`` for parameters
+        annotated with a ``PDevice`` subtype.
+
+    Returns
+    -------
+    PlanSpec
+        Fully populated plan specification.
+
+    Raises
+    ------
+    TypeError
+        If *plan* is not a generator function or its return type is not a
+        ``MsgGenerator`` (``Generator[Msg, Any, Any]``).
+    RuntimeError
+        If an unexpected ``inspect.Parameter.kind`` is encountered.
+    """
+    func_obj: cabc.Callable[..., cabc.Generator[Any, Any, Any]] = getattr(
+        plan, "__func__", plan
+    )
+
+    if not inspect.isgeneratorfunction(func_obj):
+        raise TypeError(f"Plan {func_obj.__name__!r} must be a generator function.")
+
+    sig = signature(func_obj)
+    type_hints = get_type_hints(func_obj, include_extras=True)
+    return_type = type_hints.get("return", None)
+
+    if return_type is None:
+        raise TypeError(
+            f"Plan {func_obj.__name__!r} must have a return type annotation."
+        )
+
+    ret_origin = get_origin(return_type)
+    is_generator = ret_origin is not None and _safe_issubclass(
+        ret_origin, cabc.Generator
+    )
+    if not is_generator:
+        raise TypeError(
+            f"Plan {func_obj.__name__!r} must have a MsgGenerator return type; "
+            f"got {return_type!r}."
+        )
+
+    params: list[ParamDescription] = []
+
+    for name, param in iterate_signature(sig):
+        # -----------------------------------------------------------------
+        # 1. Resolve the raw annotation, stripping Annotated[T, ...] → T
+        # -----------------------------------------------------------------
+        raw_ann: Any = type_hints.get(name, param.annotation)
+        if raw_ann is _empty:
+            raw_ann = Any
+
+        if get_origin(raw_ann) is Annotated:
+            ann_args = get_args(raw_ann)
+            ann: Any = ann_args[0] if ann_args else Any
+        else:
+            ann = raw_ann
+
+        # -----------------------------------------------------------------
+        # 2. Extract Action metadata (validated against the annotation)
+        # -----------------------------------------------------------------
+        actions_meta = _extract_action_meta(param, ann)
+
+        # -----------------------------------------------------------------
+        # 3. Map inspect kind → our ParamKind
+        # -----------------------------------------------------------------
+        pkind = _PARAM_KIND_MAP.get(param.kind)
+        if pkind is None:
+            raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
+
+        # -----------------------------------------------------------------
+        # 4. Dispatch annotation → choices / model_proto / multiselect
+        #    (skip for Action parameters — they get no normal widget)
+        # -----------------------------------------------------------------
+        if actions_meta is not None:
+            fields = _FieldsFromAnnotation()
+        else:
+            fields = _dispatch_annotation(ann, pkind, models)
+
+        params.append(
+            ParamDescription(
+                name=name,
+                kind=pkind,
+                annotation=ann,
+                default=param.default,
+                choices=fields.choices,
+                multiselect=fields.multiselect,
+                actions=actions_meta,
+                model_proto=fields.model_proto,
+                hidden=False,
+            )
+        )
+
+    togglable = bool(getattr(func_obj, "__togglable__", False))
+    pausable = bool(getattr(func_obj, "__pausable__", False))
+
+    return PlanSpec(
+        name=func_obj.__name__,
+        docs=inspect.getdoc(func_obj) or "No documentation available.",
+        parameters=params,
+        togglable=togglable,
+        pausable=pausable,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API: argument collection & resolution helpers
+# ---------------------------------------------------------------------------
+
+
 def collect_arguments(
     spec: PlanSpec,
     values: cabc.Mapping[str, Any],
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-    """Collect arguments for calling a function based on a PlanSpec.
-
-    Build (args, kwargs) for calling the function, based on ParamDescription.kind
-    and a mapping param_name -> value.
+    """Build ``(args, kwargs)`` for calling a plan, driven by a ``PlanSpec``.
 
     Parameters
     ----------
     spec : PlanSpec
         The plan specification.
     values : Mapping[str, Any]
-        Mapping of parameter names to values.
+        Mapping of parameter names to their resolved values.
 
     Returns
     -------
     tuple[tuple[Any, ...], dict[str, Any]]
-        The collected positional and keyword arguments.
+        Positional and keyword arguments ready to be splatted into the plan.
 
     Notes
     -----
-    - POSITIONAL_ONLY and POSITIONAL_OR_KEYWORD parameters go into `args`
-      in declaration order.
-
-    - KEYWORD_ONLY parameters go into `kwargs`.
-
-    - *args are expanded into positional `args`.
-
-    - **kwargs are expanded into keyword `kwargs`.
+    * ``POSITIONAL_ONLY`` and ``POSITIONAL_OR_KEYWORD`` → go into ``args`` in
+      declaration order.
+    * ``KEYWORD_ONLY`` → go into ``kwargs``.
+    * ``VAR_POSITIONAL`` (``*args``) → sequence is expanded into ``args``.
+    * ``VAR_KEYWORD`` (``**kwargs``) → mapping is merged into ``kwargs``.
     """
     args: list[Any] = []
     kwargs: dict[str, Any] = {}
@@ -181,27 +591,31 @@ def resolve_arguments(
     param_values: Mapping[str, Any],
     models: Mapping[str, PDevice],
 ) -> dict[str, Any]:
-    """Resolve plan arguments from UI parameter values.
+    """Resolve raw UI parameter values into plan-callable values.
+
+    Handles:
+    * **Action parameters** — injected from metadata when absent from the UI.
+    * **Model-backed parameters** — string labels are resolved to live
+      ``PDevice`` instances via the ``models`` registry.
+    * **Everything else** — passed through unchanged.
 
     Parameters
     ----------
-    spec : ``PlanSpec``
+    spec : PlanSpec
         The plan specification containing parameter metadata.
-    param_values : ``Mapping[str, Any]``
-        The parameter values from the UI.
-    models : ``Mapping[str, PDevice]``
-        The available models in the application.
+    param_values : Mapping[str, Any]
+        Raw parameter values from the UI.
+    models : Mapping[str, PDevice]
+        Active device registry.
 
     Returns
     -------
     dict[str, Any]
-        The resolved arguments ready to pass to the plan function.
+        Resolved arguments ready for ``collect_arguments``.
     """
-    # start with values coming from the view
     values: dict[str, Any] = dict(param_values)
 
-    # For Action-typed parameters that have metadata but no GUI input,
-    # inject the Action metadata so the function can always be called.
+    # Inject Action metadata for parameters that have no UI widget
     for p in spec.parameters:
         if p.actions is not None and p.name not in values:
             values[p.name] = p.actions
@@ -212,240 +626,23 @@ def resolve_arguments(
         if p.name not in values:
             continue
         val = values[p.name]
-        model_list: list[PDevice] = []
 
-        # Model-backed parameter: indicated by presence of choices AND model_proto
         if p.choices is not None and p.model_proto is not None:
-            # Coerce widget value into a list of string labels
+            # Coerce widget value (string or sequence of strings) → list of labels
             if isinstance(val, str):
                 labels = [val]
-            elif isinstance(val, Sequence) and not isinstance(val, (str, bytes)):
+            elif isinstance(val, cabc.Sequence) and not isinstance(val, (str, bytes)):
                 labels = [str(v) for v in val]
             else:
                 labels = [str(val)]
-            proto: type[PDevice] | None = p.model_proto
-            if proto:
-                model_list = get_choice_list(models, proto, labels)
 
-            if p.kind.name == "VAR_POSITIONAL" or ismodelsequence(p.annotation):
-                # Sequence[...] or *models → pass the list as-is
+            model_list = get_choice_list(models, p.model_proto, labels)
+
+            if p.kind is ParamKind.VAR_POSITIONAL or ismodelsequence(p.annotation):
                 resolved[p.name] = model_list
             else:
-                # Single model parameter → first match or None
                 resolved[p.name] = model_list[0] if model_list else None
         else:
-            # Non-model parameter (Literal types, or no registry): pass through
             resolved[p.name] = val
 
     return resolved
-
-
-def iterate_signature(sig: inspect.Signature) -> cabc.Iterator[tuple[str, Parameter]]:
-    """Iterate over a function signature's parameters, skipping 'self'/'cls'.
-
-    Yields
-    ------
-    Iterator[tuple[str, Parameter]]
-        Tuples of (parameter name, Parameter object).
-    """
-    items = list(sig.parameters.items())
-
-    if items:
-        first_name, first_param = items[0]
-
-        # drop only if it's actually the implicit instance/class parameter:
-        if first_name in {"self", "cls"} and first_param.kind in (
-            Parameter.POSITIONAL_ONLY,
-            Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            items = items[1:]  # skip it
-
-    for name, param in items:
-        yield name, param
-
-
-def create_plan_spec(
-    plan: cabc.Callable[..., cabc.Generator[Any, Any, Any]],
-    models: cabc.Mapping[str, PDevice],
-) -> PlanSpec:
-    """
-    Inspect `plan` and return a PlanSpec with one ParamDescription per parameter.
-
-    Parameters
-    ----------
-    plan : Callable[..., Any]
-        The plan to inspect.
-    models : Mapping[str, PDevice]
-        Registry of models for computing choices
-        of parameters annotated with a subclass of `PDevice`.
-
-    Returns
-    -------
-    PlanSpec
-        The specification of the plan's signature and parameters.
-
-    Raises
-    ------
-    TypeError
-        If `plan` is not a generator function,
-        or if the return type is not a `MsgGenerator`.
-
-    """
-    # TODO: this whole function is pretty complex and currently
-    # very spaghetti; it should be refactored to more easily handle
-    # all possible parameter annotation cases, within reason.
-    # in case plan is a method, get the underlying function object
-    func_obj: cabc.Callable[..., cabc.Generator[Any, Any, Any]] = getattr(
-        plan, "__func__", plan
-    )
-
-    if not inspect.isgeneratorfunction(func_obj):
-        raise TypeError(f"Plan {func_obj.__name__} must be a generator function.")
-
-    sig = signature(func_obj)
-
-    type_hints = get_type_hints(func_obj, include_extras=True)
-    return_type = type_hints.get("return", None)
-
-    if return_type is None:
-        raise TypeError(f"Plan {plan.__name__} must have a return type annotation.")
-
-    origin = get_origin(return_type)
-    isgen = origin is not None and (
-        issubclass(origin, cabc.Generator) or origin is cabc.Generator
-    )
-
-    if not isgen:
-        raise TypeError(f"Plan {plan.__name__} must have a MsgGenerator return type.")
-
-    togglable = False
-
-    if isinstance(func_obj, ContinousPlan):
-        togglable = func_obj.__togglable__
-
-    params: list[ParamDescription] = []
-
-    for name, param in iterate_signature(sig):
-        raw_ann: type[Any] = type_hints.get(name, param.annotation)
-        if raw_ann is _empty:
-            raw_ann = Any
-
-        actions_meta: Sequence[Action] | Action | None = None
-
-        # Extract Action instances from default value if present
-        if param.default is not _empty:
-            if isinstance(param.default, Action):
-                actions_meta = param.default
-            elif isinstance(param.default, cabc.Sequence) and all(
-                isinstance(a, Action) for a in param.default
-            ):
-                actions_meta = list(param.default)
-
-        # Handle Annotated types (for other metadata, not for Actions)
-        if get_origin(raw_ann) is Annotated:
-            args = get_args(raw_ann)
-            if args:
-                ann = args[0]
-            else:
-                ann = Any
-        else:
-            ann = raw_ann
-
-        # If we have Action metadata, validate the underlying type
-        if actions_meta is not None:
-            origin = get_origin(ann)
-            # Accept both Sequence[Action] and Action as valid types
-            is_action_type = ann is Action or (
-                isinstance(ann, type) and issubclass(ann, Action)
-            )
-            is_sequence_action = origin and (
-                issubclass(origin, cabc.Sequence)
-                and get_args(ann)
-                and (
-                    get_args(ann)[0] is Action
-                    or (
-                        isinstance(get_args(ann)[0], type)
-                        and issubclass(get_args(ann)[0], Action)
-                    )
-                )
-            )
-            is_union_type = (
-                origin
-                and hasattr(origin, "__origin__")
-                or (
-                    get_args(ann)
-                    and any(
-                        arg is Action
-                        or (isinstance(arg, type) and issubclass(arg, Action))
-                        for arg in get_args(ann)
-                        if arg is not type(None)
-                    )
-                )
-            )
-
-            if not (is_action_type or is_sequence_action or is_union_type):
-                raise TypeError(
-                    f"Parameter {name!r} has Action instances in default value but is not "
-                    f"annotated as Action, Sequence[Action], or a union containing Action; got {ann!r}"
-                )
-
-        # Compute choices from model_registry using isinstance on actual objects
-        choices: list[str] | None = None
-        model_proto: type[PDevice] | None = None
-        matching: list[str] = []
-
-        # Now figure out if this is a sequence for other purposes
-        ann_origin = get_origin(ann)
-
-        # Handle Literal types by extracting their values as choices
-        if ann_origin is Literal:
-            literal_args = get_args(ann)
-            if literal_args:
-                choices = [str(arg) for arg in literal_args]
-        elif (ann_origin and ann_origin is not Literal) or ismodel(ann):
-            if ann_origin and issubclass(ann_origin, cabc.Sequence):
-                elem_args = get_args(ann)
-                elem_ann = elem_args[0] if elem_args else Any
-            else:
-                elem_ann = ann
-
-            for key, obj in models.items():
-                if isinstance(obj, elem_ann):
-                    matching.append(key)
-            if matching:
-                choices = matching
-                # If elem_ann is a proper subclass of PDevice, keep proto
-                if isinstance(elem_ann, type) and isinstance(elem_ann, PDevice):
-                    model_proto = elem_ann  # type: ignore
-
-        pkind = _PARAM_KIND_MAP.get(param.kind)
-        if pkind is None:
-            raise RuntimeError(f"Unexpected parameter kind: {param.kind!r}")
-
-        params.append(
-            ParamDescription(
-                name=name,
-                kind=pkind,
-                annotation=ann,
-                default=param.default,
-                choices=choices,
-                actions=actions_meta,
-                model_proto=model_proto,
-                hidden=False,
-            )
-        )
-
-    ret_ann: Any = type_hints.get("return", sig.return_annotation)
-    if ret_ann is _empty:
-        ret_ann = Any
-
-    togglable = bool(getattr(func_obj, "__togglable__", False))
-    pausable = bool(getattr(func_obj, "__pausable__", False))
-
-    return PlanSpec(
-        name=func_obj.__name__,
-        docs=inspect.getdoc(func_obj) or "No documentation available.",
-        parameters=params,
-        togglable=togglable,
-        pausable=pausable,
-    )

@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_origin
 
 from redsun.device import PDevice
-from typing_extensions import TypeIs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -14,6 +13,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "get_choice_list",
+    "ismodel",
+    "ismodelsequence",
     "issequence",
     "find_signals",
 ]
@@ -47,28 +48,53 @@ def get_choice_list(
     ]
 
 
-def issequence(ann: Any) -> TypeIs[Sequence[Any]]:
-    """Return True if annotation looks like a Sequence[...] generic."""
+def _is_pdevice_type(ann: Any) -> bool:
+    """Return True if *ann* is a class or Protocol that has ``PDevice`` in its MRO.
+
+    This is the correct way to ask "is this annotation a device protocol/class?"
+    when working with *type* objects rather than instances.  Plain
+    ``isinstance(ann, PDevice)`` checks whether the *type object itself* satisfies
+    the PDevice structural protocol — which it never does.  Checking the MRO is
+    both fast and safe, and works for concrete classes and Protocol subclasses alike.
+    """
+    return PDevice in getattr(ann, "__mro__", ())
+
+
+def issequence(ann: Any) -> bool:
+    """Return True if *ann* is a ``Sequence[...]`` generic alias.
+
+    Notes
+    -----
+    ``str`` and ``bytes`` are sequences in the stdlib sense, but the annotation
+    ``str`` is *not* a generic alias — ``get_origin(str)`` returns ``None`` —
+    so they are naturally excluded here.
+    """
     origin = get_origin(ann)
     if origin is None:
         return False
-    return isinstance(origin, Sequence)
+    try:
+        return issubclass(origin, Sequence)
+    except TypeError:
+        return False
 
 
-def ismodelsequence(ann: Any) -> TypeIs[Sequence[PDevice]]:
-    """Return True if annotation looks like a Sequence[...] of PDevice generic."""
-    origin = get_origin(ann)
-    if origin is None:
+def ismodelsequence(ann: Any) -> bool:
+    """Return True if *ann* is a ``Sequence[T]`` where ``T`` is a ``PDevice`` type."""
+    if not issequence(ann):
         return False
     args = get_args(ann)
-    if len(args) != 1:
-        return False
-    return issubclass(origin, Sequence) and isinstance(args[0], PDevice)
+    return len(args) == 1 and _is_pdevice_type(args[0])
 
 
-def ismodel(ann: Any) -> TypeIs[PDevice]:
-    """Return True if annotation looks like a PDevice generic."""
-    return isinstance(ann, PDevice)
+def ismodel(ann: Any) -> bool:
+    """Return True if *ann* is a class/Protocol that is a subtype of ``PDevice``.
+
+    This operates on *type annotations* (i.e. the class/protocol itself), not on
+    instances.  The previous implementation used ``isinstance(ann, PDevice)``,
+    which checked whether the type object is itself a structural instance of the
+    PDevice protocol — always ``False``.
+    """
+    return _is_pdevice_type(ann)
 
 
 def find_signals(

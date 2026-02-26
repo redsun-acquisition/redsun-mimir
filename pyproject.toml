@@ -31,6 +31,7 @@ dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.20.0",
     "redsun[zarr]>=0.8.2",
+    "beartype>=0.22.9",
 ]
 
 [dependency-groups]

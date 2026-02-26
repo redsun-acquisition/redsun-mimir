@@ -1,5 +1,6 @@
 from ._plan_spec import (
     ParamDescription,
+    ParamKind,
     PlanSpec,
     collect_arguments,
     create_plan_spec,
@@ -9,8 +10,9 @@ from ._types import ConfigurationDict
 
 __all__ = [
     "ConfigurationDict",
-    "PlanSpec",
     "ParamDescription",
+    "ParamKind",
+    "PlanSpec",
     "collect_arguments",
     "create_plan_spec",
     "resolve_arguments",
