@@ -6,23 +6,114 @@
 [![tests](https://github.com/redsun-acquisition/redsun-mimir/workflows/tests/badge.svg)](https://github.com/redsun-acquisition/redsun-mimir/actions)
 [![codecov](https://codecov.io/gh/redsun-acquisition/redsun-mimir/branch/main/graph/badge.svg)](https://codecov.io/gh/redsun-acquisition/redsun-mimir)
 
-Bundle of components for the OpenUC2 "Mimir" microscope
+Bundle of [`redsun`](https://github.com/redsun-acquisition/redsun) components for the openUC2 "Mimir" microscope
+
+## About `mimir`
+
+Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with an hardware controller developed by [openUC2](https://openuc2.com/). It employs [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for camera control and [`pyserial`](https://github.com/pyserial/pyserial) for motor and laser control.
+
+`redsun-mimir` is a bundle of components developed to target the specific hardware and software requirements for real-time acquisition with said microscope.
+
+> [!NOTE]
+> This bundle has been used as a staging ground for development in cohesion with the main framework. Some components may be moved to `redsun` itself to be provided as built-in functionalities. Expect breaking changes as the framework evolves.
 
 > [!WARNING]
-> This bundle of components is still a work in progress. Use at your own risk.
+> The `youseetoo` module has not been fully tested and there is currently no known way of testing it in a continous integration. Ensure you can pre-emptively test the components locally.
 
 ## Installation
 
-You can install `redsun-mimir` via [pip]:
+It is **strongly reccomended** to install `redsun-mimir` in a virtual environment.
 
-    pip install redsun-mimir
+<details open>
+<summary>uv (reccomended)</summary>
 
+> [!TIP]
+> Be sure to [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) first.
 
+```bash
+# create the venv
+uv venv --python 3.10
 
-To install latest development version :
+# activate the environment in...
+# ... linux
+source .venv/bin/activate
 
-    pip install git+https://github.com/redsun-acquisition/redsun-mimir.git
+# ... windows
+.venv\Scripts\activate
 
+uv pip install redsun-mimir
+```
+
+</details>
+
+<details>
+<summary>pip</summary>
+
+> [!TIP]
+> You should have Python installed in your machine.
+
+```bash
+# create the venv
+python -m venv .venv
+
+# activate the environment in...
+# ... linux
+source .venv/bin/activate
+
+# ... windows
+.venv\Scripts\activate
+
+pip install redsun-mimir
+```
+</details>
+
+### Installing from source
+
+`redsun-mimir` is developed via `uv`; you can clone the repository and install development dependencies:
+
+```bash
+git clone https://github.com/redsun-acquisition/redsun-mimir
+
+cd redsun-mimir
+
+uv sync
+```
+
+## Running a simulator container
+
+`redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes. You can install it by adding the `sim` optional dependencies:
+
+<details open>
+<summary>uv (reccomended)</summary>
+
+```bash
+uv pip install redsun-mimir[sim]
+
+# run the example container via command line
+
+mimir sim
+```
+
+</details>
+
+<details>
+<summary>pip</summary>
+
+```bash
+pip install redsun-mimir[sim]
+
+# run the example container via command line
+
+mimir sim
+```
+</details>
+
+## Features
+
+- Live data capture and median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
+- Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr).
+- Manual control of laser and motor drivers.
+- Fully extensible via additional components following the `redsun` framework.
 
 ## Contributing
 
@@ -32,20 +123,13 @@ the coverage at least stays the same before you submit a pull request.
 ## License
 
 Distributed under the terms of the [Apache Software License 2.0] license,
-"redsun-mimir" is free and open source software
+`redsun-mimir` is free and open source software
 
 ## Issues
 
 If you encounter any problems, please [file an issue] along with a detailed description.
 
-[copier]: https://copier.readthedocs.io/en/stable/
-[MIT]: http://opensource.org/licenses/MIT
-[BSD-3]: http://opensource.org/licenses/BSD-3-Clause
-[GNU GPL v3.0]: http://www.gnu.org/licenses/gpl-3.0.txt
-[GNU LGPL v3.0]: http://www.gnu.org/licenses/lgpl-3.0.txt
 [Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
-[Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
-[redsun-plugin-template]: https://github.com/redsun-acquisition/redsun-plugin-templat
 [file an issue]: https://github.com/redsun-acquisition/redsun-mimir/issues
 [Redsun]: https://github.com/redsun-acquisition/redsun
 [pytest]: https://docs.pytest.org/en/stable/
