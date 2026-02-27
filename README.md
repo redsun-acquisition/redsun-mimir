@@ -15,7 +15,7 @@ Mimir is the codename for an in-development portable [interferometric scattering
 `redsun-mimir` is a bundle of components developed to target the specific hardware and software requirements for real-time acquisition with said microscope.
 
 > [!NOTE]
-> This bundle has been used for a staging ground for development in cohesion with the main framework. Some components may be moved to `redsun` itself to be provided as built-in functionalities. Expect breaking changes as the framework evolves.
+> This bundle has been used as a staging ground for development in cohesion with the main framework. Some components may be moved to `redsun` itself to be provided as built-in functionalities. Expect breaking changes as the framework evolves.
 
 > [!WARNING]
 > The `youseetoo` module has not been fully tested and there is currently no known way of testing it in a continous integration. Ensure you can pre-emptively test the components locally.
