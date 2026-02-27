@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from dependency_injector import providers
@@ -122,7 +122,7 @@ class TestMotorView:
 
         widget._step("stage", "X", direction_up=True)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", pytest.approx(1.0))
+        assert received[0] == ("stage", "X", cast("float", pytest.approx(1.0)))
 
     def test_step_down_emits_signal(
         self, widget: MotorView, motor: MockMotorDevice
@@ -135,7 +135,7 @@ class TestMotorView:
 
         widget._step("stage", "X", direction_up=False)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", pytest.approx(-1.0))
+        assert received[0] == ("stage", "X", cast("float", pytest.approx(-1.0)))
 
     def test_inject_dependencies_registers_signals(
         self,

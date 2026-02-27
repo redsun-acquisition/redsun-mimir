@@ -17,6 +17,7 @@ devices:
     egu: um
 
 presenters:
+  storage_ctrl: {}
   median_ctrl: {}
     # median_streams: [square_scan]
     # live_streams: [live]
@@ -28,5 +29,6 @@ presenters:
     callbacks: [det_ctrl, median_ctrl]
 
 views:
+  storage_widget: {}
   acq_widget: {}
   det_widget: {}

@@ -17,6 +17,7 @@ presenters:
   light: redsun_mimir.presenter.light:LightPresenter
   detector: redsun_mimir.presenter.detector:DetectorPresenter
   median: redsun_mimir.presenter.median:MedianPresenter
+  storage: redsun_mimir.presenter.storage:FileStoragePresenter
 
 views:
   acquisition: redsun_mimir.view.acquisition:AcquisitionView
@@ -24,3 +25,4 @@ views:
   detector: redsun_mimir.view.detector:DetectorView
   motor: redsun_mimir.view.motor:MotorView
   light: redsun_mimir.view.light:LightView
+  storage: redsun_mimir.view.storage:FileStorageView

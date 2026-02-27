@@ -5,29 +5,30 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
+import redsun.engine.plan_stubs as rps
 from bluesky.utils import MsgGenerator  # noqa: TC002
 from dependency_injector import providers
 from redsun.engine import RunEngine
+from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.virtual import Signal
-
-import redsun_mimir.commands as cmds
-import redsun_mimir.plan_stubs as rps
-from redsun_mimir.actions import Action, continous
-from redsun_mimir.common import (
+from redsun.presenter.plan_spec import (
     PlanSpec,
+    UnresolvableAnnotationError,
     collect_arguments,
     create_plan_spec,
     resolve_arguments,
 )
+from redsun.storage import PrepareInfo
+from redsun.utils import find_signals
+from redsun.virtual import Signal
+
 from redsun_mimir.device.pseudo import MedianPseudoDevice
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,
     ReadableFlyer,
 )
-from redsun_mimir.utils import find_signals
 
 if TYPE_CHECKING:
     from collections.abc import MutableSequence
@@ -36,9 +37,8 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Readable
     from redsun.device import Device
+    from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
-
-    from redsun_mimir.actions import SRLatch
 
 
 @dataclass
@@ -232,13 +232,19 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     Attributes
     ----------
-    sigPlanDone :
+    sigPreLaunchNotify : Signal[str]
+        Emitted before launching a plan,
+        carrying the name of the plan to be launched as a `str`.
+        Useful to notify other presenters to prepare
+        for the upcoming plan launch (e.g., to set up writers).
+    sigPlanDone : Signal[None]
         Emitted when a non-togglable plan completes.
-    sigActionDone :
+    sigActionDone : Signal[str]
         Emitted when an action event is cleared.
         Carries the name of the action as a `str`.
     """
 
+    sigPreLaunchNotify = Signal(str)
     sigPlanDone = Signal()
     sigActionDone = Signal(str)
 
@@ -253,9 +259,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.models = devices
         self.engine = RunEngine()
 
-        for command in [cmds.wait_for_actions, cmds.stash, cmds.clear_cache]:
-            cmds.register_bound_command(self.engine, command)
-
         self.futures: set[Future[Any]] = set()
         self.event_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
@@ -268,9 +271,24 @@ class AcquisitionPresenter(Presenter, Loggable):
             "live_stream": self.live_stream,
             "live_median_scan": self.live_median_scan,
         }
-        self.plan_specs: dict[str, PlanSpec] = {
-            name: create_plan_spec(plan, devices) for name, plan in self.plans.items()
-        }
+        self.plan_specs: dict[str, PlanSpec] = {}
+        for name, plan in self.plans.items():
+            spec = self._try_build_plan_spec(plan, devices)
+            if spec is not None:
+                self.plan_specs[name] = spec
+        self._is_single_shot_plan = False
+
+    def _try_build_plan_spec(
+        self,
+        plan: Callable[..., MsgGenerator[Any]],
+        devices: Mapping[str, Device],
+    ) -> PlanSpec | None:
+        """Attempt to build a ``PlanSpec`` for *plan*; return ``None`` on failure."""
+        try:
+            return create_plan_spec(plan, devices)
+        except UnresolvableAnnotationError as exc:
+            self.logger.warning(str(exc))
+            return None
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register plan specs as a provider in the DI container."""
@@ -279,6 +297,8 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
+        self._container = container
+
         sigs = find_signals(
             container,
             [
@@ -454,6 +474,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
+        prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
+
+        # ensure to prepare the devices in case we have
+        # a possible stream action request
+        # TODO: in acquire-zarr the motor metadata is not shown;
+        # why is that?
+        yield from bps.prepare(motor, prepare_info, wait=True)
+        for obj in objs:
+            yield from bps.prepare(obj, prepare_info, wait=True)
+
         while True:
             name, event = yield from rps.read_while_waiting(
                 objs,
@@ -484,27 +514,16 @@ class AcquisitionPresenter(Presenter, Loggable):
             elif name == stream.name:
                 # update the set of detectors to include the median models,
                 # so that the stream action can use the pre-computed median values
-                # event triggered, start streaming to disk
                 self.logger.debug("Starting data streaming to disk")
-
-                prepare_values: dict[str, Any] = {
-                    "capacity": stream_frames,
-                    "write_forever": False,
-                }
-
-                for obj in objs:
-                    yield from bps.prepare(obj, prepare_values, wait=True)
 
                 if not stream_declared:
                     yield from bps.declare_stream(*objs, name=stream_name, collect=True)
                     stream_declared = True
                 yield from bps.kickoff_all(*objs)
 
-                # complete the streaming
                 yield from bps.complete_all(*objs, wait=True)
                 self.logger.debug("Flight complete.")
 
-                # Explicitly collect the stream assets from all objects
                 yield from bps.collect(*objs, name=stream_name)
             self.clear_and_notify(name, event)
 
@@ -552,16 +571,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             name, event = yield from rps.read_while_waiting(
                 detectors, self.event_map, stream_name=live_stream, wait_for="set"
             )
-            # event triggered, start streaming to disk
             self.logger.debug("Starting data streaming to disk")
 
-            prepare_values: dict[str, Any] = {
-                "capacity": frames,
-                "write_forever": write_forever,
-            }
-
+            prepare_info = PrepareInfo(capacity=frames, write_forever=write_forever)
             for detector in detectors:
-                yield from bps.prepare(detector, prepare_values, wait=True)
+                yield from bps.prepare(detector, prepare_info, wait=True)
 
             if not stream_declared:
                 yield from bps.declare_stream(
@@ -574,18 +588,12 @@ class AcquisitionPresenter(Presenter, Loggable):
                     detectors, self.event_map, stream_name=live_stream, wait_for="reset"
                 )
                 self.logger.debug("Done. Stopping streaming.")
-            # Complete the streaming (wait for background thread to finish)
             yield from bps.complete_all(*detectors, wait=True)
             self.logger.debug("Flight complete.")
 
-            # Explicitly collect the stream assets
             yield from bps.collect(*detectors, name=stream_name)
 
-            # Mark stream as declared so future declarations skip
             stream_declared = True
-
-            # we finished streaming;
-            # clear the event and notify the action is done
             self.clear_and_notify(name, event)
             self.logger.debug("Finished data streaming to disk.")
 
@@ -605,11 +613,12 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         resolved = resolve_arguments(spec, param_values, self.models)
         args, kwargs = collect_arguments(spec, resolved)
+
+        self.sigPreLaunchNotify.emit(plan_name)
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
 
         if not spec.togglable:
-            # Single-shot plan: emit done when finished
             fut.add_done_callback(self.sigPlanDone)
 
         fut.add_done_callback(self._discard_future)

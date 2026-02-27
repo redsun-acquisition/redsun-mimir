@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading as th
 import time
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from attrs import define, field, validators
@@ -10,7 +10,7 @@ from pymmcore_plus import CMMCorePlus as Core
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import StorageDescriptor
+from redsun.storage.device import make_writer
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -26,16 +26,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-
-
-class PrepareKwargs(TypedDict):
-    """Keyword arguments for preparing the model for flight."""
-
-    capacity: int
-    """The number of frames to store; if 0, unlimited."""
-
-    write_forever: bool
-    """When True, write data indefinitely until stopped. Overrides `capacity`."""
+    from redsun.storage import PrepareInfo, Writer
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -118,8 +109,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     initialized: ClassVar[bool] = False
 
-    storage = StorageDescriptor()
-
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
@@ -198,6 +187,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._read_buffer: npt.NDArray[Any] = np.zeros(
             (self.roi[2], self.roi[3]), dtype=self.dtype
         )
+        self._writer = make_writer("application/x-zarr")
 
     @property
     def dtype(self) -> str:
@@ -354,49 +344,32 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         s.set_finished()
         return s
 
-    def prepare(self, value: PrepareKwargs) -> Status:
+    def prepare(self, value: PrepareInfo) -> Status:
         """Prepare the detector for acquisition.
 
         Parameters
         ----------
-        value: PrepareKwargs
-            Keyword arguments for preparation, including:
-            - capacity: int
-                The number of frames to store; if 0, unlimited.
-            - write_forever: bool
-                If True, write data indefinitely until stopped.
-                Overrides `capacity`.
+        value : PrepareInfo
+            Plan-time information carrying ``capacity`` and ``write_forever``.
         """
         s = Status()
         self._fly_permit.clear()
         self._fly_stop.clear()
         try:
-            if not hasattr(self, "storage"):
-                raise RuntimeError(
-                    f"No storage backend configured for device '{self.name}'."
-                )
+            capacity = 0 if value.write_forever else value.capacity
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
-            capacity = value.get("capacity", 0)
-            write_forever = value.get("write_forever")
 
-            if write_forever:
-                # override any previous setting
-                capacity = 0  # unlimited
-
-            # Update source info for this camera
-            self.storage.update_source(
+            self._sink = self._writer.prepare(
                 name=self.name,
                 data_key=self._buffer_stream_key,
                 dtype=np.dtype(self.dtype),
                 shape=(height, width),
+                capacity=capacity,
             )
-            self._sink = self.storage.prepare(self.name, capacity)
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
-                kwargs={
-                    "frames": capacity,
-                },
+                kwargs={"frames": capacity},
                 daemon=True,
             )
             self._thread.start()
@@ -450,7 +423,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             # acquisition is already running
             # and ring buffer is ready:
             # start the background thread
-            self.storage.kickoff()
+            self._writer.kickoff()
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -579,8 +552,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
-        backend = self.storage
-        frames_written = backend.get_indices_written(self.name)
+        frames_written = self._writer.get_indices_written(self.name)
         if frames_written == 0:
             return
 
@@ -594,11 +566,11 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from backend.collect_stream_docs(self.name, frames_to_report)
+        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
-        return self.storage.get_indices_written(self.name)
+        return self._writer.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.
@@ -657,3 +629,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         """
         while self._core.getRemainingImageCount() < 1:
             time.sleep(self._current_exposure)
+
+    def get_writer(self) -> Writer:
+        """Get the writer associated with this device."""
+        return self._writer

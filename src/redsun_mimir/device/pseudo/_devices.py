@@ -7,7 +7,6 @@ import numpy as np
 from bluesky.protocols import Reading, Triggerable
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import StorageDescriptor
 from redsun.utils.descriptors import make_key
 
 from redsun_mimir.protocols import PseudoCacheFlyer, ReadableFlyer
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
+    from redsun.storage import PrepareInfo
     from typing_extensions import TypeIs
 
 
@@ -53,8 +53,6 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         Defaults to ``"buffer:stream"``.
     """
 
-    storage = StorageDescriptor()
-
     def __init__(
         self,
         reader: ReadableFlyer,
@@ -65,7 +63,10 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     ) -> None:
         self._name = f"{reader.name}_median"
         self._reader_shape = reader.sensor_shape
-        self.storage = reader.storage
+
+        # hijack the internal writer
+        # to write the median frame to disk
+        self._writer = reader.get_writer()
         # Configuration/event keys use the {name}-{property} convention
         # (produced by make_key) so that event-document parsers splitting on "-"
         # can correctly extract the device name and property hint.
@@ -101,7 +102,8 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         # initialize the cache with empty lists
         self._cache: list[npt.NDArray[np.generic]] = []
 
-        self._empty_median = np.zeros(self._reader_shape, dtype=np.float32)
+        self._target_dtype = np.float64
+        self._empty_median = np.zeros(self._reader_shape, dtype=np.float64)
 
     def describe_configuration(self) -> dict[str, Descriptor]:
         """Return the configuration descriptor.
@@ -162,52 +164,52 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
     def trigger(self) -> Status:
         """Compute the median of the cached readings."""
         s = Status()
-        # compute the median for the target key and store it in the _median dict
         if self._cache and not self._valid_readings:
             stack = np.stack(self._cache, axis=0)
-            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0)
+            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0).astype(
+                self._target_dtype
+            )
             shape = median_value.shape
             dtype = median_value.dtype
             self._median[self._reading_key] = {
                 "value": median_value,
                 "timestamp": time.time(),
             }
-            self.storage.update_source(
-                self.name, self._collect_key, shape=shape, dtype=dtype
-            )
+            self._median_shape = shape
+            self._median_dtype = dtype
             self._valid_readings = True
         s.set_finished()
         return s
 
-    def prepare(self, value: Any) -> Status:
-        """Prepare the pseudo model for flight by writing the median readings to disk."""
+    def prepare(self, _: PrepareInfo) -> Status:
+        """Prepare for flight by constructing a writer for the median frame."""
         s = Status()
-        if self._valid_readings and hasattr(self, "storage"):
-            self.logger.debug(f"Valid median for {self.name}, preparing for flight.")
-            self._sink = self.storage.prepare(self.name, capacity=1)
-        s.set_finished()
+        try:
+            self._sink = self._writer.prepare(
+                self.name,
+                self._collect_key,
+                shape=self._reader_shape,
+                dtype=np.dtype(self._target_dtype),
+                capacity=1,
+            )
+        except Exception as e:
+            s.set_exception(e)
+        else:
+            s.set_finished()
         return s
 
     def kickoff(self) -> Status:
-        """Start flying.
-
-        Writes the single median reading to disk;
-        it does not imply the existance of a data stream,
-        but for consistency with other flyers, this method is provided.
-        """
+        """Start flying — write the single median frame to disk."""
         s = Status()
         if self._valid_readings:
             self._assets_collected = False
+            self._writer.kickoff()
             self._sink.write(self._median[self._reading_key]["value"])
         s.set_finished()
         return s
 
     def complete(self) -> Status:
-        """Complete the flying process.
-
-        Tells the writer that no more data will be sent for this pseudo model;
-        this will close the frame sink.
-        """
+        """Complete — close the frame sink."""
         s = Status()
         if self._valid_readings:
             self._sink.close()
@@ -221,24 +223,21 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         if self._assets_collected:
             return
 
-        frames_written = self.storage.get_indices_written(self.name)
+        frames_written = self._writer.get_indices_written(self.name)
         if frames_written == 0:
             return
 
-        # Determine how many frames to report
         frames_to_report = (
             min(index, frames_written) if index is not None else frames_written
         )
 
         self._assets_collected = True
-
-        # Delegate to writer
-        yield from self.storage.collect_stream_docs(self.name, frames_to_report)
+        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
 
     def get_index(self) -> int:
-        if not self._valid_readings or not hasattr(self, "storage"):
+        if not self._valid_readings or not hasattr(self, "_writer"):
             return 0
-        return self.storage.get_indices_written(self.name)
+        return self._writer.get_indices_written(self.name)
 
     @property
     def name(self) -> str:

@@ -36,6 +36,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import numpy as np
+
 from napari.components.overlays.interaction_box import InteractionBoxHandle
 from napari.layers.utils.interaction_box import (
     generate_interaction_box_vertices,

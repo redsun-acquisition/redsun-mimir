@@ -25,6 +25,7 @@ devices:
     step_size: 1
 
 presenters:
+  storage_ctrl: {}
   acq_ctrl:
     callbacks: [det_ctrl, median_ctrl]
   median_ctrl:
@@ -45,3 +46,4 @@ views:
   acq_widget: {}
   img_widget: {}
   det_widget: {}
+  storage_widget: {}

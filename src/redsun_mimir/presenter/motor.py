@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.utils import find_signals
 from redsun.virtual import Signal
 
-from ..protocols import MotorProtocol
-from ..utils import find_signals
+from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

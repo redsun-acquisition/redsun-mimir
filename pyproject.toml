@@ -30,7 +30,7 @@ requires-python = ">=3.10"
 dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.20.0",
-    "redsun[zarr]>=0.8.2",
+    "redsun[zarr]>=0.9.0",
 ]
 
 [dependency-groups]
@@ -58,6 +58,7 @@ uc2 = [
     "pyserial>=3.5",
 ]
 sim = [
+    "redsun-mimir[pyqt]",
     "pymmcore-plus>=0.16.0",
 ]
 
@@ -151,7 +152,7 @@ convention = "numpy"
 source = "vcs"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests"]
+include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]

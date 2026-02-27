@@ -139,6 +139,15 @@ wheels = [
 ]
 
 [[package]]
+name = "beartype"
+version = "0.22.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/94/1009e248bbfbab11397abca7193bea6626806be9a327d399810d523a07cb/beartype-0.22.9.tar.gz", hash = "sha256:8f82b54aa723a2848a56008d18875f91c1db02c32ef6a62319a002e3e25a975f", size = 1608866, upload-time = "2025-12-13T06:50:30.72Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/cc/18245721fa7747065ab478316c7fea7c74777d07f37ae60db2e84f8172e8/beartype-0.22.9-py3-none-any.whl", hash = "sha256:d16c9bbc61ea14637596c5f6fbff2ee99cbe3573e46a716401734ef50c3060c2", size = 1333658, upload-time = "2025-12-13T06:50:28.266Z" },
+]
+
+[[package]]
 name = "bluesky"
 version = "1.14.6"
 source = { registry = "https://pypi.org/simple" }
@@ -711,7 +720,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -3162,9 +3171,10 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.8.2"
+version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "beartype" },
     { name = "bluesky" },
     { name = "dependency-injector" },
     { name = "platformdirs" },
@@ -3172,9 +3182,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3f/ee/b7768eabdf6c956ecc27513be7ac2a8495d4ac1d6c3f9e82e5192f10abf4/redsun-0.8.2.tar.gz", hash = "sha256:6aa6a03c785fc05f97fcdde02cfbd7055813f42dc9ae13b78c49026b1f2b1204", size = 40691, upload-time = "2026-02-23T17:05:09.6Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/27/14953253797e32548b944e91c6b562708c391f8babb168a1dce859b76398/redsun-0.9.0.tar.gz", hash = "sha256:65332eaa0413e9df983bfea64fa6a11c941562d35c5e71b30cc84ad5d21f6e6a", size = 66680, upload-time = "2026-02-27T13:47:49.866Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/05/023213b97185dd0ea6a488559f52dcecbb0f180052309e1442f1dbd0c00b/redsun-0.8.2-py3-none-any.whl", hash = "sha256:2cef606ac81eb60a9938c70e52b90f0af82cd26d428c4889722009eadac62c5d", size = 53996, upload-time = "2026-02-23T17:05:08.154Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/d8/f9a3b7d5b4f1256e678ea465f343d605a7827aa5efbcf1c9f04c95f43e7e/redsun-0.9.0-py3-none-any.whl", hash = "sha256:907a3a648bf086a5e950ec38ca02cd3c56ad792c06ea3ce5e711dd23067a19ad", size = 85761, upload-time = "2026-02-27T13:47:48.464Z" },
 ]
 
 [package.optional-dependencies]
@@ -3211,7 +3221,9 @@ pyside = [
     { name = "redsun", extra = ["pyside"] },
 ]
 sim = [
+    { name = "napari", extra = ["pyqt6"] },
     { name = "pymmcore-plus" },
+    { name = "redsun", extra = ["pyqt"] },
 ]
 uc2 = [
     { name = "pymmcore-plus" },
@@ -3234,13 +3246,15 @@ requires-dist = [
     { name = "msgspec", specifier = ">=0.20.0" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
     { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
-    { name = "redsun", extras = ["zarr"], specifier = ">=0.8.2" },
+    { name = "redsun", extras = ["zarr"], specifier = ">=0.9.0" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 

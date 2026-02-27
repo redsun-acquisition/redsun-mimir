@@ -16,10 +16,11 @@ def run_simulation_container() -> None:
     provided by mimir with mock devices.
     """
     # devices
-    from redsun_mimir.device import MockLightDevice, MockMotorDevice
+    from redsun_mimir.device import MockLightDevice, MockMotorDevice  # noqa: I001
     from redsun_mimir.device.mmcore import MMCoreCameraDevice
 
     # presenters
+    from redsun_mimir.presenter.storage import FileStoragePresenter
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
     from redsun_mimir.presenter.light import LightPresenter
@@ -32,6 +33,7 @@ def run_simulation_container() -> None:
     from redsun_mimir.view.image import ImageView
     from redsun_mimir.view.light import LightView
     from redsun_mimir.view.motor import MotorView
+    from redsun_mimir.view.storage import FileStorageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -43,6 +45,7 @@ def run_simulation_container() -> None:
         led = device(MockLightDevice, from_config="led")
 
         # presenters
+        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
         median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
         det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")
         acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
@@ -55,5 +58,6 @@ def run_simulation_container() -> None:
         det_widget = view(DetectorView, from_config="det_widget")
         light_widget = view(LightView, from_config="light_widget")
         motor_widget = view(MotorView, from_config="motor_widget")
+        storage_widget = view(FileStorageView, from_config="storage_widget")
 
     MimirSimulator().run()

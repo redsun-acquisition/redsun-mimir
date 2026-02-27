@@ -23,6 +23,7 @@ def run_acquisition_container() -> None:
     from redsun_mimir.view.acquisition import AcquisitionView
     from redsun_mimir.view.detector import DetectorView
     from redsun_mimir.view.image import ImageView
+    from redsun_mimir.view.storage import FileStorageView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
@@ -35,5 +36,6 @@ def run_acquisition_container() -> None:
         acq_widget = view(AcquisitionView, from_config="acq_widget")
         img_widget = view(ImageView, from_config="img_widget")
         det_widget = view(DetectorView, from_config="det_widget")
+        storage_widget = view(FileStorageView, from_config="storage_widget")
 
     AcquisitionDetectorApp().run()

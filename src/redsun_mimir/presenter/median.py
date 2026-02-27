@@ -44,7 +44,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         data from a MedianPseudoDevice. If `None`, no scan data will be processed.
     hints: list[str] | None, keyword-only, optional
         List of data key suffixes to look for in event documents when applying
-        the median correction. If `None`, no data will be processed. Defaults to `None`.
+        the median correction. If `None`, no data will be processed.
 
     Attributes
     ----------
@@ -55,7 +55,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Notes
     -----
-    The presenter expects both `streams` and `hints` to be configured.
+    The presenter expects both `*_streams` and `hints` to be configured.
     If either is missing, the presenter will be inactive.
     """
 
@@ -90,15 +90,15 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         else:
             if self.median_streams or self.live_streams:
                 self.logger.warning(
-                    "Initialized: no hints detected; presenter will be inactive"
+                    "Initialized: no hints declared; presenter will be inactive"
                 )
             elif self.hints:
                 self.logger.warning(
-                    "Initialized: no active streams detected; presenter will be inactive"
+                    "Initialized: no streams declared; presenter will be inactive"
                 )
             else:
                 self.logger.warning(
-                    "Initialized: with no active streams hints detected; presenter will be inactive"
+                    "Initialized: with no streams or hints declared; presenter will be inactive"
                 )
 
     def register_providers(self, container: VirtualContainer) -> None:
