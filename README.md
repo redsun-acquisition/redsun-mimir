@@ -116,9 +116,11 @@ mimir sim
 
 ## Features
 
-- Live data capture and median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
+- Live data capture.
+- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
+- Image visualization leveraging [`napari`](https://github.com/napari/napari).
 - Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr).
-- Manual control of laser and motor drivers.
+- Manual control of light source and motor drivers.
 - Fully extensible via additional components following the `redsun` framework.
 
 ## Contributing
