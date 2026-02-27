@@ -3171,7 +3171,8 @@ wheels = [
 
 [[package]]
 name = "redsun"
-source = { editable = "../redsun" }
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beartype" },
     { name = "bluesky" },
@@ -3180,6 +3181,10 @@ dependencies = [
     { name = "psygnal" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/89/27/14953253797e32548b944e91c6b562708c391f8babb168a1dce859b76398/redsun-0.9.0.tar.gz", hash = "sha256:65332eaa0413e9df983bfea64fa6a11c941562d35c5e71b30cc84ad5d21f6e6a", size = 66680, upload-time = "2026-02-27T13:47:49.866Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/d8/f9a3b7d5b4f1256e678ea465f343d605a7827aa5efbcf1c9f04c95f43e7e/redsun-0.9.0-py3-none-any.whl", hash = "sha256:907a3a648bf086a5e950ec38ca02cd3c56ad792c06ea3ce5e711dd23067a19ad", size = 85761, upload-time = "2026-02-27T13:47:48.464Z" },
 ]
 
 [package.optional-dependencies]
@@ -3195,43 +3200,6 @@ pyside = [
 ]
 zarr = [
     { name = "acquire-zarr" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "acquire-zarr", marker = "extra == 'zarr'", specifier = ">=0.6.0" },
-    { name = "beartype", specifier = ">=0.22.9" },
-    { name = "bluesky", specifier = ">=1.14.6" },
-    { name = "dependency-injector", specifier = ">=4.48.3" },
-    { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
-    { name = "magicgui", marker = "extra == 'pyside'", specifier = ">=0.10.1" },
-    { name = "platformdirs", specifier = ">=4.3.8" },
-    { name = "psygnal", specifier = ">=0.15.1" },
-    { name = "pyqt6", marker = "extra == 'pyqt'", specifier = ">=6.10.2" },
-    { name = "pyside6", marker = "extra == 'pyside'", specifier = ">=6.9.1" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "qtpy", marker = "extra == 'pyqt'", specifier = ">=2.4.3" },
-    { name = "qtpy", marker = "extra == 'pyside'", specifier = ">=2.4.3" },
-    { name = "typing-extensions", specifier = ">=4.15.0" },
-]
-provides-extras = ["pyqt", "pyside", "zarr"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "attrs", specifier = ">=25.4.0" },
-    { name = "griffe-fieldz", specifier = ">=0.4.0" },
-    { name = "mike", specifier = ">=2.1.3" },
-    { name = "mkdocstrings-python", specifier = ">=2.0.2" },
-    { name = "mypy", specifier = ">=1.19.1" },
-    { name = "ophyd", specifier = ">=1.11.0" },
-    { name = "pre-commit", specifier = ">=4.5.0" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-env", specifier = ">=1.1.5" },
-    { name = "redsun", extras = ["pyqt", "zarr"] },
-    { name = "ruff", specifier = ">=0.14.14" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
-    { name = "zensical", specifier = ">=0.0.23" },
 ]
 
 [[package]]
@@ -3253,7 +3221,9 @@ pyside = [
     { name = "redsun", extra = ["pyside"] },
 ]
 sim = [
+    { name = "napari", extra = ["pyqt6"] },
     { name = "pymmcore-plus" },
+    { name = "redsun", extra = ["pyqt"] },
 ]
 uc2 = [
     { name = "pymmcore-plus" },
@@ -3276,13 +3246,15 @@ requires-dist = [
     { name = "msgspec", specifier = ">=0.20.0" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", editable = "../redsun" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", editable = "../redsun" },
-    { name = "redsun", extras = ["zarr"], editable = "../redsun" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
+    { name = "redsun", extras = ["zarr"], specifier = ">=0.9.0" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 
