@@ -10,7 +10,7 @@ Bundle of [`redsun`](https://github.com/redsun-acquisition/redsun) components fo
 
 ## About `mimir`
 
-Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with the hardware controller developed by [openUC2](https://openuc2.com/). It employs [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for camera control and [`pyserial`](https://github.com/pyserial/pyserial) for motor and laser control.
+Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with an hardware controller developed by [openUC2](https://openuc2.com/). It employs [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for camera control and [`pyserial`](https://github.com/pyserial/pyserial) for motor and laser control.
 
 `redsun-mimir` is a bundle of components developed to target the specific hardware and software requirements for real-time acquisition with said microscope.
 
