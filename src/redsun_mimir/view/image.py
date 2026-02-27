@@ -3,12 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from napari._app_model import get_app_model
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
-from qtpy import QtCore, QtWidgets
+from napari.utils._proxies import PublicOnlyProxy
+from napari.viewer import (
+    Viewer,  # noqa: TC002 (needed for napari injection until 0.7.0)
+)
+from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
 from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
@@ -78,6 +83,17 @@ class ImageView(QtView, Loggable):
         # activity dialog, etc.), making it safe to embed as a child widget.
         self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
+        # TODO: this is an hotfix to make the application not crash
+        # when manually deleting layers from the viewer; it should
+        # go away once napari 0.7.0 is released, which allows
+        # to manipulate the viewer model more easily
+        def _provide_embedded_viewer() -> Viewer | None:
+            return PublicOnlyProxy(self.viewer_model)
+
+        self._provider_disposer = get_app_model().injection_store.register(
+            providers=[(_provide_embedded_viewer,)]
+        )
+
         # Access the sub-panels via QtViewer's lazy properties so they are
         # initialised and correctly wired to the viewer model before we
         # reparent them into our own layout.
@@ -115,6 +131,13 @@ class ImageView(QtView, Loggable):
         self._apply_napari_stylesheet()
 
         self.logger.info("Initialized")
+
+    def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
+        # on teardown, ensure we unregister the
+        # embedded viewer provider to keep things clean;
+        # TODO: this should go away after napari 0.7.0 is released
+        self._provider_disposer()
+        super().closeEvent(event)
 
     def _apply_napari_stylesheet(self) -> None:
         """Apply (or re-apply) napari's QSS theme to this widget and the canvas.
