@@ -8,12 +8,20 @@ from redsun.log import Loggable
 from redsun.utils import find_signals
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
+from redsun.view.qt._device_sequence_edit import DeviceSequenceEdit
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
 from redsun.virtual import Signal
 
 if TYPE_CHECKING:
     from redsun.presenter.plan_spec import PlanSpec
     from redsun.virtual import VirtualContainer
+
+
+_INVALID_GROUP_STYLE = (
+    "QGroupBox { border: 1px solid red; border-radius: 3px; }"
+    " QGroupBox::title { color: red; }"
+)
+_VALID_GROUP_STYLE = ""
 
 
 class AcquisitionView(QtView, Loggable):
@@ -132,6 +140,7 @@ class AcquisitionView(QtView, Loggable):
             )
             self.stack_widget.addWidget(plan_widget.group_box)
             self.plan_widgets[spec.name] = plan_widget
+            self._wire_device_validation(plan_widget)
 
         self.stack_widget.setCurrentIndex(0)
 
@@ -191,6 +200,40 @@ class AcquisitionView(QtView, Loggable):
             if action_button:
                 action_button.setEnabled(False)
         self.sigActionRequest.emit(action_name, checked)
+
+
+    def _wire_device_validation(
+        self,
+        plan_widget: PlanWidget,
+    ) -> None:
+        """Connect each DeviceSequenceEdit to the selection validator."""
+        for w in plan_widget.device_widgets:
+            if isinstance(w, DeviceSequenceEdit):
+                w.changed.connect(
+                    lambda val, pw=plan_widget, name=w.name: self._on_device_selection_changed(val, pw, name)
+                )
+                # Run once to set initial state
+                self._on_device_selection_changed(w.value, plan_widget, w.name)
+
+    def _on_device_selection_changed(
+        self,
+        value: list[str],
+        plan_widget: PlanWidget,
+        param_name: str,
+    ) -> None:
+        """Validate that at least one device is selected; style accordingly."""
+        sub_group = plan_widget.device_sub_groups.get(param_name)
+        is_valid = len(value) > 0
+        if sub_group is not None:
+            sub_group.setStyleSheet(
+                _VALID_GROUP_STYLE if is_valid else _INVALID_GROUP_STYLE
+            )
+        # Disable run only if *any* device sequence is empty
+        any_invalid = any(
+            isinstance(w, DeviceSequenceEdit) and len(w.value) == 0
+            for w in plan_widget.device_widgets
+        )
+        plan_widget.run_button.setEnabled(not any_invalid)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]
