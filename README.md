@@ -109,6 +109,9 @@ mimir sim
 # in your virtual environment
 pip install redsun-mimir[sim]
 
+# install micro-manager device adapters
+mmcore install
+
 # run the example container via command line
 mimir sim
 ```
