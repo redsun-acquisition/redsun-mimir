@@ -17,11 +17,16 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 
-_INVALID_GROUP_STYLE = (
-    "QGroupBox { border: 1px solid red; border-radius: 3px; }"
-    " QGroupBox::title { color: red; }"
-)
 _VALID_GROUP_STYLE = ""
+
+
+def _invalid_group_style(param_name: str) -> str:
+    """Return a stylesheet that scopes the red border to a specific sub-group."""
+    sel = f"QGroupBox#device_sub_{param_name}"
+    return (
+        f"{sel} {{ border: 1px solid red; border-radius: 3px; }}"
+        f" {sel}::title {{ color: red; }}"
+    )
 
 
 class AcquisitionView(QtView, Loggable):
@@ -226,7 +231,7 @@ class AcquisitionView(QtView, Loggable):
         is_valid = len(value) > 0
         if sub_group is not None:
             sub_group.setStyleSheet(
-                _VALID_GROUP_STYLE if is_valid else _INVALID_GROUP_STYLE
+                _VALID_GROUP_STYLE if is_valid else _invalid_group_style(param_name)
             )
         # Disable run only if *any* device sequence is empty
         any_invalid = any(
