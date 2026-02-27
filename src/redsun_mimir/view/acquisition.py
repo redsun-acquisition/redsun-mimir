@@ -8,7 +8,6 @@ from redsun.log import Loggable
 from redsun.utils import find_signals
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
-from redsun.view.qt._device_sequence_edit import DeviceSequenceEdit
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
 from redsun.virtual import Signal
 
@@ -17,21 +16,6 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 
-_VALID_GROUP_STYLE = ""
-
-
-def _devices_group_style(invalid_params: set[str]) -> str:
-    """Build a stylesheet for the outer Devices group targeting invalid sub-groups.
-
-    Setting the stylesheet on the parent with child selectors avoids Qt's
-    upward style propagation that would otherwise redraw the parent's own border.
-    """
-    rules: list[str] = []
-    for name in invalid_params:
-        sel = f"QGroupBox#device_sub_{name}"
-        rules.append(f"{sel} {{ border: 1px solid red; border-radius: 3px; }}")
-        rules.append(f"{sel}::title {{ color: red; }}")
-    return " ".join(rules)
 
 
 class AcquisitionView(QtView, Loggable):
@@ -212,38 +196,21 @@ class AcquisitionView(QtView, Loggable):
         self.sigActionRequest.emit(action_name, checked)
 
 
-    def _wire_device_validation(
-        self,
-        plan_widget: PlanWidget,
-    ) -> None:
-        """Connect each DeviceSequenceEdit to the selection validator."""
+    def _wire_device_validation(self, plan_widget: PlanWidget) -> None:
+        """Disable Run if any DeviceSequenceEdit has an empty selection."""
         for w in plan_widget.device_widgets:
-            if isinstance(w, DeviceSequenceEdit):
-                w.changed.connect(
-                    lambda val, pw=plan_widget, name=w.name: self._on_device_selection_changed(val, pw, name)
-                )
-                # Run once to set initial state
-                self._on_device_selection_changed(w.value, plan_widget, w.name)
-
-    def _on_device_selection_changed(
-        self,
-        value: list[str],
-        plan_widget: PlanWidget,
-        param_name: str,
-    ) -> None:
-        """Validate that at least one device is selected; style accordingly."""
-        # Collect all currently-invalid DeviceSequenceEdit param names
-        invalid: set[str] = {
-            w.name
-            for w in plan_widget.device_widgets
-            if isinstance(w, DeviceSequenceEdit) and len(w.value) == 0
-        }
-        # Apply stylesheet on the outer devices_group using child selectors
-        if plan_widget.devices_group is not None:
-            plan_widget.devices_group.setStyleSheet(
-                _devices_group_style(invalid)
+            w.changed.connect(
+                lambda _val, pw=plan_widget: self._on_device_selection_changed(pw)
             )
-        plan_widget.run_button.setEnabled(len(invalid) == 0)
+        self._on_device_selection_changed(plan_widget)
+
+    def _on_device_selection_changed(self, plan_widget: PlanWidget) -> None:
+        """Disable Run while any device sequence widget has no selection."""
+        any_empty = any(
+            isinstance(w.get_value(), list) and len(w.get_value()) == 0
+            for w in plan_widget.device_widgets
+        )
+        plan_widget.run_button.setEnabled(not any_empty)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]
