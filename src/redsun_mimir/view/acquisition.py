@@ -20,13 +20,18 @@ if TYPE_CHECKING:
 _VALID_GROUP_STYLE = ""
 
 
-def _invalid_group_style(param_name: str) -> str:
-    """Return a stylesheet that scopes the red border to a specific sub-group."""
-    sel = f"QGroupBox#device_sub_{param_name}"
-    return (
-        f"{sel} {{ border: 1px solid red; border-radius: 3px; }}"
-        f" {sel}::title {{ color: red; }}"
-    )
+def _devices_group_style(invalid_params: set[str]) -> str:
+    """Build a stylesheet for the outer Devices group targeting invalid sub-groups.
+
+    Setting the stylesheet on the parent with child selectors avoids Qt's
+    upward style propagation that would otherwise redraw the parent's own border.
+    """
+    rules: list[str] = []
+    for name in invalid_params:
+        sel = f"QGroupBox#device_sub_{name}"
+        rules.append(f"{sel} {{ border: 1px solid red; border-radius: 3px; }}")
+        rules.append(f"{sel}::title {{ color: red; }}")
+    return " ".join(rules)
 
 
 class AcquisitionView(QtView, Loggable):
@@ -227,18 +232,18 @@ class AcquisitionView(QtView, Loggable):
         param_name: str,
     ) -> None:
         """Validate that at least one device is selected; style accordingly."""
-        sub_group = plan_widget.device_sub_groups.get(param_name)
-        is_valid = len(value) > 0
-        if sub_group is not None:
-            sub_group.setStyleSheet(
-                _VALID_GROUP_STYLE if is_valid else _invalid_group_style(param_name)
-            )
-        # Disable run only if *any* device sequence is empty
-        any_invalid = any(
-            isinstance(w, DeviceSequenceEdit) and len(w.value) == 0
+        # Collect all currently-invalid DeviceSequenceEdit param names
+        invalid: set[str] = {
+            w.name
             for w in plan_widget.device_widgets
-        )
-        plan_widget.run_button.setEnabled(not any_invalid)
+            if isinstance(w, DeviceSequenceEdit) and len(w.value) == 0
+        }
+        # Apply stylesheet on the outer devices_group using child selectors
+        if plan_widget.devices_group is not None:
+            plan_widget.devices_group.setStyleSheet(
+                _devices_group_style(invalid)
+            )
+        plan_widget.run_button.setEnabled(len(invalid) == 0)
 
     def _on_info_clicked(self) -> None:
         widget = self.plan_widgets[self.plans_combobox.currentText()]
