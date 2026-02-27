@@ -27,7 +27,6 @@ It is **strongly reccomended** to install `redsun-mimir` in a virtual environmen
 <details open>
 <summary>uv (reccomended)</summary>
 
-> [!TIP]
 > Be sure to [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) first.
 
 ```bash
@@ -49,7 +48,6 @@ uv pip install redsun-mimir
 <details>
 <summary>pip</summary>
 
-> [!TIP]
 > You should have Python installed in your machine.
 
 ```bash
@@ -87,10 +85,10 @@ uv sync
 <summary>uv (reccomended)</summary>
 
 ```bash
+# in your virtual environment
 uv pip install redsun-mimir[sim]
 
 # run the example container via command line
-
 mimir sim
 ```
 
@@ -100,10 +98,10 @@ mimir sim
 <summary>pip</summary>
 
 ```bash
+# in your virtual environment
 pip install redsun-mimir[sim]
 
 # run the example container via command line
-
 mimir sim
 ```
 </details>
