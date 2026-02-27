@@ -79,7 +79,13 @@ uv sync
 
 ## Running a simulator container
 
-`redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes. You can install it by adding the `sim` optional dependencies:
+`redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes.
+
+To run it, you have to:
+
+1. install the package in your virtual environment by adding the `sim` optional dependencies;
+2. run `mmcore install` (or alternatively one of the methods described [here](https://pymmcore-plus.github.io/pymmcore-plus/install/#installing-micro-manager-device-adapters)).
+3. run the container via `mimir sim`.
 
 <details open>
 <summary>uv (reccomended)</summary>
@@ -87,6 +93,9 @@ uv sync
 ```bash
 # in your virtual environment
 uv pip install redsun-mimir[sim]
+
+# install micro-manager device adapters
+mmcore install
 
 # run the example container via command line
 mimir sim
