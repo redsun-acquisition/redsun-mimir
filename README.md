@@ -67,6 +67,18 @@ pip install redsun-mimir
 ```
 </details>
 
+### Installing from source
+
+`redsun-mimir` is developed via `uv`; you can clone the repository and install development dependencies:
+
+```bash
+git clone https://github.com/redsun-acquisition/redsun-mimir
+
+cd redsun-mimir
+
+uv sync
+```
+
 ## Running a simulator container
 
 `redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes. You can install it by adding the `sim` optional dependencies:
@@ -95,18 +107,6 @@ pip install redsun-mimir[sim]
 mimir sim
 ```
 </details>
-
-### Installing from source
-
-`redsun-mimir` is developed via `uv`; you can clone the repository and install development dependencies:
-
-```bash
-git clone https://github.com/redsun-acquisition/redsun-mimir
-
-cd redsun-mimir
-
-uv sync
-```
 
 ## Features
 
