@@ -4,7 +4,7 @@ frontend: pyqt
 
 devices:
   serial:
-    port: COM3
+    port: COM4
   stage:
     step_sizes:
       X: 100.0
