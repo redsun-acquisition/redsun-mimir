@@ -12,6 +12,7 @@ from redsun.log import Loggable
 from redsun.storage import PrepareInfo, register_metadata
 from redsun.utils.descriptors import make_descriptor, make_key, make_reading
 from serial import Serial
+from pprint import pprint
 
 import redsun_mimir.device.youseetoo.utils as uc2utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
@@ -88,10 +89,21 @@ class MimirSerialDevice(Device, Loggable):
         # to ensure that the device is ready
         self._instance_serial.dtr = False
         self._instance_serial.rts = True
-        time.sleep(0.1)
+        time.sleep(0.5)
         self._instance_serial.dtr = False
         self._instance_serial.rts = False
-        time.sleep(0.5)
+        # give it abundant time to reset; we might lose
+        # some output from the reset process
+        # which would cause follow-up comms to fail
+        time.sleep(2.0)
+        reset_bytes = self._instance_serial.read_until(
+            expected=b"{'setup': 'done'}"
+        )
+        if reset_bytes is not None:
+            response = reset_bytes.decode(errors="ignore").strip()
+            self.logger.info("Serial reset response")
+            for line in response.splitlines():
+                self.logger.info(line)
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         # TODO: for now we don't return anything...
