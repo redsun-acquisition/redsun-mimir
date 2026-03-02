@@ -6,10 +6,10 @@ devices:
 
   # mmcore devices
   mmcore-camera: redsun_mimir.device.mmcore:MMCoreCameraDevice
+  mmcore-stage: redsun_mimir.device.mmcore:MMCoreStageDevice
 
   # mock devices
   mock-light: redsun_mimir.device:MockLightDevice
-  mock-motor: redsun_mimir.device:MockMotorDevice
 
 presenters:
   acquisition: redsun_mimir.presenter.acquisition:AcquisitionPresenter

@@ -7,6 +7,7 @@ from pymmcore_plus import CMMCorePlus as Core
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
+from redsun.storage.metadata import register_metadata
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -14,12 +15,18 @@ from redsun.utils.descriptors import (
     parse_key,
 )
 
+from redsun_mimir.device.mmcore.configs import (
+    BaseStageConfig,
+    DemoXYStageConfig,
+    DemoZStageConfig,
+)
 from redsun_mimir.protocols import MotorProtocol
 
 if TYPE_CHECKING:
     from typing import Any, Literal
 
     from bluesky.protocols import Descriptor, Location, Reading
+    from redsun.storage import PrepareInfo
 
 
 class MMCoreStageDevice(Device, MotorProtocol, Loggable):
@@ -29,31 +36,40 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
     ----------
     name : str
         Identity key of the device.
+    config : Literal["demoxy", "demoz"], optional
+        Predefined configuration for the stage device.
     """
 
     _stage_type: Literal["XY", "Z"]
 
-    def __init__(
-        self,
-        name: str,
-        /,
-        adapter: str,
-        device: str,
-        axis: list[str] = ["X", "Y"],
-        limits: dict[str, tuple[float, float]] | None = None,
-    ) -> None:
-        super().__init__(name, adapter=adapter, device=device, axis=axis, limits=limits)
+    def __init__(self, name: str, /, config: Literal["demoxy", "demoz"] | None) -> None:
+        self.config: BaseStageConfig
+        match config:
+            case "demoxy":
+                self.config = DemoXYStageConfig()
+            case "demoz":
+                self.config = DemoZStageConfig()
+            case _:
+                # should not be reachable for type checkers
+                # but not for runtime, so we keep it
+                raise ValueError(f"Unknown stage config: {config}")
+
+        super().__init__(name, **self.config.dump())
         self._core = Core.instance()
         try:
-            self._core.loadDevice(name, adapter, device)
-            self._core.initializeDevice(device)
+            self._core.loadDevice(self.name, self.config.adapter, self.config.device)
+            self._core.initializeDevice(self.name)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize MMCore stage device: {e}") from e
-
-        if axis == ["Z"]:
+        # would be nice to recover the origin from
+        # a previous session, but i'm not sure there's
+        # a way to cache that reliably; might be worth
+        # to ask the pymmcore-plus developers
+        self.axis = self.config.axis
+        if self.axis == ["Z"]:
             self._core.setOrigin(self.name)
             self._stage_type = "Z"
-        elif axis == ["X", "Y"]:
+        elif self.axis == ["X", "Y"]:
             self._core.setOriginXY(self.name)
             self._stage_type = "XY"
         else:
@@ -61,13 +77,12 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
                 "Unsupported axis configuration. Only ['X', 'Y'] and ['Z'] are supported."
             )
         self.egu = "um"
-        self.axis = axis
         self._positions: dict[str, Location[float]] = {
             axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
         }
         # TODO: how to retrieve this information from the device?
         # if it is available at all?
-        self.step_sizes: dict[str, float] = {axis: 1.0 for axis in self.axis}
+        self.step_sizes = self.config.step_sizes
         self._active_axis = self.axis[0]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -75,7 +90,7 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
         s = Status()
         raw = kwargs.get("propr", None) or kwargs.get("prop", None)
         if raw is not None:
-            # Accept either a canonical key ("prefix:name-property") or a bare name
+            # Accept either a canonical key ("name-property") or a bare name
             try:
                 _, propr = parse_key(str(raw))
             except ValueError:
@@ -121,23 +136,20 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
                     elif axis == "Y":
                         y = y + value
                     self._core.setXYPosition(self.name, x, y)
-                case _: 
-                    s.set_exception( # type: ignore[unreachable]
+                case _:
+                    s.set_exception(  # type: ignore[unreachable]
                         RuntimeError(f"Unsupported stage type: {self._stage_type}")
                     )
-                    return s
         except Exception as e:
             s.set_exception(RuntimeError(f"Failed to set position: {e}"))
             return s
-        self._positions[self._active_axis]["setpoint"] += self.step_sizes[
-                self._active_axis
-            ]
+        self._positions[self._active_axis]["setpoint"] += value
         s.add_callback(self._update_readback)
         s.set_finished()
         return s
 
     def locate(self) -> Location[float]:
-        """Locate mock model."""
+        """Locate the active axis position."""
         return self._positions[self._active_axis]
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -166,6 +178,18 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
             descriptors[key] = make_descriptor("settings", "number")
         return descriptors
 
+    def prepare(self, _: PrepareInfo) -> Status:
+        """Contribute motor metadata to the acquisition metadata registry."""
+        s = Status()
+        md: dict[str, Any] = {}
+        md.update({"motor_egu": self.egu})
+        for axis in self.axis:
+            md.update({f"position_{axis.lower()}": self._positions[axis]["readback"]})
+            md.update({f"step_size_{axis.lower()}": self.step_sizes[axis]})
+        register_metadata(self.name, md)
+        s.set_finished()
+        return s
+
     def shutdown(self) -> None:
         self._core.unloadDevice(self.name)
 
@@ -179,8 +203,6 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
         ----------
         s : Status
             The status object associated with the callback.
-        axis : str
-            Axis name.
         """
         if status.success:
             self._positions[self._active_axis]["readback"] = self._positions[

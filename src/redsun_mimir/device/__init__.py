@@ -1,6 +1,5 @@
-from ._mocks import MockLightDevice, MockMotorDevice
+from ._mocks import MockLightDevice
 
 __all__ = [
-    "MockMotorDevice",
     "MockLightDevice",
 ]

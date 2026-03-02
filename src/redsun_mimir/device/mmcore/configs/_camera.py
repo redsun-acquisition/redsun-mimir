@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 
-class ConfigDict(TypedDict):
+class CamConfigDict(TypedDict):
     adapter: str
     device: str
     allowed_properties: list[str]
@@ -43,8 +43,8 @@ class BaseCamConfig(ABC):
     numpy_dtype: dict[str, dict[str, str]]
     """Mapping of property names and their enum values to numpy data types."""
 
-    def convert_to_dict(self) -> ConfigDict:
-        """Convert the CamConfig dataclass instance to a dictionary."""
+    def dump(self) -> CamConfigDict:
+        """Dump the camera configuration to a dictionary."""
         return {
             "adapter": self.adapter,
             "device": self.device,

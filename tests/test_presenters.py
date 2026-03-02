@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 from redsun.virtual import VirtualContainer
 
-from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
+from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.device.mmcore import MMCoreStageDevice
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
@@ -18,21 +19,19 @@ from redsun_mimir.presenter.motor import MotorPresenter
 class TestMotorPresenter:
     """Tests for MotorPresenter presenter."""
 
-    @pytest.fixture
-    def devices(self, mock_motor: MockMotorDevice) -> dict[str, MockMotorDevice]:
-        return {"stage": mock_motor}
-
-    @pytest.fixture
+    @pytest.fixture(scope="function")
     def controller(
-        self, devices: dict[str, MockMotorDevice], virtual_container: VirtualContainer
+        self, xy_mock_motor: MMCoreStageDevice, virtual_container: VirtualContainer
     ) -> Generator[MotorPresenter, None, None]:
+        devices = {xy_mock_motor.name: xy_mock_motor}
+
         ctrl = MotorPresenter("motor_presenter", devices)
         yield ctrl
         ctrl.shutdown()
 
     def test_instantiation(self, controller: MotorPresenter) -> None:
         """Controller initialises and identifies motor devices."""
-        assert "stage" in controller._motors
+        assert "xystage" in controller._motors
 
     def test_register_providers(
         self, controller: MotorPresenter, virtual_container: VirtualContainer
@@ -41,10 +40,10 @@ class TestMotorPresenter:
         controller.register_providers(virtual_container)
         assert hasattr(virtual_container, "motor_configuration")
         cfg = virtual_container.motor_configuration()
-        assert any("stage" in k for k in cfg)
+        assert any("xystage" in k for k in cfg)
 
     def test_move_updates_position(
-        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """move() enqueues and executes a position update."""
         import threading
@@ -57,47 +56,47 @@ class TestMotorPresenter:
             done.set()
 
         controller.sigNewPosition.connect(on_position)
-        controller.move("stage", "X", 10.0)
+        controller.move("xystage", "X", 10.0)
         assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert len(received) == 1
         motor_name, axis, pos = received[0]
-        assert motor_name == "stage"
+        assert motor_name == "xystage"
         assert axis == "X"
         assert pos == pytest.approx(10.0)
-        assert mock_motor.locate()["setpoint"] == pytest.approx(10.0)
+        assert xy_mock_motor.locate()["setpoint"] == pytest.approx(10.0)
 
     def test_move_via_device_name(
-        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """move() accepts the bare device name."""
         import threading
 
         done = threading.Event()
         controller.sigNewPosition.connect(lambda m, a, p: done.set())
-        controller.move(mock_motor.name, "X", 5.0)
+        controller.move(xy_mock_motor.name, "X", 5.0)
         assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
-        assert mock_motor.locate()["setpoint"] == pytest.approx(5.0)
+        assert xy_mock_motor.locate()["setpoint"] == pytest.approx(5.0)
 
     def test_configure_step_size(
-        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        step_key = "stage-X_step_size"
-        result = controller.configure("stage", {step_key: 0.5})
+        step_key = "xystage-X_step_size"
+        result = controller.configure("xystage", {step_key: 0.5})
         assert result.get(step_key) is True
-        assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
+        assert xy_mock_motor.step_sizes["X"] == pytest.approx(0.5)
         assert len(received) == 1
 
     def test_configure_via_device_name(
-        self, controller: MotorPresenter, mock_motor: MockMotorDevice
+        self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """configure() accepts the bare device name."""
-        step_key = f"{mock_motor.name}-X_step_size"
-        result = controller.configure(mock_motor.name, {step_key: 2.0})
+        step_key = f"{xy_mock_motor.name}-X_step_size"
+        result = controller.configure(xy_mock_motor.name, {step_key: 2.0})
         assert result.get(step_key) is True
-        assert mock_motor.step_sizes["X"] == pytest.approx(2.0)
+        assert xy_mock_motor.step_sizes["X"] == pytest.approx(2.0)
 
     def test_shutdown_stops_daemon(self, controller: MotorPresenter) -> None:
         """shutdown() terminates the background thread gracefully."""
@@ -168,10 +167,10 @@ class TestLightPresenter:
         assert mock_laser.intensity == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
-        self, mock_motor: MockMotorDevice, virtual_container: VirtualContainer
+        self, xy_mock_motor: MMCoreStageDevice, virtual_container: VirtualContainer
     ) -> None:
         """MotorDevice is not included in _lights even if passed in devices."""
-        devices: dict[str, Any] = {"motor": mock_motor}
+        devices: dict[str, Any] = {"motor": xy_mock_motor}
         ctrl = LightPresenter("light_presenter", devices)
         assert "motor" not in ctrl._lights
 

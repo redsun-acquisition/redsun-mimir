@@ -15,11 +15,11 @@ def run_acquisition_container() -> None:
     Launches a Qt ``AcquisitionView`` app with a background
     ``DetectorPresenter`` and ``MedianPresenter``.
     """
-    from redsun_mimir.device import MockMotorDevice
-    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreStageDevice
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
     from redsun_mimir.presenter.median import MedianPresenter
+    from redsun_mimir.presenter.storage import FileStoragePresenter
     from redsun_mimir.view.acquisition import AcquisitionView
     from redsun_mimir.view.detector import DetectorView
     from redsun_mimir.view.image import ImageView
@@ -28,8 +28,10 @@ def run_acquisition_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
-        mmcore = device(MMCoreCameraDevice, from_config="camera1")
-        motor = device(MockMotorDevice, from_config="motor")
+        mm_camera = device(MMCoreCameraDevice, from_config="camera1")
+        xy_motor = device(MMCoreStageDevice, from_config="xy-motor")
+        z_motor = device(MMCoreStageDevice, from_config="z-motor")
+        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
         median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
         det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")
         acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")

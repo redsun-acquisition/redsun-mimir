@@ -17,7 +17,7 @@ from redsun.utils.descriptors import (
     parse_key,
 )
 
-from redsun_mimir.device.mmcore._config import (
+from redsun_mimir.device.mmcore.configs import (
     BaseCamConfig,
     DahengCamConfig,
     DemoCamConfig,
@@ -59,7 +59,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 raise ValueError(
                     f"Unsupported config '{config}'; must be 'demo' or 'daheng'."
                 )
-        super().__init__(name, **self.config.convert_to_dict())
+        super().__init__(name, **self.config.dump())
         self._core = Core.instance()
         self._pixelprop = list(self.config.numpy_dtype.keys())[0]
         try:

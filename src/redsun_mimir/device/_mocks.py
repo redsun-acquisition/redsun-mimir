@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import time
 from typing import TYPE_CHECKING
 
@@ -13,16 +12,15 @@ from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
     make_reading,
-    parse_key,
 )
 
 import redsun_mimir.device.utils as utils
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.protocols import LightProtocol
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Reading
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -178,212 +176,3 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         s = Status()
         s.set_finished()
         return s
-
-
-@define(kw_only=True, init=False, eq=False)
-class MockMotorDevice(Device, MotorProtocol, Loggable):
-    """Mock stage model for testing purposes.
-
-    Parameters
-    ----------
-    name : ``str``
-        Name of the device.
-    egu : ``str``, optional
-        Engineering units for the motor position. Default is "mm".
-    axis : ``list[str]``
-        List of motor axes. No default value, must be provided.
-    step_sizes : ``dict[str, float]``, optional
-        Dictionary mapping each axis to its step size. Default is an empty dictionary.
-    limits : ``dict[str, tuple[float, float]]``, optional
-        Dictionary mapping each axis to a tuple of (min, max) limits. Default is ``None`` (no limits).
-    """
-
-    name: str
-    egu: str = field(
-        default="mm", validator=validators.instance_of(str), on_setattr=setters.frozen
-    )
-    axis: list[str] = field(
-        validator=validators.instance_of(list), on_setattr=setters.frozen
-    )
-    step_sizes: dict[str, float] = field(validator=validators.instance_of(dict))
-    limits: dict[str, tuple[float, float]] | None = field(
-        default=None, converter=utils.convert_limits, validator=utils.check_limits
-    )
-
-    @limits.validator
-    def _check_limits(
-        self, _: str, value: dict[str, tuple[float, float]] | None
-    ) -> None:
-        if value is None:
-            return
-        for axis, limits in value.items():
-            if len(limits) != 2:
-                raise AttributeError(
-                    f"Length of limits must be 2: {axis} has length {len(limits)}"
-                )
-            if limits[0] > limits[1]:
-                raise AttributeError(
-                    f"{axis} minimum limit is greater than the maximum limit: {limits}"
-                )
-
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
-        super().__init__(name, **kwargs)
-        self.__attrs_init__(name=name, **kwargs)
-        self._positions: dict[str, Location[float]] = {
-            axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
-        }
-
-        self._active_axis = self.axis[0]
-        self.logger.info("Initialized")
-
-    def set(self, value: Any, **kwargs: Any) -> Status:
-        """Set something in the mock model.
-
-        Either set the motor position or update a configuration value.
-        When setting a configuration value, the keyword argument ``propr``
-        must be provided as a canonical ``name-property`` key.
-        For backwards compatibility, a bare name via ``prop`` is also accepted.
-
-        Accepted updatable properties:
-
-        - ``axis``: motor axis.
-        - ``step_size``: step size for the currently active axis (bare form).
-        - ``{ax}_step_size``: step size for a specific axis (e.g. ``"X_step_size"``).
-
-        i.e. ``set(10)`` will set the motor position to 10,
-        ``set("Y", propr="stage-axis")`` will update the axis to "Y",
-        ``set(0.5, propr="stage-X_step_size")`` updates the X step size.
-
-        Parameters
-        ----------
-        value : ``Any``
-            New value to set.
-        **kwargs : ``Any``
-            Additional keyword arguments.
-
-        Returns
-        -------
-        ``Status``
-            The status object.
-            For this mock model, it will always be set to finished.
-            If ``value`` is not of type ``float``,
-            the status will set a ``ValueError`` exception.
-
-        """
-        s = Status()
-        s.add_callback(self._update_readback)
-
-        raw = kwargs.get("propr", None) or kwargs.get("prop", None)
-        if raw is not None:
-            # Accept either a canonical key ("prefix:name-property") or a bare name
-            try:
-                _, propr = parse_key(str(raw))
-            except ValueError:
-                propr = str(raw)
-            self.logger.info("Setting property %s to %s.", propr, value)
-            if propr == "axis" and isinstance(value, str):
-                self._active_axis = value
-                s.set_finished()
-                return s
-            elif propr == "step_size" and isinstance(value, int | float):
-                # bare "step_size" updates the currently active axis
-                self.step_sizes[self._active_axis] = value
-                s.set_finished()
-                return s
-            elif propr.endswith("_step_size") and isinstance(value, int | float):
-                # axis-qualified form: "{ax}_step_size" (e.g. "X_step_size")
-                ax = propr[: -len("_step_size")]
-                if ax in self.step_sizes:
-                    self.step_sizes[ax] = value
-                    s.set_finished()
-                    return s
-                s.set_exception(ValueError(f"Unknown axis in property: {propr}"))
-                return s
-            else:
-                s.set_exception(ValueError(f"Invalid property: {propr}"))
-                return s
-        else:
-            if not isinstance(value, int | float):
-                s.set_exception(ValueError("Value must be a float or int."))
-                return s
-        steps = math.floor(
-            (value - self._positions[self._active_axis]["setpoint"])
-            / self.step_sizes[self._active_axis]
-        )
-        for _ in range(steps):
-            self._positions[self._active_axis]["setpoint"] += self.step_sizes[
-                self._active_axis
-            ]
-        s.set_finished()
-        return s
-
-    def locate(self) -> Location[float]:
-        """Locate mock model."""
-        return self._positions[self._active_axis]
-
-    def read_configuration(self) -> dict[str, Reading[Any]]:
-        timestamp = time.time()
-        config: dict[str, Reading[Any]] = {
-            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.name, "axis"): make_reading(self.axis, timestamp),
-        }
-        for ax, step in self.step_sizes.items():
-            config[make_key(self.name, f"{ax}_step_size")] = make_reading(
-                step, timestamp
-            )
-        return config
-
-    def describe_configuration(self) -> dict[str, Descriptor]:
-        descriptors: dict[str, Descriptor] = {
-            make_key(self.name, "egu"): make_descriptor(
-                "settings", "string", readonly=True
-            ),
-            make_key(self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)], readonly=True
-            ),
-        }
-        for ax in self.axis:
-            key = make_key(self.name, f"{ax}_step_size")
-            if self.limits is not None and ax in self.limits:
-                low, high = self.limits[ax]
-                descriptors[key] = make_descriptor(
-                    "settings", "number", low=low, high=high
-                )
-            else:
-                descriptors[key] = make_descriptor("settings", "number")
-        return descriptors
-
-    def shutdown(self) -> None: ...
-
-    def prepare(self, value: PrepareInfo) -> Status:
-        """Contribute motor metadata to the acquisition metadata registry."""
-        s = Status()
-        location = self._positions[self._active_axis]
-        register_metadata(
-            self.name,
-            {
-                f"position_{self._active_axis.lower()}": location["readback"],
-                "motor_egu": self.egu,
-                "motor_step_size": self.step_sizes.get(self._active_axis, 0.0),
-            },
-        )
-        s.set_finished()
-        return s
-
-    def _update_readback(self, status: Status) -> None:
-        """Update the currently active axis readback position.
-
-        When the status object is set as finished successfully,
-        the readback position is updated to match the setpoint.
-
-        Parameters
-        ----------
-        s : Status
-            The status object associated with the callback.
-        axis : str
-            Axis name.
-        """
-        if status.success:
-            self._positions[self._active_axis]["readback"] = self._positions[
-                self._active_axis
-            ]["setpoint"]

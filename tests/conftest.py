@@ -7,13 +7,15 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from pymmcore_plus import CMMCorePlus as Core
 from qtpy.QtWidgets import QApplication
 from redsun.virtual import VirtualContainer
 
-from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
+from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.device.mmcore import MMCoreStageDevice
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterator
 
     from qtpy.QtCore import QCoreApplication
 
@@ -33,15 +35,15 @@ def virtual_container() -> VirtualContainer:
     return VirtualContainer()
 
 
-@pytest.fixture
-def mock_motor(name: str = "stage") -> MockMotorDevice:
+@pytest.fixture(scope="function")
+def xy_mock_motor(name: str = "xystage") -> Iterator[MMCoreStageDevice]:
     """Single-axis mock motor device."""
-    return MockMotorDevice(
+    core = Core.instance()
+    yield MMCoreStageDevice(
         name,
-        axis=["X", "Y", "Z"],
-        step_sizes={"X": 1.0, "Y": 1.0, "Z": 1.0},
-        egu="um",
+        config="demoxy",
     )
+    core.unloadDevice(name)
 
 
 @pytest.fixture

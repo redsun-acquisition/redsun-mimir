@@ -4,90 +4,91 @@ from __future__ import annotations
 
 import pytest
 
-from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
+from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.device.mmcore import MMCoreStageDevice
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 
-class TestMockMotorDevice:
-    """Tests for MockMotorDevice."""
+class TestMMCoreStageDevice:
+    """Tests for MMCoreStageDevice."""
 
-    def test_instantiation(self, mock_motor: MockMotorDevice) -> None:
+    def test_instantiation(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """Device initialises with correct name and attributes."""
-        assert mock_motor.name == "stage"
-        assert mock_motor.axis == ["X", "Y", "Z"]
-        assert mock_motor.step_sizes == {"X": 1.0, "Y": 1.0, "Z": 1.0}
-        assert mock_motor.egu == "um"
+        assert xy_mock_motor.name == "xystage"
+        assert xy_mock_motor.axis == ["X", "Y"]
+        assert xy_mock_motor.step_sizes == {"X": 0.015, "Y": 0.015}
+        assert xy_mock_motor.egu == "um"
 
-    def test_implements_protocol(self, mock_motor: MockMotorDevice) -> None:
-        """MockMotorDevice satisfies the MotorProtocol runtime check."""
-        assert isinstance(mock_motor, MotorProtocol)
+    def test_implements_protocol(self, xy_mock_motor: MMCoreStageDevice) -> None:
+        """MMCoreStageDevice satisfies the MotorProtocol runtime check."""
+        assert isinstance(xy_mock_motor, MotorProtocol)
 
-    def test_initial_position_is_zero(self, mock_motor: MockMotorDevice) -> None:
+    def test_initial_position_is_zero(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """All axes start at position 0."""
-        loc = mock_motor.locate()
+        loc = xy_mock_motor.locate()
         assert loc["setpoint"] == 0.0
         assert loc["readback"] == 0.0
 
-    def test_set_position(self, mock_motor: MockMotorDevice) -> None:
+    def test_set_position(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """set() moves the motor and updates setpoint and readback."""
-        status = mock_motor.set(5.0)
+        status = xy_mock_motor.set(5.0)
         status.wait(timeout=1.0)
         assert status.success
-        loc = mock_motor.locate()
+        loc = xy_mock_motor.locate()
         assert loc["setpoint"] == pytest.approx(5.0)
         assert loc["readback"] == pytest.approx(5.0)
 
-    def test_set_invalid_value_fails(self, mock_motor: MockMotorDevice) -> None:
+    def test_set_invalid_value_fails(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """set() with a non-numeric value marks status as failed."""
-        status = mock_motor.set("not_a_number")
-        with pytest.raises(ValueError):
+        status = xy_mock_motor.set("not_a_number")
+        with pytest.raises(TypeError):
             status.wait(timeout=1.0)
         assert not status.success
 
-    def test_set_axis_via_prop(self, mock_motor: MockMotorDevice) -> None:
+    def test_set_axis_via_prop(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """Passing prop='axis' switches the active axis."""
-        status = mock_motor.set("Y", prop="axis")
+        status = xy_mock_motor.set("Y", prop="axis")
         status.wait(timeout=1.0)
         assert status.success
-        assert mock_motor._active_axis == "Y"
+        assert xy_mock_motor._active_axis == "Y"
 
-    def test_set_step_size_via_prop(self, mock_motor: MockMotorDevice) -> None:
+    def test_set_step_size_via_prop(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """Passing prop='step_size' updates step size for the active axis."""
-        status = mock_motor.set(0.5, prop="step_size")
+        status = xy_mock_motor.set(0.5, prop="step_size")
         status.wait(timeout=1.0)
         assert status.success
-        assert mock_motor.step_sizes["X"] == pytest.approx(0.5)
+        assert xy_mock_motor.step_sizes["X"] == pytest.approx(0.5)
 
-    def test_set_invalid_prop_fails(self, mock_motor: MockMotorDevice) -> None:
+    def test_set_invalid_prop_fails(self, xy_mock_motor: MMCoreStageDevice) -> None:
         """Passing an unknown prop marks status as failed."""
-        status = mock_motor.set(1.0, prop="unknown")
+        status = xy_mock_motor.set(1.0, prop="unknown")
         with pytest.raises(ValueError):
             status.wait(timeout=1.0)
         assert not status.success
 
     def test_read_configuration_contains_expected_keys(
-        self, mock_motor: MockMotorDevice
+        self, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """read_configuration() returns egu, axis and per-axis step sizes."""
-        cfg = mock_motor.read_configuration()
-        assert "stage-egu" in cfg
-        assert "stage-axis" in cfg
-        assert cfg["stage-egu"]["value"] == "um"
-        assert cfg["stage-axis"]["value"] == ["X", "Y", "Z"]
-        for ax in ["X", "Y", "Z"]:
-            key = f"stage-{ax}_step_size"
+        cfg = xy_mock_motor.read_configuration()
+        assert "xystage-egu" in cfg
+        assert "xystage-axis" in cfg
+        assert cfg["xystage-egu"]["value"] == "um"
+        assert cfg["xystage-axis"]["value"] == ["X", "Y"]
+        for ax in ["X", "Y"]:
+            key = f"xystage-{ax}_step_size"
             assert key in cfg
-            assert cfg[key]["value"] == 1.0
+            assert cfg[key]["value"] == 0.015
 
     def test_describe_configuration_contains_expected_keys(
-        self, mock_motor: MockMotorDevice
+        self, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """describe_configuration() returns egu, axis and per-axis step size descriptors."""
-        desc = mock_motor.describe_configuration()
-        assert "stage-egu" in desc
-        assert "stage-axis" in desc
-        for ax in ["X", "Y", "Z"]:
-            assert f"stage-{ax}_step_size" in desc
+        desc = xy_mock_motor.describe_configuration()
+        assert "xystage-egu" in desc
+        assert "xystage-axis" in desc
+        for ax in ["X", "Y"]:
+            assert f"xystage-{ax}_step_size" in desc
 
 
 class TestMockLightDevice:
@@ -142,16 +143,16 @@ class TestMockLightDevice:
         """read() returns current intensity and enabled state."""
         mock_laser.set(10.0).wait(timeout=1.0)
         reading = mock_laser.read()
-        assert reading["intensity"]["value"] == pytest.approx(10.0)
-        assert reading["enabled"]["value"] is False
+        assert reading["laser-intensity"]["value"] == pytest.approx(10.0)
+        assert reading["laser-enabled"]["value"] is False
 
     def test_describe_returns_intensity_and_enabled(
         self, mock_laser: MockLightDevice
     ) -> None:
         """describe() includes entries for intensity and enabled."""
         desc = mock_laser.describe()
-        assert "intensity" in desc
-        assert "enabled" in desc
+        assert "laser-intensity" in desc
+        assert "laser-enabled" in desc
 
     def test_invalid_intensity_range_raises(self) -> None:
         """intensity_range with min > max raises AttributeError."""
