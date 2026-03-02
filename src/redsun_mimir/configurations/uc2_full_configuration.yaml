@@ -6,10 +6,6 @@ devices:
   serial:
     port: COM3
   stage:
-    axis:
-      - X
-      - Y
-      - Z
     step_sizes:
       X: 100.0
       Y: 100.0
@@ -20,7 +16,6 @@ devices:
     egu: mW
     intensity_range: [0, 1023]
     step_size: 1
-    id: 1
   camera:
     config: daheng
 

@@ -27,6 +27,8 @@ def main() -> None:
     options = parser.parse_args(namespace=Options())
     if options.command == "sim":
         configurations.run_simulation_container()
+    elif options.command == "uc2":
+        configurations.run_uc2_container()
     elif options.command == "motor":
         configurations.run_stage_container()
     elif options.command == "light":
