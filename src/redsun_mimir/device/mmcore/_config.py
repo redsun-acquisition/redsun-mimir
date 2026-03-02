@@ -96,22 +96,21 @@ class DemoCamConfig(BaseCamConfig):
     )
     """Mapping of property names and their enum values to numpy data types."""
 
+
 @dataclass(frozen=True)
 class DahengCamConfig(BaseCamConfig):
     """Configuration dataclass for Daheng cameras.
-    
+
     Default camera for mimir microscope.
     """
 
-    adapter: str = "DahengCamera"
-    device: str = "DahengCam"
-    allowed_properties: list[str] = field(
-        default_factory=lambda: ["PixelType", "Gain"]
-    )
+    adapter: str = "DahengGalaxy"
+    device: str = "DahengCamera"
+    allowed_properties: list[str] = field(default_factory=lambda: ["PixelType", "Gain"])
     defaults: dict[str, Any] = field(
         default_factory=lambda: {"PixelType": "Mono8", "Gain": 0.0}
     )
-    sensor_shape: tuple[int, int] = (2048, 2048)
+    sensor_shape: tuple[int, int] = (1200, 1920)
     starting_exposure: float = 50.0
     exposure_limits: tuple[float, float] = (0.0, 10000.0)
     enum_map: dict[str, list[str]] = field(

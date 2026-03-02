@@ -17,7 +17,11 @@ from redsun.utils.descriptors import (
     parse_key,
 )
 
-from redsun_mimir.device.mmcore._config import DemoCamConfig, BaseCamConfig, DahengCamConfig
+from redsun_mimir.device.mmcore._config import (
+    BaseCamConfig,
+    DahengCamConfig,
+    DemoCamConfig,
+)
 from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
@@ -41,7 +45,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     initialized: ClassVar[bool] = False
 
-    def __init__(self, name: str, /, config: Literal["demo", "daheng"] = "demo") -> None:
+    def __init__(
+        self, name: str, /, config: Literal["demo", "daheng"] = "demo"
+    ) -> None:
 
         self.config: BaseCamConfig
         match config:
@@ -50,7 +56,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             case "daheng":
                 self.config = DahengCamConfig()
             case _:
-                raise ValueError(f"Unsupported config '{config}'; must be 'demo' or 'daheng'.")
+                raise ValueError(
+                    f"Unsupported config '{config}'; must be 'demo' or 'daheng'."
+                )
         super().__init__(name, **self.config.convert_to_dict())
         self._core = Core.instance()
         self._pixelprop = list(self.config.numpy_dtype.keys())[0]
