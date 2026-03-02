@@ -113,24 +113,20 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         return s
 
     def describe(self) -> dict[str, Descriptor]:
-        return {
-            "intensity": {
-                "source": self.name,
-                "dtype": "number",
-                "shape": [],
-            },
-            "enabled": {
-                "source": self.name,
-                "dtype": "boolean",
-                "shape": [],
-            },
+        descriptor: dict[str, Descriptor] = {
+            make_key(self.name, "intensity"): make_descriptor(
+                "value", "number", units=self.egu
+            ),
+            make_key(self.name, "enabled"): make_descriptor("value", "boolean"),
         }
+        return descriptor
 
     def read(self) -> dict[str, Reading[Any]]:
-        return {
-            "intensity": {"value": self.intensity, "timestamp": time.time()},
-            "enabled": {"value": self.enabled, "timestamp": time.time()},
+        reading: dict[str, Reading[Any]] = {
+            make_key(self.name, "intensity"): make_reading(self.intensity, time.time()),
+            make_key(self.name, "enabled"): make_reading(self.enabled, time.time()),
         }
+        return reading
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
@@ -241,14 +237,6 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
         }
 
-        self._descriptors: dict[str, Descriptor] = {
-            make_key(self.name, "egu"): make_descriptor(
-                "settings", "string", readonly=True
-            ),
-            make_key(self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)], readonly=True
-            ),
-        }
         for ax in self.axis:
             key = make_key(self.name, rf"{ax}_step_size")
             if self.limits is not None and ax in self.limits:
@@ -360,7 +348,24 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        return self._descriptors
+        descriptors: dict[str, Descriptor] = {
+            make_key(self.name, "egu"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
+            make_key(self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)], readonly=True
+            ),
+        }
+        for ax in self.axis:
+            key = make_key(self.name, f"{ax}_step_size")
+            if self.limits is not None and ax in self.limits:
+                low, high = self.limits[ax]
+                descriptors[key] = make_descriptor(
+                    "settings", "number", low=low, high=high
+                )
+            else:
+                descriptors[key] = make_descriptor("settings", "number")
+        return descriptors
 
     def shutdown(self) -> None: ...
 
