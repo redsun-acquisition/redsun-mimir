@@ -7,7 +7,7 @@ storage:
 
 devices:
   camera1:
-    sensor_shape: [100, 100]
+    config: demo
   motor:
     axis: [X, Y, Z]
     step_sizes:

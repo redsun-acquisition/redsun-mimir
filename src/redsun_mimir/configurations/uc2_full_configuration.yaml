@@ -2,28 +2,28 @@ schema_version: 1.0
 session: redsun-mimir
 frontend: pyqt
 
-storage:
-  backend: zarr
-
 devices:
-  camera1:
-    config: demo
-  motor:
-    axis: [X, Y, Z]
+  serial:
+    port: COM3
+  stage:
+    axis:
+      - X
+      - Y
+      - Z
     step_sizes:
       X: 100.0
       Y: 100.0
       Z: 100.0
     egu: um
-  led:
-    wavelength: 300
-    binary: true
-    intensity_range: [0, 0]
   laser:
     wavelength: 650
     egu: mW
-    intensity_range: [0, 100]
+    intensity_range: [0, 1023]
     step_size: 1
+    id: 1
+  camera:
+    config: daheng
+
 
 presenters:
   storage_ctrl: {}
