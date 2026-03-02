@@ -67,26 +67,30 @@ class MimirSerialDevice(Device, Loggable):
         # but actually we want the app to crash if the
         # serial port cannot be opened, because without
         # it the device can't work at all
-        MimirSerialDevice._serial = Serial(
-            port=port,
-            baudrate=bauderate,
-            timeout=timeout,
-        )
-        self._serial = MimirSerialDevice._serial
+        try:
+            MimirSerialDevice._serial = Serial(
+                port=port,
+                baudrate=bauderate,
+                timeout=timeout,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to open serial port: {e}") from e
+        if MimirSerialDevice._serial is not None:
+            self._instance_serial = MimirSerialDevice._serial
         if len(MimirSerialDevice._futures) > 0:
             # if there are futures waiting for the serial to be ready,
             # set the result for all of them
             for future in MimirSerialDevice._futures:
-                future.set_result(self._serial)
+                future.set_result(self._instance_serial)
             MimirSerialDevice._futures.clear()
 
         # do an hard reset of the serial port,
         # to ensure that the device is ready
-        self._serial.dtr = False
-        self._serial.rts = True
+        self._instance_serial.dtr = False
+        self._instance_serial.rts = True
         time.sleep(0.1)
-        self._serial.dtr = False
-        self._serial.rts = False
+        self._instance_serial.dtr = False
+        self._instance_serial.rts = False
         time.sleep(0.5)
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
@@ -104,8 +108,8 @@ class MimirSerialDevice(Device, Loggable):
 
         This method is called when the application is closed.
         """
-        if self._serial.is_open:
-            self._serial.close()
+        if self._instance_serial.is_open:
+            self._instance_serial.close()
 
     @classmethod
     def get(cls) -> Serial | Future[Serial]:
@@ -329,7 +333,11 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
             make_key(self.name, "intensity"): make_descriptor(
                 "value", "number", units=self.egu
             ),
-            make_key(self.name, "enabled"): make_descriptor("value", "boolean"),
+            make_key(self.name, "enabled"): {
+                "source": "value",
+                "dtype": "boolean",
+                "shape": [],
+            },
         }
         return descriptor
 

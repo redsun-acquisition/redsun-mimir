@@ -30,11 +30,6 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
     name: str
-    prefix: str = field(
-        default="MOCK",
-        validator=validators.instance_of(str),
-        metadata={"description": "Device class prefix for key generation."},
-    )
     binary: bool = field(
         default=False,
         validator=validators.instance_of(bool),
@@ -117,7 +112,11 @@ class MockLightDevice(Device, LightProtocol, Loggable):
             make_key(self.name, "intensity"): make_descriptor(
                 "value", "number", units=self.egu
             ),
-            make_key(self.name, "enabled"): make_descriptor("value", "boolean"),
+            make_key(self.name, "enabled"): {
+                "source": "value",
+                "dtype": "boolean",
+                "shape": [],
+            },
         }
         return descriptor
 
@@ -189,8 +188,6 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
     ----------
     name : ``str``
         Name of the device.
-    prefix : ``str``, optional
-        Prefix for key generation. Default is "MOCK".
     egu : ``str``, optional
         Engineering units for the motor position. Default is "mm".
     axis : ``list[str]``
@@ -202,7 +199,6 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
     """
 
     name: str
-    prefix: str = field(default="MOCK", validator=validators.instance_of(str))
     egu: str = field(
         default="mm", validator=validators.instance_of(str), on_setattr=setters.frozen
     )
@@ -237,25 +233,15 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
             axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
         }
 
-        for ax in self.axis:
-            key = make_key(self.name, rf"{ax}_step_size")
-            if self.limits is not None and ax in self.limits:
-                low, high = self.limits[ax]
-                self._descriptors[key] = make_descriptor(
-                    "settings", "number", low=low, high=high
-                )
-            else:
-                self._descriptors[key] = make_descriptor("settings", "number")
-
         self._active_axis = self.axis[0]
         self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
-        r"""Set something in the mock model.
+        """Set something in the mock model.
 
         Either set the motor position or update a configuration value.
         When setting a configuration value, the keyword argument ``propr``
-        must be provided as a canonical ``prefix:name\property`` key.
+        must be provided as a canonical ``name-property`` key.
         For backwards compatibility, a bare name via ``prop`` is also accepted.
 
         Accepted updatable properties:
@@ -265,8 +251,8 @@ class MockMotorDevice(Device, MotorProtocol, Loggable):
         - ``{ax}_step_size``: step size for a specific axis (e.g. ``"X_step_size"``).
 
         i.e. ``set(10)`` will set the motor position to 10,
-        ``set("Y", propr="MOCK:stage-axis")`` will update the axis to "Y",
-        ``set(0.5, propr="MOCK:stage-X_step_size")`` updates the X step size.
+        ``set("Y", propr="stage-axis")`` will update the axis to "Y",
+        ``set(0.5, propr="stage-X_step_size")`` updates the X step size.
 
         Parameters
         ----------
