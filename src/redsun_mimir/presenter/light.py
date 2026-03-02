@@ -52,6 +52,10 @@ class LightPresenter(Presenter, Loggable):
             for name, model in devices.items()
             if isinstance(model, LightProtocol)
         }
+        if len(self._lights) == 0:
+            self.logger.warning("No light devices found.")
+        else:
+            self.logger.debug(f"Found light devices: {list(self._lights)}")
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
         r"""Get the current configuration readings of all light devices.

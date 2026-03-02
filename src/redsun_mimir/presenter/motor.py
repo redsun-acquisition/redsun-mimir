@@ -80,15 +80,20 @@ class MotorPresenter(Presenter, Loggable):
             if isinstance(model, MotorProtocol)
         }
 
+        if len(self._motors) == 0:
+            self.logger.warning("No motor devices found.")
+        else:
+            self.logger.debug(f"Found motor devices: {list(self._motors)}")
+
         self._daemon = Thread(target=self._run_loop, daemon=True)
         self._daemon.start()
 
         self.logger.info("Initialized")
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
-        r"""Get the current configuration readings of all motor devices.
+        """Get the current configuration readings of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name-property``
+        Returns a flat dict keyed by the canonical ``name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
@@ -102,9 +107,9 @@ class MotorPresenter(Presenter, Loggable):
         return result
 
     def models_description(self) -> dict[str, Descriptor]:
-        r"""Get the configuration descriptors of all motor devices.
+        """Get the configuration descriptors of all motor devices.
 
-        Returns a flat dict keyed by the canonical ``prefix:name-property``
+        Returns a flat dict keyed by the canonical ``name-property``
         scheme, merging all motors together (matching the detector pattern).
 
         Returns
