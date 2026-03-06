@@ -3,21 +3,22 @@ session: redsun-mimir
 frontend: pyqt
 
 devices:
-  camera1:
-    config: demo
-  xy-motor:
-    config: demoxy
-  z-motor:
-    config: demoz
-  led:
-    wavelength: 300
-    binary: true
-    intensity_range: [0, 0]
+  serial:
+    port: COM4
+  stage:
+    step_sizes:
+      X: 100.0
+      Y: 100.0
+      Z: 100.0
+    egu: um
   laser:
     wavelength: 650
     egu: mW
-    intensity_range: [0, 100]
+    intensity_range: [0, 1023]
     step_size: 1
+  camera:
+    config: daheng
+
 
 presenters:
   storage_ctrl: {}

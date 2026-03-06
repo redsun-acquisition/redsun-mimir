@@ -1,5 +1,7 @@
-from ._devices import MMCoreCameraDevice
+from ._camera import MMCoreCameraDevice
+from ._stage import MMCoreStageDevice
 
 __all__ = [
     "MMCoreCameraDevice",
+    "MMCoreStageDevice",
 ]

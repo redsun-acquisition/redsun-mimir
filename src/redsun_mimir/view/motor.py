@@ -37,7 +37,6 @@ def _get_prop(
         Returned when no matching key is found.
     """
     for key, reading in readings.items():
-        # canonical format: name\property  (backslash separator)
         tail = key.rsplit("-", 1)[-1]
         if tail == prop:
             return cast("_T", reading["value"])
@@ -178,7 +177,7 @@ class MotorView(QtView):
                 self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {egu}")
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
-                self._labels["step:" + suffix] = QtWidgets.QLabel("Step size: ")
+                self._labels["step:" + suffix] = QtWidgets.QLabel(f"step ({egu})")
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
                     str(initial_step)
                 )

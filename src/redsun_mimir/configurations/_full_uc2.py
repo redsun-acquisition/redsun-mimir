@@ -6,26 +6,26 @@ from pathlib import Path
 from redsun.containers import device, presenter, view
 from redsun.qt import QtAppContainer
 
-_CONFIG = Path(__file__).parent / "full_configuration.yaml"
+_CONFIG = Path(__file__).parent / "uc2_full_configuration.yaml"
 
 
-def run_simulation_container() -> None:
-    """Run a local mock example.
-
-    Launches a simulation with the full stack
-    provided by mimir with mock devices.
-    """
+def run_uc2_container() -> None:
+    """Run the full UC2 microscope with pre-shipped configuration."""
     # devices
-    from redsun_mimir.device import MockLightDevice  # noqa: I001
-    from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreStageDevice  # noqa: I001
-
-    # presenters
-    from redsun_mimir.presenter.storage import FileStoragePresenter
+    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.device.youseetoo import (
+        MimirLaserDevice,
+        MimirMotorDevice,
+        MimirSerialDevice,
+    )  # noqa: I001
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
     from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
     from redsun_mimir.presenter.motor import MotorPresenter
+
+    # presenters
+    from redsun_mimir.presenter.storage import FileStoragePresenter
 
     # views
     from redsun_mimir.view.acquisition import AcquisitionView
@@ -37,13 +37,12 @@ def run_simulation_container() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class MimirSimulator(QtAppContainer, config=_CONFIG):
+    class MimirMicroscope(QtAppContainer, config=_CONFIG):
         # devices
-        mmcore = device(MMCoreCameraDevice, from_config="camera1")
-        xy_motor = device(MMCoreStageDevice, from_config="xy-motor")
-        z_motor = device(MMCoreStageDevice, from_config="z-motor")
-        laser = device(MockLightDevice, from_config="laser")
-        led = device(MockLightDevice, from_config="led")
+        serial = device(MimirSerialDevice, from_config="serial")
+        iscat = device(MMCoreCameraDevice, from_config="camera")
+        stage = device(MimirMotorDevice, from_config="stage")
+        laser = device(MimirLaserDevice, from_config="laser")
 
         # presenters
         storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
@@ -61,4 +60,4 @@ def run_simulation_container() -> None:
         motor_widget = view(MotorView, from_config="motor_widget")
         storage_widget = view(FileStorageView, from_config="storage_widget")
 
-    MimirSimulator().run()
+    MimirMicroscope().run()

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from redsun.containers import device, presenter, view
 from redsun.qt import QtAppContainer
-
-_CONFIG = Path(__file__).parent / "motor_configuration.yaml"
 
 
 def run_stage_container() -> None:
@@ -14,15 +11,16 @@ def run_stage_container() -> None:
 
     Launches a Qt ``MotorView`` app with a mock motor device.
     """
-    from redsun_mimir.device import MockMotorDevice
+    from redsun_mimir.device.mmcore import MMCoreStageDevice
     from redsun_mimir.presenter.motor import MotorPresenter
     from redsun_mimir.view.motor import MotorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    class MotorApp(QtAppContainer, config=_CONFIG):
-        motor = device(MockMotorDevice, from_config="motor")
-        ctrl = presenter(MotorPresenter, from_config="ctrl")
-        widget = view(MotorView, from_config="widget")
+    class MotorApp(QtAppContainer):
+        xy_motor = device(MMCoreStageDevice, config="demoxy")
+        z_motor = device(MMCoreStageDevice, config="demoz")
+        ctrl = presenter(MotorPresenter)
+        widget = view(MotorView)
 
     MotorApp().run()

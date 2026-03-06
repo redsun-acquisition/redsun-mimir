@@ -11,7 +11,9 @@ from dependency_injector import providers
 from qtpy.QtWidgets import QApplication
 from redsun.virtual import VirtualContainer
 
-from redsun_mimir.device._mocks import MockLightDevice, MockMotorDevice
+from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.device.mmcore import MMCoreStageDevice
+from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
 
@@ -24,13 +26,15 @@ def _make_container(**objects: Any) -> VirtualContainer:
 
 
 def _build_motor_view(
-    widget: MotorView, motor: MockMotorDevice, container: VirtualContainer | None = None
+    widget: MotorView,
+    xy_mock_motor: MMCoreStageDevice,
+    container: VirtualContainer | None = None,
 ) -> VirtualContainer:
     """Full build sequence: register_providers then inject_dependencies."""
     if container is None:
         container = _make_container(
-            motor_configuration=motor.read_configuration(),
-            motor_description=motor.describe_configuration(),
+            motor_configuration=xy_mock_motor.read_configuration(),
+            motor_description=xy_mock_motor.describe_configuration(),
         )
     widget.register_providers(container)
     widget.inject_dependencies(container)
@@ -66,12 +70,6 @@ class TestMotorView:
     """Tests for MotorView."""
 
     @pytest.fixture
-    def motor(self) -> MockMotorDevice:
-        return MockMotorDevice(
-            "stage", axis=["X", "Y"], step_sizes={"X": 1.0, "Y": 0.5}, egu="um"
-        )
-
-    @pytest.fixture
     def widget(
         self, qapp: QApplication, virtual_container: VirtualContainer
     ) -> MotorView:
@@ -82,72 +80,70 @@ class TestMotorView:
         assert widget is not None
 
     def test_register_providers_builds_ui(
-        self, widget: MotorView, motor: MockMotorDevice
+        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """register_providers() + inject_dependencies() populates group boxes, labels, and buttons."""
-        _build_motor_view(widget, motor)
+        _build_motor_view(widget, xy_mock_motor)
 
-        assert "stage" in widget._groups
-        assert "pos:stage:X" in widget._labels
-        assert "pos:stage:Y" in widget._labels
-        assert "button:stage:X:up" in widget._buttons
-        assert "button:stage:X:down" in widget._buttons
+        assert "xystage" in widget._groups
+        assert "pos:xystage:X" in widget._labels
+        assert "pos:xystage:Y" in widget._labels
+        assert "button:xystage:X:up" in widget._buttons
+        assert "button:xystage:X:down" in widget._buttons
 
     def test_step_size_initialised_from_device(
-        self, widget: MotorView, motor: MockMotorDevice
+        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """Step size line edits are seeded from device step_sizes."""
-        _build_motor_view(widget, motor)
+        _build_motor_view(widget, xy_mock_motor)
 
-        assert widget._line_edits["edit:stage:X"].text() == "1.0"
-        assert widget._line_edits["edit:stage:Y"].text() == "0.5"
+        assert widget._line_edits["edit:xystage:X"].text() == "0.015"
+        assert widget._line_edits["edit:xystage:Y"].text() == "0.015"
 
     def test_update_position_changes_label(
-        self, widget: MotorView, motor: MockMotorDevice
+        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """_update_position() refreshes the position label text."""
-        _build_motor_view(widget, motor)
+        _build_motor_view(widget, xy_mock_motor)
 
-        widget._update_position("stage", "X", 7.5)
-        assert "7.50" in widget._labels["pos:stage:X"].text()
+        widget._update_position("xystage", "X", 7.5)
+        assert "7.50" in widget._labels["pos:xystage:X"].text()
 
     def test_step_up_emits_signal(
-        self, widget: MotorView, motor: MockMotorDevice
+        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """Clicking the '+' button emits sigMotorMove with position + step."""
-        _build_motor_view(widget, motor)
+        _build_motor_view(widget, xy_mock_motor)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("stage", "X", direction_up=True)
+        widget._step("xystage", "X", direction_up=True)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", cast("float", pytest.approx(1.0)))
+        assert received[0] == ("xystage", "X", cast("float", pytest.approx(0.015)))
 
     def test_step_down_emits_signal(
-        self, widget: MotorView, motor: MockMotorDevice
+        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """Clicking the '-' button emits sigMotorMove with position - step."""
-        _build_motor_view(widget, motor)
+        _build_motor_view(widget, xy_mock_motor)
 
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("stage", "X", direction_up=False)
+        widget._step("xystage", "X", direction_up=False)
         assert len(received) == 1
-        assert received[0] == ("stage", "X", cast("float", pytest.approx(-1.0)))
+        assert received[0] == ("xystage", "X", cast("float", pytest.approx(-0.015)))
 
     def test_inject_dependencies_registers_signals(
         self,
         widget: MotorView,
-        motor: MockMotorDevice,
+        xy_mock_motor: MMCoreStageDevice,
         virtual_container: VirtualContainer,
     ) -> None:
         """register_providers() registers the widget signals; inject_dependencies() connects inbound signals."""
-        from redsun_mimir.presenter.motor import MotorPresenter
-
         # Presenter registers first so its signals and providers exist on the container
-        ctrl = MotorPresenter("motor_presenter", {"stage": motor})
+        ctrl = MotorPresenter("motor_presenter", {"xystage": xy_mock_motor})
         ctrl.register_providers(virtual_container)
 
         # View register_providers then inject_dependencies in the correct build order

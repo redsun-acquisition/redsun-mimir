@@ -5,15 +5,14 @@ from concurrent.futures import Future
 from typing import TYPE_CHECKING
 
 import msgspec
-from attrs import define, field, setters, validators
 from bluesky.protocols import Reading
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
 from redsun.storage import PrepareInfo, register_metadata
+from redsun.utils.descriptors import make_descriptor, make_key, make_reading
 from serial import Serial
 
-import redsun_mimir.device.utils as utils
 import redsun_mimir.device.youseetoo.utils as uc2utils
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Location, Reading
 
 
-@define(kw_only=True, init=False)
 class MimirSerialDevice(Device, Loggable):
     """Mimir interface for serial communication.
 
@@ -47,71 +45,62 @@ class MimirSerialDevice(Device, Loggable):
         Default is 3.0 s.
     """
 
-    name: str
-    port: str = field(
-        on_setattr=setters.frozen,
-        validator=validators.instance_of(str),
-    )
-    bauderate: int = field(
-        default=uc2utils.BaudeRate.BR115200.value,
-    )
-    timeout: float = field(
-        default=1.0,
-        on_setattr=setters.frozen,
-        validator=validators.instance_of(float),
-    )
-
+    # as the serial port needs to be shared between devices
+    # via a class method, it gets stored as a class variable
+    _serial: ClassVar[Serial | None] = None
     _futures: ClassVar[set[Future[Serial]]] = set()
 
-    @bauderate.validator
-    def _check_baud_rate(self, _: str, value: int) -> None:
-        """Check if the baud rate is valid.
-
-        Parameters
-        ----------
-        attribute: `str`
-            Attribute name (unused).
-        value: `int`
-            Value to check.
-        """
-        if value not in uc2utils.BaudeRate.__members__.values():
+    def __init__(
+        self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 1.0
+    ) -> None:
+        if bauderate not in uc2utils.BaudeRate.__members__.values():
             self.logger.error(
-                f"Invalid baud rate {value}. "
+                f"Invalid baud rate {bauderate}. "
                 f"Valid values are: {list(uc2utils.BaudeRate.__members__.values())}"
                 f"Setting to default value {uc2utils.BaudeRate.BR115200.value}."
             )
-            self.bauderate = uc2utils.BaudeRate.BR115200
-
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
-        super().__init__(name, **kwargs)
-        self.__attrs_init__(name=name, **kwargs)
+            bauderate = uc2utils.BaudeRate.BR115200.value
+        super().__init__(name, port=port, bauderate=bauderate, timeout=timeout)
 
         # we could wrap the serial creation in a
         # try-except block to catch potential errors;
         # but actually we want the app to crash if the
         # serial port cannot be opened, because without
         # it the device can't work at all
-        self._serial = Serial(
-            port=self.port,
-            baudrate=self.bauderate,
-            timeout=self.timeout,
-        )
-
+        try:
+            MimirSerialDevice._serial = Serial(
+                port=port,
+                baudrate=bauderate,
+                timeout=timeout,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to open serial port: {e}") from e
+        if MimirSerialDevice._serial is not None:
+            self._instance_serial = MimirSerialDevice._serial
         if len(MimirSerialDevice._futures) > 0:
             # if there are futures waiting for the serial to be ready,
             # set the result for all of them
             for future in MimirSerialDevice._futures:
-                future.set_result(self._serial)
+                future.set_result(self._instance_serial)
             MimirSerialDevice._futures.clear()
 
         # do an hard reset of the serial port,
         # to ensure that the device is ready
-        self._serial.dtr = False
-        self._serial.rts = True
-        time.sleep(0.1)
-        self._serial.dtr = False
-        self._serial.rts = False
+        self._instance_serial.dtr = False
+        self._instance_serial.rts = True
         time.sleep(0.5)
+        self._instance_serial.dtr = False
+        self._instance_serial.rts = False
+        # give it abundant time to reset; we might lose
+        # some output from the reset process
+        # which would cause follow-up comms to fail
+        time.sleep(2.0)
+        reset_bytes = self._instance_serial.read_until(expected=b"{'setup': 'done'}")
+        if reset_bytes is not None:
+            response = reset_bytes.decode(errors="ignore").strip()
+            self.logger.info("Serial reset response")
+            for line in response.splitlines():
+                self.logger.info(line)
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         # TODO: for now we don't return anything...
@@ -128,8 +117,8 @@ class MimirSerialDevice(Device, Loggable):
 
         This method is called when the application is closed.
         """
-        if self._serial.is_open:
-            self._serial.close()
+        if self._instance_serial.is_open:
+            self._instance_serial.close()
 
     @classmethod
     def get(cls) -> Serial | Future[Serial]:
@@ -156,7 +145,6 @@ class MimirSerialDevice(Device, Loggable):
         return cls._serial
 
 
-@define(kw_only=True, init=False)
 class MimirLaserDevice(Device, LightProtocol, Loggable):
     """Mimir interface for a laser source.
 
@@ -168,37 +156,29 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         Model information for the laser source.
     """
 
-    name: str
-    binary: bool = field(
-        init=False,
-        default=False,
-        metadata={"description": "Binary mode operation."},
-    )
-    wavelength: int = field(
-        default=0,
-        validator=validators.instance_of(int),
-        metadata={"description": "Wavelength in nm."},
-    )
-    egu: str = field(
-        default="mW",
-        validator=validators.instance_of(str),
-        on_setattr=setters.frozen,
-        metadata={"description": "Engineering units."},
-    )
-    intensity_range: tuple[int | float, ...] = field(
-        init=False,
-        default=(0, 1023),
-        metadata={"description": "Intensity range (min, max)."},
-    )
-    step_size: int = field(
-        default=1,
-        validator=validators.instance_of(int),
-        metadata={"description": "Step size for the intensity."},
-    )
+    def __init__(
+        self,
+        name: str,
+        /,
+        wavelength: int = 0,
+        egu: str = "mW",
+        intensity_range: tuple[int, ...] = (0, 1023),
+        step_size: int = 1,
+    ) -> None:
+        super().__init__(
+            name,
+            wavelength=wavelength,
+            egu=egu,
+            intensity_range=intensity_range,
+            step_size=step_size,
+        )
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
-        super().__init__(name, **kwargs)
-        self.__attrs_init__(name=name, **kwargs)
+        # protocol attributes
+        self.binary = False
+        self.wavelength = wavelength
+        self.egu = egu
+        self.intensity_range = intensity_range
+        self.step_size = step_size
         self.enabled = False
         self.intensity = 0
         self.id = 0
@@ -206,17 +186,15 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
 
         def callback(future: Future[Serial]) -> None:
             self._serial = future.result()
-            self.logger.debug("Serial port is ready for MimirLaserDevice.")
+            self.logger.debug("Serial port ready.")
 
         serial_or_future: Serial | Future[Serial] = MimirSerialDevice.get()
 
         if isinstance(serial_or_future, Future):
             serial_or_future.add_done_callback(callback)
-
-    def _wait_for_serial(self, future: Future[Serial]) -> None:
-        """Wait for the serial port to be ready and set it to the model."""
-        self._serial = future.result()
-        self.logger.debug("Serial port is ready for MimirLaserDevice.")
+        else:
+            self._serial = serial_or_future
+            self.logger.debug("Serial port ready.")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set the intensity of the laser source.
@@ -359,52 +337,54 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         s.set_finished()
         return s
 
-    def read(self) -> dict[str, Reading[Any]]:
-        """Read the current state of the laser source.
-
-        Returns
-        -------
-        `dict[str, Any]`
-            Dictionary with the current state of the laser source.
-        """
-        return {
-            "intensity": {"value": self.intensity, "timestamp": time.time()},
-            "enabled": {"value": self.enabled, "timestamp": time.time()},
-        }
-
     def describe(self) -> dict[str, Descriptor]:
-        return {
-            "intensity": {
-                "source": self.name,
-                "dtype": "number",
-                "shape": [],
-            },
-            "enabled": {
-                "source": self.name,
+        descriptor: dict[str, Descriptor] = {
+            make_key(self.name, "intensity"): make_descriptor(
+                "value", "number", units=self.egu
+            ),
+            make_key(self.name, "enabled"): {
+                "source": "value",
                 "dtype": "boolean",
                 "shape": [],
             },
         }
+        return descriptor
+
+    def read(self) -> dict[str, Reading[Any]]:
+        reading: dict[str, Reading[Any]] = {
+            make_key(self.name, "intensity"): make_reading(self.intensity, time.time()),
+            make_key(self.name, "enabled"): make_reading(self.enabled, time.time()),
+        }
+        return reading
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read the configuration of the laser source.
-
-        Returns
-        -------
-        `dict[str, Any]`
-            Dictionary with the configuration of the laser source.
-        """
-        return {}
+        timestamp = time.time()
+        return {
+            make_key(self.name, "wavelength"): make_reading(self.wavelength, timestamp),
+            make_key(self.name, "binary"): make_reading(self.binary, timestamp),
+            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.name, "intensity_range"): make_reading(
+                list(self.intensity_range), timestamp
+            ),
+            make_key(self.name, "step_size"): make_reading(self.step_size, timestamp),
+        }
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe the configuration of the laser source.
-
-        Returns
-        -------
-        `dict[str, Any]`
-            Dictionary with the configuration of the laser source.
-        """
-        return {}
+        return {
+            make_key(self.name, "wavelength"): make_descriptor(
+                "settings", "integer", units="nm", readonly=True
+            ),
+            make_key(self.name, "binary"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
+            make_key(self.name, "egu"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
+            make_key(self.name, "intensity_range"): make_descriptor(
+                "settings", "array", shape=[2], readonly=True
+            ),
+            make_key(self.name, "step_size"): make_descriptor("settings", "integer"),
+        }
 
 
 NM_TO_NM: Final[int] = 1
@@ -412,7 +392,6 @@ UM_TO_NM: Final[int] = 1_000
 MM_TO_NM: Final[int] = 1_000_000
 
 
-@define(kw_only=True, init=False)
 class MimirMotorDevice(Device, MotorProtocol, Loggable):
     """Mimir interface for a motor stage.
 
@@ -420,8 +399,13 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
     ----------
     name: `str`
         Name of the model.
-    model_info: `MimirStageInfo`
-        Model information for the motor stage.
+    egu: `str`
+        Engineering unit for the motor stage. Supported values are "nm", "um", "μm", "mm".
+        Default is "um".
+    step_sizes: `dict[str, float]`
+        Step sizes for the motor stage for each axis. The keys of the dictionary should be
+        the axis names (e.g. "X", "Y", "Z") and the values should be the step sizes in the specified
+        engineering unit. Default is {"X": 100.0, "Y": 100.0, "Z": 100.0}.
 
     Attributes
     ----------
@@ -432,44 +416,6 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         Set to 320 nm by default.
     """
 
-    name: str
-    egu: str = field(
-        default="mm",
-        validator=validators.instance_of(str),
-        on_setattr=setters.frozen,
-        metadata={"description": "Engineering units."},
-    )
-
-    @egu.validator
-    def _check_egu(self, _: str, value: str) -> None:
-        if value not in ["nm", "mm", "um", "μm"]:
-            raise ValueError(
-                f"Invalid engineering unit for Mimir motor: {value}. "
-                "Supported units are 'nm', 'mm', 'um', 'μm'."
-            )
-
-    axis: list[str] = field(
-        init=False,
-        default=["X", "Y", "Z"],
-        validator=validators.instance_of(list),
-        on_setattr=setters.frozen,
-        metadata={"description": "Axis names."},
-    )
-    step_sizes: dict[str, float] = field(
-        validator=validators.instance_of(dict),
-        metadata={"description": "Step sizes for each axis."},
-    )
-    limits: dict[str, tuple[float, float]] | None = field(
-        default=None,
-        converter=utils.convert_limits,
-        metadata={"description": "Limits for each axis."},
-    )
-    motor_step: int = field(
-        init=False,
-        default=320,
-        on_setattr=setters.frozen,
-    )
-
     # conversion factor for the engineering units
     # used by the Mimir stage; the final steps the motor
     # executes is computed as follows:
@@ -477,39 +423,57 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
     # where
     # - `value` is the input value the engineering unit
     # - `self._conversion_map[model_info.egu]` is the conversion factor
-    _conversion_map: dict[str, int] = field(
-        init=False,
-        on_setattr=setters.frozen,
-        default={
-            "nm": NM_TO_NM,
-            "um": UM_TO_NM,
-            "μm": UM_TO_NM,
-            "mm": MM_TO_NM,
-        },
-    )
+    _conversion_map: ClassVar[dict[str, int]] = {
+        "nm": NM_TO_NM,
+        "um": UM_TO_NM,
+        "μm": UM_TO_NM,
+        "mm": MM_TO_NM,
+    }
 
-    _axis_id_map: dict[str, int] = field(
-        init=False,
-        on_setattr=setters.frozen,
-        default={
-            "X": 1,
-            "Y": 2,
-            "Z": 3,
-        },
-    )
+    _axis_id_map: ClassVar[dict[str, int]] = {
+        "X": 1,
+        "Y": 2,
+        "Z": 3,
+    }
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
-        super().__init__(name, **kwargs)
-        self.__attrs_init__(name=name, **kwargs)
+    motor_step: Final[int] = 320
+
+    def __init__(
+        self,
+        name: str,
+        /,
+        egu: str = "um",
+        step_sizes: dict[str, float] = {"X": 100.0, "Y": 100.0, "Z": 100.0},
+    ) -> None:
+        if egu not in self._conversion_map.keys():
+            raise ValueError(
+                f"Invalid engineering unit: {egu}"
+                f"Supported units are: {list(self._conversion_map.keys())}"
+            )
+
+        super().__init__(
+            name,
+            egu=egu,
+            step_sizes=step_sizes,
+        )
+
+        # protocol attributes
+        self.egu = egu
+        self.step_sizes = step_sizes
+        self.axis: list[str] = ["X", "Y", "Z"]
+        self._active_axis = self.axis[0]
 
         def callback(future: Future[Serial]) -> None:
             self._serial = future.result()
-            self.logger.debug("Serial port is ready for MimirLaserDevice.")
+            self.logger.debug("Serial port ready.")
 
         serial_or_future: Serial | Future[Serial] = MimirSerialDevice.get()
 
         if isinstance(serial_or_future, Future):
             serial_or_future.add_done_callback(callback)
+        else:
+            self._serial = serial_or_future
+            self.logger.debug("Serial port ready.")
 
         # set the conversion factor from egu to steps;
         # it will be used to convert the input value
@@ -522,11 +486,6 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
 
         # set the current axis to the first axis
         self._active_axis = self.axis[0]
-
-    def _wait_for_serial(self, future: Future[Serial]) -> None:
-        """Wait for the serial port to be ready and set it to the model."""
-        self._serial = future.result()
-        self.logger.debug("Serial port is ready for MimirLaserDevice.")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -556,7 +515,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         self._positions[self._active_axis]["setpoint"] = value
         steps = int(value * self._factor) // self.motor_step
 
-        self.logger.debug(f"Moving motor along {self.axis} of {steps} steps.")
+        self.logger.debug(f"Moving motor along {self._active_axis} of {steps} steps.")
 
         action = MotorAction(
             movement=MotorAction.generate_movement(
@@ -564,6 +523,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
             ),
             qid=self._axis_id_map[self._active_axis],
         )
+        s.add_callback(self._update_readback)
         self._send_command(action, s)
         return s
 
@@ -572,12 +532,30 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         return self._positions[self._active_axis]
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Read mock configuration."""
-        return {}
+        timestamp = time.time()
+        config: dict[str, Reading[Any]] = {
+            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
+            make_key(self.name, "axis"): make_reading(self.axis, timestamp),
+        }
+        for ax, step in self.step_sizes.items():
+            config[make_key(self.name, f"{ax}_step_size")] = make_reading(
+                step, timestamp
+            )
+        return config
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        """Describe mock configuration."""
-        return {}
+        descriptors: dict[str, Descriptor] = {
+            make_key(self.name, "egu"): make_descriptor(
+                "settings", "string", readonly=True
+            ),
+            make_key(self.name, "axis"): make_descriptor(
+                "settings", "array", shape=[len(self.axis)], readonly=True
+            ),
+        }
+        for ax in self.axis:
+            key = make_key(self.name, f"{ax}_step_size")
+            descriptors[key] = make_descriptor("settings", "number")
+        return descriptors
 
     def shutdown(self) -> None: ...
 
@@ -678,7 +656,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
 
         Parameters
         ----------
-        s : Status
+        status : Status
             The status object associated with the callback.
 
         """

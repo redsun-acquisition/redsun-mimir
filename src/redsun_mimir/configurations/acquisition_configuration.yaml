@@ -2,19 +2,13 @@ schema_version: 1.0
 session: redsun-mimir
 frontend: pyqt
 
-storage:
-  backend: zarr
-
 devices:
   camera1:
-    sensor_shape: [100, 100]
-  motor:
-    axis: [X, Y, Z]
-    step_sizes:
-      X: 100.0
-      Y: 100.0
-      Z: 100.0
-    egu: um
+    config: demo
+  xy-motor:
+    config: demoxy
+  z-motor:
+    config: demoz
 
 presenters:
   storage_ctrl: {}

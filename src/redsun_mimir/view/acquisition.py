@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 
-
-
 class AcquisitionView(QtView, Loggable):
     """View for plan selection, parameter input, and run control.
 
@@ -194,7 +192,6 @@ class AcquisitionView(QtView, Loggable):
             if action_button:
                 action_button.setEnabled(False)
         self.sigActionRequest.emit(action_name, checked)
-
 
     def _wire_device_validation(self, plan_widget: PlanWidget) -> None:
         """Disable Run if any DeviceSequenceEdit has an empty selection."""
