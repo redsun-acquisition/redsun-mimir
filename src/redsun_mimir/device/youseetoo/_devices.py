@@ -489,7 +489,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
-        propr = kwargs.get("prop", None)
+        propr = kwargs.get("prop", None) or kwargs.get("propr", None)
         if propr is not None:
             self.logger.info("Setting property %s to %s.", propr, value)
             if propr == "axis" and isinstance(value, str):
