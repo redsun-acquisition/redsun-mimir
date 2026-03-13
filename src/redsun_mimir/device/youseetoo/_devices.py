@@ -181,7 +181,7 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         self.step_size = step_size
         self.enabled = False
         self.intensity = 0
-        self.id = 0
+        self.id = 1
         self.qid = 1
 
         def callback(future: Future[Serial]) -> None:
