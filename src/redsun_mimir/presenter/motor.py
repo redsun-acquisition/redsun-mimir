@@ -8,7 +8,7 @@ from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
-from redsun.virtual import Signal
+from redsun.virtual import Signal, HasShutdown
 
 from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
@@ -196,6 +196,9 @@ class MotorPresenter(Presenter, Loggable):
         """
         self._queue.put(None)
         self._daemon.join()
+        for motor in self._motors.values():
+            if isinstance(motor, HasShutdown):
+                motor.shutdown()
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""

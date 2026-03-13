@@ -318,10 +318,17 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
 
         This method is called when the application is closed.
         """
-        # shutdown should be delegated
-        # to the serial model, which will
-        # which will close the serial port
-        ...
+        # if the laser is enabled, disable it
+        # and set the intensity to 0
+        if self.enabled:
+            self._send_command(
+                LaserAction(
+                    id=self.id,
+                    qid=self.qid,
+                    value=0,
+                ),
+                Status(),
+            )
 
     def prepare(self, value: PrepareInfo) -> Status:
         """Contribute laser metadata to the acquisition metadata registry."""

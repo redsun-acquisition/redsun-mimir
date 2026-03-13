@@ -6,6 +6,7 @@ from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
+from redsun.virtual import HasShutdown
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
@@ -122,6 +123,12 @@ class LightPresenter(Presenter, Loggable):
             self.logger.debug(
                 f"Toggled source {name} {not light.enabled} -> {light.enabled}"
             )
+
+    def shutdown(self) -> None:
+        """Shutdown the presenter and all light devices."""
+        for light in self._lights.values():
+            if isinstance(light, HasShutdown):
+                light.shutdown()
 
     def set(self, name: str, intensity: int | float) -> None:
         """Set the intensity of the light.
