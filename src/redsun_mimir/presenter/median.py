@@ -92,13 +92,18 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-        active = (self.median_streams or self.live_streams) and self.hints
+        active = (
+            len(self.median_streams) > 0 and len(self.live_streams) > 0
+        ) and self.hints
 
         if active:
+            scan_streams_msg = ", ".join(self.median_streams)
+            live_streams_msg = ", ".join(self.live_streams)
+            hints_msg = ", ".join(self.hints)
             self.logger.info(
-                f"Initialized: scan streams {', '.join(self.median_streams)}, "
-                f"live streams {', '.join(self.live_streams)}, "
-                f"hints {', '.join(self.hints)}"
+                f"Initialized: scan streams '{scan_streams_msg}', "
+                f"live streams '{live_streams_msg}', "
+                f"hints '{hints_msg}'"
             )
         else:
             if self.median_streams or self.live_streams:
