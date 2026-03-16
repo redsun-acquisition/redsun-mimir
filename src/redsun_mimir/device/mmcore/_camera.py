@@ -48,7 +48,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     def __init__(
         self, name: str, /, config: Literal["demo", "daheng"] = "demo"
     ) -> None:
-
         self.config: BaseCamConfig
         match config:
             case "demo":
@@ -86,7 +85,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self.config.defaults:
             for prop, value in self.config.defaults.items():
                 # if the property is not in the allowed properties, skip it
-                if prop not in self.config.allowed_properties:
+                if prop not in self.config.properties:
                     continue
                 self._core.setProperty(self.name, prop, value)
 
@@ -95,7 +94,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self.roi = (0, 0, *self.sensor_shape)
         self._properties = {
             propr_name: self._core.getPropertyObject(self.name, propr_name)
-            for propr_name in self.config.allowed_properties
+            for propr_name in self.config.properties
         }
 
         self._device_schema = self._core.getDeviceSchema(self.name)
@@ -178,7 +177,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     def describe_configuration(self) -> dict[str, Descriptor]:
         config_descriptor: dict[str, Descriptor] = {}
         for prop_name, value in self._device_schema["properties"].items():
-            if prop_name not in self.config.allowed_properties:
+            if prop_name not in self.config.properties:
                 continue
 
             choices: list[str] = []
@@ -187,20 +186,24 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             elif value["type"] == "string":
                 choices = value.get("enum", [])
 
+            readonly = False or prop_name in self.config.properties.readonly
+
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
             key = make_key(self.name, prop_name)
 
             if choices:
                 config_descriptor[key] = make_descriptor(
-                    "properties", "string", choices=choices
+                    "properties", "string", choices=choices, readonly=readonly
                 )
             elif maximum is not None and minimum is not None:
                 config_descriptor[key] = make_descriptor(
-                    "properties", "number", low=minimum, high=maximum
+                    "properties", "number", low=minimum, high=maximum, readonly=readonly
                 )
             else:
-                config_descriptor[key] = make_descriptor("properties", "number")
+                config_descriptor[key] = make_descriptor(
+                    "properties", "number", readonly=readonly
+                )
 
         config_descriptor[make_key(self.name, "exposure")] = make_descriptor(
             "settings",
@@ -219,7 +222,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         config: dict[str, Reading[Any]] = {}
 
         for prop in self._properties.values():
-            if prop.name not in self.config.allowed_properties:
+            if prop.name not in self.config.properties:
                 continue
             config[make_key(self.name, prop.name)] = make_reading(prop.value, timestamp)
 

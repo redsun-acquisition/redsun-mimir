@@ -8,7 +8,7 @@ from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
-from redsun.virtual import Signal, HasShutdown
+from redsun.virtual import HasShutdown, Signal
 
 from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
