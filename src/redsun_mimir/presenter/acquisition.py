@@ -112,6 +112,9 @@ def square_scan(
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
             yield from bps.mvr(motor, step)
+            # add a short delay to stabilize the readings
+            # after motor movement
+            yield from bps.sleep(0.05)
     # scan on the negative direction
     for idx in range(2):
         ax = axis[1 - idx]
@@ -120,6 +123,9 @@ def square_scan(
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
             yield from bps.mvr(motor, -step)
+            # add a short delay to stabilize the readings
+            # after motor movement
+            yield from bps.sleep(0.05)
 
 
 def scan_and_stash(
@@ -166,6 +172,9 @@ def scan_and_stash(
                 detectors, cache, group="stash", stream="square_scan", wait=True
             )
             yield from bps.mvr(motor, step)
+            # add a short delay to stabilize the readings
+            # after motor movement
+            yield from bps.sleep(0.05)
     # scan on the negative direction
     for idx in range(2):
         ax = axis[1 - idx]
@@ -176,6 +185,9 @@ def scan_and_stash(
                 detectors, cache, group="stash", stream="square_scan", wait=True
             )
             yield from bps.mvr(motor, -step)
+            # add a short delay to stabilize the readings
+            # after motor movement
+            yield from bps.sleep(0.05)
 
 
 # TODO: move this somewhere else
