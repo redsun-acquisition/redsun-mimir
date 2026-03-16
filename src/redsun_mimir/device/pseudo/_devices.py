@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from bluesky.protocols import Reading, Triggerable
@@ -166,9 +166,15 @@ class MedianPseudoDevice(PseudoCacheFlyer, Triggerable, Loggable):
         s = Status()
         if self._cache and not self._valid_readings:
             stack = np.stack(self._cache, axis=0)
-            median_value: npt.NDArray[np.generic] = np.median(stack, axis=0).astype(
-                self._target_dtype
+            median_value = cast(
+                "npt.NDArray[np.generic]",
+                np.median(stack, axis=0).astype(self._target_dtype),
             )
+            # if any pixels are 0, set them to the minimum
+            # non-zero value to avoid issues with downstream processing
+            nonzero: npt.NDArray[np.generic] = median_value[median_value != 0].min()
+            if nonzero.size > 0:
+                median_value[median_value == 0] = nonzero
             shape = median_value.shape
             dtype = median_value.dtype
             self._median[self._reading_key] = {

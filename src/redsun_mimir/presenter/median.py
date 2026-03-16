@@ -57,6 +57,12 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     -----
     The presenter expects both `*_streams` and `hints` to be configured.
     If either is missing, the presenter will be inactive.
+
+    When `hints` are provided, the presenter will look for data keys matching the pattern
+    `{object_name}-{hint}` in the event documents, as well as `{object_name}_median-{hint}`
+    when processing median streams. The `MedianPseudoDevice` is designed to produce
+    the median data by building it directly inside a plan. It will create a
+    data key with the `_median` suffix for each hint, e.g. `camera_median-buffer`.
     """
 
     sigNewData = Signal(object)
@@ -73,19 +79,31 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         super().__init__(name, devices)
         self.median_streams = frozenset(median_streams or [])
         self.live_streams = frozenset(live_streams or [])
+
+        if hints is not None:
+            # ensure that for every hint, we also look for the corresponding median key,
+            # i.e. if "buffer" is a hint, look for "buffer_median" as well when applying the median correction
+            hints.extend(
+                [f"{hint}_median" for hint in hints if not hint.endswith("_median")]
+            )
         self.hints = frozenset(hints or [])
         self.medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.packet: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self.uid_to_stream: dict[str, str] = {}
         self.previous_stream: str = ""
 
-        active = (self.median_streams or self.live_streams) and self.hints
+        active = (
+            len(self.median_streams) > 0 and len(self.live_streams) > 0
+        ) and self.hints
 
         if active:
+            scan_streams_msg = ", ".join(self.median_streams)
+            live_streams_msg = ", ".join(self.live_streams)
+            hints_msg = ", ".join(self.hints)
             self.logger.info(
-                f"Initialized: scan streams {', '.join(self.median_streams)}, "
-                f"live streams {', '.join(self.live_streams)}, "
-                f"hints {', '.join(self.hints)}"
+                f"Initialized: scan streams '{scan_streams_msg}', "
+                f"live streams '{live_streams_msg}', "
+                f"hints '{hints_msg}'"
             )
         else:
             if self.median_streams or self.live_streams:
@@ -189,6 +207,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             except ValueError:
                 continue
             if hint not in self.hints:
+                continue
+            if not key.endswith("_median"):
                 continue
             # strip the _median suffix to match the obj_name used in _apply_median
             base_name = obj_name.removesuffix("_median")
