@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
-from bluesky.utils import MsgGenerator  # noqa: TC002
+from bluesky.utils import MsgGenerator, RequestAbort  # noqa: TC002
 from dependency_injector import providers
 from redsun.engine import RunEngine
 from redsun.engine.actions import Action, continous
@@ -667,6 +668,25 @@ class AcquisitionPresenter(Presenter, Loggable):
         """Stop the running plan."""
         self.engine.stop()
 
+    def shutdown(self) -> None:
+        """Shutdown the presenter.
+
+        If there is a running plan, abort it.
+        """
+        if len(self.futures) > 0:
+            self.logger.debug("Aborting running plan(s) during presenter shutdown.")
+            with self.sigPlanDone.blocked():
+                # temporarily suppress the RequestAbort
+                # exception from bluesky, as it is expected
+                # during shutdown and does not indicate
+                # an actual error in this context
+                bluesky_log = logging.getLogger("bluesky")
+                bluesky_log.addFilter(_SuppressRequestAbort())
+                try:
+                    self.engine.abort()
+                finally:
+                    bluesky_log.removeFilter(_SuppressRequestAbort())
+
     def _discard_future(self, fut: Future[Any]) -> None:
         # TODO: consider emitting a result
         # if the plan was not paused
@@ -674,3 +694,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         if self.discard_by_pause:
             self.discard_by_pause = False
         self.futures.discard(fut)
+
+
+class _SuppressRequestAbort(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and isinstance(record.exc_info[1], RequestAbort):
+            return False
+        return True
