@@ -43,7 +43,8 @@ def xy_mock_motor(name: str = "xystage") -> Iterator[MMCoreStageDevice]:
         name,
         config="demoxy",
     )
-    core.unloadDevice(name)
+    if name in core.getLoadedDevices():
+        core.unloadDevice(name)
 
 
 @pytest.fixture

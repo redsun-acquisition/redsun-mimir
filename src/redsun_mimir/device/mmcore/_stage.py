@@ -50,10 +50,12 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
             case "demoz":
                 self.config = DemoZStageConfig()
             case _:
-                if config is None:
-                    raise ValueError("Stage config must be specified.")
-                else:
-                    raise ValueError(f"Unknown stage config: {config}")
+                err_msg = (
+                    f"Unknown stage config: {config}"
+                    if config is not None
+                    else "Stage config must be specified."
+                )
+                raise ValueError(err_msg)
 
         super().__init__(name, **self.config.dump())
         self._core = Core.instance()
