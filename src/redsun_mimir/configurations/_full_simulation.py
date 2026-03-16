@@ -40,8 +40,8 @@ def run_simulation_container() -> None:
     class MimirSimulator(QtAppContainer, config=_CONFIG):
         # devices
         mmcore = device(MMCoreCameraDevice, from_config="camera1")
-        xy_motor = device(MMCoreStageDevice, from_config="xy-motor")
-        z_motor = device(MMCoreStageDevice, from_config="z-motor")
+        XY = device(MMCoreStageDevice, from_config="xy-motor")
+        Z = device(MMCoreStageDevice, from_config="z-motor")
         laser = device(MockLightDevice, from_config="laser")
         led = device(MockLightDevice, from_config="led")
 
