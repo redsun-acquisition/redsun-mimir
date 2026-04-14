@@ -164,7 +164,7 @@ class MotorView(QtView):
                 if parse_key(k)[0] == device_label
                 and parse_key(k)[1].endswith("-step_size")
             ]
-            egu: str = description[step_keys[0]].get("units", "") if step_keys else ""
+            egu: str = description[step_keys[0]].get("units") or "" if step_keys else ""
             axis: list[str] = [
                 parse_key(k)[1].removesuffix("-step_size") for k in step_keys
             ]
@@ -179,9 +179,8 @@ class MotorView(QtView):
             for i, ax in enumerate(axis):
                 suffix = f"{device_label}:{ax}"
                 step_reading_key = f"{device_label}-{ax}-step_size"
-                initial_step: float = readings.get(step_reading_key, {}).get(
-                    "value", 1.0
-                )  # type: ignore[union-attr]
+                _r = readings.get(step_reading_key)
+                initial_step: float = float(_r["value"]) if _r is not None else 1.0
 
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
                 self._labels["label:" + suffix].setTextFormat(
@@ -261,7 +260,7 @@ class MotorView(QtView):
             ),
             None,
         )
-        egu: str = self._description[step_key].get("units", "") if step_key else ""
+        egu: str = self._description[step_key].get("units") or "" if step_key else ""
         self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
 
     def _update_configuration(self, motor: str, success_map: dict[str, bool]) -> None:

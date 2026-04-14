@@ -6,9 +6,12 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 from pymmcore_plus import CMMCorePlus as Core
 from qtpy.QtWidgets import QApplication
+from redsun.device import SoftAttrR
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
@@ -18,6 +21,44 @@ if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
 
     from qtpy.QtCore import QCoreApplication
+
+
+class MockBufferDevice:
+    """Minimal device with a subscribable buffer, used in MedianPresenter tests."""
+
+    def __init__(self, name: str, shape: tuple[int, int] = (4, 4)) -> None:
+        self.name = name
+        self.buffer: SoftAttrR[npt.NDArray[np.float64]] = SoftAttrR(
+            np.zeros(shape, dtype=np.float64)
+        )
+        self.buffer.set_name(f"{name}-buffer")
+
+
+def make_start(uid: str) -> dict[str, object]:
+    return {"uid": uid, "time": 0.0}
+
+
+def make_descriptor(uid: str, stream: str, run_uid: str) -> dict[str, object]:
+    return {
+        "uid": uid,
+        "name": stream,
+        "run_start": run_uid,
+        "data_keys": {},
+        "time": 0.0,
+        "configuration": {},
+        "hints": {},
+        "object_keys": {},
+    }
+
+
+def make_stop(run_uid: str) -> dict[str, object]:
+    return {
+        "run_start": run_uid,
+        "time": 0.0,
+        "uid": f"stop-{run_uid}",
+        "exit_status": "success",
+        "reason": "",
+    }
 
 
 @pytest.fixture(scope="session")
@@ -68,3 +109,9 @@ def mock_laser() -> MockLightDevice:
         intensity_range=(0, 100),
         step_size=1,
     )
+
+
+@pytest.fixture
+def mock_buffer_device() -> MockBufferDevice:
+    """Camera-like mock device with a subscribable buffer."""
+    return MockBufferDevice("camera1")

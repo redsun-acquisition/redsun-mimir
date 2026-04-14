@@ -861,7 +861,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -3680,8 +3680,7 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.10.0rc0"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../redsun" }
 dependencies = [
     { name = "bluesky" },
     { name = "dependency-injector" },
@@ -3689,10 +3688,6 @@ dependencies = [
     { name = "psygnal" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/93/a3/02db82ea0e869c191924a8ded36cf677ede1b16cdd473a9892dce2fe184a/redsun-0.10.0rc0.tar.gz", hash = "sha256:b6d5d1e4864216d6d8e8066b4c6a3e4cc8dfc0b1bfc99885f04735a1b5dc6f58", size = 71729, upload-time = "2026-04-14T01:35:34.352Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/74/141d597e25f56723d8d34680f15b64cbab1beb3ccb09fff21412c90979ac/redsun-0.10.0rc0-py3-none-any.whl", hash = "sha256:bb5515562053415f6041e176aa75e7537b0244b64e3831536f89cef32aeb56d7", size = 92565, upload-time = "2026-04-14T01:35:32.769Z" },
 ]
 
 [package.optional-dependencies]
@@ -3708,6 +3703,45 @@ pyside = [
 ]
 zarr = [
     { name = "acquire-zarr" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "acquire-zarr", marker = "extra == 'zarr'", specifier = ">=0.7.0" },
+    { name = "bluesky", specifier = ">=1.14.6" },
+    { name = "dependency-injector", specifier = ">=4.49.0" },
+    { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
+    { name = "magicgui", marker = "extra == 'pyside'", specifier = ">=0.10.1" },
+    { name = "platformdirs", specifier = ">=4.3.8" },
+    { name = "psygnal", specifier = ">=0.15.1" },
+    { name = "pyqt6", marker = "extra == 'pyqt'", specifier = ">=6.10.2" },
+    { name = "pyside6", marker = "extra == 'pyside'", specifier = ">=6.9.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "qtpy", marker = "extra == 'pyqt'", specifier = ">=2.4.3" },
+    { name = "qtpy", marker = "extra == 'pyside'", specifier = ">=2.4.3" },
+    { name = "typing-extensions", specifier = ">=4.15.0" },
+]
+provides-extras = ["pyqt", "pyside", "zarr"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "griffe-fieldz", specifier = ">=0.4.0" },
+    { name = "mypy", specifier = ">=1.20.0" },
+    { name = "ophyd", specifier = ">=1.11.0" },
+    { name = "ophyd-async", specifier = ">=0.12.3" },
+    { name = "pre-commit", specifier = ">=4.5.0" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-env", specifier = ">=1.1.5" },
+    { name = "redsun", extras = ["pyqt", "zarr"] },
+    { name = "ruff", specifier = ">=0.14.14" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+]
+docs = [
+    { name = "mike", specifier = ">=2.1.3" },
+    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
+    { name = "zensical", specifier = ">=0.0.24" },
 ]
 
 [[package]]
@@ -3751,7 +3785,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "msgspec", specifier = ">=0.20.0" },
+    { name = "msgspec", specifier = ">=0.21.1" },
     { name = "napari", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.6.6" },
@@ -3759,10 +3793,10 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
-    { name = "redsun", extras = ["zarr"], specifier = ">=0.10.0rc0" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", editable = "../redsun" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", editable = "../redsun" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", editable = "../redsun" },
+    { name = "redsun", extras = ["zarr"], editable = "../redsun" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 

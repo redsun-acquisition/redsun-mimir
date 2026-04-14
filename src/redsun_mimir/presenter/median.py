@@ -1,34 +1,40 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from event_model import DocumentRouter
-from redsun.device import ControllableDataWriter
+from redsun.device import ControllableDataWriter, DataWriter
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import HasWriterLogic
-from redsun.utils.descriptors import parse_key
 from redsun.virtual import Signal
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from typing import Any
 
     import numpy.typing as npt
+    from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor, RunStart, RunStop
-    from redsun.device import Device
+    from redsun.device import AttrR, Device
     from redsun.virtual import VirtualContainer
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter that computes per-detector median images from scan streams.
 
-    Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
-    event documents. Frames arriving on expected streams (e.g. ``square_scan``)
-    are stacked; at the end of the run the median across the stack is computed,
-    written to the detector's ``writer_logic``, and stored for optional live
+    Subscribes directly to each detector's
+    [`buffer`][redsun_mimir.protocols.DetectorProtocol.buffer] signal.
+    Frames arriving while the run is in the ``median_streams`` phase are
+    accumulated. When a descriptor for a ``live_streams`` stream arrives
+    after a scan phase (stream switch), the median is computed immediately,
+    written to the detector's ``writer_logic``, and stored for live
     correction forwarded to [`DetectorView`][redsun_mimir.view.DetectorView].
+
+    Supports concurrent and nested bluesky runs: all state is keyed by
+    run UID. Each run subscribes independently and unsubscribes cleanly
+    in ``stop()``.
 
     Parameters
     ----------
@@ -36,22 +42,17 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    live_streams: list[str] | None, keyword-only, optional
-        Stream names to look for when applying median correction to live data.
+    live_streams : list[str] | None, keyword-only, optional
+        Stream names that carry live (corrected) data.
         If ``None``, no live data will be processed.
-    median_streams: list[str] | None, keyword-only, optional
-        Stream names to look for when accumulating raw frames for median
-        computation. If ``None``, no scan data will be processed.
-    hints: list[str] | None, keyword-only, optional
-        Data key suffixes to extract from event documents (e.g. ``["buffer"]``).
-        If ``None``, no data will be processed.
+    median_streams : list[str] | None, keyword-only, optional
+        Stream names to accumulate raw frames for median computation.
+        If ``None``, no scan data will be processed.
 
     Attributes
     ----------
-    sigNewData: Signal[dict[str, dict[str, numpy.ndarray]]]
-        Emitted with median-corrected image data.
-        Carries the object name suffixed with ``"_median"``
-        (e.g. ``"camera1_median"``).
+    sigNewData : Signal[dict[str, numpy.ndarray]]
+        Emitted with median-corrected image data during live phases.
     """
 
     sigNewData = Signal(object)
@@ -63,47 +64,31 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         /,
         live_streams: list[str] | None = None,
         median_streams: list[str] | None = None,
-        hints: list[str] | None = None,
     ) -> None:
         super().__init__(name, devices)
         self._devices = devices
         self.median_streams = frozenset(median_streams or [])
         self.live_streams = frozenset(live_streams or [])
-        self.hints = frozenset(hints or [])
 
-        # Accumulated raw frames: (obj_name, hint) -> list of arrays
-        self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
-        # Computed medians for live correction: obj_name -> hint -> array
-        self.medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
-        self.packet: dict[str, dict[str, npt.NDArray[Any]]] = {}
+        # All state keyed by run UID for multi-run safety
+        self._phase: dict[str, Literal["idle", "scan", "live"]] = {}
+        self._frames: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
+        self._medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
+        self._subscriptions: dict[
+            str, list[tuple[AttrR[Any], Callable[..., None]]]
+        ] = {}
         self.uid_to_stream: dict[str, str] = {}
 
-        active = (
-            len(self.median_streams) > 0 and len(self.live_streams) > 0 and self.hints
-        )
-
+        active = len(self.median_streams) > 0 and len(self.live_streams) > 0
         if active:
-            scan_streams_msg = ", ".join(self.median_streams)
-            live_streams_msg = ", ".join(self.live_streams)
-            hints_msg = ", ".join(self.hints)
             self.logger.info(
-                f"Initialized: scan streams '{scan_streams_msg}', "
-                f"live streams '{live_streams_msg}', "
-                f"hints '{hints_msg}'"
+                f"Initialized: scan streams '{', '.join(self.median_streams)}', "
+                f"live streams '{', '.join(self.live_streams)}'"
             )
         else:
-            if self.median_streams or self.live_streams:
-                self.logger.warning(
-                    "Initialized: no hints declared; presenter will be inactive"
-                )
-            elif self.hints:
-                self.logger.warning(
-                    "Initialized: no streams declared; presenter will be inactive"
-                )
-            else:
-                self.logger.warning(
-                    "Initialized: with no streams or hints declared; presenter will be inactive"
-                )
+            self.logger.warning(
+                "Initialized: no streams declared; presenter will be inactive"
+            )
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register this presenter as a callback in the virtual container."""
@@ -111,116 +96,129 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         container.register_callbacks(self)
 
     def start(self, doc: RunStart) -> RunStart | None:
-        """Process a new start document — clear the local caches."""
-        self._frames.clear()
-        self.medians.clear()
-        self.packet.clear()
+        """Subscribe to device buffers and initialise per-run state."""
+        run_uid: str = doc["uid"]
+        self._phase[run_uid] = "idle"
+        self._frames[run_uid] = {}
+        self._medians[run_uid] = {}
+
+        subs: list[tuple[AttrR[Any], Callable[..., None]]] = []
+        for device in self._devices.values():
+            buf: AttrR[Any] | None = getattr(device, "buffer", None)
+            if buf is not None:
+                cb = partial(self._on_frame, run_uid=run_uid)
+                buf.subscribe(cb)
+                subs.append((buf, cb))
+        self._subscriptions[run_uid] = subs
         return doc
 
     def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
-        """Store the stream name keyed by descriptor UID."""
-        self.uid_to_stream.setdefault(doc["uid"], doc["name"])
+        """Track stream phase; compute median on stream switch."""
+        run_uid: str = doc["run_start"]
+        stream: str = doc["name"]
+        self.uid_to_stream[doc["uid"]] = stream
+
+        current = self._phase.get(run_uid, "idle")
+        if stream in self.median_streams:
+            self._phase[run_uid] = "scan"
+        elif stream in self.live_streams:
+            if current == "scan":
+                self._compute_medians(run_uid)
+            self._phase[run_uid] = "live"
         return doc
 
     def event(self, doc: Event) -> Event:
-        """Process new event documents.
-
-        Frames from ``median_streams`` are accumulated for later median
-        computation. Frames from ``live_streams`` receive median correction.
-        """
-        if not (self.median_streams and self.live_streams and self.hints):
-            return doc
-
-        stream_name = self.uid_to_stream[doc["descriptor"]]
-        if stream_name in self.median_streams:
-            doc = self._accumulate_frame(doc)
-        elif stream_name in self.live_streams:
-            doc = self._apply_median(doc)
+        """No-op — data arrives via buffer signal subscription."""
         return doc
 
     def stop(self, doc: RunStop) -> RunStop | None:
-        """Compute and write medians at the end of the run.
+        """Unsubscribe from device buffers and clean up per-run state."""
+        run_uid: str = doc["run_start"]
+        for buf, cb in self._subscriptions.pop(run_uid, []):
+            buf.clear_sub(cb)
+        self._phase.pop(run_uid, None)
+        self._frames.pop(run_uid, None)
+        self._medians.pop(run_uid, None)
+        return doc
 
-        For each accumulated (device, hint) pair the median is computed across
-        all stacked frames, stored for live correction, and written to the
-        device's ``writer_logic`` under the key ``{device_name}_median``.
-        """
-        if not self._frames:
-            return doc
+    def _on_frame(
+        self,
+        reading: dict[str, Reading[npt.NDArray[Any]]],
+        *,
+        run_uid: str,
+    ) -> None:
+        """Route an incoming buffer reading based on the current run phase."""
+        phase = self._phase.get(run_uid, "idle")
+        if phase == "scan":
+            for key, r in reading.items():
+                self._frames[run_uid].setdefault(key, []).append(np.asarray(r["value"]))
+        elif phase == "live":
+            medians = self._medians.get(run_uid, {})
+            if medians:
+                self._emit_corrected(reading, medians)
 
-        # Group by obj_name so we write once per detector
-        medians_by_device: dict[str, dict[str, npt.NDArray[Any]]] = {}
-        for (obj_name, hint), frames in self._frames.items():
+    def _compute_medians(self, run_uid: str) -> None:
+        """Compute per-key median from accumulated frames and write to storage."""
+        frames_by_key = self._frames.get(run_uid, {})
+        medians: dict[str, npt.NDArray[Any]] = {}
+
+        # Build buffer-key → device lookup for writer access
+        buffer_to_device: dict[str, Device] = {}
+        for device in self._devices.values():
+            buf: AttrR[Any] | None = getattr(device, "buffer", None)
+            if buf is not None and buf.name:
+                buffer_to_device[buf.name] = device
+
+        for key, frames in frames_by_key.items():
             if not frames:
                 continue
             stack = np.stack(frames, axis=0)
-            median_frame = np.median(stack, axis=0).astype(stack.dtype)
-            medians_by_device.setdefault(obj_name, {})[hint] = median_frame
-            # Store for subsequent live correction via _apply_median
-            self.medians.setdefault(obj_name, {})[hint] = median_frame
+            median_frame: npt.NDArray[Any] = np.median(stack, axis=0).astype(
+                stack.dtype
+            )
+            medians[key] = median_frame
 
-        for obj_name, hint_medians in medians_by_device.items():
-            device = self._devices.get(obj_name)
-            if not isinstance(device, HasWriterLogic) or not isinstance(
-                device.writer_logic, ControllableDataWriter
-            ):
+            found_device: Device | None = buffer_to_device.get(key)
+            if found_device is None:
                 continue
-            # Write one median frame per device; use the first (and typically only) hint
-            for hint, median_frame in hint_medians.items():
-                median_key = f"{obj_name}_median"
-                try:
-                    device.writer_logic.register(
-                        name=median_key,
-                        dtype=median_frame.dtype,
-                        shape=median_frame.shape,
-                        capacity=1,
-                    )
-                    device.writer_logic.open(median_key)
-                    device.writer_logic.write_frame(median_key, median_frame)
-                    self.logger.debug(
-                        "Wrote median for %s hint '%s' to key '%s'.",
-                        obj_name,
-                        hint,
-                        median_key,
-                    )
-                except Exception:
-                    self.logger.exception(
-                        "Failed to write median for %s hint '%s'.", obj_name, hint
-                    )
-                break  # one write per detector (first matching hint)
-
-        self._frames.clear()
-        return doc
-
-    def _apply_median(self, doc: Event) -> Event:
-        if not self.medians:
-            return doc
-        self.packet.clear()
-        for key, value in doc["data"].items():
+            device = found_device
+            writer: DataWriter | None = getattr(device, "writer_logic", None)
+            if not isinstance(writer, ControllableDataWriter):
+                continue
+            median_key = f"{device.name}_median"
             try:
-                obj_name, hint = parse_key(key)
-            except ValueError:
-                continue
-            if hint not in self.hints:
-                continue
-            if obj_name not in self.medians or hint not in self.medians[obj_name]:
-                continue
-            median_applied: npt.NDArray[Any] = value / self.medians[obj_name][hint]
-            suffixed = f"{obj_name}_median"
-            self.packet.setdefault(suffixed, {})
-            self.packet[suffixed][hint] = median_applied
-        if self.packet:
-            self.sigNewData.emit(self.packet)
-        return doc
+                writer.register(
+                    name=median_key,
+                    dtype=median_frame.dtype,
+                    shape=median_frame.shape,
+                    capacity=1,
+                )
+                writer.open(median_key)
+                writer.write_frame(median_key, median_frame)
+                self.logger.debug(
+                    "Wrote median for buffer key '%s' to storage key '%s'.",
+                    key,
+                    median_key,
+                )
+            except Exception:
+                self.logger.exception(
+                    "Failed to write median for buffer key '%s'.", key
+                )
 
-    def _accumulate_frame(self, doc: Event) -> Event:
-        """Append raw frames from a scan event to the accumulation buffer."""
-        for key, value in doc["data"].items():
-            try:
-                obj_name, hint = parse_key(key)
-            except ValueError:
+        self._medians[run_uid] = medians
+        self._frames[run_uid] = {}  # drop raw frames
+
+    def _emit_corrected(
+        self,
+        reading: dict[str, Reading[npt.NDArray[Any]]],
+        medians: dict[str, npt.NDArray[Any]],
+    ) -> None:
+        """Divide live frames by the stored median and emit sigNewData."""
+        packet: dict[str, npt.NDArray[Any]] = {}
+        for key, r in reading.items():
+            if key not in medians:
                 continue
-            if hint not in self.hints:
-                continue
-            self._frames.setdefault((obj_name, hint), []).append(np.asarray(value))
-        return doc
+            corrected: npt.NDArray[Any] = np.asarray(r["value"]) / medians[key]
+            packet[f"{key}_corrected"] = corrected
+        if packet:
+            self.sigNewData.emit(packet)

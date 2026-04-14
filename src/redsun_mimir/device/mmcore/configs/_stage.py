@@ -52,14 +52,14 @@ class DemoXYStageConfig(BaseStageConfig):
 
     adapter: str = "DemoCamera"
     device: str = "DXYStage"
-    axis: list[str] = field(default_factory=lambda: ["X", "Y"])
+    axis: list[str] = field(default_factory=lambda: ["x", "y"])
 
     # inspected from mmcore c++ source code
     limits: dict[str, tuple[float, float]] = field(
-        default_factory=lambda: {"X": (0, 20_000.0), "Y": (0, 20_000.0)}
+        default_factory=lambda: {"x": (0, 20_000.0), "y": (0, 20_000.0)}
     )
     step_sizes: dict[str, float] = field(
-        default_factory=lambda: {"X": 0.015, "Y": 0.015}
+        default_factory=lambda: {"x": 0.015, "y": 0.015}
     )
 
 
@@ -69,10 +69,10 @@ class DemoZStageConfig(BaseStageConfig):
 
     adapter: str = "DemoCamera"
     device: str = "DStage"
-    axis: list[str] = field(default_factory=lambda: ["Z"])
+    axis: list[str] = field(default_factory=lambda: ["z"])
 
     # inspected from mmcore c++ source code
     limits: dict[str, tuple[float, float]] = field(
-        default_factory=lambda: {"Z": (-300.0, 300.0)}
+        default_factory=lambda: {"z": (-300.0, 300.0)}
     )
-    step_sizes: dict[str, float] = field(default_factory=lambda: {"Z": 0.025})
+    step_sizes: dict[str, float] = field(default_factory=lambda: {"z": 0.025})

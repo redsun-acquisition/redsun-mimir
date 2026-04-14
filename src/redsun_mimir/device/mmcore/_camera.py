@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from pymmcore_plus import CMMCorePlus as Core
-from redsun.device import ControllableDataWriter, DataWriter, Device
+from redsun.device import ControllableDataWriter, DataWriter, Device, SoftAttrR
 from redsun.engine import Status
 from redsun.log import Loggable
+from redsun.storage.protocols import HasWriterLogic
+from redsun.utils import resolve_sync_or_async
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
     from redsun.storage import PrepareInfo
 
 
-class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
+class MMCoreCameraDevice(Device, DetectorProtocol, HasWriterLogic, Loggable):
     """Camera wrapper for Micro-Manager Core.
 
     Parameters
@@ -106,7 +108,6 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         }
 
         self._device_schema = self._core.getDeviceSchema(self.name)
-        self._buffer_key = make_key(self.name, "buffer")
         self._roi_key = make_key(self.name, "roi")
         self._buffer_stream_key = make_key(self.name, "buffer_stream")
         self._fly_permit = th.Event()
@@ -121,9 +122,10 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
         self.logger.debug(f"Initialized {self.config.adapter} -> {self.config.device}")
 
-        self._read_buffer: npt.NDArray[Any] = np.zeros(
-            (self.roi[2], self.roi[3]), dtype=self.dtype
+        self.buffer: SoftAttrR[npt.NDArray[Any]] = SoftAttrR(
+            np.zeros((self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype))
         )
+        # Device.__setattr__ sets buffer.name = f"{name}-buffer" automatically
         # Writer is injected at construction time via dependency injection.
         # writer may be None in test/headless scenarios; guard accordingly.
         self._writer: ControllableDataWriter | None = writer
@@ -169,17 +171,19 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             if propr in self._properties.keys():
                 self._properties[propr].value = value
                 # in case we updated the pixel type
-                self._read_buffer = np.zeros(
-                    (self.roi[2], self.roi[3]), dtype=self.dtype
+                self.buffer._value = np.zeros(
+                    (self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype)
                 )
+                self.buffer._notify()
             elif propr == "exposure":
                 self._core.setExposure(self.name, value)
             elif propr == "roi":
                 # TODO: should we validate the ROI here?
                 self._core.setROI(self.name, *value)
-                self._read_buffer = np.zeros(
-                    (self.roi[2], self.roi[3]), dtype=self.dtype
+                self.buffer._value = np.zeros(
+                    (self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype)
                 )
+                self.buffer._notify()
                 self.roi = tuple(value)
             else:
                 raise ValueError(f"Property '{propr}' not found.")
@@ -288,7 +292,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         # if we're not flying,
         # take a new image and store it in the read buffer;
         if not self._fly_permit.is_set():
-            self._read_buffer = self._core.snap()
+            self.buffer._value = self._core.snap()
+            self.buffer._notify()
         s.set_finished()
         return s
 
@@ -420,7 +425,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         """
         stamp = time.time()
         return {
-            self._buffer_key: {"value": self._read_buffer, "timestamp": stamp},
+            **self.buffer.read(),
             self._roi_key: {"value": self.roi, "timestamp": stamp},
         }
 
@@ -432,20 +437,14 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         dict[str, dict[str, Descriptor]]
             A dictionary describing the data produced by the detector.
         """
-        # Base description without stream assets (for live reads)
-        describe: dict[str, Descriptor] = {
-            self._buffer_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [1, *self.roi[2:]],
-            },
+        return {
+            **self.buffer.describe(),
             self._roi_key: {
                 "source": "data",
                 "dtype": "array",
                 "shape": [4],
             },
         }
-        return describe
 
     def describe_collect(
         self,
@@ -503,7 +502,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._writer is None:
             return
 
-        frames_written = self._writer.get_indices_written(self.name)
+        frames_written = resolve_sync_or_async(
+            self._writer.get_indices_written(self.name)
+        )
         if frames_written == 0:
             return
 
@@ -517,13 +518,16 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._assets_collected = True
 
         # Delegate to writer
-        yield from self._writer.collect_stream_docs(self.name, frames_to_report)
+        yield from cast(
+            "Iterator[StreamAsset]",
+            self._writer.collect_stream_docs(self.name, frames_to_report),
+        )
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
         if self._writer is None:
             return 0
-        return self._writer.get_indices_written(self.name)
+        return resolve_sync_or_async(self._writer.get_indices_written(self.name))
 
     def _stream_to_disk(self, *, frames: int) -> None:
         """Stream data from the camera to disk.
@@ -554,7 +558,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 self._wait_for_buffer()
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
-                np.copyto(self._read_buffer, img)
+                np.copyto(self.buffer._value, img)
+                self.buffer._notify()
                 if self._writer is not None:
                     self._writer.write_frame(self.name, img)
                 frames_written += 1
@@ -566,7 +571,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 self._wait_for_buffer()
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
-                np.copyto(self._read_buffer, img)
+                np.copyto(self.buffer._value, img)
+                self.buffer._notify()
                 if self._writer is not None:
                     self._writer.write_frame(self.name, img)
                 frames_written += 1

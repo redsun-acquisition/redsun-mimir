@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
@@ -24,11 +24,28 @@ from redsun.storage import PrepareInfo
 from redsun.utils import find_signals
 from redsun.virtual import Signal
 
+from redsun_mimir.device.axis import MotorAxis  # noqa: TC001
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
-    MotorProtocol,
     ReadableFlyer,
 )
+
+
+class XYMotor(Protocol):
+    """Narrow protocol for plans that require an XY motor.
+
+    Any device exposing ``x`` and ``y`` attributes of type
+    [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] satisfies this
+    protocol structurally, without needing to subclass it.
+
+    Using this protocol as a plan parameter type lets mypy verify at
+    type-check time that the supplied device exposes both axes, without
+    relying on runtime ``children()`` introspection.
+    """
+
+    x: MotorAxis
+    y: MotorAxis
+
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -73,7 +90,7 @@ class StreamAction(Action):
 
 def square_scan(
     detectors: Sequence[DetectorProtocol],
-    motor: MotorProtocol,
+    motor: XYMotor,
     step: float,
     frames_per_side: int,
     axis: tuple[str, str],
@@ -87,14 +104,15 @@ def square_scan(
     ----------
     detectors : ``Sequence[DetectorProtocol]``
         The detectors to use for data collection.
-    motor : ``MotorProtocol``
-        The motor to use for the scan movement.
+    motor : ``XYMotor``
+        The motor to use for the scan movement. Must expose ``x`` and ``y``
+        axes as [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
     step : ``float``
         The step size for motor movement.
     frames_per_side : ``int``
         The number of frames to collect for each side of the square.
     axis : ``tuple[str, str]``
-        The order of motor movement axes.
+        The order of motor movement axes (e.g. ``("x", "y")``).
 
     Yields
     ------
@@ -103,25 +121,17 @@ def square_scan(
     """
     # scan on the positive direction...
     for idx in range(2):
-        ax = axis[idx]
-        # set the axis direction
-        yield from rps.set_property(motor, ax, propr="axis")
+        axis_device = getattr(motor, axis[idx])
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
-            yield from bps.mvr(motor, step)
-            # add a short delay to stabilize the readings
-            # after motor movement
+            yield from bps.mvr(axis_device, step)
             yield from bps.sleep(0.05)
     # scan on the negative direction
     for idx in range(2):
-        ax = axis[1 - idx]
-        # set the axis direction
-        yield from rps.set_property(motor, ax, propr="axis")
+        axis_device = getattr(motor, axis[1 - idx])
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
-            yield from bps.mvr(motor, -step)
-            # add a short delay to stabilize the readings
-            # after motor movement
+            yield from bps.mvr(axis_device, -step)
             yield from bps.sleep(0.05)
 
 
@@ -329,7 +339,7 @@ class AcquisitionPresenter(Presenter, Loggable):
     def live_median_scan(
         self,
         detectors: Sequence[ReadableFlyer],
-        motor: MotorProtocol,
+        motor: XYMotor,
         step: float = 1.0,
         step_egu: Literal["um", "mm", "nm"] = "um",
         scan_frames: int = 20,
@@ -354,9 +364,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         ----------
         - detectors: ``Sequence[ReadableFlyer]``
             - The detectors to use for data collection.
-        - motor: ``MotorProtocol``
+        - motor: ``XYMotor``
             - The motor to use for the scan movement.
-            - It must provide two axes of movement ("X" and "Y").
+            - Must expose ``x`` and ``y`` as
+              [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
         - step_egu: ``Literal["um", "mm", "nm"]``, optional
@@ -375,21 +386,19 @@ class AcquisitionPresenter(Presenter, Loggable):
         Raises
         ------
         - ``TypeError``
-            - If `motor` does not provide both "X" and "Y" axes of movement.
+            - If `motor` does not expose ``x`` and ``y`` axes.
         """
-        if len(motor.axes) < 2 or not all(ax in motor.axes for ax in ["X", "Y"]):
+        if not (hasattr(motor, "x") and hasattr(motor, "y")):
             raise TypeError(
-                "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {list(motor.axes)}"
+                "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
 
-        axis = ("X", "Y") if direction == "xy" else ("Y", "X")
+        axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.event_map.update(**scan.event_map, **stream.event_map)
 
-        # Resolve motor EGU from the first axis step_size descriptor
-        _first_axis = next(iter(motor.axes.values()))
-        _step_desc = _first_axis.step_size.describe()
-        motor_egu = next(iter(_step_desc.values())).get("units", "um")
+        # Resolve motor EGU from the x-axis step_size descriptor
+        _step_desc = motor.x.step_size.describe()
+        motor_egu: str = next(iter(_step_desc.values())).get("units") or "um"
 
         old_step, step = convert_to_target_egu(
             step, from_egu=step_egu, to_egu=motor_egu
@@ -415,16 +424,18 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
             if name == scan.name:
                 if motor_egu != step_egu:
-                    yield from rps.set_property(motor, step, propr="step_size")
+                    motor.x.step_size.set(step)
+                    motor.y.step_size.set(step)
                 yield from square_scan(
-                    detectors,
+                    detectors,  # type: ignore[arg-type]
                     motor,
                     step,
                     scan_frames // 4,
                     axis,
                 )
                 if step != old_step:
-                    yield from rps.set_property(motor, old_step, propr="step_size")
+                    motor.x.step_size.set(old_step)
+                    motor.y.step_size.set(old_step)
 
             elif name == stream.name:
                 self.logger.debug("Starting data streaming to disk")

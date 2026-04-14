@@ -86,10 +86,10 @@ class TestMotorView:
         _build_motor_view(widget, xy_mock_motor)
 
         assert "xystage" in widget._groups
-        assert "pos:xystage:X" in widget._labels
-        assert "pos:xystage:Y" in widget._labels
-        assert "button:xystage:X:up" in widget._buttons
-        assert "button:xystage:X:down" in widget._buttons
+        assert "pos:xystage:x" in widget._labels
+        assert "pos:xystage:y" in widget._labels
+        assert "button:xystage:x:up" in widget._buttons
+        assert "button:xystage:x:down" in widget._buttons
 
     def test_step_size_initialised_from_device(
         self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
@@ -97,8 +97,8 @@ class TestMotorView:
         """Step size line edits are seeded from device step_sizes."""
         _build_motor_view(widget, xy_mock_motor)
 
-        assert widget._line_edits["edit:xystage:X"].text() == "0.015"
-        assert widget._line_edits["edit:xystage:Y"].text() == "0.015"
+        assert widget._line_edits["edit:xystage:x"].text() == "0.015"
+        assert widget._line_edits["edit:xystage:y"].text() == "0.015"
 
     def test_update_position_changes_label(
         self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
@@ -106,8 +106,8 @@ class TestMotorView:
         """_update_position() refreshes the position label text."""
         _build_motor_view(widget, xy_mock_motor)
 
-        widget._update_position("xystage", "X", 7.5)
-        assert "7.50" in widget._labels["pos:xystage:X"].text()
+        widget._update_position("xystage", "x", 7.5)
+        assert "7.50" in widget._labels["pos:xystage:x"].text()
 
     def test_step_up_emits_signal(
         self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
@@ -118,9 +118,9 @@ class TestMotorView:
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("xystage", "X", direction_up=True)
+        widget._step("xystage", "x", direction_up=True)
         assert len(received) == 1
-        assert received[0] == ("xystage", "X", cast("float", pytest.approx(0.015)))
+        assert received[0] == ("xystage", "x", cast("float", pytest.approx(0.015)))
 
     def test_step_down_emits_signal(
         self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
@@ -131,9 +131,9 @@ class TestMotorView:
         received: list[tuple[str, str, float]] = []
         widget.sigMotorMove.connect(lambda m, a, p: received.append((m, a, p)))
 
-        widget._step("xystage", "X", direction_up=False)
+        widget._step("xystage", "x", direction_up=False)
         assert len(received) == 1
-        assert received[0] == ("xystage", "X", cast("float", pytest.approx(-0.015)))
+        assert received[0] == ("xystage", "x", cast("float", pytest.approx(-0.015)))
 
     def test_inject_dependencies_registers_signals(
         self,

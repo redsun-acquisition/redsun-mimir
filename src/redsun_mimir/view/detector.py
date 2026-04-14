@@ -49,7 +49,7 @@ class SettingsControlWidget(QtWidgets.QWidget):
     ) -> None:
         super().__init__(parent=parent)
 
-        self.tree_view = DescriptorTreeView(descriptors, readings, self)
+        self.tree_view = DescriptorTreeView(descriptors, readings, parent=self)
 
         self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
         self._enable_roi_button.setCheckable(True)

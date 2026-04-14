@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from dependency_injector import providers
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.utils import find_signals
+from redsun.utils import find_signals, resolve_sync_or_async
 from redsun.virtual import HasShutdown
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
@@ -71,7 +71,7 @@ class LightPresenter(Presenter, Loggable):
         """
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
-            result.update(light.read_configuration())
+            result.update(resolve_sync_or_async(light.read_configuration()))
         return result
 
     def models_description(self) -> dict[str, Descriptor]:
@@ -87,7 +87,7 @@ class LightPresenter(Presenter, Loggable):
         """
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
-            result.update(light.describe_configuration())
+            result.update(resolve_sync_or_async(light.describe_configuration()))
         return result
 
     def register_providers(self, container: VirtualContainer) -> None:

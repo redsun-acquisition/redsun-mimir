@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from attrs import define, field, setters, validators
 from redsun.device import Device, SoftAttrRW
 from redsun.engine import Status
 from redsun.log import Loggable
@@ -13,7 +12,6 @@ from redsun.utils.descriptors import (
     make_reading,
 )
 
-import redsun_mimir.device.utils as utils
 from redsun_mimir.protocols import LightProtocol
 
 if TYPE_CHECKING:
@@ -23,40 +21,35 @@ if TYPE_CHECKING:
     from redsun.storage import PrepareInfo
 
 
-@define(kw_only=True, init=False, eq=False)
 class MockLightDevice(Device, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes."""
 
-    name: str
-    binary: bool = field(
-        default=False,
-        validator=validators.instance_of(bool),
-        metadata={"description": "Binary mode operation."},
-    )
-    wavelength: int = field(
-        default=0,
-        validator=validators.instance_of(int),
-        metadata={"description": "Wavelength in nm."},
-    )
-    egu: str = field(
-        default="mW",
-        validator=validators.instance_of(str),
-        on_setattr=setters.frozen,
-        metadata={"description": "Engineering units."},
-    )
-    intensity_range: tuple[int | float, ...] = field(
-        default=None,
-        converter=utils.convert_to_tuple,
-        metadata={"description": "Intensity range (min, max)."},
-    )
-    step_size: int = field(
-        default=1,
-        validator=validators.instance_of(int),
-        metadata={"description": "Step size for the intensity."},
-    )
+    def __init__(
+        self,
+        name: str,
+        /,
+        *,
+        binary: bool = False,
+        wavelength: int = 0,
+        egu: str = "mW",
+        intensity_range: tuple[int | float, ...] | list[int | float] = (0.0, 0.0),
+        step_size: int = 1,
+    ) -> None:
+        super().__init__(name)
+        self.binary = binary
+        self.wavelength = wavelength
+        self.egu = egu
+        self.step_size = step_size
+        self.intensity_range: tuple[int | float, ...] = tuple(intensity_range)
 
-    @intensity_range.validator
-    def _check_range(self, _: str, value: tuple[int | float, ...]) -> None:
+        self._validate_intensity_range()
+
+        self.enabled: SoftAttrRW[bool] = SoftAttrRW[bool](False)
+        self.intensity: SoftAttrRW[float] = SoftAttrRW[float](0.0, units=self.egu)
+        self.logger.info("Initialized")
+
+    def _validate_intensity_range(self) -> None:
+        value = self.intensity_range
         if self.binary and value == (0.0, 0.0):
             return
         if len(value) != 2:
@@ -75,18 +68,7 @@ class MockLightDevice(Device, LightProtocol, Loggable):
                 f"(min != max), got: {value}"
             )
 
-    def __init__(self, name: str, /, **kwargs: Any) -> None:
-        super().__init__(name, **kwargs)
-        self.__attrs_init__(name=name, **kwargs)
-        self.enabled: SoftAttrRW[bool] = SoftAttrRW(
-            make_key(name, "enabled"), initial_value=False
-        )
-        self.intensity: SoftAttrRW[float] = SoftAttrRW(
-            make_key(name, "intensity"), initial_value=0.0, units=self.egu
-        )
-        self.logger.info("Initialized")
-
-    def set(self, value: Any, **kwargs: Any) -> Status:
+    def set(self, value: Any, **_kwargs: Any) -> Status:
         """Set the intensity of the light source.
 
         Parameters
@@ -144,7 +126,7 @@ class MockLightDevice(Device, LightProtocol, Loggable):
 
     def shutdown(self) -> None: ...
 
-    def prepare(self, value: PrepareInfo) -> Status:
+    def prepare(self, _: PrepareInfo) -> Status:
         """No-op: device metadata is forwarded via handle_descriptor_metadata."""
         s = Status()
         s.set_finished()

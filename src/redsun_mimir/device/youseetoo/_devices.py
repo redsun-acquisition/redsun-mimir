@@ -14,14 +14,14 @@ from serial import Serial
 
 import redsun_mimir.device.youseetoo.utils as uc2utils
 from redsun_mimir.device.axis import MotorAxis
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.protocols import LightProtocol
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
 
 if TYPE_CHECKING:
     from typing import Any, ClassVar, Final
 
-    from bluesky.protocols import Descriptor, Location, Reading
+    from bluesky.protocols import Descriptor, Reading
     from redsun.storage import PrepareInfo
 
 
@@ -183,13 +183,9 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         self.id = 1
         self.qid = 1
 
-        # SoftAttrRW for the mutable state attrs
-        self.enabled: SoftAttrRW[bool] = SoftAttrRW(
-            make_key(name, "enabled"), initial_value=False
-        )
-        self.intensity: SoftAttrRW[int] = SoftAttrRW(
-            make_key(name, "intensity"), initial_value=0, units=egu
-        )
+        # SoftAttrRW for the mutable state attrs; auto-named by Device.__setattr__
+        self.enabled: SoftAttrRW[bool] = SoftAttrRW[bool](False)
+        self.intensity: SoftAttrRW[int] = SoftAttrRW[int](0, units=egu)
 
         def callback(future: Future[Serial]) -> None:
             self._serial = future.result()
@@ -384,182 +380,86 @@ NM_TO_NM: Final[int] = 1
 UM_TO_NM: Final[int] = 1_000
 MM_TO_NM: Final[int] = 1_000_000
 
+_MOTOR_STEP: Final[int] = 320
 
-class MimirMotorDevice(Device, MotorProtocol, Loggable):
-    """Mimir interface for a motor stage.
+
+class MimirMotorAxis(MotorAxis, Loggable):
+    """One axis of a Mimir motor stage.
+
+    Sends movement commands over the shared Mimir serial link and tracks
+    position via its inherited
+    [`position`][redsun_mimir.device.axis.MotorAxis.position] signal.
 
     Parameters
     ----------
-    name: `str`
-        Name of the model.
-    egu: `str`
-        Engineering unit for the motor stage. Supported values are "nm", "um", "μm", "mm".
-        Default is "um".
-    step_sizes: `dict[str, float]`
-        Step sizes for the motor stage for each axis. The keys of the dictionary should be
-        the axis names (e.g. "X", "Y", "Z") and the values should be the step sizes in the specified
-        engineering unit. Default is {"X": 100.0, "Y": 100.0, "Z": 100.0}.
-
-    Attributes
-    ----------
-    motor_step: `int`, frozen
-        Step size of the motor in nanometers.
-        This is a constant value internal to the motor movement
-        operations, and is not configurable by the user.
-        Set to 320 nm by default.
+    name :
+        Axis name; overwritten by the parent
+        [`MimirMotorDevice`][redsun_mimir.device.youseetoo.MimirMotorDevice]
+        on assignment.
+    egu :
+        Engineering unit (``"nm"``, ``"um"``, ``"μm"``, or ``"mm"``).
+    step_size :
+        Initial step size in the given engineering unit.
+    axis_id :
+        Numeric axis identifier used in the Mimir serial protocol.
+    factor :
+        Conversion factor from *egu* to nanometres.
     """
-
-    # conversion factor for the engineering units
-    # used by the Mimir stage; the final steps the motor
-    # executes is computed as follows:
-    #   steps = value * self._map[model_info.egu] // self.motor_step
-    # where
-    # - `value` is the input value the engineering unit
-    # - `self._conversion_map[model_info.egu]` is the conversion factor
-    _conversion_map: ClassVar[dict[str, int]] = {
-        "nm": NM_TO_NM,
-        "um": UM_TO_NM,
-        "μm": UM_TO_NM,
-        "mm": MM_TO_NM,
-    }
-
-    _axis_id_map: ClassVar[dict[str, int]] = {
-        "X": 1,
-        "Y": 2,
-        "Z": 3,
-    }
-
-    motor_step: Final[int] = 320
 
     def __init__(
         self,
         name: str,
-        /,
-        egu: str = "um",
-        step_sizes: dict[str, float] = {"X": 100.0, "Y": 100.0, "Z": 100.0},
+        egu: str,
+        step_size: float,
+        axis_id: int,
+        factor: int,
     ) -> None:
-        if egu not in self._conversion_map.keys():
-            raise ValueError(
-                f"Invalid engineering unit: {egu}"
-                f"Supported units are: {list(self._conversion_map.keys())}"
-            )
+        super().__init__(name, egu, step_size)
+        self._axis_id = axis_id
+        self._factor = factor
 
-        super().__init__(
-            name,
-            egu=egu,
-            step_sizes=step_sizes,
-        )
-
-        _axis_list = list(step_sizes.keys())
-        self.axes: dict[str, MotorAxis] = {
-            ax: MotorAxis(
-                name=f"{name}-{ax}",
-                egu=egu,
-                step_size=float(step_sizes.get(ax, 100.0)),
-            )
-            for ax in _axis_list
-        }
-        self._active_axis: str = _axis_list[0]
-
-        def callback(future: Future[Serial]) -> None:
+        def _callback(future: Future[Serial]) -> None:
             self._serial = future.result()
             self.logger.debug("Serial port ready.")
 
         serial_or_future: Serial | Future[Serial] = MimirSerialDevice.get()
-
         if isinstance(serial_or_future, Future):
-            serial_or_future.add_done_callback(callback)
+            serial_or_future.add_done_callback(_callback)
         else:
             self._serial = serial_or_future
             self.logger.debug("Serial port ready.")
 
-        # set the conversion factor from egu to steps;
-        # it will be used to convert the input value
-        # to the number of steps the motor should execute
-        self._factor = self._conversion_map[egu]
-
-    def set(self, value: Any, **kwargs: Any) -> Status:
-        s = Status()
-        propr = kwargs.get("prop", None) or kwargs.get("propr", None)
-        if propr is not None:
-            self.logger.info("Setting property %s to %s.", propr, value)
-            if propr == "axis" and isinstance(value, str):
-                self._active_axis = value
-                s.set_finished()
-                return s
-            elif propr == "step_size" and isinstance(value, float):
-                self.axes[self._active_axis].step_size.set(float(value))
-                s.set_finished()
-                return s
-            else:
-                s.set_exception(ValueError(f"Invalid property: {propr}"))
-                return s
-        else:
-            if not isinstance(value, int | float):
-                s.set_exception(ValueError("Value must be a float or int."))
-                return s
-
-        # update the setpoint position for the current axis
-        self.axes[self._active_axis].position.get_value()
-        self.axes[self._active_axis].position.set(float(value))
-        steps = int(value * self._factor) // self.motor_step
-
-        self.logger.debug(f"Moving motor along {self._active_axis} of {steps} steps.")
-
-        action = MotorAction(
-            movement=MotorAction.generate_movement(
-                id=self._axis_id_map[self._active_axis], position=steps
-            ),
-            qid=self._axis_id_map[self._active_axis],
-        )
-        s.add_callback(self._update_readback)
-        self._send_command(action, s)
-        return s
-
-    def locate(self) -> Location[float]:
-        """Locate mock model."""
-        pos = self.axes[self._active_axis].position.get_value()
-        return {"setpoint": pos, "readback": pos}
-
-    def read_configuration(self) -> dict[str, Reading[Any]]:
-        result: dict[str, Reading[Any]] = {}
-        for axis in self.axes.values():
-            result.update(axis.read())
-        return result
-
-    def describe_configuration(self) -> dict[str, Descriptor]:
-        result: dict[str, Descriptor] = {}
-        for axis in self.axes.values():
-            result.update(axis.describe())
-        return result
-
-    def shutdown(self) -> None: ...
-
-    def prepare(self, _: PrepareInfo) -> Status:
-        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
-        s = Status()
-        s.set_finished()
-        return s
-
-    def _send_command(self, command: MotorAction, status: Status) -> None:
-        """Send a command to the motor stage.
+    def set(self, value: float, **_kwargs: Any) -> Status:
+        """Move this axis by *value* (relative step).
 
         Parameters
         ----------
-        command: `MotorAction`
-            Command to send to the motor stage.
-        status: `Status`
-            Status object associated to the command.
+        value :
+            Step distance in the axis engineering unit.
+
+        Returns
+        -------
+        Status
+            Completes after the Mimir hardware acknowledges the move.
         """
+        s = Status()
+        self.position.set(self.position.get_value() + value)
+        steps = int(value * self._factor) // _MOTOR_STEP
+        self.logger.debug(f"Moving {self.name} by {steps} steps.")
+        action = MotorAction(
+            movement=MotorAction.generate_movement(id=self._axis_id, position=steps),
+            qid=self._axis_id,
+        )
+        self._send_command(action, s)
+        return s
+
+    def _send_command(self, command: MotorAction, status: Status) -> None:
         packet = msgspec.json.encode(command)
         written = self._serial.write(packet)
         self.logger.debug(f"Sent command: {packet.decode()}")
         if written is None or written != len(packet):
             status.set_exception(ValueError("Failed to write to serial port."))
             return
-        # wait for the acknowledge response
-        # and clean it up
-        # to remove unwanted characters
         resp_str = (
             str(self._serial.read_until(expected=b"--"))
             .replace("+", "")
@@ -572,7 +472,6 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         if not resp_str:
             status.set_exception(ValueError("Failed to read from serial port."))
             return
-
         self.logger.debug(f"Received response: {resp_str}")
         try:
             response = msgspec.json.decode(resp_str, type=Acknowledge)
@@ -584,9 +483,6 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
                 ValueError(f"Invalid response from motor. Received: {response}")
             )
             return
-        # wait for the motor response
-        # and clean it up
-        # to remove unwanted characters
         motor_resp_str = (
             str(self._serial.read_until(expected=b"--"))
             .replace("+", "")
@@ -618,8 +514,89 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         self._serial.reset_input_buffer()
         status.set_finished()
 
-    def _update_readback(self, status: Status) -> None:
-        """No-op callback kept for bluesky compatibility.
 
-        Position is already stored on the ``MotorAxis`` via ``set()``.
-        """
+class MimirMotorDevice(Device, Loggable):
+    """Container device for Mimir motor stage axes.
+
+    Validates the engineering unit, constructs one
+    [`MimirMotorAxis`][redsun_mimir.device.youseetoo.MimirMotorAxis] per
+    entry in *step_sizes*, and exposes them as typed child attributes
+    (``device.x``, ``device.y``, ``device.z``).
+
+    All movement logic lives in the individual axis objects.
+    ``read_configuration`` and ``describe_configuration`` aggregate from
+    all child axes.
+
+    Parameters
+    ----------
+    name :
+        Identity key of the device.
+    egu :
+        Engineering unit. Supported: ``"nm"``, ``"um"``, ``"μm"``, ``"mm"``.
+    step_sizes :
+        Per-axis step sizes. Keys are axis names (``"x"``, ``"y"``, ``"z"``).
+    """
+
+    _conversion_map: ClassVar[dict[str, int]] = {
+        "nm": NM_TO_NM,
+        "um": UM_TO_NM,
+        "μm": UM_TO_NM,
+        "mm": MM_TO_NM,
+    }
+
+    _axis_id_map: ClassVar[dict[str, int]] = {
+        "x": 1,
+        "y": 2,
+        "z": 3,
+    }
+
+    def __init__(
+        self,
+        name: str,
+        /,
+        egu: str = "um",
+        step_sizes: dict[str, float] = {"x": 100.0, "y": 100.0, "z": 100.0},
+    ) -> None:
+        if egu not in self._conversion_map:
+            raise ValueError(
+                f"Invalid engineering unit: {egu}. "
+                f"Supported units are: {list(self._conversion_map.keys())}"
+            )
+        super().__init__(name, egu=egu, step_sizes=step_sizes)
+        factor = self._conversion_map[egu]
+        for ax, step_size in step_sizes.items():
+            setattr(
+                self,
+                ax,
+                MimirMotorAxis(
+                    name=f"{name}-{ax}",
+                    egu=egu,
+                    step_size=float(step_size),
+                    axis_id=self._axis_id_map[ax],
+                    factor=factor,
+                ),
+            )
+
+    def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Aggregate read() from all child axes."""
+        result: dict[str, Reading[Any]] = {}
+        for _, axis in self.children():
+            if isinstance(axis, MimirMotorAxis):
+                result.update(axis.read())
+        return result
+
+    def describe_configuration(self) -> dict[str, Descriptor]:
+        """Aggregate describe() from all child axes."""
+        result: dict[str, Descriptor] = {}
+        for _, axis in self.children():
+            if isinstance(axis, MimirMotorAxis):
+                result.update(axis.describe())
+        return result
+
+    def shutdown(self) -> None: ...
+
+    def prepare(self, _: PrepareInfo) -> Status:
+        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
+        s = Status()
+        s.set_finished()
+        return s

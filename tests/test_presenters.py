@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 from redsun.virtual import VirtualContainer
 
@@ -14,6 +15,7 @@ from redsun_mimir.device.mmcore import MMCoreStageDevice
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
+from tests.conftest import MockBufferDevice, make_descriptor, make_start, make_stop
 
 
 class TestMotorPresenter:
@@ -30,8 +32,9 @@ class TestMotorPresenter:
         ctrl.shutdown()
 
     def test_instantiation(self, controller: MotorPresenter) -> None:
-        """Controller initialises and identifies motor devices."""
-        assert "xystage" in controller._motors
+        """Controller initialises and identifies motor axes."""
+        assert "xystage" in controller._axes
+        assert set(controller._axes["xystage"]) == {"x", "y"}
 
     def test_register_providers(
         self, controller: MotorPresenter, virtual_container: VirtualContainer
@@ -56,14 +59,14 @@ class TestMotorPresenter:
             done.set()
 
         controller.sigNewPosition.connect(on_position)
-        controller.move("xystage", "X", 10.0)
+        controller.move("xystage", "x", 10.0)
         assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
         assert len(received) == 1
         motor_name, axis, pos = received[0]
         assert motor_name == "xystage"
-        assert axis == "X"
+        assert axis == "x"
         assert pos == pytest.approx(10.0)
-        assert xy_mock_motor.locate()["setpoint"] == pytest.approx(10.0)
+        assert xy_mock_motor.x.locate()["setpoint"] == pytest.approx(10.0)  # type: ignore[attr-defined]
 
     def test_move_via_device_name(
         self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
@@ -73,9 +76,9 @@ class TestMotorPresenter:
 
         done = threading.Event()
         controller.sigNewPosition.connect(lambda m, a, p: done.set())
-        controller.move(xy_mock_motor.name, "X", 5.0)
+        controller.move(xy_mock_motor.name, "x", 5.0)
         assert done.wait(timeout=2.0), "sigNewPosition was not emitted in time"
-        assert xy_mock_motor.locate()["setpoint"] == pytest.approx(5.0)
+        assert xy_mock_motor.x.locate()["setpoint"] == pytest.approx(5.0)  # type: ignore[attr-defined]
 
     def test_configure_step_size(
         self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
@@ -83,20 +86,20 @@ class TestMotorPresenter:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
         controller.sigNewConfiguration.connect(lambda m, r: received.append((m, r)))
-        step_key = "xystage-X_step_size"
+        step_key = "xystage-x-step_size"
         result = controller.configure("xystage", {step_key: 0.5})
         assert result.get(step_key) is True
-        assert xy_mock_motor.step_sizes["X"] == pytest.approx(0.5)
+        assert xy_mock_motor.x.step_size.get_value() == pytest.approx(0.5)  # type: ignore[attr-defined]
         assert len(received) == 1
 
     def test_configure_via_device_name(
         self, controller: MotorPresenter, xy_mock_motor: MMCoreStageDevice
     ) -> None:
         """configure() accepts the bare device name."""
-        step_key = f"{xy_mock_motor.name}-X_step_size"
+        step_key = f"{xy_mock_motor.name}-x-step_size"
         result = controller.configure(xy_mock_motor.name, {step_key: 2.0})
         assert result.get(step_key) is True
-        assert xy_mock_motor.step_sizes["X"] == pytest.approx(2.0)
+        assert xy_mock_motor.x.step_size.get_value() == pytest.approx(2.0)  # type: ignore[attr-defined]
 
     def test_shutdown_stops_daemon(self, controller: MotorPresenter) -> None:
         """shutdown() terminates the background thread gracefully."""
@@ -138,33 +141,33 @@ class TestLightPresenter:
         self, controller: LightPresenter, mock_led: MockLightDevice
     ) -> None:
         """trigger() toggles the target light source."""
-        assert mock_led.enabled is False
+        assert mock_led.enabled.get_value() is False
         controller.trigger("led")
-        assert mock_led.enabled is True
+        assert mock_led.enabled.get_value() is True
         controller.trigger("led")
-        assert mock_led.enabled is False
+        assert mock_led.enabled.get_value() is False
 
     def test_trigger_via_device_name(
         self, controller: LightPresenter, mock_led: MockLightDevice
     ) -> None:
         """trigger() accepts the bare device name."""
-        assert mock_led.enabled is False
+        assert mock_led.enabled.get_value() is False
         controller.trigger(mock_led.name)
-        assert mock_led.enabled is True
+        assert mock_led.enabled.get_value() is True
 
     def test_set_intensity(
         self, controller: LightPresenter, mock_laser: MockLightDevice
     ) -> None:
         """set() updates the intensity of the target light source."""
         controller.set("laser", 75.0)
-        assert mock_laser.intensity == pytest.approx(75.0)
+        assert mock_laser.intensity.get_value() == pytest.approx(75.0)
 
     def test_set_intensity_via_device_name(
         self, controller: LightPresenter, mock_laser: MockLightDevice
     ) -> None:
         """set() accepts the bare device name."""
         controller.set(mock_laser.name, 42.0)
-        assert mock_laser.intensity == pytest.approx(42.0)
+        assert mock_laser.intensity.get_value() == pytest.approx(42.0)
 
     def test_non_light_devices_are_excluded(
         self, xy_mock_motor: MMCoreStageDevice, virtual_container: VirtualContainer
@@ -176,127 +179,174 @@ class TestLightPresenter:
 
 
 class TestMedianPresenter:
-    """Tests for MedianPresenter."""
+    """Tests for the redesigned MedianPresenter (buffer-subscription model)."""
 
     @pytest.fixture
-    def presenter(
-        self, virtual_container: VirtualContainer
-    ) -> Generator[MedianPresenter, None, None]:
-        yield MedianPresenter(
+    def presenter(self, mock_buffer_device: MockBufferDevice) -> MedianPresenter:
+        return MedianPresenter(
             "median_presenter",
+            {"camera1": mock_buffer_device},  # type: ignore[dict-item]
+            median_streams=["square_scan"],
+            live_streams=["live"],
+        )
+
+    def test_instantiation_no_hints(self) -> None:
+        """Presenter accepts no hints parameter."""
+        p = MedianPresenter(
+            "p",
             {},
             median_streams=["square_scan"],
-            live_streams=["primary"],
-            hints=["buffer"],
+            live_streams=["live"],
         )
+        assert p.median_streams == frozenset({"square_scan"})
+        assert p.live_streams == frozenset({"live"})
 
-    def _make_event(self, descriptor_uid: str, data: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "descriptor": descriptor_uid,
-            "data": data,
-            "timestamps": {k: 0.0 for k in data},
-            "seq_num": 1,
-            "uid": "evt-uid",
-            "time": 0.0,
-        }
+    def test_start_subscribes_to_buffer(self, presenter: MedianPresenter) -> None:
+        """start() subscribes presenter to each device's buffer for that run."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        assert "run-1" in presenter._subscriptions
+        assert len(presenter._subscriptions["run-1"]) == 1
 
-    def _make_descriptor(self, uid: str, name: str) -> dict[str, Any]:
-        return {
-            "uid": uid,
-            "name": name,
-            "run_start": "run-uid",
-            "data_keys": {},
-            "time": 0.0,
-            "configuration": {},
-            "hints": {},
-            "object_keys": {},
-        }
+    def test_scan_descriptor_sets_scan_phase(self, presenter: MedianPresenter) -> None:
+        """descriptor() for a median_stream sets phase to 'scan'."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d-1", "square_scan", "run-1"))  # type: ignore[arg-type]
+        assert presenter._phase["run-1"] == "scan"
 
-    def test_instantiation(self, presenter: MedianPresenter) -> None:
-        """Presenter initialises with empty state."""
-        assert presenter.medians == {}
+    def test_scan_phase_accumulates_buffer_frames(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """Buffer pushes during scan phase are appended to _frames."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d-1", "square_scan", "run-1"))  # type: ignore[arg-type]
 
-    def test_descriptor_stores_stream_name(self, presenter: MedianPresenter) -> None:
-        """descriptor() maps UID to stream name."""
-        doc = self._make_descriptor("desc-uid", "square_scan")
-        presenter.descriptor(doc)  # type: ignore[arg-type]
-        assert presenter.uid_to_stream["desc-uid"] == "square_scan"
+        frame = np.ones((4, 4)) * 3.0
+        mock_buffer_device.buffer._value = frame
+        mock_buffer_device.buffer._notify()
 
-    def test_expected_stream_stacks_data(self, presenter: MedianPresenter) -> None:
-        """Events from an expected stream are stacked, not emitted."""
-        desc_uid = "desc-1"
-        presenter.uid_to_stream[desc_uid] = "square_scan"
+        frames = presenter._frames["run-1"].get("camera1-buffer", [])
+        assert len(frames) == 1
+        np.testing.assert_array_equal(frames[0], frame)
 
-        frame = np.ones((4, 4))
-        evt = self._make_event(desc_uid, {"cam-buffer": frame})
+    def test_stream_switch_computes_median(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """descriptor() for live_stream after scan phase computes and stores median."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d-scan", "square_scan", "run-1"))  # type: ignore[arg-type]
 
-        emitted: list[Any] = []
+        frame = np.ones((4, 4)) * 4.0
+        for _ in range(3):
+            mock_buffer_device.buffer._value = frame.copy()
+            mock_buffer_device.buffer._notify()
+
+        presenter.descriptor(make_descriptor("d-live", "live", "run-1"))  # type: ignore[arg-type]
+
+        assert "camera1-buffer" in presenter._medians["run-1"]
+        np.testing.assert_array_almost_equal(
+            presenter._medians["run-1"]["camera1-buffer"],
+            np.ones((4, 4)) * 4.0,
+        )
+        assert presenter._frames["run-1"] == {}
+
+    def test_live_phase_emits_corrected_frames(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """Buffer pushes during live phase emit sigNewData with frame / median."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d-scan", "square_scan", "run-1"))  # type: ignore[arg-type]
+
+        median_val = np.ones((4, 4)) * 2.0
+        mock_buffer_device.buffer._value = median_val.copy()
+        mock_buffer_device.buffer._notify()
+
+        presenter.descriptor(make_descriptor("d-live", "live", "run-1"))  # type: ignore[arg-type]
+
+        emitted: list[dict[str, npt.NDArray[np.float64]]] = []
         presenter.sigNewData.connect(lambda d: emitted.append(d))
 
-        presenter.event(evt)  # type: ignore[arg-type]
+        live_frame = np.ones((4, 4)) * 6.0
+        mock_buffer_device.buffer._value = live_frame.copy()
+        mock_buffer_device.buffer._notify()
 
-        # Data should be stacked, not emitted yet
+        assert len(emitted) == 1
+        result = next(iter(emitted[0].values()))
+        np.testing.assert_array_almost_equal(result, np.ones((4, 4)) * 3.0)
+
+    def test_no_emission_before_median_computed(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """Live buffer push before any scan is a no-op (no median available)."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d-live", "live", "run-1"))  # type: ignore[arg-type]
+
+        emitted: list[object] = []
+        presenter.sigNewData.connect(lambda d: emitted.append(d))
+
+        mock_buffer_device.buffer._value = np.ones((4, 4))
+        mock_buffer_device.buffer._notify()
+
         assert emitted == []
 
-    def test_live_stream_computes_and_emits_median(
-        self, presenter: MedianPresenter
+    def test_stop_unsubscribes_buffer(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
     ) -> None:
-        """Events from a non-expected stream trigger median computation and emission."""
-        scan_uid = "scan-desc"
-        live_uid = "live-desc"
-        presenter.uid_to_stream[scan_uid] = "square_scan"
-        presenter.uid_to_stream[live_uid] = "primary"
+        """stop() removes all subscriptions for that run."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.stop(make_stop("run-1"))  # type: ignore[arg-type]
 
-        # Stack two identical frames so median == the frame itself
-        frame = np.ones((4, 4)) * 2.0
+        assert "run-1" not in presenter._subscriptions
+
+        emitted: list[object] = []
+        presenter.sigNewData.connect(lambda d: emitted.append(d))
+        mock_buffer_device.buffer._value = np.ones((4, 4))
+        mock_buffer_device.buffer._notify()
+        assert emitted == []
+
+    def test_stop_one_run_leaves_other_intact(
+        self, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """stop() for run-2 does not remove run-1's subscriptions or state."""
+        presenter = MedianPresenter(
+            "p",
+            {"camera1": mock_buffer_device},  # type: ignore[dict-item]
+            median_streams=["square_scan"],
+            live_streams=["live"],
+        )
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+        presenter.start(make_start("run-2"))  # type: ignore[arg-type]
+        presenter.descriptor(make_descriptor("d1", "square_scan", "run-1"))  # type: ignore[arg-type]
+
+        presenter.stop(make_stop("run-2"))  # type: ignore[arg-type]
+
+        assert "run-1" in presenter._subscriptions
+        assert len(presenter._subscriptions["run-1"]) == 1
+
+        mock_buffer_device.buffer._value = np.ones((4, 4)) * 5.0
+        mock_buffer_device.buffer._notify()
+        assert len(presenter._frames["run-1"].get("camera1-buffer", [])) == 1
+
+    def test_repeated_stream_cycle_resets_frames(
+        self, presenter: MedianPresenter, mock_buffer_device: MockBufferDevice
+    ) -> None:
+        """A second scan→live cycle uses fresh frames (first cycle's frames discarded)."""
+        presenter.start(make_start("run-1"))  # type: ignore[arg-type]
+
+        presenter.descriptor(make_descriptor("d-scan-1", "square_scan", "run-1"))  # type: ignore[arg-type]
+        for _ in range(3):
+            mock_buffer_device.buffer._value = np.ones((4, 4)) * 2.0
+            mock_buffer_device.buffer._notify()
+
+        presenter.descriptor(make_descriptor("d-live-1", "live", "run-1"))  # type: ignore[arg-type]
+        first_median = presenter._medians["run-1"]["camera1-buffer"].copy()
+
+        presenter.descriptor(make_descriptor("d-scan-2", "square_scan", "run-1"))  # type: ignore[arg-type]
         for _ in range(2):
-            presenter.event(self._make_event(scan_uid, {"cam-buffer": frame}))  # type: ignore[arg-type]
+            mock_buffer_device.buffer._value = np.ones((4, 4)) * 6.0
+            mock_buffer_device.buffer._notify()
 
-        # Now send a live event — median should be applied
-        emitted: list[Any] = []
-        presenter.sigNewData.connect(lambda d: emitted.append(d))
+        presenter.descriptor(make_descriptor("d-live-2", "live", "run-1"))  # type: ignore[arg-type]
+        second_median = presenter._medians["run-1"]["camera1-buffer"]
 
-        live_frame = np.ones((4, 4)) * 4.0
-        presenter.event(self._make_event(live_uid, {"cam-buffer": live_frame}))  # type: ignore[arg-type]
-
-        assert len(emitted) == 1
-        result = emitted[0]
-        # cam-median key should be present
-        assert any("median" in k for k in result)
-
-    def test_inactive_presenter_does_nothing(
-        self, virtual_container: VirtualContainer
-    ) -> None:
-        """Presenter with no streams configured ignores all events."""
-        p = MedianPresenter("median_presenter", {})
-        desc_uid = "desc-1"
-        p.uid_to_stream[desc_uid] = "square_scan"
-        frame = np.ones((4, 4))
-        evt = self._make_event(desc_uid, {"cam-buffer": frame})
-        emitted: list[Any] = []
-        p.sigNewData.connect(lambda d: emitted.append(d))
-        p.event(evt)  # type: ignore[arg-type]
-        assert emitted == []
-
-    def test_apply_median_skips_missing_device(
-        self, presenter: MedianPresenter
-    ) -> None:
-        """_apply_median does not raise if a device has no stacked median."""
-        live_uid = "live-desc"
-        presenter.uid_to_stream[live_uid] = "primary"
-        # Force median computation to only have "cam"
-        presenter.medians["cam"] = {"buffer": np.ones((4, 4)) * 2.0}
-        emitted: list[Any] = []
-        presenter.sigNewData.connect(lambda d: emitted.append(d))
-        # Send live event with both "cam" and "cam2" keys
-        evt = self._make_event(
-            live_uid,
-            {
-                "cam-buffer": np.ones((4, 4)) * 4.0,
-                "cam2-buffer": np.ones((4, 4)) * 4.0,
-            },
-        )
-        presenter.event(evt)  # type: ignore[arg-type]
-        assert len(emitted) == 1
-        assert "cam_median" in emitted[0]
-        assert "cam2_median" not in emitted[0]
+        np.testing.assert_array_almost_equal(first_median, np.ones((4, 4)) * 2.0)
+        np.testing.assert_array_almost_equal(second_median, np.ones((4, 4)) * 6.0)

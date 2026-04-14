@@ -13,104 +13,84 @@ from bluesky.protocols import (
     Triggerable,
     WritesStreamAssets,
 )
-from redsun.device import PDevice
+from redsun.device import AttrR, PDevice
 from redsun.storage import HasWriterLogic
 
 if TYPE_CHECKING:
+    import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
     from redsun.engine import Status
-
-    from redsun_mimir.device.axis import MotorAxis
 
 
 @runtime_checkable
 class Settable(Movable[Any], Protocol):
-    """Protocol for settable models.
+    """Protocol for settable devices.
 
-    Reimplemented from the ``Movable`` bluesky protocol
-    for a more generic use case.
+    Extends [`Movable`][bluesky.protocols.Movable] with support for
+    keyword-argument property updates alongside the standard positional
+    ``value`` argument.
 
-    Models implementing this protocol should be able to
-    set a value and return a status object.
+    Parameters
+    ----------
+    value :
+        New value. When no keyword arguments are provided the device is
+        moved to this value (position, intensity, etc.).
+    **kwargs :
+        Optional property selector.  Pass ``prop="<name>"`` or
+        ``propr="<name>"`` to update a named configuration property
+        instead of performing a move.
+
+    Examples
+    --------
+    ```python
+    # Move motor
+    status = motor.set(10.0)
+    # Switch active axis
+    status = motor.set("Y", prop="axis")
+    ```
     """
 
     def set(self, value: Any, **kwargs: Any) -> Status:
-        """Set a value in the model.
-
-        `set` usage is dual:
-
-        - when no keyword arguments are provided,
-          the method will set a default ``value``
-          for which the model was implemented
-          (i.e. motor position, temperature, etc.);
-        - when keyword arguments are provided,
-          the method will update a configuration value
-          of the target device; for reference use ``prop``
-          as the keyword name.
-
-        For example, a motorized device can use
-        this protocol as follows:
-
-        .. code-block:: python
-
-            # set motor position
-            status = motor.set(10)
-
-            # update configuration value
-            status = motor.set("Y", prop="axis")
-
-
-        Parameters
-        ----------
-        value : ``Any``
-            New value to set.
-            When no keyword arguments are provided,
-            the method will set the object to ``value``.
-        **kwargs : ``Any``
-            Additional keyword arguments.
-            When used, the method will update
-            a local configuration value.
-
-        Returns
-        -------
-        ``Status``
-            Status object of the operation.
-
-        """
+        """Set a value or update a configuration property."""
         ...
 
 
 @runtime_checkable
-class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
-    """Protocol for motor models.
+class MotorProtocol(PDevice, Locatable[Any], Protocol):
+    """Protocol for individual motor axes.
 
-    Implements the ``Locatable`` protocol.
+    Extends [`PDevice`][redsun.device.PDevice] with
+    [`Locatable`][bluesky.protocols.Locatable], which already includes
+    [`Movable`][bluesky.protocols.Movable] (and therefore ``set()`` and
+    ``locate()``).
 
-    Attributes
-    ----------
-    axes : ``dict[str, MotorAxis]``
-        Mapping of axis name to :class:`~redsun_mimir.device.axis.MotorAxis`
-        child objects, each holding ``step_size`` and ``position`` attrs.
+    Satisfied structurally by
+    [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] subclasses such as
+    [`MMCoreXYAxis`][redsun_mimir.device.mmcore.MMCoreXYAxis] and
+    [`MMCoreZAxis`][redsun_mimir.device.mmcore.MMCoreZAxis].
     """
-
-    axes: dict[str, MotorAxis]
 
 
 @runtime_checkable
 class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
     """Protocol for light models.
 
-    Implements the ``Readable`` protocol.
-
     Attributes
     ----------
-    intensity : ``float | int``
+    intensity :
         Light intensity.
-    enabled : ``bool``
-        Light activation status.
-        - ``True``: light is on
-        - ``False``: light is off
-
+    enabled :
+        Light activation status (``True`` = on, ``False`` = off).
+    binary :
+        Whether the light source is binary (on/off only).
+    wavelength :
+        Wavelength of the light source in nanometres.
+    egu :
+        Engineering unit for intensity (e.g. ``"mW"``).
+    intensity_range :
+        Minimum and maximum intensity values.
+    step_size :
+        Intensity increment per step.
     """
 
     intensity: Any
@@ -126,9 +106,8 @@ class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
 
         Returns
         -------
-        ``Status``
+        Status
             Status object of the operation.
-
         """
         ...
 
@@ -139,17 +118,16 @@ class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
 
         Returns
         -------
-        ``dict[str, Reading[int | float | bool]]``
+        dict[str, Reading[int | float | bool]]
             Dictionary with the current light intensity and activation status.
-
         """
         ...
 
     def describe(self) -> dict[str, Descriptor]:
         """Return a dictionary with the same keys as ``read``.
 
-        The dictionary holds the metadata with relevant
-        information about the light source.
+        The dictionary holds metadata with relevant information about the
+        light source.
         """
         ...
 
@@ -158,26 +136,20 @@ class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
 class DetectorProtocol(PDevice, Settable, Readable[Any], Stageable, Protocol):
     """Protocol for detector models.
 
-    Implements the following protocols:
-
-    - ``Settable``
-    - ``Readable``
-    - ``Stageable``
-
     Attributes
     ----------
-    roi : ``tuple[int, int, int, int]``
-        Region of interest (ROI) for the detector.
-        The ROI is defined as a tuple of four integers:
-        - (x, y, width, height), where:
-            - x: X coordinate of the top-left corner of the ROI
-            - y: Y coordinate of the top-left corner of the ROI
-            - width: Width of the ROI
-            - height: Height of the ROI
+    roi :
+        Region of interest as ``(x, y, width, height)``.
+    sensor_shape :
+        Sensor dimensions as ``(height, width)``.
+    buffer :
+        In-memory circular buffer holding the most recently acquired frame.
+        Subscribers are notified via [`AttrR.subscribe`][] after each frame write.
     """
 
     roi: tuple[int, int, int, int]
     sensor_shape: tuple[int, int]
+    buffer: AttrR[npt.NDArray[Any]]
 
 
 @runtime_checkable
@@ -193,19 +165,18 @@ class ReadableFlyer(
 ):
     """Protocol for objects that are both Readable and Flyable.
 
-    A model compliant with this protocol is capable of being used
-    concurrently to read data continuously while flying,
-    and provides the necessary methods to be able to retrieve
-    the filepath locations of where the data is stored.
+    A model compliant with this protocol can read data continuously
+    while flying and provides methods to retrieve the file paths where
+    data is stored.
 
-    The required protocols are:
+    Required protocols:
 
-    - ``Readable`` (read() and describe() methods)
-    - ``Flyable`` (kickoff() and complete() methods)
-    - ``Preparable`` (prepare() method)
-    - ``Collectable`` (describe_collect() method)
-    - ``WritesStreamAssets`` (collect_asset_docs() method)
-    - ``HasWriterLogic`` (writer_logic property)
+    - [`Readable`][bluesky.protocols.Readable] (``read()`` and ``describe()``)
+    - [`Flyable`][bluesky.protocols.Flyable] (``kickoff()`` and ``complete()``)
+    - [`Preparable`][bluesky.protocols.Preparable] (``prepare()``)
+    - [`Collectable`][bluesky.protocols.Collectable] (``describe_collect()``)
+    - [`WritesStreamAssets`][bluesky.protocols.WritesStreamAssets] (``collect_asset_docs()``)
+    - [`HasWriterLogic`][redsun.storage.HasWriterLogic] (``writer_logic`` property)
     """
 
     sensor_shape: tuple[int, int]
