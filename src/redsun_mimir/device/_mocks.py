@@ -4,10 +4,9 @@ import time
 from typing import TYPE_CHECKING
 
 from attrs import define, field, setters, validators
-from redsun.device import Device
+from redsun.device import Device, SoftAttrRW
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import PrepareInfo, register_metadata
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -21,6 +20,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
+    from redsun.storage import PrepareInfo
 
 
 @define(kw_only=True, init=False, eq=False)
@@ -78,8 +78,12 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def __init__(self, name: str, /, **kwargs: Any) -> None:
         super().__init__(name, **kwargs)
         self.__attrs_init__(name=name, **kwargs)
-        self.enabled = False
-        self.intensity = 0.0
+        self.enabled: SoftAttrRW[bool] = SoftAttrRW(
+            make_key(name, "enabled"), initial_value=False
+        )
+        self.intensity: SoftAttrRW[float] = SoftAttrRW(
+            make_key(name, "intensity"), initial_value=0.0, units=self.egu
+        )
         self.logger.info("Initialized")
 
     def set(self, value: Any, **kwargs: Any) -> Status:
@@ -97,33 +101,17 @@ class MockLightDevice(Device, LightProtocol, Loggable):
         ``Status``
             The status object.
         """
-        s = Status()
         if not isinstance(value, int | float):
+            s = Status()
             s.set_exception(ValueError("Value must be a number."))
             return s
-        self.intensity = float(value)
-        s.set_finished()
-        return s
+        return self.intensity.set(float(value))
 
     def describe(self) -> dict[str, Descriptor]:
-        descriptor: dict[str, Descriptor] = {
-            make_key(self.name, "intensity"): make_descriptor(
-                "value", "number", units=self.egu
-            ),
-            make_key(self.name, "enabled"): {
-                "source": "value",
-                "dtype": "boolean",
-                "shape": [],
-            },
-        }
-        return descriptor
+        return {**self.intensity.describe(), **self.enabled.describe()}
 
     def read(self) -> dict[str, Reading[Any]]:
-        reading: dict[str, Reading[Any]] = {
-            make_key(self.name, "intensity"): make_reading(self.intensity, time.time()),
-            make_key(self.name, "enabled"): make_reading(self.enabled, time.time()),
-        }
-        return reading
+        return {**self.intensity.read(), **self.enabled.read()}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
@@ -157,22 +145,11 @@ class MockLightDevice(Device, LightProtocol, Loggable):
     def shutdown(self) -> None: ...
 
     def prepare(self, value: PrepareInfo) -> Status:
-        """Contribute light metadata to the acquisition metadata registry."""
+        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
         s = Status()
-        register_metadata(
-            self.name,
-            {
-                "light_wavelength": self.wavelength,
-                "light_intensity": self.intensity,
-                "light_enabled": self.enabled,
-            },
-        )
         s.set_finished()
         return s
 
     def trigger(self) -> Status:
         """Toggle the activation status of the light source."""
-        self.enabled = not self.enabled
-        s = Status()
-        s.set_finished()
-        return s
+        return self.enabled.set(not self.enabled.get_value())

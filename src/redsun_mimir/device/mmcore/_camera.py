@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from pymmcore_plus import CMMCorePlus as Core
-from redsun.device import Device
+from redsun.device import ControllableDataWriter, DataWriter, Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage.device import make_writer
 from redsun.utils.descriptors import (
     make_descriptor,
     make_key,
@@ -29,7 +28,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from redsun.storage import PrepareInfo, Writer
+    from redsun.storage import PrepareInfo
 
 
 class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
@@ -41,12 +40,21 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         Name of the device instance; used to register with the core.
     config: Literal["demo"]
         Configuration preset to use; determines the camera model and properties.
+    writer : ControllableDataWriter
+        Writer instance injected at construction time.  The camera calls
+        ``register()`` in ``prepare()``, ``open()`` and ``write_frame()``
+        during acquisition, and exposes it via ``writer_logic`` so that
+        presenters and callbacks can discover it via ``HasWriterLogic``.
     """
 
     initialized: ClassVar[bool] = False
 
     def __init__(
-        self, name: str, /, config: Literal["demo", "daheng"] = "demo"
+        self,
+        name: str,
+        /,
+        config: Literal["demo", "daheng"] = "demo",
+        writer: ControllableDataWriter | None = None,
     ) -> None:
         self.config: BaseCamConfig
         match config:
@@ -116,7 +124,14 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self._read_buffer: npt.NDArray[Any] = np.zeros(
             (self.roi[2], self.roi[3]), dtype=self.dtype
         )
-        self._writer = make_writer("application/x-zarr")
+        # Writer is injected at construction time via dependency injection.
+        # writer may be None in test/headless scenarios; guard accordingly.
+        self._writer: ControllableDataWriter | None = writer
+
+    @property
+    def writer_logic(self) -> DataWriter | None:
+        """Expose the injected writer so callbacks can discover it via HasWriterLogic."""
+        return self._writer
 
     @property
     def dtype(self) -> str:
@@ -292,13 +307,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
             capacity = 0 if value.write_forever else value.capacity
             width, height = self._core.getImageWidth(), self._core.getImageHeight()
 
-            self._sink = self._writer.prepare(
-                name=self.name,
-                data_key=self._buffer_stream_key,
-                dtype=np.dtype(self.dtype),
-                shape=(height, width),
-                capacity=capacity,
-            )
+            if self._writer is not None:
+                self._writer.register(
+                    name=self.name,
+                    dtype=np.dtype(self.dtype),
+                    shape=(height, width),
+                    capacity=capacity,
+                )
 
             self._thread = th.Thread(
                 target=self._stream_to_disk,
@@ -315,13 +330,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
     def kickoff(self) -> Status:
         """Kickoff a continuous acquisition.
 
-        Starts a background thread that continously
+        Starts a background thread that continuously
         streams images from the internal ring buffer
         into disk.
 
         Kickoff requires that stage() has been called
         to arm the device and prepare() has been called
-        to create the storage backend.
+        to register the storage source.
 
         Otherwise, the status will report an exception.
 
@@ -355,8 +370,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         else:
             # acquisition is already running
             # and ring buffer is ready:
-            # start the background thread
-            self._writer.kickoff()
+            # open the writer source and start the background thread
+            if self._writer is not None:
+                self._writer.open(self.name)
             self._fly_permit.set()
             s.set_finished()
         return s
@@ -365,8 +381,7 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         """Complete the continuous acquisition.
 
         Stops the background thread that streams images
-        from the internal ring buffer into disk and
-        closes the storage backend.
+        from the internal ring buffer into disk.
 
         If kickoff() was not called before, the status
         will report an exception.
@@ -485,6 +500,9 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         if self._assets_collected:
             return
 
+        if self._writer is None:
+            return
+
         frames_written = self._writer.get_indices_written(self.name)
         if frames_written == 0:
             return
@@ -503,6 +521,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
 
     def get_index(self) -> int:
         """Return the number of frames written since last flight."""
+        if self._writer is None:
+            return 0
         return self._writer.get_indices_written(self.name)
 
     def _stream_to_disk(self, *, frames: int) -> None:
@@ -521,12 +541,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         self.logger.debug("Starting streaming thread.")
 
         # regardless of whether its
-        # a continous acquisition or not,
+        # a continuous acquisition or not,
         # there is an unfortunate extra copy
         # to the internal ring buffer;
         # it would be spared if we could
         # access the camera image buffer directly
         frames_written = 0
+        last_frame = 0
         if frames > 0:
             self._core.startSequenceAcquisition(frames, self._current_exposure, False)
             while frames_written < frames:
@@ -534,7 +555,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
-                self._sink.write(img)
+                if self._writer is not None:
+                    self._writer.write_frame(self.name, img)
                 frames_written += 1
             self._core.stopSequenceAcquisition()
         else:
@@ -545,10 +567,11 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
                 img, md = self._core.popNextImageAndMD()
                 last_frame = int(md["ImageNumber"])
                 np.copyto(self._read_buffer, img)
-                self._sink.write(img)
+                if self._writer is not None:
+                    self._writer.write_frame(self.name, img)
                 frames_written += 1
             self._core.stopSequenceAcquisition()
-        self._sink.close()
+        # writer.close() is managed by FileStoragePresenter, not the camera
         self._complete_status.set_finished()
         self.logger.debug(f"Streaming completed. Wrote {frames_written}.")
         if (last_frame + 1) > frames_written:
@@ -562,7 +585,3 @@ class MMCoreCameraDevice(Device, DetectorProtocol, Loggable):
         """
         while self._core.getRemainingImageCount() < 1:
             time.sleep(self._current_exposure)
-
-    def get_writer(self) -> Writer:
-        """Get the writer associated with this device."""
-        return self._writer

@@ -156,8 +156,18 @@ class MotorView(QtView):
         self._device_readings = devices
 
         for device_label, readings in devices.items():
-            egu: str = _get_prop(readings, "egu", "")
-            axis: list[str] = _get_prop(readings, "axis", [])
+            # Infer EGU and axis list from step_size keys in description.
+            # Keys follow the pattern "{device_label}-{axis}-step_size".
+            step_keys = [
+                k
+                for k in description
+                if parse_key(k)[0] == device_label
+                and parse_key(k)[1].endswith("-step_size")
+            ]
+            egu: str = description[step_keys[0]].get("units", "") if step_keys else ""
+            axis: list[str] = [
+                parse_key(k)[1].removesuffix("-step_size") for k in step_keys
+            ]
 
             self._groups[device_label] = QtWidgets.QGroupBox(device_label)
             self._groups[device_label].setAlignment(
@@ -168,7 +178,10 @@ class MotorView(QtView):
 
             for i, ax in enumerate(axis):
                 suffix = f"{device_label}:{ax}"
-                initial_step: float = _get_prop(readings, f"{ax}_step_size", 1.0)
+                step_reading_key = f"{device_label}-{ax}-step_size"
+                initial_step: float = readings.get(step_reading_key, {}).get(
+                    "value", 1.0
+                )  # type: ignore[union-attr]
 
                 self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
                 self._labels["label:" + suffix].setTextFormat(
@@ -240,8 +253,15 @@ class MotorView(QtView):
         position : ``float``
             New position of the motor.
         """
-        dev_readings = self._device_readings.get(motor, {})
-        egu: str = _get_prop(dev_readings, "egu", "")
+        step_key = next(
+            (
+                k
+                for k in self._description
+                if k.endswith(f"-{axis}-step_size") and k.startswith(motor)
+            ),
+            None,
+        )
+        egu: str = self._description[step_key].get("units", "") if step_key else ""
         self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
 
     def _update_configuration(self, motor: str, success_map: dict[str, bool]) -> None:
@@ -256,10 +276,14 @@ class MotorView(QtView):
             :meth:`MotorPresenter.configure`.
         """
         for key, success in success_map.items():
-            # key is e.g. "motor-step_size:X"; extract axis from suffix
-            if ":" in key:
-                axis = key.split(":")[-1]
-                edit_key = f"edit:{motor}:{axis}"
+            # key is e.g. "{motor}-{axis}-step_size"; extract axis
+            try:
+                _, prop = parse_key(key)
+            except ValueError:
+                continue
+            if prop.endswith("-step_size"):
+                ax = prop.removesuffix("-step_size")
+                edit_key = f"edit:{motor}:{ax}"
                 if edit_key in self._line_edits:
                     color = "green" if success else "red"
                     self._line_edits[edit_key].setStyleSheet(
@@ -290,24 +314,9 @@ class MotorView(QtView):
             self._line_edits["edit:" + device_label + ":" + axis].setStyleSheet("")
 
         if state == QtGui.QRegularExpressionValidator.State.Acceptable:
-            # Resolve canonical keys from the flat config dict
-            axis_key = next(
-                (
-                    k
-                    for k in self._configuration
-                    if k.startswith(device_label) and k.rsplit("-", 1)[-1] == "axis"
-                ),
-                f"{device_label}-axis",
-            )
-            step_key = next(
-                (
-                    k
-                    for k in self._configuration
-                    if k.startswith(device_label)
-                    and k.rsplit("-", 1)[-1] == f"{axis}_step_size"
-                ),
-                f"{device_label}-{axis}_step_size",
-            )
+            # Canonical keys: "{device_label}-axis" and "{device_label}-{axis}-step_size"
+            axis_key = f"{device_label}-axis"
+            step_key = f"{device_label}-{axis}-step_size"
             self.sigConfigChanged.emit(
                 device_label,
                 {axis_key: axis, step_key: float(text)},

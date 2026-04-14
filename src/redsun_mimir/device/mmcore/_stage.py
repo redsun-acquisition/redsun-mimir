@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
 from pymmcore_plus import CMMCorePlus as Core
 from redsun.device import Device
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage.metadata import register_metadata
 from redsun.utils.descriptors import (
-    make_descriptor,
-    make_key,
-    make_reading,
     parse_key,
 )
 
+from redsun_mimir.device.axis import MotorAxis
 from redsun_mimir.device.mmcore.configs import (
     BaseStageConfig,
     DemoXYStageConfig,
@@ -64,29 +60,32 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
             self._core.initializeDevice(self.name)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize MMCore stage device: {e}") from e
-        # would be nice to recover the origin from
-        # a previous session, but i'm not sure there's
-        # a way to cache that reliably; might be worth
-        # to ask the pymmcore-plus developers
-        self.axis = self.config.axis
-        if self.axis == ["Z"]:
+
+        _axis_list = self.config.axis
+        if _axis_list == ["Z"]:
             self._core.setOrigin(self.name)
             self._stage_type = "Z"
-        elif self.axis == ["X", "Y"]:
+        elif _axis_list == ["X", "Y"]:
             self._core.setOriginXY(self.name)
             self._stage_type = "XY"
         else:
             raise ValueError(
                 "Unsupported axis configuration. Only ['X', 'Y'] and ['Z'] are supported."
             )
-        self.egu = "um"
-        self._positions: dict[str, Location[float]] = {
-            axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
+
+        _egu = "um"
+        # Build MotorAxis children.  The key prefix is "{device_name}-{axis_name}"
+        # so that read()/describe() produce canonical keys that group correctly
+        # in the view layer via parse_key().
+        self.axes: dict[str, MotorAxis] = {
+            ax: MotorAxis(
+                name=f"{self.name}-{ax}",
+                egu=_egu,
+                step_size=float(self.config.step_sizes.get(ax, 1.0)),
+            )
+            for ax in _axis_list
         }
-        # TODO: how to retrieve this information from the device?
-        # if it is available at all?
-        self.step_sizes = self.config.step_sizes
-        self._active_axis = self.axis[0]
+        self._active_axis: str = _axis_list[0]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         """Set something in the stage device."""
@@ -105,14 +104,14 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
                 return s
             elif propr == "step_size" and isinstance(value, int | float):
                 # bare "step_size" updates the currently active axis
-                self.step_sizes[self._active_axis] = value
+                self.axes[self._active_axis].step_size.set(float(value))
                 s.set_finished()
                 return s
-            elif propr.endswith("_step_size") and isinstance(value, int | float):
-                # axis-qualified form: "{ax}_step_size" (e.g. "X_step_size")
-                ax = propr[: -len("_step_size")]
-                if ax in self.step_sizes:
-                    self.step_sizes[ax] = value
+            elif propr.endswith("-step_size") and isinstance(value, int | float):
+                # axis-qualified form: "{ax}-step_size" (e.g. "X-step_size")
+                ax = propr.removesuffix("-step_size")
+                if ax in self.axes:
+                    self.axes[ax].step_size.set(float(value))
                     s.set_finished()
                     return s
                 s.set_exception(ValueError(f"Unknown axis in property: {propr}"))
@@ -124,7 +123,10 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
             if not isinstance(value, int | float):
                 s.set_exception(TypeError(f"Expected float, got {type(value)}"))
                 return s
+
         axis = self._active_axis
+        current_pos = self.axes[axis].position.get_value()
+        new_pos = current_pos + float(value)
         try:
             match self._stage_type:
                 case "Z":
@@ -146,50 +148,33 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
         except Exception as e:
             s.set_exception(RuntimeError(f"Failed to set position: {e}"))
             return s
-        self._positions[self._active_axis]["setpoint"] += value
+
+        # update position tracking on the MotorAxis
+        self.axes[axis].position.set(new_pos)
         s.add_callback(self._update_readback)
         s.set_finished()
         return s
 
     def locate(self) -> Location[float]:
         """Locate the active axis position."""
-        return self._positions[self._active_axis]
+        pos = self.axes[self._active_axis].position.get_value()
+        return {"setpoint": pos, "readback": pos}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        timestamp = time.time()
-        config: dict[str, Reading[Any]] = {
-            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.name, "axis"): make_reading(self.axis, timestamp),
-        }
-        for ax, step in self.step_sizes.items():
-            config[make_key(self.name, f"{ax}_step_size")] = make_reading(
-                step, timestamp
-            )
-        return config
+        result: dict[str, Reading[Any]] = {}
+        for axis in self.axes.values():
+            result.update(axis.read())
+        return result
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        descriptors: dict[str, Descriptor] = {
-            make_key(self.name, "egu"): make_descriptor(
-                "settings", "string", readonly=True
-            ),
-            make_key(self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)], readonly=True
-            ),
-        }
-        for ax in self.axis:
-            key = make_key(self.name, f"{ax}_step_size")
-            descriptors[key] = make_descriptor("settings", "number")
-        return descriptors
+        result: dict[str, Descriptor] = {}
+        for axis in self.axes.values():
+            result.update(axis.describe())
+        return result
 
     def prepare(self, _: PrepareInfo) -> Status:
-        """Contribute motor metadata to the acquisition metadata registry."""
+        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
         s = Status()
-        md: dict[str, Any] = {}
-        md.update({"motor_egu": self.egu})
-        for axis in self.axis:
-            md.update({f"position_{axis.lower()}": self._positions[axis]["readback"]})
-            md.update({f"step_size_{axis.lower()}": self.step_sizes[axis]})
-        register_metadata(self.name, md)
         s.set_finished()
         return s
 
@@ -197,17 +182,8 @@ class MMCoreStageDevice(Device, MotorProtocol, Loggable):
         self._core.unloadDevice(self.name)
 
     def _update_readback(self, status: Status) -> None:
-        """Update the currently active axis readback position.
+        """No-op callback kept for bluesky compatibility.
 
-        When the status object is set as finished successfully,
-        the readback position is updated to match the setpoint.
-
-        Parameters
-        ----------
-        s : Status
-            The status object associated with the callback.
+        Position is already stored on the ``MotorAxis`` via ``set()``;
+        the readback is not tracked separately.
         """
-        if status.success:
-            self._positions[self._active_axis]["readback"] = self._positions[
-                self._active_axis
-            ]["setpoint"]

@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
+from event_model import DocumentRouter
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import SessionPathProvider
+from redsun.storage import SessionPathProvider, handle_descriptor_metadata
 from redsun.storage.presenter import get_available_writers
 from redsun.utils import find_signals
 
@@ -14,11 +15,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
+    from event_model.documents import EventDescriptor
     from redsun.device import Device
     from redsun.virtual import VirtualContainer
 
 
-class FileStoragePresenter(Presenter, Loggable):
+class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
     """Presenter responsible for wiring writer URIs before each acquisition.
 
     Before each plan launch, iterates all registered writers and calls
@@ -31,16 +33,18 @@ class FileStoragePresenter(Presenter, Loggable):
 
         <base_dir>/<session>/<date>/<plan_name>_<group>_<counter>
 
-    This presenter must be registered *before* ``AcquisitionPresenter``
-    in the application container so that URIs are set before the plan
-    starts executing.
+    Also registers as a bluesky callback to forward descriptor metadata
+    (device configuration) into the active writers via
+    :func:`~redsun.storage.handle_descriptor_metadata`, and closes all
+    writers when ``sigPlanDone`` is emitted.
 
     Parameters
     ----------
     name : str
         Identity key of the presenter.
     devices : Mapping[str, Device]
-        Available devices (unused, required by ``Presenter`` interface).
+        Available devices. Used to discover writers via
+        :func:`~redsun.storage.presenter.get_available_writers`.
     """
 
     def __init__(
@@ -51,12 +55,13 @@ class FileStoragePresenter(Presenter, Loggable):
         **kwargs: Any,
     ) -> None:
         super().__init__(name, devices, **kwargs)
+        self._devices = devices
         root_directory = Path.home() / "redsun-storage"
         self._path_provider = SessionPathProvider(
             base_dir=root_directory, session="default"
         )
 
-        self.available_writers = get_available_writers()
+        self.available_writers = get_available_writers(devices)
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Provide the root directory and a string view of the available writers."""
@@ -69,19 +74,31 @@ class FileStoragePresenter(Presenter, Loggable):
             available_writers_map[mimetype] = list(groups.keys())
 
         container.available_writers = providers.Object(available_writers_map)
+        container.register_callbacks(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect pre-launch and root change signals."""
-        sigs = find_signals(container, ["sigPreLaunchNotify", "sigRootDirChanged"])
+        """Connect pre-launch, root-change, and plan-done signals."""
+        sigs = find_signals(
+            container,
+            ["sigPreLaunchNotify", "sigRootDirChanged", "sigPlanDone"],
+        )
         if "sigPreLaunchNotify" in sigs:
             sigs["sigPreLaunchNotify"].connect(self._prepare_writers)
         if "sigRootDirChanged" in sigs:
             sigs["sigRootDirChanged"].connect(self._refresh_path_provider)
+        if "sigPlanDone" in sigs:
+            sigs["sigPlanDone"].connect(self._close_writers)
+
+    def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
+        """Forward device configuration metadata into active writers."""
+        handle_descriptor_metadata(doc, self._devices)
+        return doc
 
     def _prepare_writers(self, plan_name: str) -> None:
         """Set a fresh URI on every registered writer before the plan starts.
 
-        Clear also the writer source cache.
+        Also clears the writer source cache so the previous run's sources
+        do not bleed into the new run.
 
         Parameters
         ----------
@@ -101,6 +118,17 @@ class FileStoragePresenter(Presenter, Loggable):
                     f"Set URI for writer ({group_name!r}, {mimetype!r}): "
                     f"{path_info.store_uri}"
                 )
+
+    def _close_writers(self) -> None:
+        """Close all registered writers after the plan completes."""
+        if not self.available_writers:
+            return
+        for groups in self.available_writers.values():
+            for writer in groups.values():
+                try:
+                    writer.close()
+                except Exception:  # noqa: PERF203
+                    self.logger.exception("Error closing writer %r.", writer)
 
     def _refresh_path_provider(self, new_base_dir: str) -> None:
         """Update the base directory of the path provider when it changes.

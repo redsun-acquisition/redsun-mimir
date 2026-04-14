@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 import msgspec
 from bluesky.protocols import Reading
-from redsun.device import Device
+from redsun.device import Device, SoftAttrRW
 from redsun.engine import Status
 from redsun.log import Loggable
-from redsun.storage import PrepareInfo, register_metadata
 from redsun.utils.descriptors import make_descriptor, make_key, make_reading
 from serial import Serial
 
 import redsun_mimir.device.youseetoo.utils as uc2utils
+from redsun_mimir.device.axis import MotorAxis
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, Final
 
     from bluesky.protocols import Descriptor, Location, Reading
+    from redsun.storage import PrepareInfo
 
 
 class MimirSerialDevice(Device, Loggable):
@@ -179,10 +180,16 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         self.egu = egu
         self.intensity_range = intensity_range
         self.step_size = step_size
-        self.enabled = False
-        self.intensity = 0
         self.id = 1
         self.qid = 1
+
+        # SoftAttrRW for the mutable state attrs
+        self.enabled: SoftAttrRW[bool] = SoftAttrRW(
+            make_key(name, "enabled"), initial_value=False
+        )
+        self.intensity: SoftAttrRW[int] = SoftAttrRW(
+            make_key(name, "intensity"), initial_value=0, units=egu
+        )
 
         def callback(future: Future[Serial]) -> None:
             self._serial = future.result()
@@ -229,13 +236,13 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         # the new intensity immediately;
         # otherwise it will be set when
         # `trigger` is called to enable the laser
-        self.intensity = value
-        if self.enabled:
+        self.intensity.set(value)
+        if self.enabled.get_value():
             self._send_command(
                 LaserAction(
                     id=self.id,
                     qid=self.qid,
-                    value=self.intensity,
+                    value=value,
                 ),
                 s,
             )
@@ -254,12 +261,13 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
             Status of the command.
         """
         s = Status()
-        self.enabled = not self.enabled
-        if self.enabled:
+        new_state = not self.enabled.get_value()
+        self.enabled.set(new_state)
+        if new_state:
             action = LaserAction(
                 id=self.id,
                 qid=self.qid,
-                value=self.intensity,
+                value=self.intensity.get_value(),
             )
         else:
             action = LaserAction(
@@ -320,7 +328,7 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
         """
         # if the laser is enabled, disable it
         # and set the intensity to 0
-        if self.enabled:
+        if self.enabled.get_value():
             self._send_command(
                 LaserAction(
                     id=self.id,
@@ -331,38 +339,16 @@ class MimirLaserDevice(Device, LightProtocol, Loggable):
             )
 
     def prepare(self, value: PrepareInfo) -> Status:
-        """Contribute laser metadata to the acquisition metadata registry."""
+        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
         s = Status()
-        register_metadata(
-            self.name,
-            {
-                "light_wavelength": self.wavelength,
-                "light_intensity": self.intensity,
-                "light_enabled": self.enabled,
-            },
-        )
         s.set_finished()
         return s
 
     def describe(self) -> dict[str, Descriptor]:
-        descriptor: dict[str, Descriptor] = {
-            make_key(self.name, "intensity"): make_descriptor(
-                "value", "number", units=self.egu
-            ),
-            make_key(self.name, "enabled"): {
-                "source": "value",
-                "dtype": "boolean",
-                "shape": [],
-            },
-        }
-        return descriptor
+        return {**self.intensity.describe(), **self.enabled.describe()}
 
     def read(self) -> dict[str, Reading[Any]]:
-        reading: dict[str, Reading[Any]] = {
-            make_key(self.name, "intensity"): make_reading(self.intensity, time.time()),
-            make_key(self.name, "enabled"): make_reading(self.enabled, time.time()),
-        }
-        return reading
+        return {**self.intensity.read(), **self.enabled.read()}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
         timestamp = time.time()
@@ -464,11 +450,16 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
             step_sizes=step_sizes,
         )
 
-        # protocol attributes
-        self.egu = egu
-        self.step_sizes = step_sizes
-        self.axis: list[str] = ["X", "Y", "Z"]
-        self._active_axis = self.axis[0]
+        _axis_list = list(step_sizes.keys())
+        self.axes: dict[str, MotorAxis] = {
+            ax: MotorAxis(
+                name=f"{name}-{ax}",
+                egu=egu,
+                step_size=float(step_sizes.get(ax, 100.0)),
+            )
+            for ax in _axis_list
+        }
+        self._active_axis: str = _axis_list[0]
 
         def callback(future: Future[Serial]) -> None:
             self._serial = future.result()
@@ -485,14 +476,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         # set the conversion factor from egu to steps;
         # it will be used to convert the input value
         # to the number of steps the motor should execute
-        self._factor = self._conversion_map[self.egu]
-
-        self._positions: dict[str, Location[float]] = {
-            axis: {"setpoint": 0.0, "readback": 0.0} for axis in self.axis
-        }
-
-        # set the current axis to the first axis
-        self._active_axis = self.axis[0]
+        self._factor = self._conversion_map[egu]
 
     def set(self, value: Any, **kwargs: Any) -> Status:
         s = Status()
@@ -504,10 +488,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
                 s.set_finished()
                 return s
             elif propr == "step_size" and isinstance(value, float):
-                # in truth this does not have a real effect on the motor,
-                # but for consistency (and if in the future we serialize
-                # the model information) we allow to set the step size
-                self.step_sizes[self._active_axis] = value
+                self.axes[self._active_axis].step_size.set(float(value))
                 s.set_finished()
                 return s
             else:
@@ -519,7 +500,8 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
                 return s
 
         # update the setpoint position for the current axis
-        self._positions[self._active_axis]["setpoint"] = value
+        self.axes[self._active_axis].position.get_value()
+        self.axes[self._active_axis].position.set(float(value))
         steps = int(value * self._factor) // self.motor_step
 
         self.logger.debug(f"Moving motor along {self._active_axis} of {steps} steps.")
@@ -536,45 +518,26 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
 
     def locate(self) -> Location[float]:
         """Locate mock model."""
-        return self._positions[self._active_axis]
+        pos = self.axes[self._active_axis].position.get_value()
+        return {"setpoint": pos, "readback": pos}
 
     def read_configuration(self) -> dict[str, Reading[Any]]:
-        timestamp = time.time()
-        config: dict[str, Reading[Any]] = {
-            make_key(self.name, "egu"): make_reading(self.egu, timestamp),
-            make_key(self.name, "axis"): make_reading(self.axis, timestamp),
-        }
-        for ax, step in self.step_sizes.items():
-            config[make_key(self.name, f"{ax}_step_size")] = make_reading(
-                step, timestamp
-            )
-        return config
+        result: dict[str, Reading[Any]] = {}
+        for axis in self.axes.values():
+            result.update(axis.read())
+        return result
 
     def describe_configuration(self) -> dict[str, Descriptor]:
-        descriptors: dict[str, Descriptor] = {
-            make_key(self.name, "egu"): make_descriptor(
-                "settings", "string", readonly=True
-            ),
-            make_key(self.name, "axis"): make_descriptor(
-                "settings", "array", shape=[len(self.axis)], readonly=True
-            ),
-        }
-        for ax in self.axis:
-            key = make_key(self.name, f"{ax}_step_size")
-            descriptors[key] = make_descriptor("settings", "number")
-        return descriptors
+        result: dict[str, Descriptor] = {}
+        for axis in self.axes.values():
+            result.update(axis.describe())
+        return result
 
     def shutdown(self) -> None: ...
 
     def prepare(self, _: PrepareInfo) -> Status:
-        """Contribute motor metadata to the acquisition metadata registry."""
+        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
         s = Status()
-        md: dict[str, Any] = {}
-        for axis in self.axis:
-            md[f"position_{axis.lower()}"] = self._positions[axis]["readback"]
-            md[f"motor_step_size_{axis.lower()}"] = self.step_sizes.get(axis, 0.0)
-        md["motor_egu"] = self.egu
-        register_metadata(self.name, md)
         s.set_finished()
         return s
 
@@ -656,18 +619,7 @@ class MimirMotorDevice(Device, MotorProtocol, Loggable):
         status.set_finished()
 
     def _update_readback(self, status: Status) -> None:
-        """Update the currently active axis readback position.
+        """No-op callback kept for bluesky compatibility.
 
-        When the status object is set as finished successfully,
-        the readback position is updated to match the setpoint.
-
-        Parameters
-        ----------
-        status : Status
-            The status object associated with the callback.
-
+        Position is already stored on the ``MotorAxis`` via ``set()``.
         """
-        if status.success:
-            self._positions[self._active_axis]["readback"] = self._positions[
-                self._active_axis
-            ]["setpoint"]

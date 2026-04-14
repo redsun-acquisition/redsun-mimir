@@ -121,7 +121,7 @@ class LightPresenter(Presenter, Loggable):
         else:
             light = self._lights[name]
             self.logger.debug(
-                f"Toggled source {name} {not light.enabled} -> {light.enabled}"
+                f"Toggled source {name} {not light.enabled.get_value()} -> {light.enabled.get_value()}"
             )
 
     def shutdown(self) -> None:

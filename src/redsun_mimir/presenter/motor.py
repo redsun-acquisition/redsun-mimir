@@ -245,7 +245,7 @@ class MotorPresenter(Presenter, Loggable):
         in the main thread; see the class docstring for an example.
 
         """
-        if axis not in motor.axis:
+        if axis not in motor.axes:
             self.logger.error(
                 f"Axis {axis!r} is not available for motor {motor.name!r}"
             )

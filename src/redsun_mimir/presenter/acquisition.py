@@ -24,7 +24,6 @@ from redsun.storage import PrepareInfo
 from redsun.utils import find_signals
 from redsun.virtual import Signal
 
-from redsun_mimir.device.pseudo import MedianPseudoDevice
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
     MotorProtocol,
@@ -32,11 +31,9 @@ from redsun_mimir.protocols import (  # noqa: TC001
 )
 
 if TYPE_CHECKING:
-    from collections.abc import MutableSequence
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
-    from bluesky.protocols import Readable
     from redsun.device import Device
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
@@ -122,68 +119,6 @@ def square_scan(
         yield from rps.set_property(motor, ax, propr="axis")
         for _ in range(frames_per_side):
             yield from bps.trigger_and_read(detectors, "square_scan")
-            yield from bps.mvr(motor, -step)
-            # add a short delay to stabilize the readings
-            # after motor movement
-            yield from bps.sleep(0.05)
-
-
-def scan_and_stash(
-    detectors: Sequence[ReadableFlyer],
-    motor: MotorProtocol,
-    cache: Sequence[MedianPseudoDevice],
-    step: float,
-    frames_per_side: int,
-    axis: tuple[str, str],
-) -> MsgGenerator[None]:
-    """Perform a square scan movement with the specified motor and detectors.
-
-    Performs a square scan by moving the motor in a square pattern; before
-    each movement step, a reading is taken from the specified detectors
-    and stashed into the cache model.
-
-    Parameters
-    ----------
-    detectors : ``Sequence[DetectorProtocol]``
-        The detectors to use for data collection.
-    motor : ``MotorProtocol``
-        The motor to use for the scan movement.
-    cache : ``MedianPseudoDevice``
-        The cache model to stash readings into.
-    step : ``float``
-        The step size for motor movement.
-    frames_per_side : ``int``
-        The number of frames to collect for each side of the square.
-    axis : ``tuple[str, str]``
-        The order of motor movement axes.
-
-    Yields
-    ------
-    ``MsgGenerator[None]``
-        A generator yielding Bluesky messages for the square scan.
-    """
-    # scan on the positive direction
-    for idx in range(2):
-        ax = axis[idx]
-        # set the axis direction
-        yield from rps.set_property(motor, ax, propr="axis")
-        for _ in range(frames_per_side):
-            yield from rps.read_and_stash(
-                detectors, cache, group="stash", stream="square_scan", wait=True
-            )
-            yield from bps.mvr(motor, step)
-            # add a short delay to stabilize the readings
-            # after motor movement
-            yield from bps.sleep(0.05)
-    # scan on the negative direction
-    for idx in range(2):
-        ax = axis[1 - idx]
-        # set the axis direction
-        yield from rps.set_property(motor, ax, propr="axis")
-        for _ in range(frames_per_side):
-            yield from rps.read_and_stash(
-                detectors, cache, group="stash", stream="square_scan", wait=True
-            )
             yield from bps.mvr(motor, -step)
             # add a short delay to stabilize the readings
             # after motor movement
@@ -408,24 +343,16 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         When starting the plan, detectors will start emitting acquired frames at their live-view rates.
         If the "scan" action is triggered from the UI, the plan will perform a square motor movement
-        over x and y axis, collecting `frames / 4` frames for each of the sides of the rectangle. For each
-        movement step, a frame is collected from each detector. After completing the square scan,
-        the plan will resume live acquisition.
+        over x and y axis, collecting ``scan_frames / 4`` frames for each side of the rectangle.
+        The ``MedianPresenter`` callback accumulates these frames and computes the median at the
+        end of the run.
 
-        Each detector has have a corresponding
-        pseudo-device that will compute the median
-        of the frames collected during the square scan, making
-        them available as stashed readings during the stream action,
-        so that the computed medians are stored for post-processing and visualization
-        by third-party tools.
-
-        If the "stream" action is triggered before the "scan", there will be
-        no median values available for streaming, but the plan will still stream
-        the raw readings from the detectors.
+        If the "stream" action is triggered, the plan will fly the detectors to disk for
+        ``stream_frames`` frames.
 
         Parameters
         ----------
-        - detectors: ``Sequence[DetectorProtocol]``
+        - detectors: ``Sequence[ReadableFlyer]``
             - The detectors to use for data collection.
         - motor: ``MotorProtocol``
             - The motor to use for the scan movement.
@@ -437,13 +364,9 @@ class AcquisitionPresenter(Presenter, Loggable):
             - Default is "um".
         - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
-            - The rectangular movement will be divided into four sides,
-            each side collecting `frames / 4` frames, one frame per motor step.
-            - Default is 20 (resulting in 4 frames per side).
+            - Default is 20 (resulting in 4 frames per side of the square).
         - direction: ``Literal["xy", "yx"]``, optional
-            - The order of motor movement.
-            - `xy`: move along X axis first, then Y axis.
-            - `yx`: move along Y axis first, then X axis.
+            - The order of motor movement axes.
             - Default is "xy".
         - stream_frames: ``int``, optional
             - The number of frames to stream to disk when the stream action is triggered.
@@ -452,92 +375,71 @@ class AcquisitionPresenter(Presenter, Loggable):
         Raises
         ------
         - ``TypeError``
-            - If `motor` does not provide both "X" and "Y" axis of movement.
+            - If `motor` does not provide both "X" and "Y" axes of movement.
         """
-        if len(motor.axis) < 2 or not all(ax in motor.axis for ax in ["X", "Y"]):
+        if len(motor.axes) < 2 or not all(ax in motor.axes for ax in ["X", "Y"]):
             raise TypeError(
                 "The provided motor must have both 'X' and 'Y' axes of movement."
-                f" Available axes: {motor.axis}"
+                f" Available axes: {list(motor.axes)}"
             )
-
-        medians: MutableSequence[MedianPseudoDevice] = list()
-        for det in detectors:
-            describe = yield from rps.describe(det)
-            collect = yield from rps.describe_collect(det)
-            medians.append(MedianPseudoDevice(det, describe, collect))
 
         axis = ("X", "Y") if direction == "xy" else ("Y", "X")
         self.event_map.update(**scan.event_map, **stream.event_map)
+
+        # Resolve motor EGU from the first axis step_size descriptor
+        _first_axis = next(iter(motor.axes.values()))
+        _step_desc = _first_axis.step_size.describe()
+        motor_egu = next(iter(_step_desc.values())).get("units", "um")
+
         old_step, step = convert_to_target_egu(
-            step,
-            from_egu=step_egu,
-            to_egu=motor.egu,
+            step, from_egu=step_egu, to_egu=motor_egu
         )
 
         live_stream = "live"
         stream_name = "stream"
         stream_declared = False
 
-        # when streaming, we include the median
-        # models in the set of objects to stage, kickoff, complete and collect,
-        # so that the median values are included in the stream assets if
-        # a previous scan action has been triggered
-        objs: list[Readable[Any]] = [*detectors, *medians]
-
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
         prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
-
-        # ensure to prepare the devices in case we have
-        # a possible stream action request
-        # TODO: in acquire-zarr the motor metadata is not shown;
-        # why is that?
         yield from bps.prepare(motor, prepare_info, wait=True)
-        for obj in objs:
-            yield from bps.prepare(obj, prepare_info, wait=True)
+        for det in detectors:
+            yield from bps.prepare(det, prepare_info, wait=True)
 
         while True:
             name, event = yield from rps.read_while_waiting(
-                objs,
+                detectors,
                 self.event_map,
                 live_stream,
             )
             if name == scan.name:
-                # make sure to clear the cache at each scan, to avoid stale data
-                for median in medians:
-                    yield from rps.clear_cache(median, wait=True)
-                if motor.egu != step_egu:
+                if motor_egu != step_egu:
                     yield from rps.set_property(motor, step, propr="step_size")
-                yield from scan_and_stash(
+                yield from square_scan(
                     detectors,
                     motor,
-                    medians,
                     step,
                     scan_frames // 4,
                     axis,
                 )
-                for median in medians:
-                    # we have a stash of collected frames;
-                    # call trigger to perform median calculation
-                    yield from bps.trigger(median)
                 if step != old_step:
                     yield from rps.set_property(motor, old_step, propr="step_size")
 
             elif name == stream.name:
-                # update the set of detectors to include the median models,
-                # so that the stream action can use the pre-computed median values
                 self.logger.debug("Starting data streaming to disk")
 
                 if not stream_declared:
-                    yield from bps.declare_stream(*objs, name=stream_name, collect=True)
+                    yield from bps.declare_stream(
+                        *detectors, name=stream_name, collect=True
+                    )
                     stream_declared = True
-                yield from bps.kickoff_all(*objs)
+                yield from bps.kickoff_all(*detectors)
 
-                yield from bps.complete_all(*objs, wait=True)
+                yield from bps.complete_all(*detectors, wait=True)
                 self.logger.debug("Flight complete.")
 
-                yield from bps.collect(*objs, name=stream_name)
+                yield from bps.collect(*detectors, name=stream_name)
             self.clear_and_notify(name, event)
 
     @continous(togglable=True)

@@ -14,12 +14,13 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from redsun.device import PDevice
-from redsun.device.protocols import HasCache
-from redsun.storage.protocols import HasWriter
+from redsun.storage import HasWriterLogic
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from redsun.engine import Status
+
+    from redsun_mimir.device.axis import MotorAxis
 
 
 @runtime_checkable
@@ -87,18 +88,12 @@ class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
 
     Attributes
     ----------
-    axis : ``str``
-        Motor current active axis.
-        It can be changed via
-        ``set(<new_axis>, prop="axis")``.
-
-    egu : ``str``
-        Engineering units for the motor position.
+    axes : ``dict[str, MotorAxis]``
+        Mapping of axis name to :class:`~redsun_mimir.device.axis.MotorAxis`
+        child objects, each holding ``step_size`` and ``position`` attrs.
     """
 
-    axis: list[str]
-    egu: str
-    step_sizes: dict[str, float]
+    axes: dict[str, MotorAxis]
 
 
 @runtime_checkable
@@ -118,8 +113,8 @@ class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
 
     """
 
-    intensity: float | int
-    enabled: bool
+    intensity: Any
+    enabled: Any
     binary: bool
     wavelength: int
     egu: str
@@ -193,13 +188,13 @@ class ReadableFlyer(
     Flyable,
     Collectable,
     WritesStreamAssets,
-    HasWriter,
+    HasWriterLogic,
     Protocol,
 ):
     """Protocol for objects that are both Readable and Flyable.
 
     A model compliant with this protocol is capable of being used
-    concurrently to read data continously while flying,
+    concurrently to read data continuously while flying,
     and provides the necessary methods to be able to retrieve
     the filepath locations of where the data is stored.
 
@@ -210,19 +205,7 @@ class ReadableFlyer(
     - ``Preparable`` (prepare() method)
     - ``Collectable`` (describe_collect() method)
     - ``WritesStreamAssets`` (collect_asset_docs() method)
+    - ``HasWriterLogic`` (writer_logic property)
     """
 
     sensor_shape: tuple[int, int]
-
-
-@runtime_checkable
-class PseudoCacheFlyer(
-    Readable[Any],
-    HasCache,
-    Preparable,
-    Flyable,
-    Collectable,
-    WritesStreamAssets,
-    Protocol,
-):
-    """A protocol for a pseudo-model flyer."""

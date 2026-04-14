@@ -35,11 +35,15 @@ def run_simulation_container() -> None:
     from redsun_mimir.view.motor import MotorView
     from redsun_mimir.view.storage import FileStorageView
 
+    from redsun.storage._zarr import ZarrWriter
+
     logging.getLogger("redsun").setLevel(logging.DEBUG)
+
+    _writer = ZarrWriter("default")
 
     class MimirSimulator(QtAppContainer, config=_CONFIG):
         # devices
-        mmcore = device(MMCoreCameraDevice, from_config="camera1")
+        mmcore = device(MMCoreCameraDevice, from_config="camera1", writer=_writer)
         XY = device(MMCoreStageDevice, from_config="xy-motor")
         Z = device(MMCoreStageDevice, from_config="z-motor")
         laser = device(MockLightDevice, from_config="laser")
