@@ -7,31 +7,38 @@ import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 import pytest
+from ophyd_async.core import SignalR, StandardReadable, soft_signal_r_and_setter
 from pymmcore_plus import CMMCorePlus as Core
 from qtpy.QtWidgets import QApplication
-from redsun.device import SoftAttrR
+from redsun.engine import get_shared_loop
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCoreStageDevice
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    import asyncio
+    from collections.abc import AsyncGenerator, Generator
 
     from qtpy.QtCore import QCoreApplication
 
 
-class MockBufferDevice:
-    """Minimal device with a subscribable buffer, used in MedianPresenter tests."""
+class MockBufferDevice(StandardReadable):
+    """Minimal device with a buffer signal for presenter tests."""
+
+    buffer: SignalR[np.ndarray]
 
     def __init__(self, name: str, shape: tuple[int, int] = (4, 4)) -> None:
-        self.name = name
-        self.buffer: SoftAttrR[npt.NDArray[np.float64]] = SoftAttrR(
-            np.zeros(shape, dtype=np.float64)
+        buf, self._set_buffer = soft_signal_r_and_setter(
+            np.ndarray, initial_value=np.zeros(shape, dtype=np.float64)
         )
-        self.buffer.set_name(f"{name}-buffer")
+        self.buffer = buf
+        super().__init__(name=name)
+
+    def push_frame(self, frame: np.ndarray) -> None:
+        """Push a new frame — triggers all buffer subscribers synchronously."""
+        self._set_buffer(frame)
 
 
 def make_start(uid: str) -> dict[str, object]:
@@ -61,7 +68,7 @@ def make_stop(run_uid: str) -> dict[str, object]:
     }
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def qapp() -> Generator[QCoreApplication, None, None]:
     """Session-scoped QApplication instance."""
     if sys.platform == "linux" and not os.environ.get("DISPLAY"):
@@ -70,48 +77,55 @@ def qapp() -> Generator[QCoreApplication, None, None]:
     yield app
 
 
+@pytest.fixture(scope="session", autouse=True)
+def shared_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+    """Ensure the shared event loop is running in its background daemon thread."""
+    loop = get_shared_loop()
+    yield loop
+
+
 @pytest.fixture
 def virtual_container() -> VirtualContainer:
     """Fresh VirtualContainer for each test."""
     return VirtualContainer()
 
 
-@pytest.fixture(scope="function")
-def xy_mock_motor(name: str = "xystage") -> Iterator[MMCoreStageDevice]:
-    """Single-axis mock motor device."""
+@pytest.fixture
+async def xy_mock_motor() -> AsyncGenerator[MMCoreStageDevice, None]:
+    """XY motor device backed by the MMCore demo stage."""
     core = Core.instance()
-    yield MMCoreStageDevice(
-        name,
-        config="demoxy",
-    )
-    if name in core.getLoadedDevices():
-        core.unloadDevice(name)
+    device = MMCoreStageDevice("xystage", config="demoxy")
+    await device.connect(mock=False)
+    yield device
+    if "xystage" in core.getLoadedDevices():
+        core.unloadDevice("xystage")
 
 
 @pytest.fixture
-def mock_led() -> MockLightDevice:
+async def mock_led() -> MockLightDevice:
     """Binary mock LED device."""
-    return MockLightDevice(
-        "led",
-        wavelength=450,
-        binary=True,
-        intensity_range=(0, 0),
-    )
+    device = MockLightDevice("led", wavelength=450, binary=True, intensity_range=(0, 0))
+    await device.connect(mock=True)
+    return device
 
 
 @pytest.fixture
-def mock_laser() -> MockLightDevice:
+async def mock_laser() -> MockLightDevice:
     """Continuous mock laser device."""
-    return MockLightDevice(
+    device = MockLightDevice(
         "laser",
         wavelength=650,
         egu="mW",
         intensity_range=(0, 100),
         step_size=1,
     )
+    await device.connect(mock=True)
+    return device
 
 
 @pytest.fixture
-def mock_buffer_device() -> MockBufferDevice:
-    """Camera-like mock device with a subscribable buffer."""
-    return MockBufferDevice("camera1")
+async def mock_buffer_device() -> MockBufferDevice:
+    """Camera-like mock device with a subscribable buffer signal."""
+    device = MockBufferDevice("camera1")
+    await device.connect(mock=True)
+    return device
