@@ -20,13 +20,13 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering"
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.21.1",
@@ -36,9 +36,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "redsun-mimir[uc2,pyqt,sim]",
-    "mypy>=1.19",
+    "mypy>=1.20",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
+    "pytest-asyncio>=0.25.0",
     "pytest-cov>=7.0.0",
     "pytest-qt>=4.5.0",
     "ruff>=0.14.2",
@@ -112,6 +113,7 @@ warn_no_return = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+asyncio_mode = "auto"
 testpaths = [
     "tests"
 ]
