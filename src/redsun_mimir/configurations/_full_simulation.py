@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import device, presenter, view
+from redsun.containers import declare_device, declare_presenter, declare_view
 from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "full_configuration.yaml"
@@ -35,34 +35,38 @@ def run_simulation_container() -> None:
     from redsun_mimir.view.motor import MotorView
     from redsun_mimir.view.storage import FileStorageView
 
-    from redsun.storage._zarr import ZarrWriter
+    from redsun.storage import create_writer
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
-    _writer = ZarrWriter("default")
+    _writer = create_writer("default")
 
     class MimirSimulator(QtAppContainer, config=_CONFIG):
         # devices
-        mmcore = device(MMCoreCameraDevice, from_config="camera1", writer=_writer)
-        XY = device(MMCoreStageDevice, from_config="xy-motor")
-        Z = device(MMCoreStageDevice, from_config="z-motor")
-        laser = device(MockLightDevice, from_config="laser")
-        led = device(MockLightDevice, from_config="led")
+        mmcore = declare_device(
+            MMCoreCameraDevice, from_config="camera1", writer=_writer
+        )
+        XY = declare_device(MMCoreStageDevice, from_config="xy-motor")
+        Z = declare_device(MMCoreStageDevice, from_config="z-motor")
+        laser = declare_device(MockLightDevice, from_config="laser")
+        led = declare_device(MockLightDevice, from_config="led")
 
         # presenters
-        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
-        median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
-        det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")
-        acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
-        light_ctrl = presenter(LightPresenter, from_config="light_ctrl")
-        motor_ctrl = presenter(MotorPresenter, from_config="motor_ctrl")
+        storage_ctrl = declare_presenter(
+            FileStoragePresenter, from_config="storage_ctrl"
+        )
+        median_ctrl = declare_presenter(MedianPresenter, from_config="median_ctrl")
+        det_ctrl = declare_presenter(DetectorPresenter, from_config="det_ctrl")
+        acq_ctrl = declare_presenter(AcquisitionPresenter, from_config="acq_ctrl")
+        light_ctrl = declare_presenter(LightPresenter, from_config="light_ctrl")
+        motor_ctrl = declare_presenter(MotorPresenter, from_config="motor_ctrl")
 
         # views
-        acq_widget = view(AcquisitionView, from_config="acq_widget")
-        img_widget = view(ImageView, from_config="img_widget")
-        det_widget = view(DetectorView, from_config="det_widget")
-        light_widget = view(LightView, from_config="light_widget")
-        motor_widget = view(MotorView, from_config="motor_widget")
-        storage_widget = view(FileStorageView, from_config="storage_widget")
+        acq_widget = declare_view(AcquisitionView, from_config="acq_widget")
+        img_widget = declare_view(ImageView, from_config="img_widget")
+        det_widget = declare_view(DetectorView, from_config="det_widget")
+        light_widget = declare_view(LightView, from_config="light_widget")
+        motor_widget = declare_view(MotorView, from_config="motor_widget")
+        storage_widget = declare_view(FileStorageView, from_config="storage_widget")
 
     MimirSimulator().run()

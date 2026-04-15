@@ -27,7 +27,6 @@ presenters:
   median_ctrl:
     median_streams: [square_scan]
     live_streams: [live]
-    hints: [buffer]
   light_ctrl:
     timeout: 2.0
   motor_ctrl:

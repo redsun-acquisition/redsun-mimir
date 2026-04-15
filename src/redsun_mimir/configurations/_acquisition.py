@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import device, presenter, view
+from redsun.containers import declare_device, declare_presenter, declare_view
 from redsun.qt import QtAppContainer
 
 _CONFIG = Path(__file__).parent / "acquisition_configuration.yaml"
@@ -28,16 +28,18 @@ def run_acquisition_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class AcquisitionDetectorApp(QtAppContainer, config=_CONFIG):
-        mm_camera = device(MMCoreCameraDevice, from_config="camera1")
-        xy_motor = device(MMCoreStageDevice, from_config="xy-motor")
-        z_motor = device(MMCoreStageDevice, from_config="z-motor")
-        storage_ctrl = presenter(FileStoragePresenter, from_config="storage_ctrl")
-        median_ctrl = presenter(MedianPresenter, from_config="median_ctrl")
-        det_ctrl = presenter(DetectorPresenter, from_config="det_ctrl")
-        acq_ctrl = presenter(AcquisitionPresenter, from_config="acq_ctrl")
-        acq_widget = view(AcquisitionView, from_config="acq_widget")
-        img_widget = view(ImageView, from_config="img_widget")
-        det_widget = view(DetectorView, from_config="det_widget")
-        storage_widget = view(FileStorageView, from_config="storage_widget")
+        mm_camera = declare_device(MMCoreCameraDevice, from_config="camera1")
+        xy_motor = declare_device(MMCoreStageDevice, from_config="xy-motor")
+        z_motor = declare_device(MMCoreStageDevice, from_config="z-motor")
+        storage_ctrl = declare_presenter(
+            FileStoragePresenter, from_config="storage_ctrl"
+        )
+        median_ctrl = declare_presenter(MedianPresenter, from_config="median_ctrl")
+        det_ctrl = declare_presenter(DetectorPresenter, from_config="det_ctrl")
+        acq_ctrl = declare_presenter(AcquisitionPresenter, from_config="acq_ctrl")
+        acq_widget = declare_view(AcquisitionView, from_config="acq_widget")
+        img_widget = declare_view(ImageView, from_config="img_widget")
+        det_widget = declare_view(DetectorView, from_config="det_widget")
+        storage_widget = declare_view(FileStorageView, from_config="storage_widget")
 
     AcquisitionDetectorApp().run()

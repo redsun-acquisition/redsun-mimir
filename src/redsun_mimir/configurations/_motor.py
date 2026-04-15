@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from redsun.containers import device, presenter, view
+from redsun.containers import declare_device, declare_presenter, declare_view
 from redsun.qt import QtAppContainer
 
 
@@ -18,9 +18,9 @@ def run_stage_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorApp(QtAppContainer):
-        xy_motor = device(MMCoreStageDevice, config="demoxy")
-        z_motor = device(MMCoreStageDevice, config="demoz")
-        ctrl = presenter(MotorPresenter)
-        widget = view(MotorView)
+        xy_motor = declare_device(MMCoreStageDevice, config="demoxy")
+        z_motor = declare_device(MMCoreStageDevice, config="demoz")
+        ctrl = declare_presenter(MotorPresenter)
+        widget = declare_view(MotorView)
 
     MotorApp().run()
