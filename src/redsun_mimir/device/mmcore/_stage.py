@@ -1,10 +1,12 @@
+"""MMCore stage device — ophyd-async ``StandardReadable`` wrapper."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import Literal
 
+from ophyd_async.core import AsyncStatus, StandardReadable
 from pymmcore_plus import CMMCorePlus as Core
-from redsun.device import Device
-from redsun.engine import Status
 from redsun.log import Loggable
 
 from redsun_mimir.device.axis import MotorAxis
@@ -14,146 +16,116 @@ from redsun_mimir.device.mmcore.configs import (
     DemoZStageConfig,
 )
 
-if TYPE_CHECKING:
-    from typing import Any, Literal
-
-    from bluesky.protocols import Descriptor, Reading
-    from redsun.storage import PrepareInfo
-
 
 class MMCoreXYAxis(MotorAxis):
     """One axis of an MMCore XY stage.
 
-    Performs relative moves via
+    Performs absolute moves via
     [`setXYPosition`][pymmcore_plus.CMMCorePlus.setXYPosition].
 
     Parameters
     ----------
-    name :
-        Axis name; overwritten by the parent
-        [`MMCoreStageDevice`][redsun_mimir.device.mmcore.MMCoreStageDevice]
-        on assignment.
-    egu :
-        Engineering unit (``"um"``).
-    step_size :
-        Initial step size.
     core :
         Shared ``CMMCorePlus`` instance.
     device_name :
         MMCore device label of the parent stage.
     axis :
         Which axis this object controls (``"x"`` or ``"y"``).
+    units :
+        Engineering unit (default ``"um"``).
+    step_size :
+        Initial step size.
     """
 
     def __init__(
         self,
-        name: str,
-        egu: str,
-        step_size: float,
         core: Core,
         device_name: str,
         axis: str,
+        *,
+        units: str = "um",
+        step_size: float = 1.0,
     ) -> None:
-        super().__init__(name, egu, step_size)
         self._core = core
         self._device_name = device_name
         self._axis = axis
+        super().__init__(units=units, step_size=step_size)
 
-    def set(self, value: float, **_kwargs: Any) -> Status:
-        """Move this axis by *value* (relative step).
+    @AsyncStatus.wrap
+    async def set(self, value: float, **_: float) -> None:
+        """Move this axis to *value* (absolute position).
 
         Parameters
         ----------
         value :
-            Step distance in the axis engineering unit.
-
-        Returns
-        -------
-        Status
-            Completes immediately after the hardware call succeeds.
+            Target position in the axis engineering unit.
         """
-        s = Status()
-        try:
-            x, y = self._core.getXYPosition(self._device_name)
-            if self._axis == "x":
-                self._core.setXYPosition(self._device_name, x + value, y)
-            else:
-                self._core.setXYPosition(self._device_name, x, y + value)
-            self.position.set(self.position.get_value() + value)
-            s.set_finished()
-        except Exception as e:
-            s.set_exception(RuntimeError(f"Failed to set XY position: {e}"))
-        return s
+        await asyncio.to_thread(self._set_sync, value)
+
+    def _set_sync(self, value: float) -> None:
+        x, y = self._core.getXYPosition(self._device_name)
+        nx = value if self._axis == "x" else x
+        ny = value if self._axis == "y" else y
+        self._core.setXYPosition(self._device_name, nx, ny)
+        self._core.waitForDevice(self._device_name)
+        self._set_position(nx if self._axis == "x" else ny)
 
 
 class MMCoreZAxis(MotorAxis):
     """Z axis of an MMCore focus stage.
 
-    Performs relative moves via
+    Performs absolute moves via
     [`setPosition`][pymmcore_plus.CMMCorePlus.setPosition].
 
     Parameters
     ----------
-    name :
-        Axis name; overwritten by the parent
-        [`MMCoreStageDevice`][redsun_mimir.device.mmcore.MMCoreStageDevice]
-        on assignment.
-    egu :
-        Engineering unit (``"um"``).
-    step_size :
-        Initial step size.
     core :
         Shared ``CMMCorePlus`` instance.
     device_name :
         MMCore device label of the parent stage.
+    units :
+        Engineering unit (default ``"um"``).
+    step_size :
+        Initial step size.
     """
 
     def __init__(
         self,
-        name: str,
-        egu: str,
-        step_size: float,
         core: Core,
         device_name: str,
+        *,
+        units: str = "um",
+        step_size: float = 1.0,
     ) -> None:
-        super().__init__(name, egu, step_size)
         self._core = core
         self._device_name = device_name
+        super().__init__(units=units, step_size=step_size)
 
-    def set(self, value: float, **_kwargs: Any) -> Status:
-        """Move the Z axis by *value* (relative step).
+    @AsyncStatus.wrap
+    async def set(self, value: float, **_: float) -> None:
+        """Move the Z axis to *value* (absolute position).
 
         Parameters
         ----------
         value :
-            Step distance in the axis engineering unit.
-
-        Returns
-        -------
-        Status
-            Completes immediately after the hardware call succeeds.
+            Target position in the axis engineering unit.
         """
-        s = Status()
-        try:
-            z = self._core.getPosition(self._device_name) + value
-            self._core.setPosition(self._device_name, z)
-            self.position.set(self.position.get_value() + value)
-            s.set_finished()
-        except Exception as e:
-            s.set_exception(RuntimeError(f"Failed to set Z position: {e}"))
-        return s
+        await asyncio.to_thread(self._set_sync, value)
+
+    def _set_sync(self, value: float) -> None:
+        self._core.setPosition(self._device_name, value)
+        self._core.waitForDevice(self._device_name)
+        self._set_position(value)
 
 
-class MMCoreStageDevice(Device, Loggable):
+class MMCoreStageDevice(StandardReadable, Loggable):
     """Container device for one or more MMCore stage axes.
 
     Loads and initialises the hardware via ``CMMCorePlus``, then exposes
     each axis as a typed child attribute (``device.x``, ``device.y``, or
     ``device.z``).  All movement logic lives in the individual axis objects
-    ([`MMCoreXYAxis`][] / [`MMCoreZAxis`][]).
-
-    ``read_configuration`` and ``describe_configuration`` aggregate from
-    all child axes.
+    ([`MMCoreXYAxis`][redsun_mimir.device.mmcore.MMCoreXYAxis] /
+    [`MMCoreZAxis`][redsun_mimir.device.mmcore.MMCoreZAxis]).
 
     Parameters
     ----------
@@ -164,86 +136,63 @@ class MMCoreStageDevice(Device, Loggable):
     """
 
     def __init__(self, name: str, /, config: Literal["demoxy", "demoz"] | None) -> None:
-        self.config: BaseStageConfig
+        self.stage_config: BaseStageConfig
         match config:
             case "demoxy":
-                self.config = DemoXYStageConfig()
+                self.stage_config = DemoXYStageConfig()
             case "demoz":
-                self.config = DemoZStageConfig()
+                self.stage_config = DemoZStageConfig()
             case _:
                 err_msg = (
-                    f"Unknown stage config: {config}"
+                    f"Unknown stage config: {config!r}"
                     if config is not None
                     else "Stage config must be specified."
                 )
                 raise ValueError(err_msg)
 
-        super().__init__(name, **self.config.dump())
         self._core = Core.instance()
         try:
-            self._core.loadDevice(self.name, self.config.adapter, self.config.device)
-            self._core.initializeDevice(self.name)
+            self._core.loadDevice(
+                name, self.stage_config.adapter, self.stage_config.device
+            )
+            self._core.initializeDevice(name)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize MMCore stage device: {e}") from e
 
-        _axis_list = self.config.axis
-        _egu = "um"
+        _axis_list = self.stage_config.axis
+        _egu = self.stage_config.egu
 
-        if _axis_list == ["z"]:
-            self._core.setOrigin(self.name)
-            for ax in _axis_list:
-                setattr(
-                    self,
-                    ax,
-                    MMCoreZAxis(
-                        name=f"{self.name}-{ax}",
-                        egu=_egu,
-                        step_size=float(self.config.step_sizes.get(ax, 1.0)),
-                        core=self._core,
-                        device_name=self.name,
-                    ),
+        with self.add_children_as_readables():
+            if _axis_list == ["z"]:
+                self._core.setOrigin(name)
+                self.z = MMCoreZAxis(
+                    core=self._core,
+                    device_name=name,
+                    units=_egu,
+                    step_size=float(self.stage_config.step_sizes.get("z", 1.0)),
                 )
-        elif _axis_list == ["x", "y"]:
-            self._core.setOriginXY(self.name)
-            for ax in _axis_list:
-                setattr(
-                    self,
-                    ax,
-                    MMCoreXYAxis(
-                        name=f"{self.name}-{ax}",
-                        egu=_egu,
-                        step_size=float(self.config.step_sizes.get(ax, 1.0)),
-                        core=self._core,
-                        device_name=self.name,
-                        axis=ax,
-                    ),
+            elif _axis_list == ["x", "y"]:
+                self._core.setOriginXY(name)
+                self.x = MMCoreXYAxis(
+                    core=self._core,
+                    device_name=name,
+                    axis="x",
+                    units=_egu,
+                    step_size=float(self.stage_config.step_sizes.get("x", 1.0)),
                 )
-        else:
-            raise ValueError(
-                "Unsupported axis configuration. Only ['x', 'y'] and ['z'] are supported."
-            )
+                self.y = MMCoreXYAxis(
+                    core=self._core,
+                    device_name=name,
+                    axis="y",
+                    units=_egu,
+                    step_size=float(self.stage_config.step_sizes.get("y", 1.0)),
+                )
+            else:
+                raise ValueError(
+                    "Unsupported axis configuration. Only ['x', 'y'] and ['z'] are supported."
+                )
 
-    def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Aggregate read() from all child axes."""
-        result: dict[str, Reading[Any]] = {}
-        for _, axis in self.children():
-            if isinstance(axis, MotorAxis):
-                result.update(axis.read())
-        return result
-
-    def describe_configuration(self) -> dict[str, Descriptor]:
-        """Aggregate describe() from all child axes."""
-        result: dict[str, Descriptor] = {}
-        for _, axis in self.children():
-            if isinstance(axis, MotorAxis):
-                result.update(axis.describe())
-        return result
-
-    def prepare(self, _: PrepareInfo) -> Status:
-        """No-op: device metadata is forwarded via handle_descriptor_metadata."""
-        s = Status()
-        s.set_finished()
-        return s
-
-    def shutdown(self) -> None:
-        self._core.unloadDevice(self.name)
+        super().__init__(name=name)
+        self.logger.debug(
+            f"Initialized {self.stage_config.adapter} -> {self.stage_config.device}"
+        )

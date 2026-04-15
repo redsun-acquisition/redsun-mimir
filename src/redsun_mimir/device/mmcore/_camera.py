@@ -1,212 +1,374 @@
+"""MMCore camera device — ophyd-async ``StandardDetector`` wrapper."""
+
 from __future__ import annotations
 
+import asyncio
 import threading as th
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 import numpy as np
-from pymmcore_plus import CMMCorePlus as Core
-from redsun.device import ControllableDataWriter, DataWriter, Device, SoftAttrR
-from redsun.engine import Status
-from redsun.log import Loggable
-from redsun.storage.protocols import HasWriterLogic
-from redsun.utils import resolve_sync_or_async
-from redsun.utils.descriptors import (
-    make_descriptor,
-    make_key,
-    make_reading,
-    parse_key,
+from ophyd_async.core import (
+    AsyncStatus,
+    DetectorController,
+    SignalR,
+    StandardDetector,
+    TriggerInfo,
+    soft_signal_r_and_setter,
 )
+from pymmcore_plus import CMMCorePlus as Core
+from redsun.log import Loggable
+from redsun.storage import HasWriterLogic, SharedDetectorWriter
+from redsun.utils.descriptors import make_descriptor, make_key, make_reading, parse_key
 
 from redsun_mimir.device.mmcore.configs import (
     BaseCamConfig,
     DahengCamConfig,
     DemoCamConfig,
 )
-from redsun_mimir.protocols import DetectorProtocol
 
 if TYPE_CHECKING:
-    from typing import Any, ClassVar, Iterator, Literal
+    from collections.abc import Callable
+    from typing import Any, ClassVar, Literal
 
     import numpy.typing as npt
-    from bluesky.protocols import Descriptor, Reading, StreamAsset
-    from redsun.storage import PrepareInfo
+    from bluesky.protocols import Descriptor, Reading
+
+WriterT = TypeVar("WriterT", bound=SharedDetectorWriter)
 
 
-class MMCoreCameraDevice(Device, DetectorProtocol, HasWriterLogic, Loggable):
-    """Camera wrapper for Micro-Manager Core.
+class MMCoreDetectorController(DetectorController, Generic[WriterT]):
+    """MMCore detector controller, generic over the shared writer type.
+
+    Handles arming, streaming, and disarming the MMCore camera.  Runs the
+    blocking acquisition loop in a thread pool via ``asyncio.to_thread`` so
+    the event loop stays responsive.
+
+    ``WriterT`` is bounded to
+    [`SharedDetectorWriter`][redsun.storage.SharedDetectorWriter] because the
+    controller calls ``writer.register()`` and ``writer.write_frame()`` —
+    methods that extend the ophyd-async ``DetectorWriter`` ABC.
 
     Parameters
     ----------
-    name : str
+    core :
+        Singleton ``CMMCorePlus`` instance.
+    writer :
+        Shared multi-source writer instance.
+    device_name :
+        Name used as the source key when calling ``writer.register()`` and
+        ``writer.write_frame()``.
+    set_buffer :
+        Sync callable (from ``soft_signal_r_and_setter``) that updates the
+        camera's ``buffer`` signal and notifies subscribers.
+    """
+
+    def __init__(
+        self,
+        core: Core,
+        writer: WriterT,
+        device_name: str,
+        set_buffer: Callable[[npt.NDArray[Any]], None],
+    ) -> None:
+        self._core = core
+        self._writer: WriterT = writer
+        self._device_name = device_name
+        self._set_buffer = set_buffer
+        self._n_frames: int = 0
+        self._current_exposure: float = 0.0
+        self._stop_event = th.Event()
+        self._stream_task: asyncio.Task[None] | None = None
+
+    def get_deadtime(self, exposure: float | None) -> float:
+        """Return controller deadtime (zero for MMCore software triggering)."""
+        return 0.0
+
+    async def prepare(self, trigger_info: TriggerInfo) -> None:
+        """Register the acquisition source with the writer.
+
+        Parameters
+        ----------
+        trigger_info :
+            Plan-provided trigger parameters.  ``number_of_events`` determines
+            the frame capacity (``0`` means unlimited / continuous).
+        """
+        n = trigger_info.number_of_events
+        frames = sum(n) if isinstance(n, list) else n
+        width = self._core.getImageWidth()
+        height = self._core.getImageHeight()
+        bpp = self._core.getBytesPerPixel()
+        dtype = np.dtype(f"uint{bpp * 8}")
+        self._writer.register(
+            name=self._device_name,
+            dtype=dtype,
+            shape=(height, width),
+            capacity=frames,
+        )
+        self._n_frames = frames
+        exp_in_ms = self._core.getExposure()
+        self._current_exposure = exp_in_ms / 1000.0
+
+    async def arm(self) -> None:
+        """Start the background streaming thread."""
+        self._stop_event.clear()
+        self._stream_task = asyncio.create_task(
+            asyncio.to_thread(self._stream_sync, self._n_frames)
+        )
+
+    async def disarm(self) -> None:
+        """Signal the streaming thread to stop and wait for it to finish."""
+        self._stop_event.set()
+        if self._stream_task is not None:
+            await asyncio.shield(self._stream_task)
+            self._stream_task = None
+
+    async def wait_for_idle(self) -> None:
+        """Await the streaming task completion."""
+        if self._stream_task is not None:
+            await self._stream_task
+
+    def _stream_sync(self, frames: int) -> None:
+        """Blocking acquisition loop — runs in executor thread.
+
+        Parameters
+        ----------
+        frames :
+            Number of frames to acquire.  ``0`` means stream indefinitely
+            until ``disarm()`` sets the stop event.
+        """
+        if frames > 0:
+            self._core.startSequenceAcquisition(frames, self._current_exposure, False)
+        else:
+            self._core.startContinuousSequenceAcquisition(self._current_exposure)
+
+        frames_written = 0
+        last_frame = 0
+        try:
+            while not self._stop_event.is_set():
+                if self._core.getRemainingImageCount() > 0:
+                    img, md = self._core.popNextImageAndMD()
+                    last_frame = int(md.get("ImageNumber", frames_written))
+                    self._set_buffer(img)
+                    self._writer.write_frame(self._device_name, img)
+                    frames_written += 1
+                    if frames > 0 and frames_written >= frames:
+                        break
+                else:
+                    time.sleep(self._current_exposure or 0.005)
+        finally:
+            try:
+                self._core.stopSequenceAcquisition()
+            except Exception:
+                pass
+
+        if frames > 0 and (last_frame + 1) > frames_written:
+            import warnings
+
+            warnings.warn(
+                f"MMCoreDetectorController: lost {(last_frame + 1) - frames_written} frame(s).",
+                stacklevel=1,
+            )
+
+
+class MMCoreCameraDevice(
+    StandardDetector[MMCoreDetectorController[WriterT], WriterT],
+    HasWriterLogic,
+    Loggable,
+    Generic[WriterT],
+):
+    """Camera wrapper for Micro-Manager Core.
+
+    Inherits the full bluesky detector lifecycle from
+    [`StandardDetector`][ophyd_async.core.StandardDetector] (``stage``,
+    ``unstage``, ``prepare``, ``kickoff``, ``complete``,
+    ``collect_asset_docs``) and adds MMCore hardware management.
+
+    Parameters
+    ----------
+    name :
         Name of the device instance; used to register with the core.
-    config: Literal["demo"]
-        Configuration preset to use; determines the camera model and properties.
-    writer : ControllableDataWriter
-        Writer instance injected at construction time.  The camera calls
-        ``register()`` in ``prepare()``, ``open()`` and ``write_frame()``
-        during acquisition, and exposes it via ``writer_logic`` so that
-        presenters and callbacks can discover it via ``HasWriterLogic``.
+    writer :
+        Shared storage writer injected at construction time.  The controller
+        calls ``writer.register()`` and ``writer.write_frame()`` during
+        acquisition.  Exposed via
+        [`writer_logic`][redsun_mimir.device.mmcore.MMCoreCameraDevice.writer_logic]
+        for discovery by presenters through
+        [`HasWriterLogic`][redsun.storage.HasWriterLogic].
+    config :
+        Configuration preset to use; determines the camera model and
+        properties.
     """
 
     initialized: ClassVar[bool] = False
 
+    buffer: SignalR[np.ndarray]
+
     def __init__(
         self,
         name: str,
+        writer: WriterT,
         /,
         config: Literal["demo", "daheng"] = "demo",
-        writer: ControllableDataWriter | None = None,
     ) -> None:
-        self.config: BaseCamConfig
+        self.cam_config: BaseCamConfig
         match config:
             case "demo":
-                self.config = DemoCamConfig()
+                self.cam_config = DemoCamConfig()
             case "daheng":
-                self.config = DahengCamConfig()
+                self.cam_config = DahengCamConfig()
             case _:
                 raise ValueError(
-                    f"Unsupported config '{config}'; must be 'demo' or 'daheng'."
+                    f"Unsupported config {config!r}; must be 'demo' or 'daheng'."
                 )
-        super().__init__(name, **self.config.dump())
+
+        self._pixelprop = list(self.cam_config.numpy_dtype.keys())[0]
         self._core = Core.instance()
-        self._pixelprop = list(self.config.numpy_dtype.keys())[0]
+
         try:
             if MMCoreCameraDevice.initialized:
                 raise RuntimeError(
                     "MMCoreCameraDevice has already been initialized once; "
                     "multiple instances are not supported."
                 )
-            self._core.loadDevice(self.name, self.config.adapter, self.config.device)
-            self._core.initializeDevice(self.name)
-            self._core.setCameraDevice(self.name)
-
+            self._core.loadDevice(name, self.cam_config.adapter, self.cam_config.device)
+            self._core.initializeDevice(name)
+            self._core.setCameraDevice(name)
             MMCoreCameraDevice.initialized = True
         except Exception as e:
-            self.logger.error(f"Failed to initialize device {self.name}")
             raise e
 
-        # always reset the ROI to the full frame
-        # on initialization; if the input specifies a smaller ROI,
-        # update it
+        # Reset ROI to full frame on initialization.
         self._core.clearROI()
-        self.sensor_shape = self.config.sensor_shape
+        self.sensor_shape: tuple[int, int] = self.cam_config.sensor_shape
 
-        if self.config.defaults:
-            for prop, value in self.config.defaults.items():
-                # if the property is not in the allowed properties, skip it
-                if prop not in self.config.properties:
+        if self.cam_config.defaults:
+            for prop, value in self.cam_config.defaults.items():
+                if prop not in self.cam_config.properties:
                     continue
-                self._core.setProperty(self.name, prop, value)
+                self._core.setProperty(name, prop, value)
 
-        self._core.setExposure(self.name, self.config.starting_exposure)
+        self._core.setExposure(name, self.cam_config.starting_exposure)
+        self.roi: tuple[int, int, int, int] = (0, 0, *self.sensor_shape)
 
-        self.roi = (0, 0, *self.sensor_shape)
         self._properties = {
-            propr_name: self._core.getPropertyObject(self.name, propr_name)
-            for propr_name in self.config.properties
+            propr_name: self._core.getPropertyObject(name, propr_name)
+            for propr_name in self.cam_config.properties
         }
+        self._device_schema = self._core.getDeviceSchema(name)
 
-        self._device_schema = self._core.getDeviceSchema(self.name)
-        self._roi_key = make_key(self.name, "roi")
-        self._buffer_stream_key = make_key(self.name, "buffer_stream")
-        self._fly_permit = th.Event()
-        self._fly_stop = th.Event()
-        self._staged = th.Event()
-        self._current_exposure: float = 0.0
-
-        self._stream_descriptors: dict[str, Descriptor] = {}
-
-        self._complete_status = Status()
-        self._assets_collected = False  # Track if stream assets have been collected
-
-        self.logger.debug(f"Initialized {self.config.adapter} -> {self.config.device}")
-
-        self.buffer: SoftAttrR[npt.NDArray[Any]] = SoftAttrR(
-            np.zeros((self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype))
+        # Buffer signal — updated by the streaming thread via set_buffer().
+        buf, set_buf = soft_signal_r_and_setter(
+            np.ndarray,
+            initial_value=np.zeros(
+                (self.roi[3], self.roi[2]), dtype=np.dtype(self._get_dtype(name))
+            ),
         )
-        # Device.__setattr__ sets buffer.name = f"{name}-buffer" automatically
-        # Writer is injected at construction time via dependency injection.
-        # writer may be None in test/headless scenarios; guard accordingly.
-        self._writer: ControllableDataWriter | None = writer
+        self.buffer = buf
+        self._set_buf = set_buf
 
-    @property
-    def writer_logic(self) -> DataWriter | None:
-        """Expose the injected writer so callbacks can discover it via HasWriterLogic."""
-        return self._writer
+        ctrl: MMCoreDetectorController[WriterT] = MMCoreDetectorController(
+            core=self._core,
+            writer=writer,
+            device_name=name,
+            set_buffer=set_buf,
+        )
+
+        super().__init__(
+            controller=ctrl,
+            writer=writer,
+            config_sigs=[],
+            name=name,
+        )
+        self.logger.debug(
+            f"Initialized {self.cam_config.adapter} -> {self.cam_config.device}"
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_dtype(self, device_name: str) -> str:
+        """Return the numpy dtype string for the current pixel type."""
+        return self.cam_config.numpy_dtype[self._pixelprop][
+            self._core.getProperty(device_name, self._pixelprop)
+        ]
 
     @property
     def dtype(self) -> str:
         """The currently active pixel data type of the camera, as a numpy dtype string."""
-        # TODO: this is horrible; we need a better way
-        # to manage the mapping from camera properties to numpy dtypes
-        return self.config.numpy_dtype[self._pixelprop][
-            self._core.getProperty(self.name, self._pixelprop)
-        ]
+        return self._get_dtype(self.name)
 
-    def set(self, value: Any, **kwargs: Any) -> Status:
+    # ------------------------------------------------------------------
+    # HasWriterLogic
+    # ------------------------------------------------------------------
+
+    @property
+    def writer_logic(self) -> WriterT:
+        """Expose the injected writer for discovery via [`HasWriterLogic`][redsun.storage.HasWriterLogic]."""
+        return self._writer
+
+    # ------------------------------------------------------------------
+    # Property setter
+    # ------------------------------------------------------------------
+
+    @AsyncStatus.wrap
+    async def set(self, value: Any, **kwargs: Any) -> None:
         """Set a property of the detector.
 
         Parameters
         ----------
-        value: `Any`
+        value :
             The value to set for the property.
-        **kwargs: `dict[str, Any]`
-            Additional keyword arguments, including the property name.
+        **kwargs :
+            Pass ``propr="<key>"`` to identify the target property.
 
-        Returns
-        -------
-        `Status`
-            Status of the operation.
+        Raises
+        ------
+        ValueError
+            If ``propr`` is not provided or the property is not found.
         """
-        s = Status()
-        try:
-            propr = kwargs.get("propr", None)
-            if propr:
-                _, propr = parse_key(cast("str", propr))
-            else:
-                raise ValueError(
-                    "Property name must be specified via 'propr' keyword argument."
-                )
-            if propr in self._properties.keys():
-                self._properties[propr].value = value
-                # in case we updated the pixel type
-                self.buffer._value = np.zeros(
-                    (self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype)
-                )
-                self.buffer._notify()
-            elif propr == "exposure":
-                self._core.setExposure(self.name, value)
-            elif propr == "roi":
-                # TODO: should we validate the ROI here?
-                self._core.setROI(self.name, *value)
-                self.buffer._value = np.zeros(
-                    (self.roi[2], self.roi[3]), dtype=np.dtype(self.dtype)
-                )
-                self.buffer._notify()
-                self.roi = tuple(value)
-            else:
-                raise ValueError(f"Property '{propr}' not found.")
-        except Exception as e:
-            s.set_exception(e)
-        else:
-            s.set_finished()
-        return s
+        propr_raw: str | None = kwargs.get("propr", None)
+        if not propr_raw:
+            raise ValueError(
+                "Property name must be specified via the 'propr' keyword argument."
+            )
+        _, propr = parse_key(propr_raw)
 
-    def describe_configuration(self) -> dict[str, Descriptor]:
+        if propr in self._properties:
+            self._properties[propr].value = value
+            # Refresh buffer shape/dtype in case pixel type changed.
+            self._set_buf(
+                np.zeros((self.roi[3], self.roi[2]), dtype=np.dtype(self.dtype))
+            )
+        elif propr == "exposure":
+            self._core.setExposure(self.name, value)
+        elif propr == "roi":
+            self._core.setROI(self.name, *value)
+            self.roi = tuple(value)
+            self._set_buf(
+                np.zeros((self.roi[3], self.roi[2]), dtype=np.dtype(self.dtype))
+            )
+        else:
+            raise ValueError(f"Property {propr!r} not found.")
+
+    # ------------------------------------------------------------------
+    # Configuration describe / read
+    # ------------------------------------------------------------------
+
+    async def describe_configuration(self) -> dict[str, Descriptor]:
+        """Describe all configurable properties of the detector."""
         config_descriptor: dict[str, Descriptor] = {}
         for prop_name, value in self._device_schema["properties"].items():
-            if prop_name not in self.config.properties:
+            if prop_name not in self.cam_config.properties:
                 continue
 
             choices: list[str] = []
-            if prop_name in self.config.enum_map:
-                choices = list(self.config.enum_map[prop_name])
+            if prop_name in self.cam_config.enum_map:
+                choices = list(self.cam_config.enum_map[prop_name])
             elif value["type"] == "string":
                 choices = value.get("enum", [])
 
-            readonly = False or prop_name in self.config.properties.readonly
-
+            readonly = prop_name in self.cam_config.properties.readonly
             maximum: float | None = value.get("maximum", None)
             minimum: float | None = value.get("minimum", None)
             key = make_key(self.name, prop_name)
@@ -227,8 +389,8 @@ class MMCoreCameraDevice(Device, DetectorProtocol, HasWriterLogic, Loggable):
         config_descriptor[make_key(self.name, "exposure")] = make_descriptor(
             "settings",
             "number",
-            low=self.config.exposure_limits[0],
-            high=self.config.exposure_limits[1],
+            low=self.cam_config.exposure_limits[0],
+            high=self.cam_config.exposure_limits[1],
             units="ms",
         )
         config_descriptor[make_key(self.name, "sensor_shape")] = make_descriptor(
@@ -236,12 +398,13 @@ class MMCoreCameraDevice(Device, DetectorProtocol, HasWriterLogic, Loggable):
         )
         return config_descriptor
 
-    def read_configuration(self) -> dict[str, Reading[Any]]:
+    async def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Read all configurable properties of the detector."""
         timestamp = time.time()
         config: dict[str, Reading[Any]] = {}
 
         for prop in self._properties.values():
-            if prop.name not in self.config.properties:
+            if prop.name not in self.cam_config.properties:
                 continue
             config[make_key(self.name, prop.name)] = make_reading(prop.value, timestamp)
 
@@ -252,342 +415,3 @@ class MMCoreCameraDevice(Device, DetectorProtocol, HasWriterLogic, Loggable):
             list(self.sensor_shape), timestamp
         )
         return config
-
-    def stage(self) -> Status:
-        """Stage the detector for acquisition.
-
-        Sets the current model as active
-        camera for the core and initializes
-        the circular buffer (although
-        it should not be necessary).
-        """
-        s = Status()
-        exp_in_ms = self._core.getExposure()
-        self._current_exposure = exp_in_ms / 1000.0
-        try:
-            self._core.setCameraDevice(self.name)
-            self._core.initializeCircularBuffer()
-            self.logger.debug(
-                f"Staged (exposure: {exp_in_ms} ms, capacity: {self._core.getBufferFreeCapacity()} frames)"
-            )
-            s.set_finished()
-        except Exception as e:
-            s.set_exception(e)
-        return s
-
-    def unstage(self) -> Status:
-        """Unstage the detector.
-
-        No-op for this model; implemented
-        to be compliant with the protocol.
-        """
-        s = Status()
-        self.logger.debug("Unstaged")
-        s.set_finished()
-        return s
-
-    def trigger(self) -> Status:
-        """Trigger a reading from the detector."""
-        s = Status()
-        # if we're not flying,
-        # take a new image and store it in the read buffer;
-        if not self._fly_permit.is_set():
-            self.buffer._value = self._core.snap()
-            self.buffer._notify()
-        s.set_finished()
-        return s
-
-    def prepare(self, value: PrepareInfo) -> Status:
-        """Prepare the detector for acquisition.
-
-        Parameters
-        ----------
-        value : PrepareInfo
-            Plan-time information carrying ``capacity`` and ``write_forever``.
-        """
-        s = Status()
-        self._fly_permit.clear()
-        self._fly_stop.clear()
-        try:
-            capacity = 0 if value.write_forever else value.capacity
-            width, height = self._core.getImageWidth(), self._core.getImageHeight()
-
-            if self._writer is not None:
-                self._writer.register(
-                    name=self.name,
-                    dtype=np.dtype(self.dtype),
-                    shape=(height, width),
-                    capacity=capacity,
-                )
-
-            self._thread = th.Thread(
-                target=self._stream_to_disk,
-                kwargs={"frames": capacity},
-                daemon=True,
-            )
-            self._thread.start()
-        except Exception as e:
-            s.set_exception(e)
-        else:
-            s.set_finished()
-        return s
-
-    def kickoff(self) -> Status:
-        """Kickoff a continuous acquisition.
-
-        Starts a background thread that continuously
-        streams images from the internal ring buffer
-        into disk.
-
-        Kickoff requires that stage() has been called
-        to arm the device and prepare() has been called
-        to register the storage source.
-
-        Otherwise, the status will report an exception.
-
-        Returns
-        -------
-        Status
-            Status of the operation.
-        """
-        s = Status()
-
-        def _clear_flags(_: Status) -> None:
-            """Clear the flying flags when done."""
-            self._fly_permit.clear()
-            self._fly_stop.clear()
-
-        # we also prepare a status for complete()
-        if self._complete_status.done:
-            # recreate the status if it's already done
-            self._complete_status = Status()
-        self._complete_status.add_callback(_clear_flags)
-
-        # Reset the assets collected flag for this new flight
-        self._assets_collected = False
-        if not self._thread:
-            s.set_exception(
-                RuntimeError(
-                    "Storage backend is not prepared (prepare() should be called first). "
-                )
-            )
-            return s
-        else:
-            # acquisition is already running
-            # and ring buffer is ready:
-            # open the writer source and start the background thread
-            if self._writer is not None:
-                self._writer.open(self.name)
-            self._fly_permit.set()
-            s.set_finished()
-        return s
-
-    def complete(self) -> Status:
-        """Complete the continuous acquisition.
-
-        Stops the background thread that streams images
-        from the internal ring buffer into disk.
-
-        If kickoff() was not called before, the status
-        will report an exception.
-
-        Returns
-        -------
-        Status
-            Status of the operation.
-        """
-        if self._complete_status.done:
-            return self._complete_status
-
-        if not self._fly_permit.is_set():
-            self._complete_status.set_exception(
-                RuntimeError("Not flying; kickoff() must be called first. ")
-            )
-            return self._complete_status
-        # stop the streaming thread;
-        # this will also set the status
-        # to finished when done
-        self._fly_stop.set()
-        return self._complete_status
-
-    def read(self) -> dict[str, Reading[Any]]:
-        """Read an acquired image.
-
-        Returns
-        -------
-        dict[str, Reading[Any]]
-            A dictionary containing the acquired image and ROI.
-
-        Raises
-        ------
-        RuntimeError
-            If acquisition is not running.
-        """
-        stamp = time.time()
-        return {
-            **self.buffer.read(),
-            self._roi_key: {"value": self.roi, "timestamp": stamp},
-        }
-
-    def describe(self) -> dict[str, Descriptor]:
-        """Describe the data produced by the detector.
-
-        Returns
-        -------
-        dict[str, dict[str, Descriptor]]
-            A dictionary describing the data produced by the detector.
-        """
-        return {
-            **self.buffer.describe(),
-            self._roi_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [4],
-            },
-        }
-
-    def describe_collect(
-        self,
-    ) -> dict[str, Descriptor]:
-        """Describe the data collected during acquisition.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            A dictionary describing the data collected during acquisition.
-        """
-        width, height = self._core.getImageWidth(), self._core.getImageHeight()
-        return {
-            self._buffer_stream_key: {
-                "source": "data",
-                "dtype": "array",
-                "shape": [None, width, height],
-                "external": "STREAM:",
-            }
-        }
-
-    def collect_asset_docs(self, index: int | None = None) -> Iterator[StreamAsset]:
-        """Collect the assets stored on disk.
-
-        Only emits StreamResource and StreamDatum if there are frames written to disk
-        from a flying/streaming operation AND the flight has completed (not currently flying).
-
-        Parameters
-        ----------
-        index : int | None
-            If provided, only report frames up to this index.
-            If None, report all frames written so far.
-
-        Yields
-        ------
-        StreamAsset
-        - A tuple containing the stream resource information.
-        - These are encapsulated into two separate elements:
-          - ("stream_resource", StreamResource) - emitted only on first call
-          - ("stream_datum", StreamDatum) - emitted on each call with incremental indices
-        """
-        # Only emit asset docs if we're not currently flying
-        # This prevents emitting assets during read_while_waiting (while streaming is active)
-        # Assets should only be emitted after complete() is called
-        if self._fly_permit.is_set():
-            return
-
-        if not self._complete_status.done:
-            return
-
-        # Don't emit assets if they've already been collected
-        if self._assets_collected:
-            return
-
-        if self._writer is None:
-            return
-
-        frames_written = resolve_sync_or_async(
-            self._writer.get_indices_written(self.name)
-        )
-        if frames_written == 0:
-            return
-
-        # Determine how many frames to report
-        if index is not None:
-            frames_to_report = min(index, frames_written)
-        else:
-            frames_to_report = frames_written
-
-        # Mark that we're collecting assets
-        self._assets_collected = True
-
-        # Delegate to writer
-        yield from cast(
-            "Iterator[StreamAsset]",
-            self._writer.collect_stream_docs(self.name, frames_to_report),
-        )
-
-    def get_index(self) -> int:
-        """Return the number of frames written since last flight."""
-        if self._writer is None:
-            return 0
-        return resolve_sync_or_async(self._writer.get_indices_written(self.name))
-
-    def _stream_to_disk(self, *, frames: int) -> None:
-        """Stream data from the camera to disk.
-
-        The thread is started in the camera's prepare() method,
-        kicked off in the kickoff() method, and stopped in the complete() method.
-
-        Parameters
-        ----------
-        frames: int
-            The number of frames to stream; if 0, stream indefinitely.
-        """
-        # wait for kickoff to be set
-        self._fly_permit.wait()
-        self.logger.debug("Starting streaming thread.")
-
-        # regardless of whether its
-        # a continuous acquisition or not,
-        # there is an unfortunate extra copy
-        # to the internal ring buffer;
-        # it would be spared if we could
-        # access the camera image buffer directly
-        frames_written = 0
-        last_frame = 0
-        if frames > 0:
-            self._core.startSequenceAcquisition(frames, self._current_exposure, False)
-            while frames_written < frames:
-                self._wait_for_buffer()
-                img, md = self._core.popNextImageAndMD()
-                last_frame = int(md["ImageNumber"])
-                np.copyto(self.buffer._value, img)
-                self.buffer._notify()
-                if self._writer is not None:
-                    self._writer.write_frame(self.name, img)
-                frames_written += 1
-            self._core.stopSequenceAcquisition()
-        else:
-            # write until stopped
-            self._core.startContinuousSequenceAcquisition(self._current_exposure)
-            while not self._fly_stop.is_set():
-                self._wait_for_buffer()
-                img, md = self._core.popNextImageAndMD()
-                last_frame = int(md["ImageNumber"])
-                np.copyto(self.buffer._value, img)
-                self.buffer._notify()
-                if self._writer is not None:
-                    self._writer.write_frame(self.name, img)
-                frames_written += 1
-            self._core.stopSequenceAcquisition()
-        # writer.close() is managed by FileStoragePresenter, not the camera
-        self._complete_status.set_finished()
-        self.logger.debug(f"Streaming completed. Wrote {frames_written}.")
-        if (last_frame + 1) > frames_written:
-            self.logger.warning(f"Lost {(last_frame + 1) - frames_written} frames.")
-
-    def _wait_for_buffer(self) -> None:
-        """Wait until an image is available in the core buffer.
-
-        Polls getRemainingImageCount() until an image is available.
-        Uses a short sleep between polls to avoid busy-waiting.
-        """
-        while self._core.getRemainingImageCount() < 1:
-            time.sleep(self._current_exposure)
