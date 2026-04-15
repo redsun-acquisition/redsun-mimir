@@ -159,6 +159,3 @@ include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
-
-[tool.uv.sources]
-redsun = { path = "../redsun", editable = true }
