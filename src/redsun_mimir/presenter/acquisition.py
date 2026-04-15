@@ -411,7 +411,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
-        prepare_info = PrepareInfo(capacity=stream_frames, write_forever=False)
+        prepare_info = PrepareInfo(number_of_events=stream_frames, write_forever=False)
         yield from bps.prepare(motor, prepare_info, wait=True)
         for det in detectors:
             yield from bps.prepare(det, prepare_info, wait=True)
@@ -499,7 +499,9 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
             self.logger.debug("Starting data streaming to disk")
 
-            prepare_info = PrepareInfo(capacity=frames, write_forever=write_forever)
+            prepare_info = PrepareInfo(
+                number_of_events=frames, write_forever=write_forever
+            )
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
 

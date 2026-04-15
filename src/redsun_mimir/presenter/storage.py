@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
 from event_model import DocumentRouter
+from redsun.engine import get_shared_loop
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.storage import SessionPathProvider, handle_descriptor_metadata
@@ -123,10 +125,12 @@ class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
         """Close all registered writers after the plan completes."""
         if not self.available_writers:
             return
+        loop = get_shared_loop()
         for groups in self.available_writers.values():
             for writer in groups.values():
                 try:
-                    writer.close()
+                    future = asyncio.run_coroutine_threadsafe(writer.close(), loop)
+                    future.result(timeout=10.0)
                 except Exception:  # noqa: PERF203
                     self.logger.exception("Error closing writer %r.", writer)
 

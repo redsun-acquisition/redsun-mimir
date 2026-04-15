@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from queue import SimpleQueue
-from threading import Thread
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, cast
 
 from dependency_injector import providers
+from redsun.engine import get_shared_loop
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
@@ -17,10 +17,9 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
+    from ophyd_async.core import AsyncConfigurable
     from redsun.device import Device
     from redsun.virtual import VirtualContainer
-
-    from redsun_mimir.device.axis import MotorAxis
 
 
 class MotorPresenter(Presenter, Loggable):
@@ -28,11 +27,12 @@ class MotorPresenter(Presenter, Loggable):
 
     Allows manual stage positioning by forwarding movement requests from
     [`MotorView`][redsun_mimir.view.MotorView] to the individual axis
-    objects via a background thread. Emits position updates back to the
-    view once each move completes.
+    objects.  Each move is dispatched to the shared bluesky event loop via
+    [`asyncio.run_coroutine_threadsafe`][asyncio.run_coroutine_threadsafe]
+    so the Qt main thread is never blocked.
 
     Axes are discovered at initialisation by iterating over each device's
-    [`children()`][redsun.device.Device.children] and retaining those that
+    [`children()`][ophyd_async.core.Device.children] and retaining those that
     satisfy [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol].
 
     Parameters
@@ -42,28 +42,18 @@ class MotorPresenter(Presenter, Loggable):
     devices :
         Mapping of device names to device instances.
     timeout :
-        Timeout for motor operations in seconds. Defaults to 2 seconds.
+        Timeout for motor operations in seconds. Defaults to ``2.0``.
 
     Attributes
     ----------
     sigNewPosition :
-        Emitted from the background move thread when a move completes.
-        Carries motor name (`str`), axis (`str`), and new position (`float`).
-
-        !!! warning
-            This signal is emitted from a background thread. Connect with
-            `thread="main"` to ensure the slot runs on the Qt main thread:
-
-            ```python
-            container.signals["MotorPresenter"]["sigNewPosition"].connect(
-                self.on_new_position, thread="main"
-            )
-            ```
-
+        Emitted when a move completes successfully.
+        Carries motor name (``str``), axis name (``str``), and new position
+        (``float``).
     sigNewConfiguration :
         Emitted after a configuration change attempt.
-        Carries motor name (`str`) and a mapping of parameter names
-        to success status (`dict[str, bool]`).
+        Carries motor name (``str``) and a mapping of parameter names to
+        success status (``dict[str, bool]``).
     """
 
     sigNewPosition = Signal(str, str, float)
@@ -77,22 +67,21 @@ class MotorPresenter(Presenter, Loggable):
         timeout: float | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = timeout or 2.0
-        self._queue: SimpleQueue[tuple[str, str, float] | None] = SimpleQueue()
+        self._timeout: float = timeout or 2.0
 
-        # motor_name -> {axis_name -> MotorAxis}
-        self._axes: dict[str, dict[str, MotorAxis]] = {}
+        # motor_name -> {axis_name -> MotorProtocol}
+        self._axes: dict[str, dict[str, MotorProtocol]] = {}
         # motor_name -> container Device (for read/describe_configuration)
         self._motor_devices: dict[str, Device] = {}
 
         for dev_name, device in devices.items():
-            found = {
+            found: dict[str, MotorProtocol] = {
                 attr: child
                 for attr, child in device.children()
                 if isinstance(child, MotorProtocol)
             }
             if found:
-                self._axes[dev_name] = found  # type: ignore[assignment]
+                self._axes[dev_name] = found
                 self._motor_devices[dev_name] = device
 
         if not self._axes:
@@ -100,28 +89,39 @@ class MotorPresenter(Presenter, Loggable):
         else:
             self.logger.debug(f"Found motor devices: {list(self._axes)}")
 
-        self._daemon = Thread(target=self._run_loop, daemon=True)
-        self._daemon.start()
-
         self.logger.info("Initialized")
 
     def models_configuration(self) -> dict[str, Reading[Any]]:
         """Get the current configuration readings of all motor devices."""
+        loop = get_shared_loop()
         result: dict[str, Reading[Any]] = {}
         for device in self._motor_devices.values():
-            result.update(device.read_configuration())  # type: ignore[arg-type]
+            result.update(
+                asyncio.run_coroutine_threadsafe(
+                    cast("AsyncConfigurable", device).read_configuration(), loop
+                ).result()
+            )
         return result
 
     def models_description(self) -> dict[str, Descriptor]:
         """Get the configuration descriptors of all motor devices."""
+        loop = get_shared_loop()
         result: dict[str, Descriptor] = {}
         for device in self._motor_devices.values():
-            result.update(device.describe_configuration())  # type: ignore[arg-type]
+            result.update(
+                asyncio.run_coroutine_threadsafe(
+                    cast("AsyncConfigurable", device).describe_configuration(), loop
+                ).result()
+            )
         return result
 
     def move(self, motor: str, axis: str, position: float) -> None:
-        """Enqueue a move of *axis* on *motor* to *position*."""
-        self._queue.put((motor, axis, position))
+        """Dispatch an async move of *axis* on *motor* to *position*.
+
+        Returns immediately; the move runs on the shared event loop.
+        """
+        loop = get_shared_loop()
+        asyncio.run_coroutine_threadsafe(self._do_move(motor, axis, position), loop)
 
     def configure(self, motor: str, config: dict[str, Any]) -> dict[str, bool]:
         """Update one or more axis step sizes and emit ``sigNewConfiguration``.
@@ -140,19 +140,22 @@ class MotorPresenter(Presenter, Loggable):
         dict[str, bool]
             Per-key success flags.
         """
+        loop = get_shared_loop()
         success_map: dict[str, bool] = {}
         axes = self._axes.get(motor, {})
         for key, value in config.items():
-            # key format: "{motor}-{axis}-step_size"
             parts = key.split("-")
             if len(parts) >= 3 and parts[-1] == "step_size":
                 axis_name = parts[-2]
                 if axis_name in axes:
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._set_step_size(axes[axis_name], float(value)), loop
+                    )
                     try:
-                        axes[axis_name].step_size.set(float(value))
+                        future.result(timeout=self._timeout)
                         success_map[key] = True
-                    except Exception as e:
-                        self.logger.exception(f"Failed to set {key}: {e}")
+                    except Exception:
+                        self.logger.exception(f"Failed to set {key}")
                         success_map[key] = False
                 else:
                     self.logger.error(f"Unknown axis {axis_name!r} for motor {motor!r}")
@@ -164,9 +167,7 @@ class MotorPresenter(Presenter, Loggable):
         return success_map
 
     def shutdown(self) -> None:
-        """Send the sentinel and wait for the daemon thread to exit."""
-        self._queue.put(None)
-        self._daemon.join()
+        """Shutdown all motor devices."""
         for device in self._motor_devices.values():
             if isinstance(device, HasShutdown):
                 device.shutdown()
@@ -185,16 +186,11 @@ class MotorPresenter(Presenter, Loggable):
         if "sigConfigChanged" in sigs:
             sigs["sigConfigChanged"].connect(self.configure)
 
-    def _run_loop(self) -> None:
-        while True:
-            task = self._queue.get()
-            if task is None:
-                break
-            motor, axis, position = task
-            self.logger.debug(f"Moving {motor} to {position} on {axis}")
-            self._do_move(motor, axis, position)
+    async def _set_step_size(self, axis: MotorProtocol, value: float) -> None:
+        """Wrap ``axis.step_size.set()`` as a coroutine for ``run_coroutine_threadsafe``."""
+        await axis.step_size.set(value)
 
-    def _do_move(self, motor: str, axis: str, position: float) -> None:
+    async def _do_move(self, motor: str, axis: str, position: float) -> None:
         axes = self._axes.get(motor)
         if axes is None:
             self.logger.error(f"Unknown motor {motor!r}")
@@ -203,10 +199,12 @@ class MotorPresenter(Presenter, Loggable):
         if axis_obj is None:
             self.logger.error(f"Axis {axis!r} is not available for motor {motor!r}")
             return
-        s = axis_obj.set(position)
+        self.logger.debug(f"Moving {motor}/{axis} → {position}")
         try:
-            s.wait(self._timeout)  # type: ignore[attr-defined]
-        except Exception as e:
-            self.logger.exception(f"Failed to move {motor}/{axis} to {position}: {e}")
+            await asyncio.wait_for(axis_obj.set(position), timeout=self._timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Move timeout: {motor}/{axis} → {position}")
+        except Exception:
+            self.logger.exception(f"Move failed: {motor}/{axis} → {position}")
         else:
             self.sigNewPosition.emit(motor, axis, position)

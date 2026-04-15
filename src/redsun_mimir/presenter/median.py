@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from event_model import DocumentRouter
-from redsun.device import ControllableDataWriter, DataWriter
+from ophyd_async.core import SignalR
+from redsun.engine import get_shared_loop  # used in _compute_medians
 from redsun.log import Loggable
 from redsun.presenter import Presenter
+from redsun.storage import SharedDetectorWriter
 from redsun.virtual import Signal
 
 if TYPE_CHECKING:
@@ -17,23 +20,23 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor, RunStart, RunStop
-    from redsun.device import AttrR, Device
+    from redsun.device import Device
     from redsun.virtual import VirtualContainer
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter that computes per-detector median images from scan streams.
 
-    Subscribes directly to each detector's
-    [`buffer`][redsun_mimir.protocols.DetectorProtocol.buffer] signal.
-    Frames arriving while the run is in the ``median_streams`` phase are
-    accumulated. When a descriptor for a ``live_streams`` stream arrives
-    after a scan phase (stream switch), the median is computed immediately,
-    written to the detector's ``writer_logic``, and stored for live
-    correction forwarded to [`DetectorView`][redsun_mimir.view.DetectorView].
+    Subscribes directly to each detector's ``buffer``
+    [`SignalR`][ophyd_async.core.SignalR].  Frames arriving while the run is
+    in the ``median_streams`` phase are accumulated.  When a descriptor for a
+    ``live_streams`` stream arrives after a scan phase (stream switch), the
+    median is computed asynchronously, written to the detector's
+    ``writer_logic``, and stored for live correction forwarded to
+    [`DetectorView`][redsun_mimir.view.DetectorView].
 
     Supports concurrent and nested bluesky runs: all state is keyed by
-    run UID. Each run subscribes independently and unsubscribes cleanly
+    run UID.  Each run subscribes independently and unsubscribes cleanly
     in ``stop()``.
 
     Parameters
@@ -75,7 +78,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._frames: dict[str, dict[str, list[npt.NDArray[Any]]]] = {}
         self._medians: dict[str, dict[str, npt.NDArray[Any]]] = {}
         self._subscriptions: dict[
-            str, list[tuple[AttrR[Any], Callable[..., None]]]
+            str, list[tuple[SignalR[Any], Callable[..., None]]]
         ] = {}
         self.uid_to_stream: dict[str, str] = {}
 
@@ -102,10 +105,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._frames[run_uid] = {}
         self._medians[run_uid] = {}
 
-        subs: list[tuple[AttrR[Any], Callable[..., None]]] = []
+        subs: list[tuple[SignalR[Any], Callable[..., None]]] = []
         for device in self._devices.values():
-            buf: AttrR[Any] | None = getattr(device, "buffer", None)
-            if buf is not None:
+            buf = getattr(device, "buffer", None)
+            if buf is not None and isinstance(buf, SignalR):
                 cb = partial(self._on_frame, run_uid=run_uid)
                 buf.subscribe(cb)
                 subs.append((buf, cb))
@@ -113,7 +116,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         return doc
 
     def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
-        """Track stream phase; compute median on stream switch."""
+        """Track stream phase; dispatch median computation on stream switch."""
         run_uid: str = doc["run_start"]
         stream: str = doc["name"]
         self.uid_to_stream[doc["uid"]] = stream
@@ -162,13 +165,14 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         frames_by_key = self._frames.get(run_uid, {})
         medians: dict[str, npt.NDArray[Any]] = {}
 
-        # Build buffer-key → device lookup for writer access
+        # Build buffer-key → device lookup for writer access.
         buffer_to_device: dict[str, Device] = {}
         for device in self._devices.values():
-            buf: AttrR[Any] | None = getattr(device, "buffer", None)
-            if buf is not None and buf.name:
+            buf = getattr(device, "buffer", None)
+            if buf is not None and isinstance(buf, SignalR) and buf.name:
                 buffer_to_device[buf.name] = device
 
+        loop = get_shared_loop()
         for key, frames in frames_by_key.items():
             if not frames:
                 continue
@@ -178,14 +182,13 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             )
             medians[key] = median_frame
 
-            found_device: Device | None = buffer_to_device.get(key)
+            found_device = buffer_to_device.get(key)
             if found_device is None:
                 continue
-            device = found_device
-            writer: DataWriter | None = getattr(device, "writer_logic", None)
-            if not isinstance(writer, ControllableDataWriter):
+            writer = getattr(found_device, "writer_logic", None)
+            if not isinstance(writer, SharedDetectorWriter):
                 continue
-            median_key = f"{device.name}_median"
+            median_key = f"{found_device.name}_median"
             try:
                 writer.register(
                     name=median_key,
@@ -193,7 +196,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                     shape=median_frame.shape,
                     capacity=1,
                 )
-                writer.open(median_key)
+                asyncio.run_coroutine_threadsafe(writer.open(median_key), loop).result()
                 writer.write_frame(median_key, median_frame)
                 self.logger.debug(
                     "Wrote median for buffer key '%s' to storage key '%s'.",
