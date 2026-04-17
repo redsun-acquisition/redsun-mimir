@@ -269,7 +269,7 @@ wheels = [
 
 [[package]]
 name = "bluesky"
-version = "1.14.6"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cycler" },
@@ -283,9 +283,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/70/6c/49ed7b75e2c9ed3cbf49b0ccc9d4bb45be432d290e0bb2a9341c246f9974/bluesky-1.14.6.tar.gz", hash = "sha256:7db1d34518fc0875627117813435f68fd2e27ad2ff0067bd55e2e7d659cb8151", size = 499579, upload-time = "2025-10-08T18:47:00.493Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/51/8fca065db911517add90c408760e3f209762d656f4d1d114172287874619/bluesky-1.15.0.tar.gz", hash = "sha256:71d35f3514e616e7fed0430327cc64d2d40e4fcef9d6764be4db8f621057f572", size = 507145, upload-time = "2026-04-15T15:39:23.557Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/23/e6572cf2aca82938c241e02e150e2102f5b04a3f2f82c4720f6838c42a63/bluesky-1.14.6-py3-none-any.whl", hash = "sha256:8f24e02a2503d7cc895edb34f3917d1725ac143751dfcd50096a067b833c8bd3", size = 358374, upload-time = "2025-10-08T18:46:58.968Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/bf/86fa0ca9d3ecf02ff9941dfa74d1038ccc34c2081ac780f7fe10cdb6ab39/bluesky-1.15.0-py3-none-any.whl", hash = "sha256:3fa8bbe0d069decbabaafb522db60418a2de0fb7450ad460dd3d6bcc7aed6d0e", size = 365347, upload-time = "2026-04-15T15:39:21.926Z" },
 ]
 
 [[package]]
@@ -2149,7 +2149,7 @@ wheels = [
 
 [[package]]
 name = "ophyd-async"
-version = "0.16"
+version = "0.17a3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bluesky" },
@@ -2163,9 +2163,9 @@ dependencies = [
     { name = "stamina" },
     { name = "velocity-profile" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/2d/cd178f31c4efb7f2a1b2787900d62b70b478111c5db51a625307f5fb9b15/ophyd_async-0.16.tar.gz", hash = "sha256:c8a3671c704da77c7a7b7c5343b972230f743b1029a100f6c5780123fb0df33d", size = 545367, upload-time = "2026-02-17T16:39:37.897Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/22/ee6c7f4029195325fedcd1730233cacb78ac878b89f443d9d37f7c9647d5/ophyd_async-0.17a3.tar.gz", hash = "sha256:0f1f83b66862269aacb120c230da83b28b121c3c682d0009320fe82ff2072a25", size = 555077, upload-time = "2026-04-17T11:13:05.658Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/ab/0c92e9824c9e54df5a06b5759957fc23c30489c2aabef5653dd9057b3f61/ophyd_async-0.16-py3-none-any.whl", hash = "sha256:017d837767b63cdc20af1851275495b6bb0db195a887e0bd989dc7a17e0f0c79", size = 208499, upload-time = "2026-02-17T16:39:36.542Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/ed/5b699ab3c949be4847b9538344c24a9c4ee9ad03ca0df102f6aa182b1855/ophyd_async-0.17a3-py3-none-any.whl", hash = "sha256:2d2367f00b8517122f2dcfe87327efb6ba3a34e88110a45969e0b4ca7cb5b349", size = 207512, upload-time = "2026-04-17T11:13:04.099Z" },
 ]
 
 [[package]]
@@ -3272,11 +3272,11 @@ zarr = [
 [package.metadata]
 requires-dist = [
     { name = "acquire-zarr", marker = "extra == 'zarr'", specifier = ">=0.7.0" },
-    { name = "bluesky", specifier = ">=1.14.6" },
+    { name = "bluesky", specifier = ">=1.15.0" },
     { name = "dependency-injector", specifier = ">=4.49.0" },
     { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
     { name = "magicgui", marker = "extra == 'pyside'", specifier = ">=0.10.1" },
-    { name = "ophyd-async", specifier = ">=0.16" },
+    { name = "ophyd-async", specifier = ">=0.17a2" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "psygnal", specifier = ">=0.15.1" },
     { name = "pyqt6", marker = "extra == 'pyqt'", specifier = ">=6.10.2" },

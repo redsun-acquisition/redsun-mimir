@@ -17,8 +17,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import AsyncConfigurable
-    from redsun.device import Device
+    from ophyd_async.core import AsyncConfigurable, Device
     from redsun.virtual import VirtualContainer
 
 

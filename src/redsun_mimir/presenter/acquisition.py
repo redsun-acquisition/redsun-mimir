@@ -9,6 +9,7 @@ import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
 from bluesky.utils import MsgGenerator, RequestAbort  # noqa: TC002
 from dependency_injector import providers
+from ophyd_async.core import TriggerInfo
 from redsun.engine import RunEngine
 from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
@@ -20,7 +21,6 @@ from redsun.presenter.plan_spec import (
     create_plan_spec,
     resolve_arguments,
 )
-from redsun.storage import PrepareInfo
 from redsun.utils import find_signals
 from redsun.virtual import Signal
 
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
-    from redsun.device import Device
+    from ophyd_async.core import Device
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
 
@@ -89,7 +89,7 @@ class StreamAction(Action):
 
 
 def square_scan(
-    detectors: Sequence[DetectorProtocol],
+    detectors: Sequence[DetectorProtocol | ReadableFlyer],
     motor: XYMotor,
     step: float,
     frames_per_side: int,
@@ -411,7 +411,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
 
-        prepare_info = PrepareInfo(number_of_events=stream_frames, write_forever=False)
+        prepare_info = TriggerInfo(number_of_events=stream_frames)
         yield from bps.prepare(motor, prepare_info, wait=True)
         for det in detectors:
             yield from bps.prepare(det, prepare_info, wait=True)
@@ -427,7 +427,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     motor.x.step_size.set(step)
                     motor.y.step_size.set(step)
                 yield from square_scan(
-                    detectors,  # type: ignore[arg-type]
+                    detectors,
                     motor,
                     step,
                     scan_frames // 4,
@@ -499,9 +499,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
             self.logger.debug("Starting data streaming to disk")
 
-            prepare_info = PrepareInfo(
-                number_of_events=frames, write_forever=write_forever
-            )
+            prepare_info = TriggerInfo(number_of_events=0 if write_forever else frames)
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
 

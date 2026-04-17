@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from event_model import DocumentRouter
 from ophyd_async.core import SignalR
-from redsun.engine import get_shared_loop  # used in _compute_medians
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import SharedDetectorWriter
+from redsun.storage import DataWriter, SourceInfo
 from redsun.virtual import Signal
 
 if TYPE_CHECKING:
@@ -20,7 +18,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor, RunStart, RunStop
-    from redsun.device import Device
+    from ophyd_async.core import Device
     from redsun.virtual import VirtualContainer
 
 
@@ -32,7 +30,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     in the ``median_streams`` phase are accumulated.  When a descriptor for a
     ``live_streams`` stream arrives after a scan phase (stream switch), the
     median is computed asynchronously, written to the detector's
-    ``writer_logic``, and stored for live correction forwarded to
+    ``writer``, and stored for live correction forwarded to
     [`DetectorView`][redsun_mimir.view.DetectorView].
 
     Supports concurrent and nested bluesky runs: all state is keyed by
@@ -172,7 +170,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             if buf is not None and isinstance(buf, SignalR) and buf.name:
                 buffer_to_device[buf.name] = device
 
-        loop = get_shared_loop()
         for key, frames in frames_by_key.items():
             if not frames:
                 continue
@@ -185,19 +182,21 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             found_device = buffer_to_device.get(key)
             if found_device is None:
                 continue
-            writer = getattr(found_device, "writer_logic", None)
-            if not isinstance(writer, SharedDetectorWriter):
+            writer = getattr(found_device, "writer", None)
+            if not isinstance(writer, DataWriter):
                 continue
             median_key = f"{found_device.name}_median"
             try:
                 writer.register(
-                    name=median_key,
-                    dtype=median_frame.dtype,
-                    shape=median_frame.shape,
-                    capacity=1,
+                    median_key,
+                    SourceInfo(
+                        dtype_numpy=np.dtype(median_frame.dtype).str,
+                        shape=median_frame.shape,
+                        capacity=1,
+                    ),
                 )
-                asyncio.run_coroutine_threadsafe(writer.open(median_key), loop).result()
-                writer.write_frame(median_key, median_frame)
+                writer.open()
+                writer.write(median_key, median_frame)
                 self.logger.debug(
                     "Wrote median for buffer key '%s' to storage key '%s'.",
                     key,

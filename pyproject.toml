@@ -142,11 +142,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Component type annotations in AppContainer subclasses must be available
-# at runtime so AppContainerMeta can resolve them at class creation time.
-"src/redsun_mimir/configurations/*.py" = ["TC001"]
-# Test fixtures and helpers don't need docstrings; imports are runtime-required.
-"tests/*.py" = ["D102", "D103", "TC001", "TC002"]
+"tests/*.py" = [
+    # ignore missing docstrings in tests
+    "D101",
+    "D102",
+    "D103",
+    # ignore type check imports in tests
+    "TC"
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -159,3 +162,6 @@ include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
+
+[tool.uv.sources]
+redsun = { path = "../redsun", editable = true }

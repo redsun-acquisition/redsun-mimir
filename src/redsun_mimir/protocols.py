@@ -10,7 +10,7 @@ from bluesky.protocols import (
     WritesStreamAssets,
 )
 from ophyd_async.core import AsyncConfigurable, AsyncReadable, AsyncStageable
-from redsun.storage import HasWriterLogic
+from redsun.storage.protocols import HasWriterLogic
 
 if TYPE_CHECKING:
     import numpy as np
@@ -125,7 +125,7 @@ class ReadableFlyer(
     - [`Preparable`][bluesky.protocols.Preparable] (``prepare()``)
     - [`Collectable`][bluesky.protocols.Collectable] (``describe_collect()``)
     - [`WritesStreamAssets`][bluesky.protocols.WritesStreamAssets] (``collect_asset_docs()``)
-    - [`HasWriterLogic`][redsun.storage.HasWriterLogic] (``writer_logic`` property)
+    - [`HasWriterLogic`][redsun.storage.protocols.HasWriterLogic] (``writer`` property)
     """
 
 

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from event_model import Event
-    from redsun.device import Device
+    from ophyd_async.core import Device
     from redsun.virtual import VirtualContainer
 
 

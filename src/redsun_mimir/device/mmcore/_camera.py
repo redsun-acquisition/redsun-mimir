@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import threading as th
 import time
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from ophyd_async.core import (
     AsyncStatus,
-    DetectorController,
     SignalR,
     StandardDetector,
-    TriggerInfo,
     soft_signal_r_and_setter,
 )
 from pymmcore_plus import CMMCorePlus as Core
 from redsun.log import Loggable
-from redsun.storage import HasWriterLogic, SharedDetectorWriter
+from redsun.storage import WriterType, create_writer
+from redsun.storage.protocols import HasWriterLogic
 from redsun.utils.descriptors import make_descriptor, make_key, make_reading, parse_key
 
 from redsun_mimir.device.mmcore.configs import (
@@ -28,175 +25,29 @@ from redsun_mimir.device.mmcore.configs import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Any, ClassVar, Literal
+    from typing import Any, Literal
 
-    import numpy.typing as npt
     from bluesky.protocols import Descriptor, Reading
-
-WriterT = TypeVar("WriterT", bound=SharedDetectorWriter)
-
-
-class MMCoreDetectorController(DetectorController, Generic[WriterT]):
-    """MMCore detector controller, generic over the shared writer type.
-
-    Handles arming, streaming, and disarming the MMCore camera.  Runs the
-    blocking acquisition loop in a thread pool via ``asyncio.to_thread`` so
-    the event loop stays responsive.
-
-    ``WriterT`` is bounded to
-    [`SharedDetectorWriter`][redsun.storage.SharedDetectorWriter] because the
-    controller calls ``writer.register()`` and ``writer.write_frame()`` —
-    methods that extend the ophyd-async ``DetectorWriter`` ABC.
-
-    Parameters
-    ----------
-    core :
-        Singleton ``CMMCorePlus`` instance.
-    writer :
-        Shared multi-source writer instance.
-    device_name :
-        Name used as the source key when calling ``writer.register()`` and
-        ``writer.write_frame()``.
-    set_buffer :
-        Sync callable (from ``soft_signal_r_and_setter``) that updates the
-        camera's ``buffer`` signal and notifies subscribers.
-    """
-
-    def __init__(
-        self,
-        core: Core,
-        writer: WriterT,
-        device_name: str,
-        set_buffer: Callable[[npt.NDArray[Any]], None],
-    ) -> None:
-        self._core = core
-        self._writer: WriterT = writer
-        self._device_name = device_name
-        self._set_buffer = set_buffer
-        self._n_frames: int = 0
-        self._current_exposure: float = 0.0
-        self._stop_event = th.Event()
-        self._stream_task: asyncio.Task[None] | None = None
-
-    def get_deadtime(self, exposure: float | None) -> float:
-        """Return controller deadtime (zero for MMCore software triggering)."""
-        return 0.0
-
-    async def prepare(self, trigger_info: TriggerInfo) -> None:
-        """Register the acquisition source with the writer.
-
-        Parameters
-        ----------
-        trigger_info :
-            Plan-provided trigger parameters.  ``number_of_events`` determines
-            the frame capacity (``0`` means unlimited / continuous).
-        """
-        n = trigger_info.number_of_events
-        frames = sum(n) if isinstance(n, list) else n
-        width = self._core.getImageWidth()
-        height = self._core.getImageHeight()
-        bpp = self._core.getBytesPerPixel()
-        dtype = np.dtype(f"uint{bpp * 8}")
-        self._writer.register(
-            name=self._device_name,
-            dtype=dtype,
-            shape=(height, width),
-            capacity=frames,
-        )
-        self._n_frames = frames
-        exp_in_ms = self._core.getExposure()
-        self._current_exposure = exp_in_ms / 1000.0
-
-    async def arm(self) -> None:
-        """Start the background streaming thread."""
-        self._stop_event.clear()
-        self._stream_task = asyncio.create_task(
-            asyncio.to_thread(self._stream_sync, self._n_frames)
-        )
-
-    async def disarm(self) -> None:
-        """Signal the streaming thread to stop and wait for it to finish."""
-        self._stop_event.set()
-        if self._stream_task is not None:
-            await asyncio.shield(self._stream_task)
-            self._stream_task = None
-
-    async def wait_for_idle(self) -> None:
-        """Await the streaming task completion."""
-        if self._stream_task is not None:
-            await self._stream_task
-
-    def _stream_sync(self, frames: int) -> None:
-        """Blocking acquisition loop — runs in executor thread.
-
-        Parameters
-        ----------
-        frames :
-            Number of frames to acquire.  ``0`` means stream indefinitely
-            until ``disarm()`` sets the stop event.
-        """
-        if frames > 0:
-            self._core.startSequenceAcquisition(frames, self._current_exposure, False)
-        else:
-            self._core.startContinuousSequenceAcquisition(self._current_exposure)
-
-        frames_written = 0
-        last_frame = 0
-        try:
-            while not self._stop_event.is_set():
-                if self._core.getRemainingImageCount() > 0:
-                    img, md = self._core.popNextImageAndMD()
-                    last_frame = int(md.get("ImageNumber", frames_written))
-                    self._set_buffer(img)
-                    self._writer.write_frame(self._device_name, img)
-                    frames_written += 1
-                    if frames > 0 and frames_written >= frames:
-                        break
-                else:
-                    time.sleep(self._current_exposure or 0.005)
-        finally:
-            try:
-                self._core.stopSequenceAcquisition()
-            except Exception:
-                pass
-
-        if frames > 0 and (last_frame + 1) > frames_written:
-            import warnings
-
-            warnings.warn(
-                f"MMCoreDetectorController: lost {(last_frame + 1) - frames_written} frame(s).",
-                stacklevel=1,
-            )
+    from ophyd_async.core import DeviceMock, PathProvider
+    from redsun.storage import DataWriter
 
 
-class MMCoreCameraDevice(
-    StandardDetector[MMCoreDetectorController[WriterT], WriterT],
-    HasWriterLogic,
-    Loggable,
-    Generic[WriterT],
-):
+class MMCoreCameraDevice(StandardDetector, HasWriterLogic, Loggable):
     """Camera wrapper for Micro-Manager Core.
 
-    Inherits the full bluesky detector lifecycle from
-    [`StandardDetector`][ophyd_async.core.StandardDetector] (``stage``,
-    ``unstage``, ``prepare``, ``kickoff``, ``complete``,
-    ``collect_asset_docs``) and adds MMCore hardware management.
-
     Parameters
     ----------
-    name :
+    name : str
         Name of the device instance; used to register with the core.
-    writer :
-        Shared storage writer injected at construction time.  The controller
-        calls ``writer.register()`` and ``writer.write_frame()`` during
-        acquisition.  Exposed via
-        [`writer_logic`][redsun_mimir.device.mmcore.MMCoreCameraDevice.writer_logic]
-        for discovery by presenters through
-        [`HasWriterLogic`][redsun.storage.HasWriterLogic].
-    config :
+    writer : str
+        Name of the writer backend to use; passed to
+        [`create_writer`][redsun.storage.create_writer] to construct the
+        writer instance that is injected into the arm and trigger logic.
+    config : Literal["demo", "daheng"], optional
         Configuration preset to use; determines the camera model and
         properties.
+
+        Defaults to "demo".
     """
 
     initialized: ClassVar[bool] = False
@@ -206,10 +57,13 @@ class MMCoreCameraDevice(
     def __init__(
         self,
         name: str,
-        writer: WriterT,
         /,
+        writer: str,
         config: Literal["demo", "daheng"] = "demo",
+        path_provider: PathProvider | None = None,
     ) -> None:
+        self._writer = create_writer(WriterType(writer))
+
         self.cam_config: BaseCamConfig
         match config:
             case "demo":
@@ -237,7 +91,6 @@ class MMCoreCameraDevice(
         except Exception as e:
             raise e
 
-        # Reset ROI to full frame on initialization.
         self._core.clearROI()
         self.sensor_shape: tuple[int, int] = self.cam_config.sensor_shape
 
@@ -256,7 +109,6 @@ class MMCoreCameraDevice(
         }
         self._device_schema = self._core.getDeviceSchema(name)
 
-        # Buffer signal — updated by the streaming thread via set_buffer().
         buf, set_buf = soft_signal_r_and_setter(
             np.ndarray,
             initial_value=np.zeros(
@@ -266,26 +118,32 @@ class MMCoreCameraDevice(
         self.buffer = buf
         self._set_buf = set_buf
 
-        ctrl: MMCoreDetectorController[WriterT] = MMCoreDetectorController(
-            core=self._core,
-            writer=writer,
-            device_name=name,
-            set_buffer=set_buf,
-        )
+        if path_provider is None:
+            import pathlib
 
-        super().__init__(
-            controller=ctrl,
-            writer=writer,
-            config_sigs=[],
-            name=name,
-        )
+            from ophyd_async.core import StaticFilenameProvider, StaticPathProvider
+
+            path_provider = StaticPathProvider(
+                StaticFilenameProvider(name),
+                pathlib.PurePath(pathlib.Path.home() / "redsun-storage"),
+            )
+
+        super().__init__(name=name)
+
         self.logger.debug(
             f"Initialized {self.cam_config.adapter} -> {self.cam_config.device}"
         )
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    async def connect(
+        self,
+        mock: bool | DeviceMock[Any] = False,
+        timeout: float = 10.0,
+        force_reconnect: bool = False,
+    ) -> None:
+        """Connect device signals, including the ``NDArrayInfo`` soft signals."""
+        await super().connect(
+            mock=mock, timeout=timeout, force_reconnect=force_reconnect
+        )
 
     def _get_dtype(self, device_name: str) -> str:
         """Return the numpy dtype string for the current pixel type."""
@@ -298,18 +156,10 @@ class MMCoreCameraDevice(
         """The currently active pixel data type of the camera, as a numpy dtype string."""
         return self._get_dtype(self.name)
 
-    # ------------------------------------------------------------------
-    # HasWriterLogic
-    # ------------------------------------------------------------------
-
     @property
-    def writer_logic(self) -> WriterT:
-        """Expose the injected writer for discovery via [`HasWriterLogic`][redsun.storage.HasWriterLogic]."""
+    def writer(self) -> DataWriter:
+        """Expose the injected writer for discovery via [`HasWriterLogic`][redsun.storage.protocols.HasWriterLogic]."""
         return self._writer
-
-    # ------------------------------------------------------------------
-    # Property setter
-    # ------------------------------------------------------------------
 
     @AsyncStatus.wrap
     async def set(self, value: Any, **kwargs: Any) -> None:
@@ -336,7 +186,6 @@ class MMCoreCameraDevice(
 
         if propr in self._properties:
             self._properties[propr].value = value
-            # Refresh buffer shape/dtype in case pixel type changed.
             self._set_buf(
                 np.zeros((self.roi[3], self.roi[2]), dtype=np.dtype(self.dtype))
             )
