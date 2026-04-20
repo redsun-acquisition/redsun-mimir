@@ -163,7 +163,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         frames_by_key = self._frames.get(run_uid, {})
         medians: dict[str, npt.NDArray[Any]] = {}
 
-        # Build buffer-key → device lookup for writer access.
         buffer_to_device: dict[str, Device] = {}
         for device in self._devices.values():
             buf = getattr(device, "buffer", None)

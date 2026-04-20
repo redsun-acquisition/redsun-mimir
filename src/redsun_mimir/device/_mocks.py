@@ -14,7 +14,7 @@ from redsun.log import Loggable
 from redsun_mimir.protocols import LightProtocol
 
 
-class MockLightDevice(StandardReadable, LightProtocol[float], Loggable):
+class MockLightDevice(StandardReadable, LightProtocol, Loggable):
     """Mock light source for simulation and testing purposes.
 
     Parameters
@@ -48,7 +48,7 @@ class MockLightDevice(StandardReadable, LightProtocol[float], Loggable):
     ) -> None:
         with self.add_children_as_readables():
             self.intensity = soft_signal_rw(float, initial_value=0.0, units="mW")
-            self.enabled, self._set_enabled = soft_signal_rw(bool, initial_value=False)
+            self.enabled = soft_signal_rw(bool, initial_value=False)
 
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
@@ -60,6 +60,6 @@ class MockLightDevice(StandardReadable, LightProtocol[float], Loggable):
     async def trigger(self) -> None:
         """Toggle the activation status of the light source."""
         current = await self.enabled.get_value()
-        self._set_enabled(not current)
+        await self.enabled.set(not current)
 
-    def shutdown(self) -> None: ...
+    async def shutdown(self) -> None: ...

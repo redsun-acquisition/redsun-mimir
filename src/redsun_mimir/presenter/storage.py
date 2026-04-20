@@ -106,8 +106,8 @@ class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
 
         for mimetype, groups in self.available_writers.items():
             for group_name, writer in groups.items():
-                store_path = self._path_provider(plan_name, group_name)
-                writer.set_store_path(store_path)
+                store_path = self._path_provider(plan_name)
+                writer.set_store_path(store_path.directory_path)
                 self.logger.debug(
                     f"Set store path for writer ({group_name!r}, {mimetype!r}): "
                     f"{store_path}"

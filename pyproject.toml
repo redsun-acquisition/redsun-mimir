@@ -115,6 +115,7 @@ omit = [
 files = "src/**/*.py"
 disable_error_code = [
     "import-untyped",
+    "import-not-found",
     "no-untyped-call"
 ]
 pretty = true

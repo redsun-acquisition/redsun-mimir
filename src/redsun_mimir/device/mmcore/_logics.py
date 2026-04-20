@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pymmcore_plus import CMMCorePlus as Core
     from redsun.storage import DataWriter
 
-    from ._backend import ROIType
+    from redsun_mimir.protocols import ROIType
 
 
 @dataclass

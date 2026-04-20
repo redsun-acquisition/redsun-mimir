@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import time
 from concurrent.futures import Future
 from enum import IntEnum
@@ -8,13 +7,11 @@ from typing import TYPE_CHECKING
 
 from ophyd_async.core import (
     AsyncStatus,
-    SignalBackend,
     StandardReadable,
     StandardReadableFormat,
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
-from redsun.engine import get_shared_loop
 from redsun.log import Loggable
 from serial import Serial
 
@@ -178,12 +175,7 @@ class UC2LaserDevice(StandardReadable, Loggable):
         await self.enabled.set(not enabled)
 
     # TODO: HasShutdown must be made async
-    def shutdown(self) -> None:
-        backend_or_cache = self.enabled._backend_or_cache()
-        if isinstance(backend_or_cache, SignalBackend):
-            asyncio.run_coroutine_threadsafe(
-                backend_or_cache.put(False), get_shared_loop()
-            )
+    def shutdown(self) -> None: ...
 
 
 class UC2MotorDevice(StandardReadable, Loggable):
@@ -203,13 +195,19 @@ class UC2MotorDevice(StandardReadable, Loggable):
 
         with self.add_children_as_readables(StandardReadableFormat.HINTED_SIGNAL):
             self.x = uc2_axis_signal(
-                self._serial, axis_id=1, units="mm", range=(-100.0, 100.0)
+                self._serial,
+                axis="x",
+                units="mm",
             )
             self.y = uc2_axis_signal(
-                self._serial, axis_id=2, units="mm", range=(-100.0, 100.0)
+                self._serial,
+                axis="y",
+                units="mm",
             )
             self.z = uc2_axis_signal(
-                self._serial, axis_id=3, units="mm", range=(-100.0, 100.0)
+                self._serial,
+                axis="z",
+                units="mm",
             )
 
         super().__init__(name)

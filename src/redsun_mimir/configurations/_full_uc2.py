@@ -12,11 +12,11 @@ _CONFIG = Path(__file__).parent / "uc2_full_configuration.yaml"
 def run_uc2_container() -> None:
     """Run the full UC2 microscope with pre-shipped configuration."""
     # devices
-    from redsun_mimir.device.mmcore import MMCoreCameraDevice
+    from redsun_mimir.device.mmcore import MMDemoCamera
     from redsun_mimir.device.youseetoo import (
-        MimirLaserDevice,
-        MimirMotorDevice,
-        MimirSerialDevice,
+        UC2LaserDevice,
+        UC2MotorDevice,
+        UC2Serial,
     )  # noqa: I001
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -39,10 +39,10 @@ def run_uc2_container() -> None:
 
     class MimirMicroscope(QtAppContainer, config=_CONFIG):
         # devices
-        serial = declare_device(MimirSerialDevice, from_config="serial")
-        iscat = declare_device(MMCoreCameraDevice, from_config="camera")
-        stage = declare_device(MimirMotorDevice, from_config="stage")
-        laser = declare_device(MimirLaserDevice, from_config="laser")
+        serial = declare_device(UC2Serial, from_config="serial")
+        iscat = declare_device(MMDemoCamera, from_config="camera")
+        stage = declare_device(UC2MotorDevice, from_config="stage")
+        laser = declare_device(UC2LaserDevice, from_config="laser")
 
         # presenters
         storage_ctrl = declare_presenter(

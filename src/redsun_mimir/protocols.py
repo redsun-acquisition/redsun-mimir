@@ -12,14 +12,13 @@ from bluesky.protocols import (
 )
 from ophyd_async.core import (
     AsyncConfigurable,
-    AsyncMovable,
-    AsyncReadable,
     AsyncStageable,
 )
 from redsun.storage.protocols import HasWriterLogic
 
 if TYPE_CHECKING:
     from ophyd_async.core import AsyncStatus, SignalR, SignalRW
+    from redsun.device import DeviceMap
 
 T = TypeVar("T", int, float)
 
@@ -31,24 +30,15 @@ ROIType = np.ndarray[tuple[int, int, int, int], Any]
 
 
 @runtime_checkable
-class MotorProtocol(AsyncMovable[T], Protocol):
+class MotorProtocol(AsyncConfigurable, Protocol):
     """Protocol for individual motor axes."""
 
-    position: SignalR[T]
-
-    def set(self, value: float) -> AsyncStatus:
-        """Move the axis to *value* absolute position.
-
-        Returns
-        -------
-        AsyncStatus
-            Status object of the move.
-        """
-        ...
+    axis: DeviceMap[SignalRW[float]]
+    """Map of axis names to settable signals."""
 
 
 @runtime_checkable
-class LightProtocol(AsyncReadable, AsyncConfigurable, Protocol[T]):
+class LightProtocol(AsyncConfigurable, Protocol):
     """Protocol for light source devices.
 
     Attributes
@@ -64,7 +54,7 @@ class LightProtocol(AsyncReadable, AsyncConfigurable, Protocol[T]):
         is called.
     """
 
-    intensity: SignalRW[T]
+    intensity: SignalRW[int | float]
     wavelength: SignalR[int]
     enabled: SignalRW[bool]
 
@@ -80,7 +70,7 @@ class LightProtocol(AsyncReadable, AsyncConfigurable, Protocol[T]):
 
 
 @runtime_checkable
-class DetectorProtocol(AsyncReadable, AsyncConfigurable, AsyncStageable, Protocol):
+class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models.
 
     Attributes
@@ -127,4 +117,6 @@ __all__ = [
     "LightProtocol",
     "MotorProtocol",
     "ReadableFlyer",
+    "ROIType",
+    "Array2D",
 ]

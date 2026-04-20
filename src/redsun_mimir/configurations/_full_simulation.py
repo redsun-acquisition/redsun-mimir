@@ -17,7 +17,7 @@ def run_simulation_container() -> None:
     """
     # devices
     from redsun_mimir.device import MockLightDevice  # noqa: I001
-    from redsun_mimir.device.mmcore import MMCoreCameraDevice, MMCoreStageDevice  # noqa: I001
+    from redsun_mimir.device.mmcore import MMDemoCamera, MMDemoXYStage, MMDemoZStage  # noqa: I001
 
     # presenters
     from redsun_mimir.presenter.storage import FileStoragePresenter
@@ -39,11 +39,9 @@ def run_simulation_container() -> None:
 
     class MimirSimulator(QtAppContainer, config=_CONFIG):
         # devices
-        mmcore = declare_device(
-            MMCoreCameraDevice, from_config="camera1", writer="zarr"
-        )
-        XY = declare_device(MMCoreStageDevice, from_config="xy-motor")
-        Z = declare_device(MMCoreStageDevice, from_config="z-motor")
+        mmcamera = declare_device(MMDemoCamera, from_config="camera1", writer="zarr")
+        XY = declare_device(MMDemoXYStage, from_config="xy-motor")
+        Z = declare_device(MMDemoZStage, from_config="z-motor")
         laser = declare_device(MockLightDevice, from_config="laser")
         led = declare_device(MockLightDevice, from_config="led")
 

@@ -11,15 +11,15 @@ def run_stage_container() -> None:
 
     Launches a Qt ``MotorView`` app with a mock motor device.
     """
-    from redsun_mimir.device.mmcore import MMCoreStageDevice
+    from redsun_mimir.device.mmcore import MMDemoXYStage, MMDemoZStage
     from redsun_mimir.presenter.motor import MotorPresenter
     from redsun_mimir.view.motor import MotorView
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorApp(QtAppContainer):
-        xy_motor = declare_device(MMCoreStageDevice, config="demoxy")
-        z_motor = declare_device(MMCoreStageDevice, config="demoz")
+        xy_motor = declare_device(MMDemoXYStage, config="demoxy")
+        z_motor = declare_device(MMDemoZStage, config="demoz")
         ctrl = declare_presenter(MotorPresenter)
         widget = declare_view(MotorView)
 
