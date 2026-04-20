@@ -1,11 +1,11 @@
 from ._devices import (
-    MimirLaserDevice,
-    MimirMotorDevice,
-    MimirSerialDevice,
+    UC2LaserDevice,
+    UC2MotorDevice,
+    UC2Serial,
 )
 
 __all__ = [
-    "MimirLaserDevice",
-    "MimirMotorDevice",
-    "MimirSerialDevice",
+    "UC2MotorDevice",
+    "UC2LaserDevice",
+    "UC2Serial",
 ]

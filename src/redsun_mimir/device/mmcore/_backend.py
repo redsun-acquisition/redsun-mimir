@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 import numpy as np
 from ophyd_async.core import SignalBackend, SignalRW, make_datakey
-from ophyd_async.core._signal_backend import Primitive, PrimitiveT, make_metadata
+from ophyd_async.core._signal_backend import make_metadata
+
+from redsun_mimir.device._common import DEFAULT_TIMEOUT
+from redsun_mimir.protocols import Array2D, ROIType
 
 if TYPE_CHECKING:
     from bluesky.protocols import Reading
@@ -13,40 +16,75 @@ if TYPE_CHECKING:
     from ophyd_async.core import Callback
     from pymmcore_plus import CMMCorePlus as Core
 
-DEFAULT_TIMEOUT = 1.0
+    from redsun_mimir.device._common import AxisType
+
+PropT = TypeVar("PropT", bound=int | float | str)
 
 
-class MMPropertySignalBackend(SignalBackend[PrimitiveT]):
-    def __init__(self, label: str, property: str, core: Core):
+class MMPropertySignalBackend(SignalBackend[PropT]):
+    """MM device property signal backend.
+
+    Parameters
+    ----------
+    label: str
+        The MM device label (e.g. ``"Camera"``).
+    property: str
+        The MM property name (e.g. ``"Exposure"``).
+    core: pymmcore_plus.CMMCorePlus
+        The Micro-Manager core instance.
+    readonly: bool, optional
+        If True, the signal will be read-only and attempts to write will raise an error.
+    enum_map: dict[str, str] | None, optional
+        Optional mapping from MM enum values to human-readable strings, when the property is an enum.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        property: str,
+        core: Core,
+        readonly: bool = False,
+        enum_map: dict[str, str] | None = None,
+        datatype: type[PropT] | None = None,
+    ):
+        self.enum_map = enum_map
+        self.current_enum: str | None = None
+        if self.enum_map is not None:
+            self._inverse_map = {v: k for k, v in self.enum_map.items()}
+        self.readonly = readonly
         self.prop_obj = core.getPropertyObject(label, property)
-        datatype = cast("type[PrimitiveT]", self.prop_obj.type().to_python())
-        self._callback: Callback[Reading[PrimitiveT]] | None = None
+        self._callback: Callback[Reading[PropT]] | None = None
         super().__init__(datatype)
 
     def source(self, name: str, read: bool) -> str:
         """Return the source URI for this signal."""
-        return f"mmcore://{self.prop_obj.device}-{self.prop_obj.name}"
+        src = f"mmcore://{self.prop_obj.device}-{self.prop_obj.name}"
+        if self.readonly:
+            src += "_readonly"
+        return src
 
     async def connect(self, timeout: float) -> None: ...
 
-    async def put(self, value: PrimitiveT | None) -> None:
+    async def put(self, value: PropT | None) -> None:
         """Write *value* to the MM property."""
+        if self.readonly:
+            raise RuntimeError("This signal is read-only and cannot be written to.")
+        if self.enum_map is not None:
+            value = self.enum_map[value]  # type: ignore
         self.prop_obj.setValue(value)
 
-    async def get_value(self) -> PrimitiveT:
-        """Return the current property value cast to the declared datatype."""
+    async def get_value(self) -> PropT:
         return await self.get()
 
-    async def get(self) -> PrimitiveT:
-        return cast("PrimitiveT", self.prop_obj.value)
+    async def get(self) -> PropT:
+        return cast("PropT", self.prop_obj.value)
 
-    async def get_setpoint(self) -> PrimitiveT:
+    async def get_setpoint(self) -> PropT:
         return await self.get_value()
 
-    async def get_reading(self) -> Reading[PrimitiveT]:
-        """Return a Bluesky Reading with the current value and timestamp."""
+    async def get_reading(self) -> Reading[PropT]:
         value = await self.get_value()
-        return {"value": value, "timestamp": time.time()}
+        return {"value": value, "timestamp": time.time(), "alarm_severity": 0}
 
     async def get_datakey(self, source: str) -> DataKey:
         assert self.datatype is not None, (
@@ -54,9 +92,9 @@ class MMPropertySignalBackend(SignalBackend[PrimitiveT]):
         )
 
         def read_property() -> tuple[
-            Primitive, bool, float | None, float | None, list[str]
+            PropT, bool, float | None, float | None, list[str]
         ]:
-            value = cast("Primitive", self.prop_obj.value)
+            value = cast("PropT", self.prop_obj.value)
             has_limits = self.prop_obj.hasLimits()
             lo = self.prop_obj.lowerLimit() if has_limits else None
             hi = self.prop_obj.upperLimit() if has_limits else None
@@ -65,7 +103,7 @@ class MMPropertySignalBackend(SignalBackend[PrimitiveT]):
 
         raw, has_limits, lo, hi, allowed = read_property()
 
-        value = cast("PrimitiveT", self.datatype(raw))
+        value = self.datatype(raw)
         metadata = make_metadata(self.datatype)
 
         if has_limits and lo is not None and hi is not None:
@@ -76,17 +114,20 @@ class MMPropertySignalBackend(SignalBackend[PrimitiveT]):
         if allowed:
             metadata["choices"] = allowed
 
-        return make_datakey(self.datatype, value, source, metadata)
+        return make_datakey(self.datatype, value, source, metadata)  # type: ignore
 
-    def set_callback(self, callback: Callback[Reading[PrimitiveT]] | None) -> None:
+    def set_callback(self, callback: Callback[Reading[PropT]] | None) -> None:
         """Observe changes to the current value, timestamp and severity."""
         self._callback = callback
 
         def on_change(_: str) -> None:
-            value = cast("Primitive", self.prop_obj.value)
-            reading: Reading[Primitive] = {"value": value, "timestamp": time.time()}
+            value = cast("PropT", self.prop_obj.value)
+            if self.enum_map is not None and value in self.enum_map.values():
+                # get the key corresponding to the current enum value, if it exists
+                value = self._inverse_map[value]  # type: ignore
+            reading: Reading[PropT] = {"value": value, "timestamp": time.time()}
             if self._callback is not None:
-                self._callback(reading)  # type: ignore
+                self._callback(reading)
 
         sig = self.prop_obj.valueChanged
         sig.disconnect()
@@ -96,9 +137,23 @@ class MMPropertySignalBackend(SignalBackend[PrimitiveT]):
 
 
 class MMExposureSignalBackend(SignalBackend[float]):
-    def __init__(self, label: str, core: Core):
+    """Exposure signal backend for MM camera devices.
+
+    Parameters
+    ----------
+    label: str
+        The MM device label of the camera (e.g. ``"Camera"``).
+    core: pymmcore_plus.CMMCorePlus
+        The Micro-Manager core instance.
+    initial_exposure: float, optional
+        If provided, sets the initial exposure time in milliseconds.
+    """
+
+    def __init__(self, label: str, core: Core, initial_exposure: float | None = None):
         self.label = label
         self.core = core
+        if initial_exposure is not None:
+            self.core.setExposure(initial_exposure)
         self._callback: Callback[Reading[float]] | None = None
         super().__init__(float)
 
@@ -149,9 +204,6 @@ class MMExposureSignalBackend(SignalBackend[float]):
         sig.disconnect()
         if self._callback is not None:
             sig.connect(on_change)
-
-
-ROIType = np.ndarray[tuple[int, int, int, int], Any]  # x, y, width, height
 
 
 class MMROISignalBackend(SignalBackend[ROIType]):
@@ -216,29 +268,199 @@ class MMROISignalBackend(SignalBackend[ROIType]):
             sig.connect(on_change)
 
 
+class MMBufferSignalBackend(SignalBackend[Array2D]):
+    """Signal backend for the camera image buffer."""
+
+    def __init__(self, label: str, core: Core, buffer_size: tuple[int, int]):
+        self.label = label
+        self.core = core
+        self.buffer_size = buffer_size
+        self._callback: Callback[Reading[Array2D]] | None = None
+        self._buffer: Array2D = np.zeros(buffer_size, dtype=np.uint16)
+        super().__init__(np.ndarray)
+
+    def source(self, name: str, read: bool) -> str:
+        """Return the source URI for this signal."""
+        return f"mmcore://{self.label}-buffer"
+
+    async def update_size(self, new_size: tuple[int, int]) -> None:
+        """Update the buffer size and reallocate the buffer array."""
+        self.buffer_size = new_size
+        self._buffer = np.zeros(new_size, dtype=np.uint16)
+
+    async def connect(self, timeout: float) -> None: ...
+
+    async def put(self, value: Array2D | None) -> None:
+        """Write *value* to the MM property."""
+        if value is not None:
+            self._buffer = value.copy()
+
+    async def get_value(self) -> Array2D:
+        """Return the current property value cast to the declared datatype."""
+        return await self.get()
+
+    async def get(self) -> Array2D:
+        return self._buffer
+
+    async def get_setpoint(self) -> Array2D:
+        return await self.get()
+
+    async def get_reading(self) -> Reading[Array2D]:
+        """Return a Bluesky Reading with the current value and timestamp."""
+        value = await self.get()
+        return {"value": value, "timestamp": time.time()}
+
+    async def get_datakey(self, source: str) -> DataKey:
+        assert self.datatype is not None, (
+            "SignalBackend must have a known datatype to produce a DataKey"
+        )
+        width, height = self._buffer.shape
+        value = (width, height)
+        metadata = make_metadata(self.datatype, units="px")
+        return make_datakey(self.datatype, value, source, metadata)  # type: ignore
+
+    def set_callback(self, callback: Callback[Reading[Array2D]] | None) -> None:
+        """Observe changes to the current value, timestamp and severity."""
+        self._callback = callback
+
+
+class MMCorePositionSignalBackend(SignalBackend[float]):
+    """Signal backend for a generic MM device property representing an axis position."""
+
+    def __init__(self, label: str, core: Core, axis: AxisType, units: str = "um"):
+        self.label = label
+        self.core = core
+        self.axis = axis
+        self.units = units
+        self._callback: Callback[Reading[float | int]] | None = None
+        super().__init__(float)
+
+    def source(self, name: str, read: bool) -> str:
+        """Return the source URI for this signal."""
+        return f"mmcore://{self.label}_{self.axis}"
+
+    async def connect(self, timeout: float) -> None: ...
+
+    async def put(self, value: float | None) -> None:
+        """Write *value* to the MM property."""
+        if value is not None:
+            if self.axis in ["x", "y"]:
+                current_pos = self.core.getXYPosition(self.axis)
+                if self.axis == "x":
+                    new_pos = (value, current_pos[1])
+                else:
+                    new_pos = (current_pos[0], value)
+                self.core.setXYPosition(*new_pos)
+            else:  # axis == "z"
+                self.core.setPosition(self.label, value)
+
+    async def get_value(self) -> float:
+        """Return the current property value cast to the declared datatype."""
+        return await self.get()
+
+    async def get(self) -> float:
+        if self.axis in ["x", "y"]:
+            position = self.core.getXYPosition(self.axis)
+            if self.axis == "x":
+                return position[0]
+            else:
+                return position[1]
+        else:  # axis == "z"
+            return self.core.getPosition(self.axis)
+
+    async def get_setpoint(self) -> float:
+        return await self.get()
+
+    async def get_reading(self) -> Reading[float]:
+        """Return a Bluesky Reading with the current value and timestamp."""
+        value = await self.get()
+        return {"value": value, "timestamp": time.time()}
+
+    async def get_datakey(self, source: str) -> DataKey:
+        assert self.datatype is not None, (
+            "SignalBackend must have a known datatype to produce a DataKey"
+        )
+        value = await self.get()
+        metadata = make_metadata(self.datatype, units=self.units)
+        return make_datakey(self.datatype, value, source, metadata)
+
+    def set_callback(self, callback: Callback[Reading[float]] | None) -> None:
+        """Observe changes to the current value, timestamp and severity."""
+        self._callback = callback
+
+        def on_change(_: str, pos: float) -> None:
+            reading: Reading[float] = {"value": pos, "timestamp": time.time()}
+            if self._callback is not None:
+                self._callback(reading)
+
+        sig = self.core.events.stagePositionChanged
+        sig.disconnect()
+        if self._callback is not None:
+            sig.connect(on_change)
+
+
 def mm_property_signal(
     core: Core,
     device_label: str,
     property_name: str,
-) -> SignalRW[PrimitiveT]:
+    *,
+    readonly: bool = False,
+    enum_map: dict[str, str] | None = None,
+    datatype: type[PropT] | None = None,
+) -> SignalRW[PropT]:
     """Create a read-write Signal backed by a Micro-Manager device property.
 
     Parameters
     ----------
     core: pymmcore_plus.CMMCorePlus
         The Micro-Manager core.
-    device_label:
+    device_label: str
         The MM device label (e.g. ``"Camera"``).
-    property_name:
+    property_name: str
         The MM property name (e.g. ``"Exposure"``).
+    enum_map: dict[str, str] | None, optional
+        Optional mapping from MM enum values to human-readable strings,
+        when the property is an enum.
+    readonly: bool, optional
+        If True, the signal will be read-only and attempts to write will raise an error.
+    datatype: type[PropT] | None, optional
+        Optional explicit datatype for the signal.
     """
-    backend = MMPropertySignalBackend[PrimitiveT](device_label, property_name, core)
+    backend = MMPropertySignalBackend(
+        device_label,
+        property_name,
+        core,
+        readonly=readonly,
+        enum_map=enum_map,
+        datatype=datatype,
+    )
     return SignalRW(backend, name=property_name, timeout=DEFAULT_TIMEOUT)
+
+
+def mm_position_signal(
+    core: Core, device_label: str, axis: AxisType, units: str = "um"
+) -> SignalRW[float]:
+    """Create a read-write Signal for a MM device position property.
+
+    Parameters
+    ----------
+    core: pymmcore_plus.CMMCorePlus
+        The Micro-Manager core.
+    device_label: str
+        The MM device label (e.g. ``"XYStage"``).
+    axis: AxisType
+        The axis to control ("x", "y", or "z").
+    units: str, optional
+        The physical units of the position (e.g. "um" or "mm"). This is used in the signal metadata.
+    """
+    backend = MMCorePositionSignalBackend(device_label, core, axis, units)
+    return SignalRW(backend, name="position", timeout=DEFAULT_TIMEOUT)
 
 
 def mm_exposure_signal(
     core: Core,
     device_label: str,
+    initial_exposure: float | None = None,
 ) -> SignalRW[float]:
     """Create a read-write Signal for the camera exposure time.
 
@@ -246,10 +468,12 @@ def mm_exposure_signal(
     ----------
     core: pymmcore_plus.CMMCorePlus
         The Micro-Manager core.
-    device_label:
+    device_label: str
         The MM device label of the camera (e.g. ``"Camera"``).
+    initial_exposure: float | None
+        Optional initial exposure time in milliseconds to set when the signal is created.
     """
-    backend = MMExposureSignalBackend(device_label, core)
+    backend = MMExposureSignalBackend(device_label, core, initial_exposure)
     return SignalRW(backend, name="exposure", timeout=DEFAULT_TIMEOUT)
 
 
@@ -268,3 +492,23 @@ def mm_roi_signal(
     """
     backend = MMROISignalBackend(device_label, core)
     return SignalRW(backend, name="roi", timeout=DEFAULT_TIMEOUT)
+
+
+def mm_buffer_signal(
+    core: Core,
+    device_label: str,
+    buffer_size: tuple[int, int],
+) -> SignalRW[Array2D]:
+    """Create a read-write Signal for the camera image buffer.
+
+    Parameters
+    ----------
+    core: pymmcore_plus.CMMCorePlus
+        The Micro-Manager core.
+    device_label:
+        The MM device label of the camera (e.g. ``"Camera"``).
+    buffer_size:
+        The initial size of the image buffer as a tuple (width, height).
+    """
+    backend = MMBufferSignalBackend(device_label, core, buffer_size)
+    return SignalRW(backend, name="buffer", timeout=DEFAULT_TIMEOUT)

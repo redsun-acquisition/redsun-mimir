@@ -1,9 +1,8 @@
-from ._camera import MMCoreCameraDevice
-from ._stage import MMCoreStageDevice, MMCoreXYAxis, MMCoreZAxis
+from ._camera import MMDemoCamera
+from ._stage import MMDemoXYStage, MMDemoZStage
 
 __all__ = [
-    "MMCoreCameraDevice",
-    "MMCoreStageDevice",
-    "MMCoreXYAxis",
-    "MMCoreZAxis",
+    "MMDemoCamera",
+    "MMDemoXYStage",
+    "MMDemoZStage",
 ]

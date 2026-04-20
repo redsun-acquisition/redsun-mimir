@@ -35,7 +35,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "redsun-mimir[uc2,pyqt,sim]",
+    { include-group = "pyqt" },
+    { include-group = "sim" },
+    { include-group = "uc2" },
     "mypy>=1.20",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
@@ -43,6 +45,18 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-qt>=4.5.0",
     "ruff>=0.14.2",
+]
+uc2 = [
+    "pymmcore-plus>=0.18.1",
+    "pyserial>=3.5",
+]
+pyqt = [
+    "napari[pyqt6]>=0.6.6",
+    "redsun[pyqt]",
+]
+sim = [
+    "redsun-mimir[pyqt]",
+    "pymmcore-plus>=0.18.1",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +74,7 @@ uc2 = [
 ]
 sim = [
     "redsun-mimir[pyqt]",
-    "pymmcore-plus>=0.16.0",
+    "pymmcore-plus>=0.18.1",
 ]
 
 [project.urls]

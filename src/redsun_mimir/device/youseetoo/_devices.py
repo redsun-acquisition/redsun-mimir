@@ -3,36 +3,52 @@ from __future__ import annotations
 import asyncio
 import time
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, ClassVar, Final
+from enum import IntEnum
+from typing import TYPE_CHECKING
 
-import msgspec
 from ophyd_async.core import (
     AsyncStatus,
-    SignalR,
-    SignalRW,
+    SignalBackend,
     StandardReadable,
     StandardReadableFormat,
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
+from redsun.engine import get_shared_loop
 from redsun.log import Loggable
 from serial import Serial
 
-import redsun_mimir.device.youseetoo.utils as uc2utils
-from redsun_mimir.device.axis import MotorAxis
-from redsun_mimir.protocols import LightProtocol
-
-from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
+from ._backend import uc2_axis_signal, uc2_laser_signal
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import ClassVar
+
+    from ophyd_async.core import SignalR, SignalRW
 
 
-class MimirSerialDevice(StandardReadable, Loggable):
+class BaudeRate(IntEnum):
+    """Baud rates for serial communication.
+
+    It is used for validating the input value from
+    the configuration file.
+    """
+
+    BR4800 = 4800
+    BR9600 = 9600
+    BR19200 = 19200
+    BR38400 = 38400
+    BR57600 = 57600
+    BR115200 = 115200
+    BR230400 = 230400
+    BR460800 = 460800
+    BR921600 = 921600
+
+
+class UC2Serial(StandardReadable, Loggable):
     """Mimir interface for serial communication.
 
     Opens the serial port and makes it available to other device models via
-    the class-level [`get`][redsun_mimir.device.youseetoo.MimirSerialDevice.get]
+    the class-level [`get`][redsun_mimir.device.youseetoo.UC2Serial.get]
     classmethod.
 
     Parameters
@@ -54,16 +70,16 @@ class MimirSerialDevice(StandardReadable, Loggable):
     def __init__(
         self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 1.0
     ) -> None:
-        if bauderate not in uc2utils.BaudeRate.__members__.values():
+        if bauderate not in BaudeRate.__members__.values():
             self.logger.error(
                 f"Invalid baud rate {bauderate}. "
-                f"Valid values are: {list(uc2utils.BaudeRate.__members__.values())}"
-                f"Setting to default value {uc2utils.BaudeRate.BR115200.value}."
+                f"Valid values are: {list(BaudeRate.__members__.values())}"
+                f"Setting to default value {BaudeRate.BR115200.value}."
             )
-            bauderate = uc2utils.BaudeRate.BR115200.value
+            bauderate = BaudeRate.BR115200.value
 
         try:
-            MimirSerialDevice._serial = Serial(
+            UC2Serial._serial = Serial(
                 port=port,
                 baudrate=bauderate,
                 timeout=timeout,
@@ -71,11 +87,11 @@ class MimirSerialDevice(StandardReadable, Loggable):
         except Exception as e:
             raise RuntimeError(f"Failed to open serial port: {e}") from e
 
-        self._instance_serial = MimirSerialDevice._serial
-        if len(MimirSerialDevice._futures) > 0:
-            for future in MimirSerialDevice._futures:
+        self._instance_serial = UC2Serial._serial
+        if len(UC2Serial._futures) > 0:
+            for future in UC2Serial._futures:
                 future.set_result(self._instance_serial)
-            MimirSerialDevice._futures.clear()
+            UC2Serial._futures.clear()
 
         # Hard reset to ensure the device is ready
         self._instance_serial.dtr = False
@@ -107,7 +123,7 @@ class MimirSerialDevice(StandardReadable, Loggable):
         Serial | Future[Serial]
             The open serial port if already initialised, or a
             [`Future`][concurrent.futures.Future] that resolves once
-            [`MimirSerialDevice`][redsun_mimir.device.youseetoo.MimirSerialDevice]
+            [`UC2Serial`][redsun_mimir.device.youseetoo.UC2Serial]
             is built.
         """
         if cls._serial is None:
@@ -117,305 +133,83 @@ class MimirSerialDevice(StandardReadable, Loggable):
         return cls._serial
 
 
-class MimirLaserDevice(StandardReadable, LightProtocol[int], Loggable):
-    """Mimir interface for a laser source.
-
-    All observable state is exposed as ophyd-async signals so that
-    [`LightPresenter`][redsun_mimir.presenter.LightPresenter] can interact
-    with it through the
-    [`LightProtocol`][redsun_mimir.protocols.LightProtocol] interface.
-
-    Parameters
-    ----------
-    name :
-        Identity key of the device.
-    wavelength :
-        Wavelength in nanometres.
-    egu :
-        Engineering unit for intensity (e.g. ``"mW"``).
-    intensity_range :
-        ``(min, max)`` intensity values.
-    step_size :
-        Initial intensity step size.
-    """
+class UC2LaserDevice(StandardReadable, Loggable):
+    """Interface for UC2 laser source."""
 
     intensity: SignalRW[int]
-    step_size: SignalRW[int]
     wavelength: SignalR[int]
-    binary: SignalR[bool]
-    enabled: SignalR[bool]
+    enabled: SignalRW[bool]
 
-    def __init__(
-        self,
-        name: str,
-        /,
-        wavelength: int = 0,
-        egu: str = "mW",
-        intensity_range: tuple[int, ...] = (0, 1023),
-        step_size: int = 1,
-    ) -> None:
-        self._wavelength_val = wavelength
-        self._egu = egu
-        self._intensity_range = intensity_range
-        self.id = 1
-        self.qid = 1
-
-        # Readable signals: appear in read() / describe() output
-        with self.add_children_as_readables():
-            self.intensity = soft_signal_rw(int, initial_value=0, units=egu)
-            _enabled, self._set_enabled = soft_signal_r_and_setter(
-                bool, initial_value=False
-            )
-            self.enabled = _enabled
-
-        # Config signals: appear in read_configuration() / describe_configuration()
-        with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
-            self.step_size = soft_signal_rw(int, initial_value=step_size, units=egu)
-            _wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
-            self.wavelength = _wavelength
-            _binary, _ = soft_signal_r_and_setter(bool, initial_value=False)
-            self.binary = _binary
-
-        super().__init__(name=name)
-
+    def __init__(self, name: str, /, wavelength: int = 0, units: str = "mW") -> None:
         def _callback(future: Future[Serial]) -> None:
             self._serial = future.result()
             self.logger.debug("Serial port ready.")
 
-        serial_or_future: Serial | Future[Serial] = MimirSerialDevice.get()
+        serial_or_future: Serial | Future[Serial] = UC2Serial.get()
         if isinstance(serial_or_future, Future):
             serial_or_future.add_done_callback(_callback)
         else:
             self._serial = serial_or_future
             self.logger.debug("Serial port ready.")
+
+        with self.add_children_as_readables():
+            self.intensity = uc2_laser_signal(
+                self._serial, laser_id=1, units=units, range=(0, 1023)
+            )
+
+        with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
+            self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
+            self.enabled = soft_signal_rw(bool, initial_value=False)
+        self._current_intensity = 0
+        super().__init__(name)
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:
-        """Toggle the activation status of the light source."""
-        current = await self.enabled.get_value()
-        new_state = not current
-        if new_state:
-            value = await self.intensity.get_value()
+        """Trigger the laser to apply the current settings."""
+        enabled = await self.enabled.get_value()
+        if enabled:
+            # laser currently active; stash the current value
+            # and set to 0
+            self._current_intensity = await self.intensity.get_value()
+            await self.intensity.set(0)
         else:
-            value = 0
-        await asyncio.to_thread(self._send_laser_sync, value)
-        self._set_enabled(new_state)
+            # laser currently inactive; restore the stashed value
+            await self.intensity.set(self._current_intensity)
+        await self.enabled.set(not enabled)
 
-    def _send_laser_sync(self, value: int) -> None:
-        """Send a laser intensity command over serial (blocking)."""
-        action = LaserAction(id=self.id, qid=self.qid, value=value)
-        packet = msgspec.json.encode(action)
-        written = self._serial.write(packet)
-        self.logger.debug(f"Sent command: {packet.decode()}")
-        if written is None or written != len(packet):
-            raise RuntimeError("Failed to write to serial port.")
-        resp_str = (
-            str(self._serial.read_until(expected=b"}"))
-            .replace("+", "")
-            .replace("-", "")
-            .replace("\\r", "")
-            .replace("\\n", "")
-            .replace("b'", "")
-            .replace("'", "")
-        )
-        if not resp_str:
-            raise RuntimeError("Failed to read from serial port.")
-        self.logger.debug(f"Received response: {resp_str}")
-        response = msgspec.json.decode(resp_str, type=Acknowledge)
-        if response.qid != self.qid:
-            raise RuntimeError(f"Invalid response from laser. Received: {response}")
-        self._serial.reset_input_buffer()
-
+    # TODO: HasShutdown must be made async
     def shutdown(self) -> None:
-        """Turn off the laser before shutting down."""
-        try:
-            self._send_laser_sync(0)
-        except Exception:
-            self.logger.exception("Failed to shutdown laser cleanly.")
+        backend_or_cache = self.enabled._backend_or_cache()
+        if isinstance(backend_or_cache, SignalBackend):
+            asyncio.run_coroutine_threadsafe(
+                backend_or_cache.put(False), get_shared_loop()
+            )
 
 
-NM_TO_NM: Final[int] = 1
-UM_TO_NM: Final[int] = 1_000
-MM_TO_NM: Final[int] = 1_000_000
+class UC2MotorDevice(StandardReadable, Loggable):
+    """UC2 motor device."""
 
-_MOTOR_STEP: Final[int] = 320
-
-
-class MimirMotorAxis(MotorAxis, Loggable):
-    """One axis of a Mimir motor stage.
-
-    Sends movement commands over the shared Mimir serial link and tracks
-    position via its inherited
-    [`position`][redsun_mimir.device.axis.MotorAxis.position] signal.
-
-    Parameters
-    ----------
-    name :
-        Axis name; overwritten by the parent
-        [`MimirMotorDevice`][redsun_mimir.device.youseetoo.MimirMotorDevice]
-        on assignment.
-    egu :
-        Engineering unit (``"nm"``, ``"um"``, ``"μm"``, or ``"mm"``).
-    step_size :
-        Initial step size in the given engineering unit.
-    axis_id :
-        Numeric axis identifier used in the Mimir serial protocol.
-    factor :
-        Conversion factor from *egu* to nanometres.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        egu: str,
-        step_size: float,
-        axis_id: int,
-        factor: int,
-    ) -> None:
-        super().__init__(name=name, units=egu, step_size=step_size)
-        self._axis_id = axis_id
-        self._factor = factor
-
+    def __init__(self, name: str) -> None:
         def _callback(future: Future[Serial]) -> None:
             self._serial = future.result()
             self.logger.debug("Serial port ready.")
 
-        serial_or_future: Serial | Future[Serial] = MimirSerialDevice.get()
+        serial_or_future: Serial | Future[Serial] = UC2Serial.get()
         if isinstance(serial_or_future, Future):
             serial_or_future.add_done_callback(_callback)
         else:
             self._serial = serial_or_future
             self.logger.debug("Serial port ready.")
 
-    @AsyncStatus.wrap
-    async def set(self, value: float, **_: Any) -> None:
-        """Move this axis by *value* (relative step).
-
-        Parameters
-        ----------
-        value :
-            Step distance in the axis engineering unit.
-        """
-        current = await self.position.get_value()
-        new_pos = current + value
-        await asyncio.to_thread(self._send_command_sync, value)
-        self._set_position(new_pos)
-
-    def _send_command_sync(self, value: float) -> None:
-        """Send a motor move command over serial (blocking)."""
-        steps = int(value * self._factor) // _MOTOR_STEP
-        self.logger.debug(f"Moving {self.name} by {steps} steps.")
-        action = MotorAction(
-            movement=MotorAction.generate_movement(id=self._axis_id, position=steps),
-            qid=self._axis_id,
-        )
-        packet = msgspec.json.encode(action)
-        written = self._serial.write(packet)
-        self.logger.debug(f"Sent command: {packet.decode()}")
-        if written is None or written != len(packet):
-            raise RuntimeError("Failed to write to serial port.")
-        resp_str = (
-            str(self._serial.read_until(expected=b"--"))
-            .replace("+", "")
-            .replace("-", "")
-            .replace("\\r", "")
-            .replace("\\n", "")
-            .replace("b'", "")
-            .replace("'", "")
-        )
-        if not resp_str:
-            raise RuntimeError("Failed to read from serial port.")
-        self.logger.debug(f"Received response: {resp_str}")
-        try:
-            response = msgspec.json.decode(resp_str, type=Acknowledge)
-        except msgspec.DecodeError as e:
-            raise RuntimeError(f"Failed to decode response: {e}") from e
-        if response.qid != self._axis_id:
-            raise RuntimeError(f"Invalid response from motor. Received: {response}")
-
-        motor_resp_str = (
-            str(self._serial.read_until(expected=b"--"))
-            .replace("+", "")
-            .replace("-", "")
-            .replace("\\r", "")
-            .replace("\\n", "")
-            .replace("b'", "")
-            .replace("'", "")
-        )
-        if not motor_resp_str:
-            raise RuntimeError("Failed to read motor response from serial port.")
-        self.logger.debug(f"Received motor response: {motor_resp_str}")
-        try:
-            motor_response = msgspec.json.decode(motor_resp_str, type=MotorResponse)
-        except msgspec.DecodeError as e:
-            raise RuntimeError(f"Failed to decode motor response: {e}") from e
-        if motor_response.qid != self._axis_id:
-            raise RuntimeError(
-                f"Invalid response from motor. Expected qid {self._axis_id}, "
-                f"but received {motor_response.qid}."
+        with self.add_children_as_readables(StandardReadableFormat.HINTED_SIGNAL):
+            self.x = uc2_axis_signal(
+                self._serial, axis_id=1, units="mm", range=(-100.0, 100.0)
             )
-        self._serial.reset_input_buffer()
-
-
-class MimirMotorDevice(StandardReadable, Loggable):
-    """Container device for Mimir motor stage axes.
-
-    Validates the engineering unit, constructs one
-    [`MimirMotorAxis`][redsun_mimir.device.youseetoo.MimirMotorAxis] per
-    entry in *step_sizes*, and exposes them as typed child attributes
-    (``device.x``, ``device.y``, ``device.z``).
-
-    All movement logic lives in the individual axis objects.
-
-    Parameters
-    ----------
-    name :
-        Identity key of the device.
-    egu :
-        Engineering unit. Supported: ``"nm"``, ``"um"``, ``"μm"``, ``"mm"``.
-    step_sizes :
-        Per-axis step sizes. Keys are axis names (``"x"``, ``"y"``, ``"z"``).
-    """
-
-    _conversion_map: ClassVar[dict[str, int]] = {
-        "nm": NM_TO_NM,
-        "um": UM_TO_NM,
-        "μm": UM_TO_NM,
-        "mm": MM_TO_NM,
-    }
-
-    _axis_id_map: ClassVar[dict[str, int]] = {
-        "x": 1,
-        "y": 2,
-        "z": 3,
-    }
-
-    def __init__(
-        self,
-        name: str,
-        /,
-        egu: str = "um",
-        step_sizes: dict[str, float] = {"x": 100.0, "y": 100.0, "z": 100.0},
-    ) -> None:
-        if egu not in self._conversion_map:
-            raise ValueError(
-                f"Invalid engineering unit: {egu}. "
-                f"Supported units are: {list(self._conversion_map.keys())}"
+            self.y = uc2_axis_signal(
+                self._serial, axis_id=2, units="mm", range=(-100.0, 100.0)
             )
-        factor = self._conversion_map[egu]
-        with self.add_children_as_readables():
-            for ax, step_size in step_sizes.items():
-                setattr(
-                    self,
-                    ax,
-                    MimirMotorAxis(
-                        name=f"{name}-{ax}",
-                        egu=egu,
-                        step_size=float(step_size),
-                        axis_id=self._axis_id_map[ax],
-                        factor=factor,
-                    ),
-                )
-        super().__init__(name=name)
+            self.z = uc2_axis_signal(
+                self._serial, axis_id=3, units="mm", range=(-100.0, 100.0)
+            )
 
-    def shutdown(self) -> None: ...
+        super().__init__(name)

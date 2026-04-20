@@ -3276,7 +3276,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.49.0" },
     { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.1" },
     { name = "magicgui", marker = "extra == 'pyside'", specifier = ">=0.10.1" },
-    { name = "ophyd-async", specifier = ">=0.17a2" },
+    { name = "ophyd-async", specifier = ">=0.17a3" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "psygnal", specifier = ">=0.15.1" },
     { name = "pyqt6", marker = "extra == 'pyqt'", specifier = ">=6.10.2" },
@@ -3339,13 +3339,29 @@ uc2 = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "napari", extra = ["pyqt6"] },
     { name = "pre-commit" },
+    { name = "pymmcore-plus" },
+    { name = "pyserial" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-qt" },
-    { name = "redsun-mimir", extra = ["pyqt", "sim", "uc2"] },
+    { name = "redsun", extra = ["pyqt"] },
+    { name = "redsun-mimir", extra = ["pyqt"] },
     { name = "ruff" },
+]
+pyqt = [
+    { name = "napari", extra = ["pyqt6"] },
+    { name = "redsun", extra = ["pyqt"] },
+]
+sim = [
+    { name = "pymmcore-plus" },
+    { name = "redsun-mimir", extra = ["pyqt"] },
+]
+uc2 = [
+    { name = "pymmcore-plus" },
+    { name = "pyserial" },
 ]
 
 [package.metadata]
@@ -3355,7 +3371,7 @@ requires-dist = [
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.6.6" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.6.6" },
-    { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.16.0" },
+    { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.16.0" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", editable = "../redsun" },
@@ -3368,13 +3384,29 @@ provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.20" },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.6.6" },
     { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pymmcore-plus", specifier = ">=0.18.1" },
+    { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-asyncio", specifier = ">=0.25.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun-mimir", extras = ["uc2", "pyqt", "sim"] },
+    { name = "redsun", extras = ["pyqt"], editable = "../redsun" },
+    { name = "redsun-mimir", extras = ["pyqt"] },
     { name = "ruff", specifier = ">=0.14.2" },
+]
+pyqt = [
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.6.6" },
+    { name = "redsun", extras = ["pyqt"], editable = "../redsun" },
+]
+sim = [
+    { name = "pymmcore-plus", specifier = ">=0.18.1" },
+    { name = "redsun-mimir", extras = ["pyqt"] },
+]
+uc2 = [
+    { name = "pymmcore-plus", specifier = ">=0.18.1" },
+    { name = "pyserial", specifier = ">=3.5" },
 ]
 
 [[package]]
