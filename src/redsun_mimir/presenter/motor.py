@@ -14,7 +14,6 @@ from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from concurrent.futures import Future
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
@@ -69,18 +68,17 @@ class MotorPresenter(Presenter, Loggable):
             for name, device in devices.items()
             if isinstance(device, MotorProtocol)
         }
-        self.futures: set[Future[None]] = set()
 
         self.logger.info("Initialized")
 
-    def models_configuration(self) -> dict[str, Reading[Any]]:
+    def devices_configuration(self) -> dict[str, Reading[Any]]:
         """Get the current configuration readings of all motor devices."""
         result: dict[str, Reading[Any]] = {}
         for device in self._motors.values():
             result.update(run_coro(device.read_configuration()))
         return result
 
-    def models_description(self) -> dict[str, Descriptor]:
+    def devices_description(self) -> dict[str, Descriptor]:
         """Get the configuration descriptors of all motor devices."""
         result: dict[str, Descriptor] = {}
         for device in self._motors.values():
@@ -89,9 +87,9 @@ class MotorPresenter(Presenter, Loggable):
 
     def move(self, motor: str, axis: str, position: float) -> None:
         """Dispatch an async move of *axis* on *motor* to *position*."""
-        run_coro(self._move(motor, axis, position))
+        run_coro(self.move_async(motor, axis, position))
 
-    async def _move(self, motor: str, axis: str, position: float) -> None:
+    async def move_async(self, motor: str, axis: str, position: float) -> None:
         """Move an axis and emit the new position on completion."""
         await self._motors[motor].axis[axis].set(position)
         self.sigNewPosition.emit(motor, axis, position)
@@ -104,8 +102,8 @@ class MotorPresenter(Presenter, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""
-        container.motor_configuration = providers.Object(self.models_configuration())
-        container.motor_description = providers.Object(self.models_description())
+        container.motor_configuration = providers.Object(self.devices_configuration())
+        container.motor_description = providers.Object(self.devices_description())
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
