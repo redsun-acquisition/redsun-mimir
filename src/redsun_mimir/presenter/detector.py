@@ -95,7 +95,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
 
     def devices_configuration(self) -> dict[str, Reading[Any]]:
         """Get the current configuration readings of all detector devices."""
-        # TODO: optimize this using asyncio.gather()
         result: dict[str, Reading[Any]] = {}
         for device in self.detectors.values():
             result.update(run_coro(device.read_configuration()))
@@ -104,7 +103,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     def devices_description(self) -> dict[str, Descriptor]:
         """Get the configuration descriptors of all detector devices."""
         result: dict[str, Descriptor] = {}
-        # TODO: optimize this using asyncio.gather()
         for device in self.detectors.values():
             result.update(run_coro(device.describe_configuration()))
         return result

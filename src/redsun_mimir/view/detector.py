@@ -92,13 +92,14 @@ class DetectorView(QtView, Loggable):
 
     Attributes
     ----------
-    sigPropertyChanged :
+    sigPropertyChanged : Signal[str, str, Any]
         Emitted when the user changes a detector property.
-        Carries the detector name (`str`) and a mapping of the changed
-        property to its new value (`dict[str, object]`).
+        - str: The detector name.
+        - str: The property name.
+        - Any: The new value of the property.
     """
 
-    sigPropertyChanged = Signal(str, dict[str, object])
+    sigPropertyChanged = Signal(str, str, object)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -174,7 +175,7 @@ class DetectorView(QtView, Loggable):
             widget = SettingsControlWidget(dev_descriptors, dev_readings, self)
             widget.tree_view.sigPropertyChanged.connect(
                 lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
-                    lbl, {setting: value}
+                    lbl, setting, value
                 )
             )
             self.settings_controls[device_label] = widget
