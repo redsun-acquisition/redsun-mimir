@@ -12,6 +12,7 @@ from ophyd_async.core import (
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
+from redsun.device import DeviceMap
 from redsun.log import Loggable
 from serial import Serial
 
@@ -106,7 +107,7 @@ class UC2Serial(StandardReadable, Loggable):
 
         super().__init__(name=name)
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Close the serial port."""
         if self._instance_serial.is_open:
             self._instance_serial.close()
@@ -174,12 +175,13 @@ class UC2LaserDevice(StandardReadable, Loggable):
             await self.intensity.set(self._current_intensity)
         await self.enabled.set(not enabled)
 
-    # TODO: HasShutdown must be made async
-    def shutdown(self) -> None: ...
+    async def shutdown(self) -> None: ...
 
 
 class UC2MotorDevice(StandardReadable, Loggable):
     """UC2 motor device."""
+
+    axis: DeviceMap[SignalRW[float]]
 
     def __init__(self, name: str) -> None:
         def _callback(future: Future[Serial]) -> None:
@@ -194,20 +196,25 @@ class UC2MotorDevice(StandardReadable, Loggable):
             self.logger.debug("Serial port ready.")
 
         with self.add_children_as_readables(StandardReadableFormat.HINTED_SIGNAL):
-            self.x = uc2_axis_signal(
-                self._serial,
-                axis="x",
-                units="mm",
+            self.axis = DeviceMap(
+                {
+                    "x": uc2_axis_signal(
+                        self._serial,
+                        axis="x",
+                        units="mm",
+                    ),
+                    "y": uc2_axis_signal(
+                        self._serial,
+                        axis="y",
+                        units="mm",
+                    ),
+                    "z": uc2_axis_signal(
+                        self._serial,
+                        axis="z",
+                        units="mm",
+                    ),
+                }
             )
-            self.y = uc2_axis_signal(
-                self._serial,
-                axis="y",
-                units="mm",
-            )
-            self.z = uc2_axis_signal(
-                self._serial,
-                axis="z",
-                units="mm",
-            )
-
         super().__init__(name)
+
+    async def shutdown(self) -> None: ...

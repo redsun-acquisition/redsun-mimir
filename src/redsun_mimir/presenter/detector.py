@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor  # noqa: TC002
 from dependency_injector import providers
 from event_model import DocumentRouter
-from ophyd_async.core import SignalRW
-from redsun.engine import get_shared_loop
+from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
-from redsun.utils.descriptors import parse_key
 from redsun.virtual import Signal
 
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
@@ -21,7 +18,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from event_model import Event
-    from ophyd_async.core import Device
+    from ophyd_async.core import Device, SignalRW
     from redsun.virtual import VirtualContainer
 
 
@@ -52,16 +49,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         Emitted after a detector setting is successfully applied.
         Carries the detector name (``str``) and a mapping of the
         changed setting to its new value (``dict[str, object]``).
-    sigConfigurationConfirmed :
-        Emitted after each individual setting change attempt.
-        Carries detector name (``str``), setting name (``str``),
-        and success status (``bool``).
     sigNewData :
         Emitted on each incoming event document.
         Carries a nested ``dict`` keyed by detector name.
     """
 
-    sigNewConfiguration = Signal(str, dict[str, object])
+    sigNewConfiguration = Signal(str, str, object)
     sigConfigurationConfirmed = Signal(str, str, bool)
     sigNewData = Signal(object)
 
@@ -76,7 +69,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
         self.hints = hints or ["buffer", "roi"]
-        self.detectors = {
+        self.detectors: dict[str, DetectorProtocol] = {
             name: device
             for name, device in devices.items()
             if isinstance(device, DetectorProtocol)
@@ -85,35 +78,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         self.packet: dict[str, dict[str, Any]] = {}
 
     def register_providers(self, container: VirtualContainer) -> None:
-        r"""Register detector info as providers in the DI container.
-
-        Injects two flat dicts keyed by the canonical ``prefix:name-property``
-        scheme so the view can populate its tree directly at construction:
-
-        - ``detector_descriptors``: merged ``describe_configuration()`` output
-          from all detectors.
-        - ``detector_readings``: merged ``read_configuration()`` output from
-          all detectors.
+        """Register detector info as providers in the DI container.
 
         Also registers detector signals in the container.
         """
-        loop = get_shared_loop()
-        descriptors: dict[str, Descriptor] = {}
-        readings: dict[str, Reading[Any]] = {}
-        for detector in self.detectors.values():
-            descriptors.update(
-                asyncio.run_coroutine_threadsafe(
-                    detector.describe_configuration(), loop
-                ).result()
-            )
-            readings.update(
-                asyncio.run_coroutine_threadsafe(
-                    detector.read_configuration(), loop
-                ).result()
-            )
-
-        container.detector_descriptors = providers.Object(descriptors)
-        container.detector_readings = providers.Object(readings)
+        container.detector_descriptors = providers.Object(self.devices_description())
+        container.detector_readings = providers.Object(self.devices_configuration())
         container.register_signals(self)
         container.register_callbacks(self)
 
@@ -123,8 +93,24 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         if "sigPropertyChanged" in sigs:
             sigs["sigPropertyChanged"].connect(self.configure)
 
-    def configure(self, detector: str, config: dict[str, Any]) -> None:
-        r"""Configure a detector with confirmation feedback.
+    def devices_configuration(self) -> dict[str, Reading[Any]]:
+        """Get the current configuration readings of all detector devices."""
+        # TODO: optimize this using asyncio.gather()
+        result: dict[str, Reading[Any]] = {}
+        for device in self.detectors.values():
+            result.update(run_coro(device.read_configuration()))
+        return result
+
+    def devices_description(self) -> dict[str, Descriptor]:
+        """Get the configuration descriptors of all detector devices."""
+        result: dict[str, Descriptor] = {}
+        # TODO: optimize this using asyncio.gather()
+        for device in self.detectors.values():
+            result.update(run_coro(device.describe_configuration()))
+        return result
+
+    def configure(self, detector: str, property: str, value: Any) -> None:
+        """Configure a detector with confirmation feedback.
 
         Update one or more configuration parameters of a detector by resolving
         each config key to the corresponding
@@ -136,72 +122,29 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
 
         Parameters
         ----------
-        detector :
+        detector : str
             Bare device name as emitted by the view (e.g. ``"cam"``).
-        config :
-            Mapping of ophyd-async canonical signal keys to new values.
-            Keys follow the ``"{device}-{attr_name}"`` convention, e.g.
-            ``{"cam-exposure": 20.0}``.
+        property : str
+            Configuration key representing the setting to change (e.g. ``"exposure"``).
+        value : object
+            New value for the setting.
         """
-        device = self.detectors.get(detector)
-        if device is None:
-            self.logger.error(f"No detector found for label {detector!r}")
-            return
-
-        loop = get_shared_loop()
-        for key, value in config.items():
-            self.logger.debug(f"Configuring '{key}' of {detector!r} to {value!r}")
-            future = asyncio.run_coroutine_threadsafe(
-                self._set_and_wait(device, value, key), loop
-            )
-            try:
-                success = future.result(timeout=self.timeout)
-                if success:
-                    self.sigNewConfiguration.emit(detector, {key: value})
-                else:
-                    self.logger.error(f"Failed to configure '{key}' of {detector!r}")
-                self.sigConfigurationConfirmed.emit(detector, key, success)
-            except TimeoutError:
-                self.logger.error(f"Timeout configuring '{key}' of {detector!r}")
-                self.sigConfigurationConfirmed.emit(detector, key, False)
-            except Exception as e:
-                self.logger.error(f"Exception configuring '{key}' of {detector!r}: {e}")
-                self.sigConfigurationConfirmed.emit(detector, key, False)
-
-    async def _set_and_wait(
-        self, device: DetectorProtocol, value: Any, key: str
-    ) -> bool:
-        """Resolve *key* to a writable signal attribute and set it.
-
-        The key is expected in ophyd-async ``"{device}-{attr}"`` form.
-        The device-name prefix is stripped and the remainder used as the
-        attribute name to look up on *device* (e.g. ``"cam-exposure"``
-        resolves to ``device.exposure``).
-
-        Returns
-        -------
-        bool
-            ``True`` if the set completed without exception.
-        """
-        try:
-            _, prop_name = parse_key(key)
-        except ValueError:
-            self.logger.error(f"Malformed config key: {key!r}")
-            return False
-
-        signal = getattr(device, prop_name, None)
-        if not isinstance(signal, SignalRW):
+        if property == "roi":
+            roi = self.detectors[detector].roi
+            run_coro(self._set(detector, roi, value))
+        else:
             self.logger.error(
-                f"No writable signal {prop_name!r} on device {device.name!r}"
+                f"Unknown property {property!r} for detector {detector!r}"
             )
-            return False
 
-        try:
-            await asyncio.wait_for(signal.set(value), timeout=self.timeout)
-            return True
-        except Exception as e:
-            self.logger.warning(f"_set_and_wait failed for {key!r}: {e}")
-            return False
+    async def _set(self, det_name: str, obj: SignalRW[Any], value: Any) -> None:
+        """Set *obj* to *value* asynchronously."""
+        status = obj.set(value)
+        await status
+        if not status.success:
+            self.logger.error(f"Failed to set {obj} to {value!r}: {status.exception()}")
+        else:
+            self.sigNewConfiguration.emit(det_name, obj.name, await obj.read()["value"])
 
     def event(self, doc: Event) -> Event:
         """Process new event documents and route data to the view."""

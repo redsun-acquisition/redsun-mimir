@@ -12,11 +12,13 @@ from bluesky.protocols import (
 )
 from ophyd_async.core import (
     AsyncConfigurable,
+    AsyncReadable,
     AsyncStageable,
 )
 from redsun.storage.protocols import HasWriterLogic
 
 if TYPE_CHECKING:
+    from bluesky.protocols import Descriptor, Reading
     from ophyd_async.core import AsyncStatus, SignalR, SignalRW
     from redsun.device import DeviceMap
 
@@ -30,7 +32,7 @@ ROIType = np.ndarray[tuple[int, int, int, int], Any]
 
 
 @runtime_checkable
-class MotorProtocol(AsyncConfigurable, Protocol):
+class MotorProtocol(AsyncReadable, Protocol):
     """Protocol for individual motor axes."""
 
     axis: DeviceMap[SignalRW[float]]
@@ -57,6 +59,26 @@ class LightProtocol(AsyncConfigurable, Protocol):
     intensity: SignalRW[int | float]
     wavelength: SignalR[int]
     enabled: SignalRW[bool]
+
+    async def read(self) -> dict[str, Reading[Any]]:
+        """Read the current state of the light source.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary of signal names to their current values.
+        """
+        ...
+
+    async def describe(self) -> dict[str, Descriptor]:
+        """Describe the light source signals.
+
+        Returns
+        -------
+        dict[str, Descriptor]
+            Dictionary of signal names to their descriptors.
+        """
+        ...
 
     def trigger(self) -> AsyncStatus:
         """Toggle the activation status of the light source.

@@ -342,15 +342,14 @@ class MMCorePositionSignalBackend(SignalBackend[float]):
     async def connect(self, timeout: float) -> None: ...
 
     async def put(self, value: float | None) -> None:
-        """Write *value* to the MM property."""
         if value is not None:
             if self.axis in ["x", "y"]:
-                current_pos = self.core.getXYPosition(self.axis)
+                current_pos = self.core.getXYPosition(self.label)
                 if self.axis == "x":
                     new_pos = (value, current_pos[1])
                 else:
                     new_pos = (current_pos[0], value)
-                self.core.setXYPosition(*new_pos)
+                self.core.setXYPosition(self.label, new_pos[0], new_pos[1])
             else:  # axis == "z"
                 self.core.setPosition(self.label, value)
 
@@ -360,13 +359,10 @@ class MMCorePositionSignalBackend(SignalBackend[float]):
 
     async def get(self) -> float:
         if self.axis in ["x", "y"]:
-            position = self.core.getXYPosition(self.axis)
-            if self.axis == "x":
-                return position[0]
-            else:
-                return position[1]
+            position = self.core.getXYPosition(self.label)
+            return position[0] if self.axis == "x" else position[1]
         else:  # axis == "z"
-            return self.core.getPosition(self.axis)
+            return self.core.getPosition(self.label)
 
     async def get_setpoint(self) -> float:
         return await self.get()
@@ -382,6 +378,8 @@ class MMCorePositionSignalBackend(SignalBackend[float]):
         )
         value = await self.get()
         metadata = make_metadata(self.datatype, units=self.units)
+        # TODO: how to include the limits of the axis stage?
+        # there seems to be no API...
         return make_datakey(self.datatype, value, source, metadata)
 
     def set_callback(self, callback: Callback[Reading[float]] | None) -> None:

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.utils import find_signals
-from redsun.utils.descriptors import parse_key
+from redsun.utils.descriptors import parse_map_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal
@@ -22,8 +22,14 @@ class MotorView(QtView):
 
     Parameters
     ----------
-    virtual_bus :
-        Virtual bus for the session.
+    name : str
+        Identity key of the view.
+    step_size : float, optional
+        Default step size for motor movements,
+        in the engineering unit of the motor
+        (e.g. microns).
+
+        Defaults to ``100.0``.
 
     Attributes
     ----------
@@ -46,12 +52,8 @@ class MotorView(QtView):
         /,
         step_size: float = 100.0,
     ) -> None:
-        super().__init__(name, step_size=step_size)
-        # Flat canonical-keyed dicts for the full config
-        self._configuration: dict[str, Reading[Any]] = {}
-        self._description: dict[str, Descriptor] = {}
-        # Per-device-label grouped readings for fast _update_position lookups
-        self._device_readings: dict[str, dict[str, Reading[Any]]] = {}
+        super().__init__(name)
+        self.step_size = step_size
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
@@ -71,91 +73,47 @@ class MotorView(QtView):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect inbound signals from the motor presenter.
-
-        Retrieves signals registered by
-        [`MotorPresenter.register_providers`][redsun_mimir.presenter.MotorPresenter.register_providers]
-        and connects them to the appropriate view slots.
-        """
-        configuration: dict[str, Reading[Any]] = container.motor_configuration()
+        """Connect inbound signals from the motor presenter."""
+        readings: dict[str, Reading[Any]] = container.motor_readings()
         description: dict[str, Descriptor] = container.motor_description()
-        self.setup_ui(configuration, description)
+        self.setup_ui(readings, description)
 
         sigs = find_signals(container, ["sigNewPosition", "sigNewConfiguration"])
         if "sigNewPosition" in sigs:
-            sigs["sigNewPosition"].connect(self._update_position, thread="main")
-        if "sigNewConfiguration" in sigs:
-            sigs["sigNewConfiguration"].connect(
-                self._update_configuration, thread="main"
-            )
+            sigs["sigNewPosition"].connect(self._update_setpoint, thread="main")
 
     def setup_ui(
         self,
-        configuration: dict[str, Reading[Any]],
+        readings: dict[str, Reading[Any]],
         description: dict[str, Descriptor],
     ) -> None:
-        r"""Build the UI from configuration readings and descriptors.
+        """Create the UI based on the provided readings and description."""
+        axis_map: dict[str, list[str]] = {}
+        axis_units: dict[str, list[str]] = {}
+        for key in readings.keys():
+            units = description[key]["units"] or "NA"
+            name, _, axis = parse_map_key(key, "axis")
+            axis_map.setdefault(name, list()).append(axis)
+            axis_units.setdefault(name, list()).append(units)
 
-        Parameters
-        ----------
-        configuration : ``dict[str, Reading[Any]]``
-            Flat mapping of canonical ``name\property`` keys to readings,
-            merging all motor devices.
-        description : ``dict[str, Descriptor]``
-            Flat mapping of canonical ``name\property`` keys to
-            descriptors, merging all motor devices.
-        """
-        self._configuration = configuration
-        self._description = description
-
-        # Group flat keys by device name
-        devices: dict[str, dict[str, Reading[Any]]] = {}
-        for key, reading in configuration.items():
-            try:
-                name, _ = parse_key(key)
-            except ValueError:
-                continue
-            devices.setdefault(name, {})[key] = reading
-
-        self._device_readings = devices
-
-        for device_label, readings in devices.items():
-            # Infer EGU and axis list from step_size keys in description.
-            # Keys follow the pattern "{device_label}-{axis}-step_size".
-            step_keys = [
-                k
-                for k in description
-                if parse_key(k)[0] == device_label
-                and parse_key(k)[1].endswith("-step_size")
-            ]
-            egu: str = description[step_keys[0]].get("units") or "" if step_keys else ""
-            axis: list[str] = [
-                parse_key(k)[1].removesuffix("-step_size") for k in step_keys
-            ]
-
-            self._groups[device_label] = QtWidgets.QGroupBox(device_label)
-            self._groups[device_label].setAlignment(
-                QtCore.Qt.AlignmentFlag.AlignHCenter
-            )
-
+        for name, axes in axis_map.items():
             layout = QtWidgets.QGridLayout()
+            self._groups.setdefault(name, QtWidgets.QGroupBox(name))
+            self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
 
-            for i, ax in enumerate(axis):
-                suffix = f"{device_label}:{ax}"
-                step_reading_key = f"{device_label}-{ax}-step_size"
-                _r = readings.get(step_reading_key)
-                initial_step: float = float(_r["value"]) if _r is not None else 1.0
-
-                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{ax}")
+            for i, axis in enumerate(axes):
+                suffix = f"{name}:{axis}"
+                units = axis_units[name][i]
+                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{axis}")
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
-                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {egu}")
+                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {units}")
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
-                self._labels["step:" + suffix] = QtWidgets.QLabel(f"step ({egu})")
+                self._labels["step:" + suffix] = QtWidgets.QLabel(f"step ({units})")
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
-                    str(initial_step)
+                    str(self.step_size)
                 )
                 self._line_edits["edit:" + suffix].setAlignment(
                     QtCore.Qt.AlignmentFlag.AlignHCenter
@@ -169,17 +127,17 @@ class MotorView(QtView):
                 layout.addWidget(self._line_edits["edit:" + suffix], i, 6)
 
                 self._buttons["button:" + suffix + ":up"].clicked.connect(
-                    lambda _, lbl=device_label, a=ax: self._step(lbl, a, True)
+                    lambda _, lbl=name, a=axis: self._step(lbl, a, True)
                 )
                 self._buttons["button:" + suffix + ":down"].clicked.connect(
-                    lambda _, lbl=device_label, a=ax: self._step(lbl, a, False)
+                    lambda _, lbl=name, a=axis: self._step(lbl, a, False)
                 )
                 self._line_edits["edit:" + suffix].editingFinished.connect(
-                    lambda lbl=device_label, a=ax: self._validate_and_notify(lbl, a)
+                    lambda lbl=name, a=axis: self._validate(lbl, a)
                 )
 
-            self._groups[device_label].setLayout(layout)
-            self.main_layout.addWidget(self._groups[device_label])
+            self._groups[name].setLayout(layout)
+            self.main_layout.addWidget(self._groups[name])
 
         self.setLayout(self.main_layout)
 
@@ -204,83 +162,36 @@ class MotorView(QtView):
         else:
             self.sigMotorMove.emit(motor, axis, current_position - step_size)
 
-    def _update_position(self, motor: str, axis: str, position: float) -> None:
-        """Update the motor position label.
+    def _update_setpoint(self, motor: str, axis: str, position: float) -> None:
+        """Update the current motor setpoint as text.
 
         Parameters
         ----------
-        motor : ``str``
-            Motor device label (``name``).
-        axis : ``str``
+        motor : str
+            Motor device label.
+        axis : str
             Motor axis.
-        position : ``float``
+        position : float
             New position of the motor.
         """
-        step_key = next(
-            (
-                k
-                for k in self._description
-                if k.endswith(f"-{axis}-step_size") and k.startswith(motor)
-            ),
-            None,
-        )
-        egu: str = self._description[step_key].get("units") or "" if step_key else ""
-        self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {egu}")
+        _, units = self._labels[f"step:{motor}:{axis}"].text().split()
+        self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {units}")
 
-    def _update_configuration(self, motor: str, success_map: dict[str, bool]) -> None:
-        """Reset line-edit styling after a configuration update.
+    def _validate(self, motor: str, axis: str) -> None:
+        """Validate the new step size.
 
         Parameters
         ----------
-        motor : ``str``
-            Motor device label (``name``).
-        success_map : ``dict[str, bool]``
-            Mapping of setting key to success flag as returned by
-            :meth:`MotorPresenter.configure`.
-        """
-        for key, success in success_map.items():
-            # key is e.g. "{motor}-{axis}-step_size"; extract axis
-            try:
-                _, prop = parse_key(key)
-            except ValueError:
-                continue
-            if prop.endswith("-step_size"):
-                ax = prop.removesuffix("-step_size")
-                edit_key = f"edit:{motor}:{ax}"
-                if edit_key in self._line_edits:
-                    color = "green" if success else "red"
-                    self._line_edits[edit_key].setStyleSheet(
-                        f"border: 2px solid {color};"
-                    )
-
-    def _validate_and_notify(self, device_label: str, axis: str) -> None:
-        r"""Validate the new step size value and notify the virtual bus.
-
-        Emits ``sigConfigChanged`` with the device label and a mapping of
-        canonical ``name\property`` keys to new values, so the
-        presenter can route them directly to the device's ``set()`` call.
-
-        Parameters
-        ----------
-        device_label : ``str``
-            Motor device label (``name``).
-        axis : ``str``
+        motor : str
+            Motor device label.
+        axis : str
             Motor axis.
         """
-        text = self._line_edits["edit:" + device_label + ":" + axis].text()
+        text = self._line_edits[f"edit:{motor}:{axis}"].text()
         state = self.validator.validate(text, 0)[0]
         if state == QtGui.QRegularExpressionValidator.State.Invalid:
-            self._line_edits["edit:" + device_label + ":" + axis].setStyleSheet(
+            self._line_edits[f"edit:{motor}:{axis}"].setStyleSheet(
                 "border: 2px solid red;"
             )
         else:
-            self._line_edits["edit:" + device_label + ":" + axis].setStyleSheet("")
-
-        if state == QtGui.QRegularExpressionValidator.State.Acceptable:
-            # Canonical keys: "{device_label}-axis" and "{device_label}-{axis}-step_size"
-            axis_key = f"{device_label}-axis"
-            step_key = f"{device_label}-{axis}-step_size"
-            self.sigConfigChanged.emit(
-                device_label,
-                {axis_key: axis, step_key: float(text)},
-            )
+            self._line_edits[f"edit:{motor}:{axis}"].setStyleSheet("")

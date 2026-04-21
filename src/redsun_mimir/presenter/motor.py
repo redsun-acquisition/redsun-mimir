@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
+from redsun.aio import run_coro
 from redsun.device.protocols import HasAsyncShutdown
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
-from redsun.utils.aio import run_coro
 from redsun.virtual import Signal
 
 from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
@@ -61,7 +61,7 @@ class MotorPresenter(Presenter, Loggable):
         timeout: float | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float = timeout or 2.0
+        self._timeout = timeout or 2.0
 
         self._motors: dict[str, MotorProtocol] = {
             name: device
@@ -71,18 +71,18 @@ class MotorPresenter(Presenter, Loggable):
 
         self.logger.info("Initialized")
 
-    def devices_configuration(self) -> dict[str, Reading[Any]]:
+    def devices_readings(self) -> dict[str, Reading[Any]]:
         """Get the current configuration readings of all motor devices."""
         result: dict[str, Reading[Any]] = {}
         for device in self._motors.values():
-            result.update(run_coro(device.read_configuration()))
+            result.update(run_coro(device.read()))
         return result
 
     def devices_description(self) -> dict[str, Descriptor]:
         """Get the configuration descriptors of all motor devices."""
         result: dict[str, Descriptor] = {}
         for device in self._motors.values():
-            result.update(run_coro(device.describe_configuration()))
+            result.update(run_coro(device.describe()))
         return result
 
     def move(self, motor: str, axis: str, position: float) -> None:
@@ -102,7 +102,7 @@ class MotorPresenter(Presenter, Loggable):
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register motor model info as a provider in the DI container."""
-        container.motor_configuration = providers.Object(self.devices_configuration())
+        container.motor_readings = providers.Object(self.devices_readings())
         container.motor_description = providers.Object(self.devices_description())
         container.register_signals(self)
 

@@ -115,8 +115,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
         """Track stream phase; dispatch median computation on stream switch."""
-        run_uid: str = doc["run_start"]
-        stream: str = doc["name"]
+        run_uid = doc["run_start"]
+        stream = doc["name"]
         self.uid_to_stream[doc["uid"]] = stream
 
         current = self._phase.get(run_uid, "idle")

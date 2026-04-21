@@ -4,11 +4,11 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
+from redsun.aio import run_coro
 from redsun.device.protocols import HasAsyncShutdown
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
-from redsun.utils.aio import run_coro
 
 from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
@@ -70,6 +70,7 @@ class LightPresenter(Presenter, Loggable):
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
             result.update(run_coro(light.read_configuration()))
+            result.update(run_coro(light.read()))
         return result
 
     def device_description(self) -> dict[str, Descriptor]:
@@ -83,6 +84,7 @@ class LightPresenter(Presenter, Loggable):
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
             result.update(run_coro(light.describe_configuration()))
+            result.update(run_coro(light.describe()))
         return result
 
     def register_providers(self, container: VirtualContainer) -> None:
@@ -95,27 +97,22 @@ class LightPresenter(Presenter, Loggable):
         """Connect to the virtual container signals."""
         sigs = find_signals(container, ["sigToggleLightRequest", "sigIntensityRequest"])
         if "sigToggleLightRequest" in sigs:
-            sigs["sigToggleLightRequest"].connect(self.trigger)
+            sigs["sigToggleLightRequest"].connect(
+                lambda name: run_coro(self.trigger(name))
+            )
         if "sigIntensityRequest" in sigs:
-            sigs["sigIntensityRequest"].connect(self.set)
+            sigs["sigIntensityRequest"].connect(
+                lambda name, intensity: run_coro(self.set(name, intensity))
+            )
 
-    def trigger(self, name: str) -> None:
-        """Toggle the light on or off.
-
-        Parameters
-        ----------
-        name :
-            Name of the light device.
-        """
-        run_coro(self._trigger(name))
-
-    async def _trigger(self, name: str) -> None:
+    async def trigger(self, name: str) -> None:
+        """Toggle a light source and emit the new state on completion."""
         light = self._lights[name]
         await asyncio.wait_for(light.trigger(), timeout=self._timeout)
         state = await light.enabled.get_value()
         self.logger.debug(f"Toggled {name!r} -> enabled={state}")
 
-    def set(self, name: str, intensity: int | float) -> None:
+    async def set(self, name: str, intensity: int | float) -> None:
         """Set the intensity of a light source.
 
         Parameters
@@ -125,9 +122,6 @@ class LightPresenter(Presenter, Loggable):
         intensity : int | float
             New intensity value.
         """
-        run_coro(self._set(name, intensity))
-
-    async def _set(self, name: str, intensity: int | float) -> None:
         light = self._lights[name]
         await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
 
