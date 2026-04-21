@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any
 
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.utils import find_signals
@@ -13,38 +13,9 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from redsun.virtual import VirtualContainer
 
-_T = TypeVar("_T")
-
-
-def _get_prop(
-    readings: dict[str, Reading[Any]],
-    prop: str,
-    default: _T,
-) -> _T:
-    """Find a reading value by property name suffix.
-
-    Searches all keys whose last backslash-delimited segment matches
-    *prop*. This makes the lookup independent of the ``name``
-    portion of the canonical key.
-
-    Parameters
-    ----------
-    readings :
-        Flat reading dict (values from ``read_configuration()``).
-    prop :
-        Property name to match (e.g. ``"egu"``, ``"axis"``).
-    default :
-        Returned when no matching key is found.
-    """
-    for key, reading in readings.items():
-        tail = key.rsplit("-", 1)[-1]
-        if tail == prop:
-            return cast("_T", reading["value"])
-    return default
-
 
 class MotorView(QtView):
-    r"""View for manual motor stage control.
+    """View for manual motor stage control.
 
     Builds one control group per motor device using configuration
     provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
@@ -60,16 +31,9 @@ class MotorView(QtView):
         Emitted when the user requests a stage movement.
         Carries motor name (``str``), axis (``str``), and target position
         (``float``).
-    sigConfigChanged :
-        Emitted when the user changes a configuration parameter.
-        Carries device label (``str``, ``name``) and a mapping of
-        canonical ``name\property`` keys to new values
-        (``dict[str, Any]``).
-    r
     """
 
     sigMotorMove = Signal(str, str, float)
-    sigConfigChanged = Signal(str, dict[str, Any])
 
     @property
     def view_position(self) -> ViewPosition:
@@ -80,9 +44,9 @@ class MotorView(QtView):
         self,
         name: str,
         /,
-        **kwargs: Any,
+        step_size: float = 100.0,
     ) -> None:
-        super().__init__(name, **kwargs)
+        super().__init__(name, step_size=step_size)
         # Flat canonical-keyed dicts for the full config
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}

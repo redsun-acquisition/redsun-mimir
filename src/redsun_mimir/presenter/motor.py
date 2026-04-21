@@ -14,6 +14,7 @@ from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from concurrent.futures import Future
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
@@ -49,14 +50,9 @@ class MotorPresenter(Presenter, Loggable):
         Emitted when a move completes successfully.
         Carries motor name (``str``), axis name (``str``), and new position
         (``float``).
-    sigNewConfiguration :
-        Emitted after a configuration change attempt.
-        Carries motor name (``str``) and a mapping of parameter names to
-        success status (``dict[str, bool]``).
     """
 
     sigNewPosition = Signal(str, str, float)
-    sigNewConfiguration = Signal(str, dict[str, bool])
 
     def __init__(
         self,
@@ -73,6 +69,7 @@ class MotorPresenter(Presenter, Loggable):
             for name, device in devices.items()
             if isinstance(device, MotorProtocol)
         }
+        self.futures: set[Future[None]] = set()
 
         self.logger.info("Initialized")
 
