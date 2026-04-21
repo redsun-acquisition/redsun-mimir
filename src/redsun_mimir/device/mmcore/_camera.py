@@ -39,11 +39,12 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self,
         name: str,
         *,
+        core: CMMCorePlus,
         pixel_dtype: SignalRW[str],
         adapter_info: MMAdapterInfo,
         writer: str = "zarr",
     ) -> None:
-        self.core = CMMCorePlus.instance()
+        self.core = core
         if self.core.getCameraDevice() != "":
             raise RuntimeError("Only one camera device can be active at a time. ")
         self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
@@ -99,13 +100,14 @@ class MMDemoCamera(MMBaseCameraDevice):
             "uint16": "16bit",
             "uint32": "32bit",
         }
-
-        adapter_info = MMAdapterInfo(adapter="DemoCamera", device="Camera")
+        self.core = CMMCorePlus.instance()
         self.pixel_dtype = mm_property_signal(
             self.core, name, "PixelType", enum_map=pixel_dtype, datatype=str
         )
+        adapter_info = MMAdapterInfo(adapter="DemoCamera", device="DCam")
         super().__init__(
-            name=name,
+            name,
+            core=self.core,
             pixel_dtype=self.pixel_dtype,
             adapter_info=adapter_info,
             writer=writer,
