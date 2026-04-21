@@ -246,11 +246,16 @@ class MMROISignalBackend(SignalBackend[ROIType]):
         assert self.datatype is not None, (
             "SignalBackend must have a known datatype to produce a DataKey"
         )
+        dtype_numpy = np.dtype(int).str
 
-        x, y, width, height = self.core.getROI()
-        value = (x, y, width, height)
-        metadata = make_metadata(self.datatype, units="px")
-        return make_datakey(self.datatype, value, source, metadata)  # type: ignore
+        descriptor: DataKey = {
+            "dtype": "array",
+            "shape": (4,),
+            "source": source,
+            "dtype_numpy": dtype_numpy,
+            **make_metadata(self.datatype, units="px"),
+        }
+        return descriptor
 
     def set_callback(self, callback: Callback[Reading[ROIType]] | None) -> None:
         """Observe changes to the current value, timestamp and severity."""
