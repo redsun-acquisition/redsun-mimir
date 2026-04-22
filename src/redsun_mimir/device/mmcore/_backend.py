@@ -211,6 +211,13 @@ class MMROISignalBackend(SignalBackend[ROIType]):
         self.label = label
         self.core = core
         self._callback: Callback[Reading[ROIType]] | None = None
+        self.descriptor: DataKey = {
+            "dtype": "array",
+            "shape": [4],
+            "source": self.source(label, read=True),
+            "dtype_numpy": np.dtype(int).str,
+            "units": "px",
+        }
         super().__init__(ROIType)
 
     def source(self, name: str, read: bool) -> str:
@@ -243,19 +250,7 @@ class MMROISignalBackend(SignalBackend[ROIType]):
         return {"value": value, "timestamp": time.time()}
 
     async def get_datakey(self, source: str) -> DataKey:
-        assert self.datatype is not None, (
-            "SignalBackend must have a known datatype to produce a DataKey"
-        )
-        dtype_numpy = np.dtype(int).str
-
-        descriptor: DataKey = {
-            "dtype": "array",
-            "shape": [4],
-            "source": source,
-            "dtype_numpy": dtype_numpy,
-            "units": "px",
-        }
-        return descriptor
+        return self.descriptor
 
     def set_callback(self, callback: Callback[Reading[ROIType]] | None) -> None:
         """Observe changes to the current value, timestamp and severity."""
