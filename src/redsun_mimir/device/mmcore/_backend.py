@@ -250,7 +250,7 @@ class MMROISignalBackend(SignalBackend[ROIType]):
 
         descriptor: DataKey = {
             "dtype": "array",
-            "shape": (4,),
+            "shape": [4],
             "source": source,
             "dtype_numpy": dtype_numpy,
             **make_metadata(self.datatype, units="px"),
