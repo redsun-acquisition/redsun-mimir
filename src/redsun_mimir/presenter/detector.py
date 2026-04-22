@@ -130,6 +130,9 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         if property == "roi":
             roi = self.detectors[detector].roi
             run_coro(self._set(detector, roi, value))
+        elif property == "exposure":
+            exposure = self.detectors[detector].exposure
+            run_coro(self._set(detector, exposure, value))
         else:
             self.logger.error(
                 f"Unknown property {property!r} for detector {detector!r}"
