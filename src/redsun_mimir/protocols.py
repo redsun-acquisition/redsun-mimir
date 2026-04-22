@@ -57,8 +57,12 @@ class LightProtocol(AsyncConfigurable, Protocol):
     """
 
     intensity: SignalRW[int | float]
+    """Light source intensity."""
     wavelength: SignalR[int]
+    """Light source wavelength."""
+
     enabled: SignalRW[bool]
+    """Current on/off state of the light source."""
 
     async def read(self) -> dict[str, Reading[Any]]:
         """Read the current state of the light source.
@@ -93,21 +97,16 @@ class LightProtocol(AsyncConfigurable, Protocol):
 
 @runtime_checkable
 class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
-    """Protocol for detector models.
-
-    Attributes
-    ----------
-    exposure: SignalRW[float]
-        Settable signal for the exposure time.
-    buffer : SignalR[Array2D]
-        In-memory signal holding the most recently acquired frame.
-    roi : SignalRW[ROIType]
-        Signal for region of interest (ROI).
-    """
+    """Protocol for detector models."""
 
     exposure: SignalRW[float]
+    """Signal for exposure time."""
+
     buffer: SignalR[Array2D]
+    """Readable view into the most recently acquired frame."""
+
     roi: SignalRW[ROIType]
+    """Signal for setting region of interest (ROI)."""
 
 
 @runtime_checkable

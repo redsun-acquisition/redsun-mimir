@@ -55,7 +55,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     """
 
     sigNewConfiguration = Signal(str, str, object)
-    sigConfigurationConfirmed = Signal(str, str, bool)
     sigNewData = Signal(object)
 
     def __init__(
@@ -108,35 +107,28 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         return result
 
     def configure(self, detector: str, property: str, value: Any) -> None:
-        """Configure a detector with confirmation feedback.
-
-        Update one or more configuration parameters of a detector by resolving
-        each config key to the corresponding
-        [`SignalRW`][ophyd_async.core.SignalRW] attribute on the device and
-        calling its ``set()`` method directly.
-
-        Emits ``sigNewConfiguration`` when successful and
-        ``sigConfigurationConfirmed`` for each setting with success/failure.
+        """Configure a detector property based on a user request from the view.
 
         Parameters
         ----------
         detector : str
-            Bare device name as emitted by the view (e.g. ``"cam"``).
+            Bare device name as emitted by the view.
         property : str
-            Configuration key representing the setting to change (e.g. ``"exposure"``).
+            Configuration key representing the setting to change.
         value : object
             New value for the setting.
         """
-        if property == "roi":
-            roi = self.detectors[detector].roi
-            run_coro(self._set(detector, roi, value))
-        elif property == "exposure":
-            exposure = self.detectors[detector].exposure
-            run_coro(self._set(detector, exposure, value))
-        else:
-            self.logger.error(
-                f"Unknown property {property!r} for detector {detector!r}"
-            )
+        match property:
+            case "roi":
+                roi = self.detectors[detector].roi
+                run_coro(self._set(detector, roi, value))
+            case "exposure":
+                exposure = self.detectors[detector].exposure
+                run_coro(self._set(detector, exposure, value))
+            case _:
+                self.logger.error(
+                    f"Unknown property {property!r} for detector {detector!r}"
+                )
 
     async def _set(self, det_name: str, obj: SignalRW[Any], value: Any) -> None:
         """Set *obj* to *value* asynchronously."""
@@ -145,7 +137,9 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         if not status.success:
             self.logger.error(f"Failed to set {obj} to {value!r}: {status.exception()}")
         else:
-            self.sigNewConfiguration.emit(det_name, obj.name, await obj.read()["value"])
+            new_reading = await obj.read()
+            value = new_reading[obj.name]["value"]
+            self.sigNewConfiguration.emit(det_name, obj.name, value)
 
     def event(self, doc: Event) -> Event:
         """Process new event documents and route data to the view."""

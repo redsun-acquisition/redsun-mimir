@@ -173,11 +173,7 @@ class DetectorView(QtView, Loggable):
             dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}
 
             widget = SettingsControlWidget(dev_descriptors, dev_readings, self)
-            widget.tree_view.sigPropertyChanged.connect(
-                lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
-                    lbl, setting, value
-                )
-            )
+            widget.tree_view.sigPropertyChanged.connect(self.sigPropertyChanged)
             self.settings_controls[device_label] = widget
             self.settings_tab_widget.addTab(widget, device_label)
 
