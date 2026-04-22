@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,14 +16,15 @@ from ophyd_async.core import (
 from redsun.storage import SourceInfo
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from typing import Any
 
     from ophyd_async.core import PathProvider, SignalRW
     from ophyd_async.core._data_providers import StreamableDataProvider
     from pymmcore_plus import CMMCorePlus as Core
     from redsun.storage import DataWriter
 
-    from redsun_mimir.protocols import ROIType
+    from redsun_mimir.protocols import Array2D, ROIType
 
 
 @dataclass
@@ -62,23 +63,45 @@ class MMArmLogic(DetectorArmLogic):
     datakey_name: str
     core: Core
     writer: DataWriter
+    set_buffer: Callable[[Array2D], None]
+
+    _pump_task: asyncio.Task[Any] | None = field(default=None, init=False)
+    _stop_event: asyncio.Event = field(init=False)
 
     async def arm(self) -> None:
         """Open the zarr store (if not already open) then start MM sequence acquisition."""
         if not self.writer.is_open:
             self.writer.open()
         self.core.startContinuousSequenceAcquisition()
+        self._stop_event = asyncio.Event()
+        self._pump_task = asyncio.create_task(self._pump())
 
     async def wait_for_idle(self) -> None:
-        """Poll until the sequence acquisition finishes."""
-        ...
+        if self._pump_task is not None:
+            await self._pump_task
 
     async def disarm(self, on_unstage: bool) -> None:
+        if self._stop_event is not None:
+            self._stop_event.set()
+        if self._pump_task is not None:
+            await self._pump_task
+            self._pump_task = None
         self.core.stopSequenceAcquisition()
         if self.writer.is_open:
             self.writer.unregister(self.datakey_name)
             if len(self.writer.sources) == 0:
                 self.writer.close()
+
+    async def _pump(self) -> None:
+        exposure_ms = self.core.getExposure()
+        sleep_s = exposure_ms / 1000.0
+
+        while not self._stop_event.is_set():
+            while self.core.getRemainingImageCount() < 1:
+                await asyncio.sleep(sleep_s)
+            img = self.core.popNextImage()
+            self.set_buffer(img)
+            self.writer.write(self.datakey_name, img)
 
 
 @dataclass

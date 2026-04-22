@@ -96,14 +96,19 @@ class LightProtocol(AsyncConfigurable, Protocol):
 
 
 @runtime_checkable
-class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
+class BufferDataProtocol(Protocol):
+    """Protocol for devices that provide a continuously updated data buffer."""
+
+    buffer: SignalR[Array2D]
+    """Readable signal providing access to the current data buffer."""
+
+
+@runtime_checkable
+class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models."""
 
     exposure: SignalRW[float]
     """Signal for exposure time."""
-
-    buffer: SignalR[Array2D]
-    """Readable view into the most recently acquired frame."""
 
     roi: SignalRW[ROIType]
     """Signal for setting region of interest (ROI)."""

@@ -8,7 +8,7 @@ from redsun.storage import create_writer
 from redsun_mimir.storage import SessionPathProvider
 
 from ._backend import (
-    mm_buffer_signal,
+    buffer_signal,
     mm_exposure_signal,
     mm_property_signal,
     mm_roi_signal,
@@ -53,13 +53,11 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.writer = create_writer(writer)
         self.core.clearROI()
 
-        roi = self.core.getROI()
-
-        width, height = roi[2], roi[3]
-
-        self.buffer = mm_buffer_signal(self.core, name, (width, height))
         self.exposure = mm_exposure_signal(self.core, name)
         self.roi = mm_roi_signal(self.core, name)
+        self.pixel_dtype = pixel_dtype
+
+        self.buffer, setter = buffer_signal(self.roi, self.pixel_dtype)
 
         trigger_logic = MMTriggerLogic(
             datakey_name=self.name,
@@ -73,6 +71,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             datakey_name=self.name,
             core=self.core,
             writer=self.writer,
+            set_buffer=setter,
         )
 
         data_logic = MMDataLogic(

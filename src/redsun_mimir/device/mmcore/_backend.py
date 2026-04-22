@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, TypeVar, cast
 
 import numpy as np
-from ophyd_async.core import SignalBackend, SignalRW, make_datakey
+from event_model import DataKey
+from ophyd_async.core import (
+    SignalBackend,
+    SignalR,
+    SignalRW,
+    SoftSignalBackend,
+    make_datakey,
+)
 from ophyd_async.core._signal_backend import make_metadata
 
 from redsun_mimir.device._common import DEFAULT_TIMEOUT
 from redsun_mimir.protocols import Array2D, ROIType
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bluesky.protocols import Reading
     from event_model import DataKey
     from ophyd_async.core import Callback
@@ -276,60 +286,26 @@ class MMROISignalBackend(SignalBackend[ROIType]):
             sig.connect(on_change)
 
 
-class MMBufferSignalBackend(SignalBackend[Array2D]):
-    """Signal backend for the camera image buffer."""
-
-    def __init__(self, label: str, core: Core, buffer_size: tuple[int, int]):
-        self.label = label
-        self.core = core
-        self.buffer_size = buffer_size
-        self._callback: Callback[Reading[Array2D]] | None = None
-        self._buffer: Array2D = np.zeros(buffer_size, dtype=np.uint16)
-        super().__init__(np.ndarray)
-
-    def source(self, name: str, read: bool) -> str:
-        """Return the source URI for this signal."""
-        return f"mmcore://{self.label}-buffer"
-
-    async def update_size(self, new_size: tuple[int, int]) -> None:
-        """Update the buffer size and reallocate the buffer array."""
-        self.buffer_size = new_size
-        self._buffer = np.zeros(new_size, dtype=np.uint16)
-
-    async def connect(self, timeout: float) -> None: ...
-
-    async def put(self, value: Array2D | None) -> None:
-        """Write *value* to the MM property."""
-        if value is not None:
-            self._buffer = value.copy()
-
-    async def get_value(self) -> Array2D:
-        """Return the current property value cast to the declared datatype."""
-        return await self.get()
-
-    async def get(self) -> Array2D:
-        return self._buffer
-
-    async def get_setpoint(self) -> Array2D:
-        return await self.get()
-
-    async def get_reading(self) -> Reading[Array2D]:
-        """Return a Bluesky Reading with the current value and timestamp."""
-        value = await self.get()
-        return {"value": value, "timestamp": time.time()}
+class BufferSignalBackend(SoftSignalBackend[np.ndarray]):
+    def __init__(self, roi_sig: SignalRW[ROIType], dtype: SignalRW[str]):
+        self._roi = roi_sig
+        self._dtype = dtype
+        super().__init__(np.ndarray, initial_value=np.zeros((1, 1), dtype=np.uint16))
 
     async def get_datakey(self, source: str) -> DataKey:
-        assert self.datatype is not None, (
-            "SignalBackend must have a known datatype to produce a DataKey"
+        roi, dtype_str = await asyncio.gather(
+            self._roi.get_value(), self._dtype.get_value()
         )
-        width, height = self._buffer.shape
-        value = (width, height)
-        metadata = make_metadata(self.datatype, units="px")
-        return make_datakey(self.datatype, value, source, metadata)  # type: ignore
-
-    def set_callback(self, callback: Callback[Reading[Array2D]] | None) -> None:
-        """Observe changes to the current value, timestamp and severity."""
-        self._callback = callback
+        roi_list: list[int] = roi.tolist()
+        w, h = tuple(roi_list[2:4])
+        dtype = np.dtype(dtype_str).str
+        descriptor: DataKey = {
+            "dtype": "array",
+            "shape": [h, w],
+            "source": source,
+            "dtype_numpy": dtype,
+        }
+        return descriptor
 
 
 class MMCorePositionSignalBackend(SignalBackend[float]):
@@ -500,21 +476,18 @@ def mm_roi_signal(
     return SignalRW(backend, name="roi", timeout=DEFAULT_TIMEOUT)
 
 
-def mm_buffer_signal(
-    core: Core,
-    device_label: str,
-    buffer_size: tuple[int, int],
-) -> SignalRW[Array2D]:
-    """Create a read-write Signal for the camera image buffer.
+def buffer_signal(
+    roi_sig: SignalRW[ROIType], dtype: SignalRW[str]
+) -> tuple[SignalR[Array2D], Callable[[Array2D], None]]:
+    """Create a read-only Signal for a camera image buffer.
 
     Parameters
     ----------
-    core: pymmcore_plus.CMMCorePlus
-        The Micro-Manager core.
-    device_label:
-        The MM device label of the camera (e.g. ``"Camera"``).
-    buffer_size:
-        The initial size of the image buffer as a tuple (width, height).
+    roi_sig: SignalRW[ROIType]
+        A signal providing the current ROI of the camera, used to determine the buffer shape.
+    dtype: SignalRW[str]
+        A signal providing the current data type of the camera image, used to determine the buffer dtype.
     """
-    backend = MMBufferSignalBackend(device_label, core, buffer_size)
-    return SignalRW(backend, name="buffer", timeout=DEFAULT_TIMEOUT)
+    backend = BufferSignalBackend(roi_sig, dtype)
+    signal = SignalR(backend, name="buffer", timeout=DEFAULT_TIMEOUT)
+    return (signal, backend.set_value)

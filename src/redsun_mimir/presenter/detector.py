@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor  # noqa: TC002
 from dependency_injector import providers
-from event_model import DocumentRouter
 from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.presenter import Presenter
@@ -17,17 +16,12 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Reading
-    from event_model import Event
     from ophyd_async.core import Device, SignalRW
     from redsun.virtual import VirtualContainer
 
 
-class DetectorPresenter(Presenter, DocumentRouter, Loggable):
+class DetectorPresenter(Presenter, Loggable):
     """Presenter for detector configuration and live data routing.
-
-    Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
-    event documents emitted by the run engine and forward new image data
-    to [`DetectorView`][redsun_mimir.view.DetectorView] via the virtual container.
 
     Parameters
     ----------
@@ -45,13 +39,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
 
     Attributes
     ----------
-    sigNewConfiguration :
+    sigNewConfiguration : Signal[str, str, object]
         Emitted after a detector setting is successfully applied.
         Carries the detector name (``str``) and a mapping of the
         changed setting to its new value (``dict[str, object]``).
-    sigNewData :
-        Emitted on each incoming event document.
-        Carries a nested ``dict`` keyed by detector name.
+    sigNewData : Signal[dict[str, Reading[Any]]]
+        Emitted when a new reading is available from a detector.
     """
 
     sigNewConfiguration = Signal(str, str, object)
@@ -63,18 +56,23 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         devices: Mapping[str, Device],
         /,
         timeout: float | None = 1.0,
-        hints: list[str] | None = None,
     ) -> None:
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
-        self.hints = hints or ["buffer", "roi"]
         self.detectors: dict[str, DetectorProtocol] = {
             name: device
             for name, device in devices.items()
             if isinstance(device, DetectorProtocol)
         }
-        self.current_stream = ""
-        self.packet: dict[str, dict[str, Any]] = {}
+
+        # the internals of a signal backend are invoked in
+        # a running event loop; we need to dispatch the
+        # subscription coroutine to the background thread
+        async def subscribe_to_buffers() -> None:
+            for detector in self.detectors.values():
+                detector.buffer.subscribe_reading(self.sigNewData.emit)
+
+        run_coro(subscribe_to_buffers())
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
@@ -84,7 +82,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         container.detector_descriptors = providers.Object(self.devices_description())
         container.detector_readings = providers.Object(self.devices_configuration())
         container.register_signals(self)
-        container.register_callbacks(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
@@ -133,6 +130,17 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
                     f"Unknown property {property!r} for detector {detector!r}"
                 )
 
+    def emit_new_data(self, data: dict[str, Reading[Any]]) -> None:
+        """Emit new data readings from a detector.
+
+        Strip the "buffer" suffix from the data key before emitting.
+        """
+        key = next(iter(data.keys()))
+        if key.endswith("buffer"):
+            new_key = key[: -len("buffer")]
+            data[new_key] = data.pop(key)
+        self.sigNewData.emit(data)
+
     async def _set(self, det_name: str, obj: SignalRW[Any], value: Any) -> None:
         """Set *obj* to *value* asynchronously."""
         status = obj.set(value)
@@ -143,16 +151,3 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             new_reading = await obj.read()
             value = new_reading[obj.name]["value"]
             self.sigNewConfiguration.emit(det_name, obj.name, value)
-
-    def event(self, doc: Event) -> Event:
-        """Process new event documents and route data to the view."""
-        for key, value in doc["data"].items():
-            parts = key.split("-")
-            if len(parts) < 2:
-                continue
-            obj_name, hint = parts[0], parts[1]
-            if hint in self.hints:
-                self.packet.setdefault(obj_name, {})
-                self.packet[obj_name][hint] = value
-        self.sigNewData.emit(self.packet)
-        return doc

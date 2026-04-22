@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import numpy as np
 from napari._app_model import get_app_model
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
@@ -15,18 +14,12 @@ from napari.viewer import (
 )
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
-from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 
-from redsun_mimir.utils.napari import (
-    ROIInteractionBoxOverlay,
-    highlight_roi_box_handles,
-    resize_selection_box,
-)
-
 if TYPE_CHECKING:
-    import numpy.typing as npt
+    from typing import Any
+
     from bluesky.protocols import Descriptor, Reading
     from redsun.virtual import VirtualContainer
 
@@ -49,9 +42,6 @@ class ImageView(QtView, Loggable):
     ----------
     name :
         Identity key of the view.
-    hints :
-        Data key suffixes to watch for in incoming data packets.
-        Defaults to ``["buffer"]``, which is the conventional suffix for raw frame arrays.
     """
 
     @property
@@ -62,11 +52,8 @@ class ImageView(QtView, Loggable):
     def __init__(
         self,
         name: str,
-        /,
-        hints: list[str] | None = None,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(name, **kwargs)
+        super().__init__(name)
 
         # Ensure the QApplication exists and napari's theme search paths
         # (theme_<name>:/) are registered via QDir.addSearchPath.
@@ -123,8 +110,6 @@ class ImageView(QtView, Loggable):
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
 
-        self.hints = frozenset(hints or ["buffer"])
-
         # Apply napari's stylesheet so icons and theme colours render correctly.
         # Window.__init__ normally does this via _update_theme(); since we bypass
         # Window entirely we do it here and re-apply on theme changes.
@@ -161,9 +146,9 @@ class ImageView(QtView, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Inject detector configuration and create image layers."""
-        descriptors: dict[str, Descriptor] = container.detector_descriptors()
-        readings: dict[str, Reading[Any]] = container.detector_readings()
-        self._setup_layers(descriptors, readings)
+        describe: dict[str, Descriptor] = container.detector_descriptors()
+        read: dict[str, Reading[Any]] = container.detector_readings()
+        self._setup_layers(describe, read)
         for cache in container.signals.values():
             if "sigNewData" in cache:
                 cache["sigNewData"].connect(self._update_layers, thread="main")
@@ -177,73 +162,24 @@ class ImageView(QtView, Loggable):
 
         Parameters
         ----------
-        descriptors :
-            Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name-property``.
-        readings :
-            Flat merged ``read_configuration()`` output, keyed identically.
+        describe : dict[str, Descriptor]
+            Map of descriptor documents.
+        read : dict[str, Reading[Any]]
+            Map of current readings.
         """
-        devices: dict[str, dict[str, Descriptor]] = {}
-        for key, descriptor in descriptors.items():
-            try:
-                name, _ = parse_key(key)
-            except ValueError:
-                self.logger.warning(f"Skipping malformed descriptor key: {key!r}")
-                continue
-            devices.setdefault(name, {})[key] = descriptor
+        # TODO: reimplement
 
-        for device_label, dev_descriptors in devices.items():
-            dev_readings: dict[str, Reading[Any]] = {
-                k: v for k, v in readings.items() if k in dev_descriptors
-            }
-
-            sensor_shape: tuple[int, int] = (512, 512)
-            for key, reading in dev_readings.items():
-                if descriptors[key].get("dtype") == "array" and "sensor_shape" in key:
-                    val = reading["value"]
-                    if isinstance(val, (list, tuple)) and len(val) == 2:
-                        sensor_shape = (int(val[0]), int(val[1]))
-                    break
-
-            dtype: str = "uint8"
-            for key, desc in dev_descriptors.items():
-                if desc.get("dtype") == "array" and any(
-                    hint in key for hint in self.hints
-                ):
-                    dtype = str(desc.get("dtype_numpy", "uint8"))
-                    break
-
-            layer = self.viewer_model.add_image(
-                np.zeros(shape=sensor_shape, dtype=dtype),
-                name=device_label,
-            )
-            layer._overlays.update(
-                {
-                    "roi_box": ROIInteractionBoxOverlay(
-                        bounds=((0, 0), layer.data.shape), handles=True
-                    )
-                }
-            )
-            layer.mouse_drag_callbacks.append(resize_selection_box)
-            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-
-    def _update_layers(self, data: dict[str, dict[str, Any]]) -> None:
+    def _update_layers(self, data: dict[str, Reading[Any]]) -> None:
         """Push incoming frame data into the corresponding image layers.
 
         Parameters
         ----------
-        data :
-            Nested dict keyed by detector name. Each value is a packet
-            containing at least ``"buffer"`` (the raw frame array) and
-            ``"roi"`` (a 4-tuple ``(x_start, x_end, y_start, y_end)``).
+        data : dict[str, Reading[Any]]
+            Incoming reading from a detector buffer.
         """
-        for obj_name, packet in data.items():
-            for hint in self.hints:
-                if hint not in packet:
-                    continue
-                buffer: npt.NDArray[Any] = packet[hint]
-                if obj_name not in self.viewer_model.layers:
-                    self.logger.debug(f"Adding new layer for {obj_name}")
-                    self.viewer_model.add_image(name=obj_name, data=buffer)
-                else:
-                    self.viewer_model.layers[obj_name].data = buffer
+        for name, reading in data.items():
+            if name not in self.viewer_model.layers:
+                self.logger.debug(f"Adding new layer for {name}")
+                self.viewer_model.add_image(reading["value"], name=name)
+            else:
+                self.viewer_model.layers[name].data = reading["value"]
