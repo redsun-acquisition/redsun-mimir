@@ -125,6 +125,9 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             case "exposure":
                 exposure = self.detectors[detector].exposure
                 run_coro(self._set(detector, exposure, value))
+            case "pixel_dtype":
+                pixel_dtype = self.detectors[detector].pixel_dtype
+                run_coro(self._set(detector, pixel_dtype, value))
             case _:
                 self.logger.error(
                     f"Unknown property {property!r} for detector {detector!r}"

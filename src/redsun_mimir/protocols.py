@@ -108,6 +108,9 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     roi: SignalRW[ROIType]
     """Signal for setting region of interest (ROI)."""
 
+    pixel_dtype: SignalRW[str]
+    """Signal for setting pixel data type."""
+
 
 @runtime_checkable
 class ReadableFlyer(

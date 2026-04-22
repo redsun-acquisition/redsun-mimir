@@ -49,19 +49,21 @@ class MMPropertySignalBackend(SignalBackend[PropT]):
     ):
         self.enum_map = enum_map
         self.current_enum: str | None = None
+        self.choices: list[str] | None = None
         if self.enum_map is not None:
+            self.choices = list(self.enum_map.keys())
             self._inverse_map = {v: k for k, v in self.enum_map.items()}
         self.readonly = readonly
         self.prop_obj = core.getPropertyObject(label, property)
         self._callback: Callback[Reading[PropT]] | None = None
+        self._source = f"mmcore://{label}-{property}"
+        if readonly:
+            self._source += "_readonly"
         super().__init__(datatype)
 
     def source(self, name: str, read: bool) -> str:
         """Return the source URI for this signal."""
-        src = f"mmcore://{self.prop_obj.device}-{self.prop_obj.name}"
-        if self.readonly:
-            src += "_readonly"
-        return src
+        return self._source
 
     async def connect(self, timeout: float) -> None: ...
 
@@ -77,7 +79,10 @@ class MMPropertySignalBackend(SignalBackend[PropT]):
         return await self.get()
 
     async def get(self) -> PropT:
-        return cast("PropT", self.prop_obj.value)
+        value = self.prop_obj.value
+        if self._inverse_map is not None and value in self._inverse_map:
+            value = self._inverse_map[value]
+        return cast("PropT", value)
 
     async def get_setpoint(self) -> PropT:
         return await self.get_value()
@@ -114,6 +119,9 @@ class MMPropertySignalBackend(SignalBackend[PropT]):
         if allowed:
             metadata["choices"] = allowed
 
+        # if choices are provided, override
+        if self.choices is not None:
+            metadata["choices"] = self.choices
         return make_datakey(self.datatype, value, source, metadata)  # type: ignore
 
     def set_callback(self, callback: Callback[Reading[PropT]] | None) -> None:
