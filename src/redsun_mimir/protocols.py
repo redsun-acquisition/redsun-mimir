@@ -97,6 +97,8 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
 
     Attributes
     ----------
+    exposure: SignalRW[float]
+        Settable signal for the exposure time.
     buffer : SignalR[Array2D]
         In-memory signal holding the most recently acquired frame.
     roi : SignalRW[ROIType]
