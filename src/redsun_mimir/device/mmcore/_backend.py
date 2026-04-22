@@ -253,7 +253,7 @@ class MMROISignalBackend(SignalBackend[ROIType]):
             "shape": [4],
             "source": source,
             "dtype_numpy": dtype_numpy,
-            **make_metadata(self.datatype, units="px"),
+            "units": "px",
         }
         return descriptor
 
