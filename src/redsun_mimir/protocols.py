@@ -103,6 +103,7 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
         Signal for region of interest (ROI).
     """
 
+    exposure: SignalRW[float]
     buffer: SignalR[Array2D]
     roi: SignalRW[ROIType]
 
