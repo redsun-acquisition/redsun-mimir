@@ -405,7 +405,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.kickoff_all(*detectors, wait=True)
 
             # live view
-            name, action = yield from rps.wait_for_actions(
+            name, current_action = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
 
