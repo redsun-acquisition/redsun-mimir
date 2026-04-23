@@ -115,6 +115,7 @@ class MMArmLogic(DetectorArmLogic, Loggable):
         sleep_s = exposure_ms / 1000.0
         capacity = self.writer.sources[self.datakey_name].capacity
         frame_cnt = 0
+        write_forever = capacity == 0
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
@@ -123,17 +124,10 @@ class MMArmLogic(DetectorArmLogic, Loggable):
             if await self.write_sig.get_value():
                 if not self.writer.is_open:
                     self.writer.open()
-                if capacity is not None:
-                    # if capaciy is set,
-                    # write only up to the current capacity
-                    if frame_cnt < capacity:
-                        self.writer.write(self.datakey_name, img)
-                else:
-                    # if capacity is not set, always write
-                    # until disarm is called
+                if write_forever or frame_cnt < capacity:
                     self.writer.write(self.datakey_name, img)
-                frame_cnt = await self.writer.image_counter.get_value()
-                self.logger.debug(f"Frame count updated {frame_cnt}")
+                    frame_cnt = await self.writer.image_counter.get_value()
+                    self.logger.debug(f"Frame count updated {frame_cnt}")
 
 
 @dataclass
@@ -158,9 +152,13 @@ class MMDataLogic(DetectorDataLogic, Loggable):
         capacity = self.writer.sources[datakey_name].capacity
         dtype_numpy = np.dtype(self.writer.sources[datakey_name].dtype_numpy).str
 
+        # when unlimited capacity is requested, the time axis of
+        # shape requires a None flag to indicate it grows indefinetely
+        actual_capacity = capacity if capacity > 0 else None
+
         data_resource = StreamResourceInfo(
             data_key=datakey_name,
-            shape=(capacity, *shape),
+            shape=(actual_capacity, *shape),
             chunk_shape=shape,
             dtype_numpy=dtype_numpy,
             parameters={},
