@@ -389,25 +389,33 @@ class AcquisitionPresenter(Presenter, Loggable):
         """
         stream_declared = False
         self.event_map.update(action.event_map)
+        prepare_info = TriggerInfo(number_of_events=0)
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         while True:
+            # live acquisition; kickoff and
+            # wait for event to be triggered
+            prepare_info.number_of_events = 0
+            for det in detectors:
+                yield from bps.prepare(det, prepare_info, wait=True)
+            yield from bps.kickoff_all(*detectors, wait=True)
+
             name, event = yield from rps.wait_for_actions(
                 self.event_map, wait_for="set"
             )
-            num_events = 0 if write_forever else frames
-            prepare_info = TriggerInfo(number_of_events=num_events)
+
+            # if we're here, the event has been triggered;
+            # complete the flight and kickoff a data stream to disk
+            yield from bps.complete_all(*detectors, wait=True)
+            prepare_info.number_of_events = 0 if write_forever else frames
 
             self.logger.debug("Starting flight")
-
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
-
             if not stream_declared:
                 yield from bps.declare_stream(*detectors, collect=True)
                 stream_declared = True
-
             yield from bps.kickoff_all(*detectors, wait=True)
             if write_forever:
                 name, event = yield from rps.wait_for_actions(
