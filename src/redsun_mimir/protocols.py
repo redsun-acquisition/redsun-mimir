@@ -138,6 +138,9 @@ class ReadableFlyer(
 ):
     """Protocol for objects that can write to disk."""
 
+    write_sig: SignalRW[bool]
+    """Signal to control whether the device should write data to disk during acquisition."""
+
 
 __all__ = [
     "DetectorProtocol",

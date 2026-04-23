@@ -387,52 +387,36 @@ class AcquisitionPresenter(Presenter, Loggable):
             the `frames` parameter.
             Default is False (only `frames` number of images will be streamed).
         """
-        live_stream_name = "live"
-        disk_stream_name = "disk"
-        live_stream_declared = False
-        disk_stream_declared = False
+        stream_name = "live_stream"
+        streams_declared = False
         self.event_map.update(action.event_map)
-        live_info = TriggerInfo(number_of_events=0)
-        prepare_info = TriggerInfo(number_of_events=0 if write_forever else frames)
+        write_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         while True:
             for det in detectors:
-                yield from bps.prepare(det, live_info, wait=True)
-            if not live_stream_declared:
+                yield from bps.prepare(det, write_info, wait=True)
+            if not streams_declared:
                 yield from bps.declare_stream(
-                    *detectors, name=live_stream_name, collect=False
+                    *detectors, name=stream_name, collect=False
                 )
-                live_stream_declared = True
+                streams_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
 
+            # live view - pump runs without writing until action fires
             name, event = yield from rps.wait_for_actions(
                 self.event_map, wait_for="set"
             )
 
-            # if we're here, the event has been triggered;
-            # complete the flight and kickoff a data stream to disk
-            yield from bps.complete_all(*detectors, wait=True)
-            prepare_info.number_of_events = 0 if write_forever else frames
-
-            self.logger.debug("Starting flight")
-            if not disk_stream_declared:
-                yield from bps.declare_stream(
-                    *detectors, name=disk_stream_name, collect=True
-                )
-                disk_stream_declared = True
-            for detector in detectors:
-                yield from bps.prepare(detector, prepare_info, wait=True)
-            yield from bps.kickoff_all(*detectors, wait=True)
-            if write_forever:
-                name, event = yield from rps.wait_for_actions(
-                    self.event_map, wait_for="reset"
-                )
+            self.logger.debug("Start writing")
+            # flip write_sig — pump starts writing from next frame
+            for det in detectors:
+                yield from bps.abs_set(det.write_sig, True, wait=True)
 
             yield from bps.complete_all(*detectors, wait=True)
             yield from bps.collect(*detectors)
-            self.logger.debug("Flight complete.")
+            self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:

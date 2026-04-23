@@ -88,15 +88,16 @@ class MMArmLogic(DetectorArmLogic):
     async def arm(self) -> None:
         """Start the acquisition acquiring from the camera."""
         self.core.startContinuousSequenceAcquisition()
-        self._stop_event = asyncio.Event()
+        self._stop_event.clear()
         self._pump_task = asyncio.create_task(self._pump())
 
     async def wait_for_idle(self) -> None:
-        if self._pump_task is not None:
-            await self._pump_task
+        # TODO: maybe the await on
+        # the pump task should be moved here
+        ...
 
     async def disarm(self, on_unstage: bool) -> None:
-        if self._stop_event is not None:
+        if not self._stop_event.is_set():
             self._stop_event.set()
         if self._pump_task is not None:
             await self._pump_task
@@ -111,15 +112,14 @@ class MMArmLogic(DetectorArmLogic):
     async def _pump(self) -> None:
         exposure_ms = self.core.getExposure()
         sleep_s = exposure_ms / 1000.0
-        writing = await self.write_sig.get_value()
-        if writing and not self.writer.is_open:
-            self.writer.open()
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
             img = self.core.popNextImage()
             self.set_buffer(img)
-            if self.writer.is_open:
+            if await self.write_sig.get_value():
+                if not self.writer.is_open:
+                    self.writer.open()
                 self.writer.write(self.datakey_name, img)
 
 
