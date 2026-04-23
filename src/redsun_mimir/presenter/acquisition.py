@@ -405,7 +405,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.kickoff_all(*detectors, wait=True)
 
             # live view
-            name, event = yield from rps.wait_for_actions(
+            name, action = yield from rps.wait_for_actions(
                 self.event_map, wait_for="set"
             )
 
@@ -414,11 +414,17 @@ class AcquisitionPresenter(Presenter, Loggable):
             for det in detectors:
                 yield from bps.abs_set(det.write_sig, True, wait=True)
 
+            if write_forever:
+                # wait for the toggle off action instead of waiting for completion
+                name, action = yield from rps.wait_for_actions(
+                    self.event_map, wait_for="reset"
+                )
+
             yield from bps.complete_all(*detectors, wait=True)
             yield from bps.collect(*detectors)
             yield from bps.unstage_all(*detectors)
             self.logger.debug("Writing complete")
-            self.clear_and_notify(name, event)
+            self.clear_and_notify(name, action)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
