@@ -387,7 +387,10 @@ class AcquisitionPresenter(Presenter, Loggable):
             the `frames` parameter.
             Default is False (only `frames` number of images will be streamed).
         """
-        stream_declared = False
+        live_stream_name = "live"
+        disk_stream_name = "disk"
+        live_stream_declared = False
+        disk_stream_declared = False
         self.event_map.update(action.event_map)
         prepare_info = TriggerInfo(number_of_events=0)
 
@@ -397,6 +400,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             # live acquisition; kickoff and
             # wait for event to be triggered
             prepare_info.number_of_events = 0
+            if not live_stream_declared:
+                yield from bps.declare_stream(
+                    *detectors, name=live_stream_name, collect=False
+                )
+                live_stream_declared = True
             for det in detectors:
                 yield from bps.prepare(det, prepare_info, wait=True)
             yield from bps.kickoff_all(*detectors, wait=True)
@@ -413,9 +421,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             self.logger.debug("Starting flight")
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
-            if not stream_declared:
-                yield from bps.declare_stream(*detectors, collect=True)
-                stream_declared = True
+            if not disk_stream_declared:
+                yield from bps.declare_stream(
+                    *detectors, name=disk_stream_name, collect=True
+                )
+                disk_stream_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
             if write_forever:
                 name, event = yield from rps.wait_for_actions(
