@@ -130,7 +130,7 @@ class MMArmLogic(DetectorArmLogic, Loggable):
 
 
 @dataclass
-class MMDataLogic(DetectorDataLogic):
+class MMDataLogic(DetectorDataLogic, Loggable):
     writer: DataWriter
     path_provider: PathProvider
 
@@ -145,6 +145,7 @@ class MMDataLogic(DetectorDataLogic):
                 [path_info.filename, extension]
             )
             self.writer.set_store_path(write_path)
+            self.logger.debug(f"Writer path set to {write_path}")
 
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity
