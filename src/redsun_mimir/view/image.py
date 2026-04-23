@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from napari._app_model import get_app_model
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
@@ -20,8 +21,10 @@ from redsun.view.qt import QtView
 if TYPE_CHECKING:
     from typing import Any
 
-    from bluesky.protocols import Descriptor, Reading
+    from bluesky.protocols import Reading
     from redsun.virtual import VirtualContainer
+
+    from redsun_mimir.protocols import LayerSpec
 
 
 class ImageView(QtView, Loggable):
@@ -146,28 +149,18 @@ class ImageView(QtView, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Inject detector configuration and create image layers."""
-        describe: dict[str, Descriptor] = container.detector_descriptors()
-        read: dict[str, Reading[Any]] = container.detector_readings()
-        self._setup_layers(describe, read)
+        specs: dict[str, LayerSpec] = container.detector_layer_specs()
+        self.setup_layers(specs)
         for cache in container.signals.values():
             if "sigNewData" in cache:
                 cache["sigNewData"].connect(self._update_layers, thread="main")
 
-    def _setup_layers(
-        self,
-        descriptors: dict[str, Descriptor],
-        readings: dict[str, Reading[Any]],
-    ) -> None:
-        """Create one napari image layer per device.
-
-        Parameters
-        ----------
-        describe : dict[str, Descriptor]
-            Map of descriptor documents.
-        read : dict[str, Reading[Any]]
-            Map of current readings.
-        """
-        # TODO: reimplement
+    def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
+        """Create an empty image layer for each detector based on the provided specifications."""
+        for name, spec in specs.items():
+            self.logger.debug(f"Creating layer for {name} with spec {spec}")
+            buffer = np.zeros(spec["shape"], dtype=np.dtype(spec["dtype"]))
+            self.viewer_model.add_image(buffer, name=name)
 
     def _update_layers(self, data: dict[str, Reading[Any]]) -> None:
         """Push incoming frame data into the corresponding image layers.

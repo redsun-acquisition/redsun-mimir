@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from ophyd_async.core import Device, SignalRW
     from redsun.virtual import VirtualContainer
 
+    from redsun_mimir.protocols import LayerSpec
+
 
 class DetectorPresenter(Presenter, Loggable):
     """Presenter for detector configuration and live data routing.
@@ -81,6 +83,7 @@ class DetectorPresenter(Presenter, Loggable):
         """
         container.detector_descriptors = providers.Object(self.devices_description())
         container.detector_readings = providers.Object(self.devices_configuration())
+        container.detector_layer_specs = providers.Object(self.layer_specs())
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
@@ -88,6 +91,15 @@ class DetectorPresenter(Presenter, Loggable):
         sigs = find_signals(container, ["sigPropertyChanged"])
         if "sigPropertyChanged" in sigs:
             sigs["sigPropertyChanged"].connect(self.configure)
+
+    def layer_specs(self) -> dict[str, LayerSpec]:
+        """Get the layer specifications for all detector devices."""
+        specs: dict[str, LayerSpec] = {}
+        for device in self.detectors.values():
+            roi = run_coro(device.roi.get_value())
+            dtype = run_coro(device.pixel_dtype.get_value())
+            specs[device.name] = {"shape": roi[2:], "dtype": dtype}
+        return specs
 
     def devices_configuration(self) -> dict[str, Reading[Any]]:
         """Get the current configuration readings of all detector devices."""

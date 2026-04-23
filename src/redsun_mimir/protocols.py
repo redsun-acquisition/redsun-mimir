@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, TypeVar, runtime_checkable
 
 import numpy as np
 from bluesky.protocols import (
@@ -29,6 +29,16 @@ Array2D = np.ndarray[tuple[int, int], Any]
 
 ROIType = np.ndarray[tuple[int, int, int, int], Any]
 #: A region of interest (ROI) type, represented as an array of four integers: (x, y, width, height).
+
+
+class LayerSpec(TypedDict):
+    """Specification for an image layer in the view."""
+
+    shape: tuple[int, int]
+    """Shape of the image data (height, width)."""
+
+    dtype: str
+    """Data type of the image data, as a string (e.g. 'uint16')."""
 
 
 @runtime_checkable
