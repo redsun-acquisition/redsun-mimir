@@ -393,18 +393,18 @@ class AcquisitionPresenter(Presenter, Loggable):
         write_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
         while True:
+            yield from bps.stage_all(*detectors)
+
             for det in detectors:
                 yield from bps.prepare(det, write_info, wait=True)
             if not streams_declared:
-                yield from bps.declare_stream(
-                    *detectors, name=stream_name, collect=False
-                )
+                # for the first time, declare the stream
+                yield from bps.declare_stream(*detectors, name=stream_name)
                 streams_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
 
-            # live view - pump runs without writing until action fires
+            # live view
             name, event = yield from rps.wait_for_actions(
                 self.event_map, wait_for="set"
             )
@@ -416,6 +416,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             yield from bps.complete_all(*detectors, wait=True)
             yield from bps.collect(*detectors)
+            yield from bps.unstage_all(*detectors)
             self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
 
