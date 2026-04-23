@@ -171,6 +171,7 @@ class ImageView(QtView, Loggable):
             Incoming reading from a detector buffer.
         """
         for name, reading in data.items():
+            name = name.removesuffix("-buffer")
             if name not in self.viewer_model.layers:
                 self.logger.debug(f"Adding new layer for {name}")
                 self.viewer_model.add_image(reading["value"], name=name)
