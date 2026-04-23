@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from ophyd_async.core import (
     StandardDetector,
+    soft_signal_rw,
 )
 from pymmcore_plus import CMMCorePlus
 from redsun.log import Loggable
@@ -65,6 +66,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.pixel_dtype = pixel_dtype
 
         self.buffer, setter = buffer_signal(self.roi, self.pixel_dtype)
+        self.write_sig = soft_signal_rw(bool, initial_value=False)
 
         trigger_logic = MMTriggerLogic(
             datakey_name=self.name,
@@ -79,6 +81,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             core=self.core,
             writer=self.writer,
             set_buffer=setter,
+            write_sig=self.write_sig,
         )
 
         data_logic = MMDataLogic(

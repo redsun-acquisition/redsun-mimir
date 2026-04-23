@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
@@ -58,9 +58,8 @@ class AcquisitionView(QtView, Loggable):
         self,
         name: str,
         /,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(name, **kwargs)
+        super().__init__(name)
         self.plans_info: dict[str, str] = {}
 
         self.root_layout = QtW.QVBoxLayout(self)

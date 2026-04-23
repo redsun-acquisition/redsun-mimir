@@ -7,7 +7,6 @@ from bluesky.protocols import (
     Collectable,
     Flyable,
     Preparable,
-    Readable,
     WritesStreamAssets,
 )
 from ophyd_async.core import (
@@ -129,7 +128,7 @@ class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Pr
 
 @runtime_checkable
 class ReadableFlyer(
-    Readable[Any],
+    DetectorProtocol,
     Preparable,
     Flyable,
     Collectable,
@@ -137,21 +136,7 @@ class ReadableFlyer(
     HasWriterLogic,
     Protocol,
 ):
-    """Protocol for objects that are both Readable and Flyable.
-
-    A model compliant with this protocol can read data continuously
-    while flying and provides methods to retrieve the file paths where
-    data is stored.
-
-    Required protocols:
-
-    - [`Readable`][bluesky.protocols.Readable] (``read()`` and ``describe()``)
-    - [`Flyable`][bluesky.protocols.Flyable] (``kickoff()`` and ``complete()``)
-    - [`Preparable`][bluesky.protocols.Preparable] (``prepare()``)
-    - [`Collectable`][bluesky.protocols.Collectable] (``describe_collect()``)
-    - [`WritesStreamAssets`][bluesky.protocols.WritesStreamAssets] (``collect_asset_docs()``)
-    - [`HasWriterLogic`][redsun.storage.protocols.HasWriterLogic] (``writer`` property)
-    """
+    """Protocol for objects that can write to disk."""
 
 
 __all__ = [

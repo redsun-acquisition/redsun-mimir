@@ -13,6 +13,7 @@ from ophyd_async.core import (
     StreamResourceInfo,
     TriggerInfo,
 )
+from redsun.aio import run_coro
 from redsun.storage import SourceInfo
 
 if TYPE_CHECKING:
@@ -61,12 +62,28 @@ class MMArmLogic(DetectorArmLogic):
     """DetectorArmLogic for a pymmcore-plus camera device."""
 
     datakey_name: str
+    """Data key name to use for writing data from this device."""
+
     core: Core
+    """MM core."""
+
     writer: DataWriter
+    """Data writer object."""
+
     set_buffer: Callable[[Array2D], None]
+    """Callable to set the current image buffer on the device."""
+
+    write_sig: SignalRW[bool]
+    """Signal to control whether the arm logic should enable writing to disk."""
 
     _pump_task: asyncio.Task[Any] | None = field(default=None, init=False)
     _stop_event: asyncio.Event = field(init=False)
+
+    def __post_init__(self) -> None:
+        async def _make_event() -> asyncio.Event:
+            return asyncio.Event()
+
+        self._stop_event = run_coro(_make_event())
 
     async def arm(self) -> None:
         """Open the zarr store (if not already open) then start MM sequence acquisition."""
@@ -87,21 +104,25 @@ class MMArmLogic(DetectorArmLogic):
             await self._pump_task
             self._pump_task = None
         self.core.stopSequenceAcquisition()
+        await self.write_sig.set(False)
         if self.writer.is_open:
             self.writer.unregister(self.datakey_name)
             if len(self.writer.sources) == 0:
-                self.writer.close()
+                self.writer.close(reset_path=on_unstage)
 
     async def _pump(self) -> None:
         exposure_ms = self.core.getExposure()
         sleep_s = exposure_ms / 1000.0
-
+        writing = await self.write_sig.get_value()
+        if writing and not self.writer.is_open:
+            self.writer.open()
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
             img = self.core.popNextImage()
             self.set_buffer(img)
-            self.writer.write(self.datakey_name, img)
+            if self.writer.is_open:
+                self.writer.write(self.datakey_name, img)
 
 
 @dataclass

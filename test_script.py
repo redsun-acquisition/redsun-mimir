@@ -24,13 +24,19 @@ from redsun.qt import QtAppContainer
 
 from redsun_mimir.device.mmcore import MMDemoCamera
 from redsun_mimir.presenter.detector import DetectorPresenter
+from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.view.detector import DetectorView
+from redsun_mimir.view.image import ImageView
+from redsun_mimir.view.acquisition import AcquisitionView
 
 
 class TestContainer(QtAppContainer):
     camera = declare_device(MMDemoCamera)
-    detector_presenter = declare_presenter(DetectorPresenter)
-    detector_view = declare_view(DetectorView)
+    det_presenter = declare_presenter(DetectorPresenter)
+    acq_presenter = declare_presenter(AcquisitionPresenter)
+    det_view = declare_view(DetectorView)
+    image_view = declare_view(ImageView)
+    acq_view = declare_view(AcquisitionView)
 
 
 app = TestContainer()

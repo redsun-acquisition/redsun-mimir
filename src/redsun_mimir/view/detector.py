@@ -17,28 +17,16 @@ if TYPE_CHECKING:
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
-    r"""Widget for controlling device settings, backed by a descriptor tree view.
-
-    Populated once at construction from the descriptor and reading dicts
-    provided by the DI container — no separate setup step required.
+    """Widget for controlling device settings, backed by a descriptor tree view.
 
     Parameters
     ----------
-    descriptors :
-        Flat ``describe_configuration()`` dict for one device,
-        keyed in ``prefix:name-property`` form.
-    readings :
-        Flat ``read_configuration()`` dict matching the same keys.
-    parent :
+    descriptors : dict[str, Descriptor]
+        Detector output of "describe()".
+    readings : dict[str, Reading[Any]]
+        Detector output of "read()".
+    parent : QtWidgets.QWidget | None, optional
         Optional parent widget.
-
-    Note
-    ----
-    The ROI control buttons are present but currently non-functional.
-    Full ROI wiring (toggling napari overlay visibility) will be
-    implemented in a follow-up task once the ROI signal is published
-    on the virtual bus by
-    [`ImageView`][redsun_mimir.view.ImageView].
     """
 
     def __init__(
@@ -50,25 +38,9 @@ class SettingsControlWidget(QtWidgets.QWidget):
         super().__init__(parent=parent)
 
         self.tree_view = DescriptorTreeView(descriptors, readings, parent=self)
-
-        self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
-        self._enable_roi_button.setCheckable(True)
-        self._full_roi_button = QtWidgets.QPushButton("Full ROI")
-        self._accept_button = QtWidgets.QPushButton("Accept")
-        self._full_roi_button.setEnabled(False)
-        self._accept_button.setEnabled(False)
-        self._enable_roi_button.toggled.connect(self._on_resize_button_toggled)
-
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.tree_view)
-        layout.addWidget(self._enable_roi_button)
-        layout.addWidget(self._full_roi_button)
-        layout.addWidget(self._accept_button)
         self.setLayout(layout)
-
-    def _on_resize_button_toggled(self, checked: bool) -> None:
-        self._full_roi_button.setEnabled(checked)
-        self._accept_button.setEnabled(checked)
 
 
 class DetectorView(QtView, Loggable):
@@ -85,10 +57,8 @@ class DetectorView(QtView, Loggable):
 
     Parameters
     ----------
-    virtual_bus :
-        Reference to the virtual bus.
-    **kwargs :
-        Additional keyword arguments passed to the parent view.
+    name: str
+        Identity key of the view.
 
     Attributes
     ----------
@@ -110,7 +80,6 @@ class DetectorView(QtView, Loggable):
         self,
         name: str,
         /,
-        **kwargs: Any,
     ) -> None:
         super().__init__(name)
 
@@ -146,19 +115,12 @@ class DetectorView(QtView, Loggable):
     ) -> None:
         r"""Initialise the settings panels.
 
-        Groups descriptors and readings by their ``prefix:name`` device label
-        (the part of the key before the backslash) and creates one
-        [`SettingsControlWidget`][redsun_mimir.view.SettingsControlWidget]
-        tab per device.
-
         Parameters
         ----------
-        descriptors :
-            Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name-property``.
-        readings :
-            Flat merged ``read_configuration()`` output from all detectors,
-            keyed identically.
+        descriptors : dict[str, Descriptor]
+            Flat merged ``describe()`` output from all detectors, keyed identically.
+        readings : dict[str, Reading[Any]]
+            Flat merged ``read()`` output from all detectors, keyed identically.
         """
         devices: dict[str, dict[str, Descriptor]] = {}
         for key, descriptor in descriptors.items():

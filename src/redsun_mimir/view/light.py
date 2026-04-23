@@ -45,19 +45,18 @@ class LightView(QtView, Loggable):
 
     Parameters
     ----------
-    virtual_bus :
-        Virtual bus for the session.
+    name: str
+        Identity key of the view.
 
     Attributes
     ----------
-    sigToggleLightRequest :
+    sigToggleLightRequest : Signal[str]
         Emitted when the user toggles a light source on or off.
         Carries the light source device label (``str``, ``prefix:name``).
-    sigIntensityRequest :
+    sigIntensityRequest : Signal[str, Any]
         Emitted when the user adjusts a light source intensity.
         Carries the light source device label (``str``) and the new
         intensity value.
-    r
     """
 
     sigToggleLightRequest = Signal(str)
@@ -72,7 +71,6 @@ class LightView(QtView, Loggable):
         self,
         name: str,
         /,
-        **kwargs: Any,
     ) -> None:
         super().__init__(name)
 

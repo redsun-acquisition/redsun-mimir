@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
@@ -24,28 +24,11 @@ from redsun.presenter.plan_spec import (
 from redsun.utils import find_signals
 from redsun.virtual import Signal
 
-from redsun_mimir.device.axis import MotorAxis  # noqa: TC001
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
+    MotorProtocol,
     ReadableFlyer,
 )
-
-
-class XYMotor(Protocol):
-    """Narrow protocol for plans that require an XY motor.
-
-    Any device exposing ``x`` and ``y`` attributes of type
-    [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] satisfies this
-    protocol structurally, without needing to subclass it.
-
-    Using this protocol as a plan parameter type lets mypy verify at
-    type-check time that the supplied device exposes both axes, without
-    relying on runtime ``children()`` introspection.
-    """
-
-    x: MotorAxis
-    y: MotorAxis
-
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -89,8 +72,8 @@ class StreamAction(Action):
 
 
 def square_scan(
-    detectors: Sequence[DetectorProtocol | ReadableFlyer],
-    motor: XYMotor,
+    detectors: Sequence[ReadableFlyer],
+    motor: MotorProtocol,
     step: float,
     frames_per_side: int,
     axis: tuple[str, str],
@@ -120,59 +103,20 @@ def square_scan(
         A generator yielding Bluesky messages for the square scan.
     """
     # scan on the positive direction...
+    buffers = [det.buffer for det in detectors]
     for idx in range(2):
-        axis_device = getattr(motor, axis[idx])
+        axis_device = motor.axis[axis[idx]]
         for _ in range(frames_per_side):
-            yield from bps.trigger_and_read(detectors, "square_scan")
+            yield from bps.trigger_and_read(buffers, "square_scan")
             yield from bps.mvr(axis_device, step)
             yield from bps.sleep(0.05)
     # scan on the negative direction
     for idx in range(2):
-        axis_device = getattr(motor, axis[1 - idx])
+        axis_device = motor.axis[axis[1 - idx]]
         for _ in range(frames_per_side):
-            yield from bps.trigger_and_read(detectors, "square_scan")
+            yield from bps.trigger_and_read(buffers, "square_scan")
             yield from bps.mvr(axis_device, -step)
             yield from bps.sleep(0.05)
-
-
-# TODO: move this somewhere else
-def convert_to_target_egu(
-    step: float,
-    from_egu: str,
-    to_egu: str,
-) -> tuple[float, float]:
-    """Convert step value from one engineering unit to another.
-
-    Parameters
-    ----------
-    step: ``float``
-        The step value to convert.
-    from_egu: ``str``
-        The source unit (e.g., "μm", "mm", "nm").
-    to_egu: ``str``
-        The target unit (e.g., "μm", "mm", "nm").
-
-    Returns
-    -------
-    ``tuple[float, float]``
-        A tuple with two values, in the following order:
-        - The original step value in the source engineering unit.
-        - The converted step value in the target engineering unit.
-    """
-    old_step = step
-    if from_egu == to_egu:
-        return old_step, step
-
-    to_meters = {
-        "nm": 1e-9,
-        "um": 1e-6,
-        "mm": 1e-3,
-    }
-
-    # convert to meters first, then to target egu
-    new_step = step * to_meters[from_egu] / to_meters[to_egu]
-
-    return old_step, new_step
 
 
 class AcquisitionPresenter(Presenter, Loggable):
@@ -225,7 +169,6 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
             "snap": self.snap,
-            "live_count": self.live_count,
             "live_stream": self.live_stream,
             "live_median_scan": self.live_median_scan,
         }
@@ -287,29 +230,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         """Return the current set of plan specifications for the available plans."""
         return set(self.plan_specs.values())
 
-    @continous(togglable=True, pausable=True)
-    def live_count(
-        self,
-        detectors: Sequence[DetectorProtocol],
-    ) -> MsgGenerator[None]:
-        """Start a live acquisition with the selected detectors.
-
-        To pause or resume the live acquisition, toggle the "Pause/Resume" button.
-        To stop the live acquisition, click the "Stop" button.
-
-        Parameters
-        ----------
-        - detectors : ``Sequence[DetectorProtocol]``
-            - The detectors to use in the live acquisition.
-        """
-        yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-
-        while True:
-            # keep a checkpoint in case of pause/resume
-            yield from bps.checkpoint()
-            yield from bps.trigger_and_read(detectors, name="live_count")
-
     def snap(
         self, detectors: Sequence[DetectorProtocol], frames: int = 1
     ) -> MsgGenerator[None]:
@@ -328,10 +248,14 @@ class AcquisitionPresenter(Presenter, Loggable):
             # safeguard against invalid input
             frames = 1
 
+        prepare_info = TriggerInfo(number_of_events=frames)
+
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
-        for _ in range(frames):
-            yield from bps.trigger_and_read(detectors, name="snap")
+        for detector in detectors:
+            yield from bps.prepare(detector, prepare_info, wait=True)
+        yield from bps.kickoff_all(*detectors, wait=True)
+        yield from bps.complete_all(*detectors, wait=True)
         yield from bps.unstage_all(*detectors)
         yield from bps.close_run(exit_status="success")
 
@@ -339,9 +263,8 @@ class AcquisitionPresenter(Presenter, Loggable):
     def live_median_scan(
         self,
         detectors: Sequence[ReadableFlyer],
-        motor: XYMotor,
+        motor: MotorProtocol,
         step: float = 1.0,
-        step_egu: Literal["um", "mm", "nm"] = "um",
         scan_frames: int = 20,
         direction: Literal["xy", "yx"] = "xy",
         stream_frames: int = 10,
@@ -370,9 +293,7 @@ class AcquisitionPresenter(Presenter, Loggable):
               [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
-        - step_egu: ``Literal["um", "mm", "nm"]``, optional
-            - The engineering unit for the step size.
-            - Default is "um".
+            - The measurement unit is determined by the motor in use.
         - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
             - Default is 20 (resulting in 4 frames per side of the square).
@@ -388,24 +309,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         - ``TypeError``
             - If `motor` does not expose ``x`` and ``y`` axes.
         """
-        if not (hasattr(motor, "x") and hasattr(motor, "y")):
+        if ["x", "y"] != list(motor.axis.keys()):
+            self.logger.error(
+                "Motor does not have the required 'x' and 'y' axes. "
+                f"Found axes: {list(motor.axis.keys())}"
+            )
             raise TypeError(
                 "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
-
         axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.event_map.update(**scan.event_map, **stream.event_map)
-
-        # Resolve motor EGU from the x-axis step_size descriptor
-        _step_desc = motor.x.step_size.describe()
-        motor_egu: str = next(iter(_step_desc.values())).get("units") or "um"
-
-        old_step, step = convert_to_target_egu(
-            step, from_egu=step_egu, to_egu=motor_egu
-        )
-
-        live_stream = "live"
-        stream_name = "stream"
         stream_declared = False
 
         yield from bps.open_run()
@@ -417,15 +330,10 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.prepare(det, prepare_info, wait=True)
 
         while True:
-            name, event = yield from rps.read_while_waiting(
-                detectors,
-                self.event_map,
-                live_stream,
+            name, event = yield from rps.wait_for_actions(
+                self.event_map, wait_for="set"
             )
             if name == scan.name:
-                if motor_egu != step_egu:
-                    motor.x.step_size.set(step)
-                    motor.y.step_size.set(step)
                 yield from square_scan(
                     detectors,
                     motor,
@@ -433,24 +341,19 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
-                if step != old_step:
-                    motor.x.step_size.set(old_step)
-                    motor.y.step_size.set(old_step)
 
             elif name == stream.name:
                 self.logger.debug("Starting data streaming to disk")
 
                 if not stream_declared:
-                    yield from bps.declare_stream(
-                        *detectors, name=stream_name, collect=True
-                    )
+                    yield from bps.declare_stream(*detectors, collect=True)
                     stream_declared = True
                 yield from bps.kickoff_all(*detectors)
-
                 yield from bps.complete_all(*detectors, wait=True)
+                yield from bps.collect(*detectors)
                 self.logger.debug("Flight complete.")
 
-                yield from bps.collect(*detectors, name=stream_name)
+                yield from bps.collect(*detectors)
             self.clear_and_notify(name, event)
 
     @continous(togglable=True)
@@ -484,44 +387,37 @@ class AcquisitionPresenter(Presenter, Loggable):
             the `frames` parameter.
             Default is False (only `frames` number of images will be streamed).
         """
-        live_stream = "live"
-        stream_name = "stream"
         stream_declared = False
-
         self.event_map.update(action.event_map)
 
         yield from bps.open_run()
         yield from bps.stage_all(*detectors)
         while True:
-            # live acquisition; wait for stream action
-            name, event = yield from rps.read_while_waiting(
-                detectors, self.event_map, stream_name=live_stream, wait_for="set"
+            name, event = yield from rps.wait_for_actions(
+                self.event_map, wait_for="set"
             )
-            self.logger.debug("Starting data streaming to disk")
+            num_events = 0 if write_forever else frames
+            prepare_info = TriggerInfo(number_of_events=num_events)
 
-            prepare_info = TriggerInfo(number_of_events=0 if write_forever else frames)
+            self.logger.debug("Starting flight")
+
             for detector in detectors:
                 yield from bps.prepare(detector, prepare_info, wait=True)
 
             if not stream_declared:
-                yield from bps.declare_stream(
-                    *detectors, name=stream_name, collect=True
-                )
+                yield from bps.declare_stream(*detectors, collect=True)
+                stream_declared = True
+
             yield from bps.kickoff_all(*detectors, wait=True)
             if write_forever:
-                self.logger.debug("Writing forever.")
-                name, event = yield from rps.read_while_waiting(
-                    detectors, self.event_map, stream_name=live_stream, wait_for="reset"
+                name, event = yield from rps.wait_for_actions(
+                    self.event_map, wait_for="reset"
                 )
-                self.logger.debug("Done. Stopping streaming.")
+
             yield from bps.complete_all(*detectors, wait=True)
+            yield from bps.collect(*detectors)
             self.logger.debug("Flight complete.")
-
-            yield from bps.collect(*detectors, name=stream_name)
-
-            stream_declared = True
             self.clear_and_notify(name, event)
-            self.logger.debug("Finished data streaming to disk.")
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
