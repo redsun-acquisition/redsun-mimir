@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from ophyd_async.core import SignalRW, StandardDetector
+from typing import TYPE_CHECKING
+
+from ophyd_async.core import (
+    StandardDetector,
+)
 from pymmcore_plus import CMMCorePlus
 from redsun.log import Loggable
 from redsun.storage import create_writer
@@ -15,6 +19,9 @@ from ._backend import (
 )
 from ._common import MMAdapterInfo
 from ._logics import MMArmLogic, MMDataLogic, MMTriggerLogic
+
+if TYPE_CHECKING:
+    from ophyd_async.core import SignalRW
 
 
 class MMBaseCameraDevice(StandardDetector, Loggable):
