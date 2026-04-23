@@ -162,7 +162,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.engine = RunEngine()
 
         self.futures: set[Future[Any]] = set()
-        self.event_map: dict[str, SRLatch] = {}
+        self.action_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
         self.expected_callbacks = frozenset(callbacks or [])
         self.callback_tokens: dict[str, int] = {}
@@ -318,7 +318,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
         axis = ("x", "y") if direction == "xy" else ("y", "x")
-        self.event_map.update(**scan.event_map, **stream.event_map)
+        self.action_map.update(**scan.event_map, **stream.event_map)
         stream_declared = False
 
         yield from bps.open_run()
@@ -331,7 +331,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             name, event = yield from rps.wait_for_actions(
-                self.event_map, wait_for="set"
+                self.action_map, wait_for="set"
             )
             if name == scan.name:
                 yield from square_scan(
@@ -363,7 +363,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         frames: int = 10,
         write_forever: bool = False,
         /,
-        action: Action = StreamAction(),
+        stream_action: Action = StreamAction(),
     ) -> MsgGenerator[None]:
         """Perform live data collection and optionally store data to disk.
 
@@ -389,7 +389,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         """
         stream_name = "live_stream"
         streams_declared = False
-        self.event_map.update(action.event_map)
+        self.action_map.update(stream_action.event_map)
         write_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
@@ -406,7 +406,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             # live view
             name, action = yield from rps.wait_for_actions(
-                self.event_map, wait_for="set"
+                self.action_map, wait_for="set"
             )
 
             self.logger.debug("Start writing")
@@ -416,15 +416,15 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if write_forever:
                 # wait for the toggle off action instead of waiting for completion
-                name, action = yield from rps.wait_for_actions(
-                    self.event_map, wait_for="reset"
+                name, current_action = yield from rps.wait_for_actions(
+                    self.action_map, wait_for="reset"
                 )
 
             yield from bps.complete_all(*detectors, wait=True)
             yield from bps.collect(*detectors)
             yield from bps.unstage_all(*detectors)
             self.logger.debug("Writing complete")
-            self.clear_and_notify(name, action)
+            self.clear_and_notify(name, current_action)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
@@ -467,7 +467,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def toggle_action_event(self, action_name: str, state: bool) -> None:
         """Toggle the event associated with the given action name."""
-        event = self.event_map[action_name]
+        event = self.action_map[action_name]
         if state:
             self.engine.loop.call_soon_threadsafe(event.set)
         else:
