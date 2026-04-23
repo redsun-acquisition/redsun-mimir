@@ -86,9 +86,7 @@ class MMArmLogic(DetectorArmLogic):
         self._stop_event = run_coro(_make_event())
 
     async def arm(self) -> None:
-        """Open the zarr store (if not already open) then start MM sequence acquisition."""
-        if not self.writer.is_open:
-            self.writer.open()
+        """Start the acquisition acquiring from the camera."""
         self.core.startContinuousSequenceAcquisition()
         self._stop_event = asyncio.Event()
         self._pump_task = asyncio.create_task(self._pump())
