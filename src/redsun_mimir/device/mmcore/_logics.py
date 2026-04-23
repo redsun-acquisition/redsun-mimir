@@ -14,6 +14,7 @@ from ophyd_async.core import (
     TriggerInfo,
 )
 from redsun.aio import run_coro
+from redsun.log import Loggable
 from redsun.storage import SourceInfo
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class MMTriggerLogic(DetectorTriggerLogic):
 
 
 @dataclass
-class MMArmLogic(DetectorArmLogic):
+class MMArmLogic(DetectorArmLogic, Loggable):
     """DetectorArmLogic for a pymmcore-plus camera device."""
 
     datakey_name: str
@@ -112,6 +113,8 @@ class MMArmLogic(DetectorArmLogic):
     async def _pump(self) -> None:
         exposure_ms = self.core.getExposure()
         sleep_s = exposure_ms / 1000.0
+        capacity = self.writer.sources[self.datakey_name].capacity
+        frame_cnt = 0
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
@@ -120,7 +123,10 @@ class MMArmLogic(DetectorArmLogic):
             if await self.write_sig.get_value():
                 if not self.writer.is_open:
                     self.writer.open()
-                self.writer.write(self.datakey_name, img)
+                if capacity is not None and frame_cnt < capacity:
+                    self.writer.write(self.datakey_name, img)
+                    frame_cnt = await self.writer.image_counter.get_value()
+                    self.logger.debug(f"Frame count updated {frame_cnt}")
 
 
 @dataclass

@@ -80,7 +80,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         )
 
         arm_logic = MMArmLogic(
-            datakey_name=self.name,
+            datakey_name=name,
             core=self.core,
             writer=self.writer,
             set_buffer=setter,
