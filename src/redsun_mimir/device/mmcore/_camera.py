@@ -61,6 +61,9 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.writer = create_writer(writer)
         self.core.clearROI()
 
+        # for simplicity, hardcode
+        # the default exposure time to 50 ms
+        self.core.setExposure(50.0)
         self.exposure = mm_exposure_signal(self.core, name)
         self.roi = mm_roi_signal(self.core, name)
         self.pixel_dtype = pixel_dtype
@@ -69,7 +72,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.write_sig = soft_signal_rw(bool, initial_value=False)
 
         trigger_logic = MMTriggerLogic(
-            datakey_name=self.name,
+            datakey_name=name,
             core=self.core,
             writer=self.writer,
             roi=self.roi,
