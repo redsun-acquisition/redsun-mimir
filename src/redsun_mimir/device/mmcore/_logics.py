@@ -123,10 +123,17 @@ class MMArmLogic(DetectorArmLogic, Loggable):
             if await self.write_sig.get_value():
                 if not self.writer.is_open:
                     self.writer.open()
-                if capacity is not None and frame_cnt < capacity:
+                if capacity is not None:
+                    # if capaciy is set,
+                    # write only up to the current capacity
+                    if frame_cnt < capacity:
+                        self.writer.write(self.datakey_name, img)
+                else:
+                    # if capacity is not set, always write
+                    # until disarm is called
                     self.writer.write(self.datakey_name, img)
-                    frame_cnt = await self.writer.image_counter.get_value()
-                    self.logger.debug(f"Frame count updated {frame_cnt}")
+                frame_cnt = await self.writer.image_counter.get_value()
+                self.logger.debug(f"Frame count updated {frame_cnt}")
 
 
 @dataclass
