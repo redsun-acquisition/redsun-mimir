@@ -71,54 +71,6 @@ class StreamAction(Action):
     toggle_states: tuple[str, str] = ("start", "stop")
 
 
-def square_scan(
-    detectors: Sequence[ReadableFlyer],
-    motor: MotorProtocol,
-    step: float,
-    frames_per_side: int,
-    axis: tuple[str, str],
-) -> MsgGenerator[None]:
-    """Perform a square scan movement with the specified motor and detectors.
-
-    Performs a square scan by moving the motor in a square pattern; before
-    each movement step, a reading is taken from the specified detectors.
-
-    Parameters
-    ----------
-    detectors : ``Sequence[DetectorProtocol]``
-        The detectors to use for data collection.
-    motor : ``XYMotor``
-        The motor to use for the scan movement. Must expose ``x`` and ``y``
-        axes as [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
-    step : ``float``
-        The step size for motor movement.
-    frames_per_side : ``int``
-        The number of frames to collect for each side of the square.
-    axis : ``tuple[str, str]``
-        The order of motor movement axes (e.g. ``("x", "y")``).
-
-    Yields
-    ------
-    ``MsgGenerator[None]``
-        A generator yielding Bluesky messages for the square scan.
-    """
-    # scan on the positive direction...
-    buffers = [det.buffer for det in detectors]
-    for idx in range(2):
-        axis_device = motor.axis[axis[idx]]
-        for _ in range(frames_per_side):
-            yield from bps.trigger_and_read(buffers, "square_scan")
-            yield from bps.mvr(axis_device, step)
-            yield from bps.sleep(0.05)
-    # scan on the negative direction
-    for idx in range(2):
-        axis_device = motor.axis[axis[1 - idx]]
-        for _ in range(frames_per_side):
-            yield from bps.trigger_and_read(buffers, "square_scan")
-            yield from bps.mvr(axis_device, -step)
-            yield from bps.sleep(0.05)
-
-
 class AcquisitionPresenter(Presenter, Loggable):
     """A centralized acquisition presenter to manage a Bluesky run engine.
 
@@ -269,8 +221,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         direction: Literal["xy", "yx"] = "xy",
         stream_frames: int = 10,
         /,
-        scan: Action = ScanAction(),
-        stream: Action = StreamAction(togglable=False),
+        scan_action: Action = ScanAction(),
+        stream_action: Action = StreamAction(togglable=False),
     ) -> MsgGenerator[None]:
         """Perform live data collection with median filtering.
 
@@ -318,8 +270,9 @@ class AcquisitionPresenter(Presenter, Loggable):
                 "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
         axis = ("x", "y") if direction == "xy" else ("y", "x")
-        self.action_map.update(**scan.event_map, **stream.event_map)
+        self.action_map.update(**scan_action.event_map, **stream_action.event_map)
         stream_declared = False
+        stream = "scan"
         prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         yield from bps.open_run()
@@ -331,7 +284,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.prepare(det, prepare_info, wait=True)
             if not stream_declared:
                 # declare the stream on first loop iteration
-                yield from bps.declare_stream(*detectors, name="scan")
+                yield from bps.declare_stream(*detectors, name=stream)
                 stream_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
 
@@ -339,15 +292,16 @@ class AcquisitionPresenter(Presenter, Loggable):
                 self.action_map, wait_for="set"
             )
 
-            if name == scan.name:
-                yield from square_scan(
+            if name == scan_action.name:
+                yield from self.square_scan(
+                    stream,
                     detectors,
                     motor,
                     step,
                     scan_frames // 4,
                     axis,
                 )
-            elif name == stream.name:
+            elif name == stream_action.name:
                 self.logger.debug("Start writing")
                 # flip write_sig — pump starts writing from next frame
                 for det in detectors:
@@ -357,6 +311,59 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.unstage_all(*detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
+
+    def square_scan(
+        self,
+        stream: str,
+        detectors: Sequence[ReadableFlyer],
+        motor: MotorProtocol,
+        step: float,
+        frames_per_side: int,
+        axis: tuple[str, str],
+    ) -> MsgGenerator[None]:
+        """Perform a square scan movement with the specified motor and detectors.
+
+        Performs a square scan by moving the motor in a square pattern; before
+        each movement step, a reading is taken from the specified detectors.
+
+        Parameters
+        ----------
+        stream : str
+            Document stream to emit documents on.
+        detectors : ``Sequence[DetectorProtocol]``
+            The detectors to use for data collection.
+        motor : ``XYMotor``
+            The motor to use for the scan movement. Must expose ``x`` and ``y``
+            axes as [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
+        step : ``float``
+            The step size for motor movement.
+        frames_per_side : ``int``
+            The number of frames to collect for each side of the square.
+        axis : ``tuple[str, str]``
+            The order of motor movement axes (e.g. ``("x", "y")``).
+
+        Yields
+        ------
+        ``MsgGenerator[None]``
+            A generator yielding Bluesky messages for the square scan.
+        """
+        # scan on the positive direction...
+        buffers = [det.buffer for det in detectors]
+        for idx in range(2):
+            axis_device = motor.axis[axis[idx]]
+            for _ in range(frames_per_side):
+                self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
+                yield from bps.trigger_and_read(buffers, stream)
+                yield from bps.mvr(axis_device, step)
+                yield from bps.sleep(0.05)
+        # scan on the negative direction
+        for idx in range(2):
+            axis_device = motor.axis[axis[1 - idx]]
+            for _ in range(frames_per_side):
+                self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
+                yield from bps.trigger_and_read(buffers, stream)
+                yield from bps.mvr(axis_device, -step)
+                yield from bps.sleep(0.05)
 
     @continous(togglable=True)
     def live_stream(
