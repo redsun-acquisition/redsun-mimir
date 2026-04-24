@@ -331,9 +331,9 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.prepare(det, prepare_info, wait=True)
             if not stream_declared:
                 # declare the stream on first loop iteration
-                yield from bps.declare_stream(*detectors, collect=True)
+                yield from bps.declare_stream(*detectors, name="scan")
                 stream_declared = True
-            yield from bps.kickoff_all(*detectors, name="live", wait=True)
+            yield from bps.kickoff_all(*detectors, wait=True)
 
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
