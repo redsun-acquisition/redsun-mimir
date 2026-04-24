@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
+    from bluesky.protocols import Readable
     from ophyd_async.core import Device
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
@@ -271,9 +272,13 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
         axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.action_map.update(**scan_action.event_map, **stream_action.event_map)
-        stream_declared = False
-        stream = "scan"
+        live_stream_declared = False
+        scan_stream_declared = False
+        scan_stream = "scan"
+        live_stream = "live_stream"
         prepare_info = TriggerInfo(number_of_events=stream_frames)
+
+        buffers = [det.buffer for det in detectors]
 
         yield from bps.open_run()
 
@@ -282,10 +287,10 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.stage_all(*detectors)
             for det in detectors:
                 yield from bps.prepare(det, prepare_info, wait=True)
-            if not stream_declared:
+            if not live_stream_declared:
                 # declare the stream on first loop iteration
-                yield from bps.declare_stream(*detectors, name=stream)
-                stream_declared = True
+                yield from bps.declare_stream(*detectors, name=live_stream)
+                live_stream_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
 
             name, event = yield from rps.wait_for_actions(
@@ -293,9 +298,12 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
+                if not scan_stream_declared:
+                    yield from bps.declare_stream(*buffers, name=scan_stream)
+                    scan_stream_declared = True
                 yield from self.square_scan(
-                    stream,
-                    detectors,
+                    scan_stream,
+                    buffers,
                     motor,
                     step,
                     scan_frames // 4,
@@ -315,7 +323,7 @@ class AcquisitionPresenter(Presenter, Loggable):
     def square_scan(
         self,
         stream: str,
-        detectors: Sequence[ReadableFlyer],
+        buffers: Sequence[Readable[Any]],
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
@@ -330,25 +338,17 @@ class AcquisitionPresenter(Presenter, Loggable):
         ----------
         stream : str
             Document stream to emit documents on.
-        detectors : ``Sequence[DetectorProtocol]``
-            The detectors to use for data collection.
-        motor : ``XYMotor``
-            The motor to use for the scan movement. Must expose ``x`` and ``y``
-            axes as [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
-        step : ``float``
+        buffers: Sequence[Readable[Any]]
+            The buffers to read from for each detector before each motor movement.
+        motor : MotorProtocol
+            The motor to use for the scan movement.
+        step : float
             The step size for motor movement.
-        frames_per_side : ``int``
+        frames_per_side : int
             The number of frames to collect for each side of the square.
-        axis : ``tuple[str, str]``
+        axis : tuple[str, str]
             The order of motor movement axes (e.g. ``("x", "y")``).
-
-        Yields
-        ------
-        ``MsgGenerator[None]``
-            A generator yielding Bluesky messages for the square scan.
         """
-        # scan on the positive direction...
-        buffers = [det.buffer for det in detectors]
         for idx in range(2):
             axis_device = motor.axis[axis[idx]]
             for _ in range(frames_per_side):
