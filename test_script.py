@@ -22,7 +22,7 @@ from redsun.qt import QtAppContainer
 #     motor_view = declare_view(MotorView)
 #     light_view = declare_view(LightView)
 
-from redsun_mimir.device.mmcore import MMDemoCamera
+from redsun_mimir.device.mmcore import MMDemoCamera, MMDemoXYStage, MMDemoZStage
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.view.detector import DetectorView
@@ -32,6 +32,8 @@ from redsun_mimir.view.acquisition import AcquisitionView
 
 class TestContainer(QtAppContainer):
     camera = declare_device(MMDemoCamera)
+    motorxy = declare_device(MMDemoXYStage)
+    motorz = declare_device(MMDemoZStage)
     det_presenter = declare_presenter(DetectorPresenter)
     acq_presenter = declare_presenter(AcquisitionPresenter)
     det_view = declare_view(DetectorView)
