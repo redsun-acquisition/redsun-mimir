@@ -320,19 +320,25 @@ class AcquisitionPresenter(Presenter, Loggable):
         axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.action_map.update(**scan.event_map, **stream.event_map)
         stream_declared = False
+        prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-
-        prepare_info = TriggerInfo(number_of_events=stream_frames)
-        yield from bps.prepare(motor, prepare_info, wait=True)
-        for det in detectors:
-            yield from bps.prepare(det, prepare_info, wait=True)
 
         while True:
+            # live view
+            yield from bps.stage_all(*detectors)
+            for det in detectors:
+                yield from bps.prepare(det, prepare_info, wait=True)
+            if not stream_declared:
+                # declare the stream on first loop iteration
+                yield from bps.declare_stream(*detectors, collect=True)
+                stream_declared = True
+            yield from bps.kickoff_all(*detectors, name="live", wait=True)
+
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
+
             if name == scan.name:
                 yield from square_scan(
                     detectors,
@@ -341,19 +347,15 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
-
             elif name == stream.name:
-                self.logger.debug("Starting data streaming to disk")
-
-                if not stream_declared:
-                    yield from bps.declare_stream(*detectors, collect=True)
-                    stream_declared = True
-                yield from bps.kickoff_all(*detectors)
+                self.logger.debug("Start writing")
+                # flip write_sig — pump starts writing from next frame
+                for det in detectors:
+                    yield from bps.abs_set(det.write_sig, True, wait=True)
                 yield from bps.complete_all(*detectors, wait=True)
                 yield from bps.collect(*detectors)
-                self.logger.debug("Flight complete.")
-
-                yield from bps.collect(*detectors)
+                yield from bps.unstage_all(*detectors)
+                self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
 
     @continous(togglable=True)
@@ -395,11 +397,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         while True:
             yield from bps.stage_all(*detectors)
-
             for det in detectors:
                 yield from bps.prepare(det, write_info, wait=True)
             if not streams_declared:
-                # for the first time, declare the stream
+                # declare the stream on first loop iteration
                 yield from bps.declare_stream(*detectors, name=stream_name)
                 streams_declared = True
             yield from bps.kickoff_all(*detectors, wait=True)
