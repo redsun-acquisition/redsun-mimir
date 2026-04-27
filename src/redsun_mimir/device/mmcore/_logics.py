@@ -46,7 +46,9 @@ class MMArmLogic(BaseArmLogic):
                     self.writer.open()
                 if write_forever or frame_cnt < capacity:
                     self.writer.write(self.datakey_name, img)
-                    frame_cnt = await self.writer.image_counter.get_value()
+                    frame_cnt = await self.writer.get_counter(
+                        self.datakey_name
+                    ).get_value()
                     self.logger.debug(f"Frame count updated {frame_cnt}")
 
 

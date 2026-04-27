@@ -147,5 +147,5 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
             uri=f"{path_info.directory_path}{path_info.filename}.{extension}",
             resources=[data_resource],
             mimetype=self.writer.mimetype,
-            collections_written_signal=self.writer.image_counter,
+            collections_written_signal=self.writer.get_counter(datakey_name),
         )
