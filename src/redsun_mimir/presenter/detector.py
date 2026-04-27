@@ -91,6 +91,11 @@ class DetectorPresenter(Presenter, Loggable):
             for key, r in reading.items():
                 frame = np.asarray(r["value"])
                 median = self._medians.get(det_name)
+                self.logger.debug(
+                    f"Buffer callback for '{det_name}': median={'set' if median is not None else 'None'}, "
+                    f"frame shape={frame.shape}"
+                    + (f", median shape={median.shape}" if median is not None else "")
+                )
                 if median is not None and median.shape == frame.shape and median.any():
                     frame = np.divide(
                         frame,
