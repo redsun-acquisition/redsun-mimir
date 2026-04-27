@@ -111,6 +111,10 @@ class DetectorPresenter(Presenter, Loggable):
             det_name = key.removesuffix("_median-buffer")
             if det_name in self._medians:
                 self._medians[det_name] = np.asarray(reading["value"])
+                self.logger.debug(
+                    f"Median updated for '{det_name}': shape={self._medians[det_name].shape}, "
+                    f"min={self._medians[det_name].min()}, max={self._medians[det_name].max()}"
+                )
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
