@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from ophyd_async.core import StandardDetector, TriggerInfo
+from ophyd_async.core import StandardDetector, TriggerInfo, soft_signal_rw
 
 from redsun_mimir.device._common import BaseArmLogic, BaseDataLogic, BaseTriggerLogic
 from redsun_mimir.device.signals import writeable_buffer_signal
@@ -32,6 +32,12 @@ class MedianArmLogic(BaseArmLogic):
     """Arm logic for the median device."""
 
     buffer: SignalRW[Array2D]
+    buffer_ready: SignalRW[bool]
+
+    async def disarm(self, on_unstage: bool) -> None:
+        """Reset the buffer and buffer ready signals on disarm."""
+        await self.buffer_ready.set(False)
+        await super().disarm(on_unstage)
 
     async def _start_acquisition(self) -> None:
         pass  # no hardware
@@ -42,6 +48,8 @@ class MedianArmLogic(BaseArmLogic):
     async def _pump(self) -> None:
         while not self._stop_event.is_set():
             await asyncio.sleep(0)
+            if not await self.buffer_ready.get_value():
+                continue
             if await self.write_sig.get_value():
                 val = await self.buffer.get_value()
                 if val is not None and np.asarray(val).size > 0:
@@ -49,7 +57,10 @@ class MedianArmLogic(BaseArmLogic):
                         self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
                     self.logger.debug("Median frame written to disk")
-                self._stop_event.set()
+                    self.writer.unregister(self.datakey_name)
+                    if len(self.writer.sources) == 0:
+                        self.writer.close(reset_path=True)
+            self._stop_event.set()
 
 
 class MedianDataLogic(BaseDataLogic):
@@ -72,13 +83,13 @@ class MedianDevice(StandardDetector):
         parent_name: str,
         roi_sig: SignalRW[ROIType],
         dtype_sig: SignalRW[str],
-        write_sig: SignalRW[bool],
         writer: DataWriter,
         path_provider: SessionPathProvider,
     ) -> None:
         self.buffer = writeable_buffer_signal(roi_sig, dtype_sig)
-        self.write_sig = write_sig
         self.writer = writer
+        self.write_sig = soft_signal_rw(bool, initial_value=False)
+        self.buffer_ready = soft_signal_rw(bool, initial_value=False)
         name = f"{parent_name}_median"
 
         trigger_logic = MedianTriggerLogic(
@@ -91,6 +102,7 @@ class MedianDevice(StandardDetector):
             datakey_name=name,
             writer=self.writer,
             buffer=self.buffer,
+            buffer_ready=self.buffer_ready,
             write_sig=self.write_sig,
         )
         data_logic = MedianDataLogic(

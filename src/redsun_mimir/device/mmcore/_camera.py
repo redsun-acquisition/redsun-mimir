@@ -128,7 +128,6 @@ class MMDemoCamera(MMBaseCameraDevice):
             parent_name=name,
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
-            write_sig=self.write_sig,
             writer=self.writer,
             path_provider=self.path_provider,
         )

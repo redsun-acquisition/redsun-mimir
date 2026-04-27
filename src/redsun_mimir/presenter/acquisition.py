@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import bluesky.plan_stubs as bps
+import numpy as np
 import redsun.engine.plan_stubs as rps
 from bluesky.utils import MsgGenerator, RequestAbort  # noqa: TC002
 from dependency_injector import providers
@@ -281,7 +282,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         buffers = [det.buffer for det in detectors]
-        medians = [det.median for det in detectors]
 
         yield from bps.open_run()
 
@@ -302,7 +302,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if name == scan_action.name:
                 if not scan_stream_declared:
-                    yield from bps.declare_stream(*[buffers, medians], name=scan_stream)
+                    yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
                 yield from self.square_scan(
                     scan_stream,
@@ -326,7 +326,7 @@ class AcquisitionPresenter(Presenter, Loggable):
     def square_scan(
         self,
         stream: str,
-        detectors: Sequence[ReadableFlyer],
+        detectors: Sequence[MedianFlyer],
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
@@ -341,7 +341,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         ----------
         stream : str
             Document stream to emit documents on.
-        detectors : Sequence[ReadableFlyer]
+        detectors : Sequence[MedianFlyer]
             The detectors to read from before each motor movement.
         motor : MotorProtocol
             The motor to use for the scan movement.
@@ -377,9 +377,18 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.mvr(axis_device, -step)
                 yield from bps.sleep(0.05)
 
-        for key, frames in frames.items():
-            # TODO: what to put?
-            ...
+        for det in detectors:
+            buf_name = det.buffer.name  # e.g. "camera-buffer"
+            det_frames = frames.get(buf_name, [])
+            if not det_frames:
+                continue
+            stack = np.stack(det_frames, axis=0)
+            median_frame = np.median(stack, axis=0).astype(stack.dtype)
+            yield from bps.abs_set(det.median.buffer, median_frame, wait=True)
+            self.logger.debug(
+                f"Median computed for '{det.name}': "
+                f"{len(det_frames)} frames, shape {median_frame.shape}"
+            )
 
     @continous(togglable=True)
     def live_stream(
