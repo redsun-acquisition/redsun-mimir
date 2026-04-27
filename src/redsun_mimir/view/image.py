@@ -154,6 +154,8 @@ class ImageView(QtView, Loggable):
         for cache in container.signals.values():
             if "sigNewData" in cache:
                 cache["sigNewData"].connect(self._update_layers, thread="main")
+            if "sigNewMedian" in cache:
+                cache["sigNewMedian"].connect(self._update_layers, thread="main")
 
     def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
         """Create an empty image layer for each detector based on the provided specifications."""
