@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from bluesky.protocols import Descriptor  # noqa: TC002
 from dependency_injector import providers
 from redsun.aio import run_coro
@@ -13,8 +14,9 @@ from redsun.virtual import Signal
 from redsun_mimir.protocols import DetectorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
+    import numpy.typing as npt
     from bluesky.protocols import Reading
     from ophyd_async.core import Device, SignalRW
     from redsun.virtual import VirtualContainer
@@ -66,15 +68,49 @@ class DetectorPresenter(Presenter, Loggable):
             for name, device in devices.items()
             if isinstance(device, DetectorProtocol)
         }
+        self._medians: dict[str, npt.NDArray[Any] | None] = {
+            name: None for name in self.detectors
+        }
 
         # the internals of a signal backend are invoked in
         # a running event loop; we need to dispatch the
         # subscription coroutine to the background thread
         async def subscribe_to_buffers() -> None:
             for detector in self.detectors.values():
-                detector.buffer.subscribe_reading(self.sigNewData.emit)
+                detector.buffer.subscribe_reading(
+                    self._make_buffer_callback(detector.name)
+                )
 
         run_coro(subscribe_to_buffers())
+
+    def _make_buffer_callback(
+        self, det_name: str
+    ) -> Callable[[dict[str, Reading[Any]]], None]:
+        def _on_reading(reading: dict[str, Reading[Any]]) -> None:
+            corrected: dict[str, Reading[Any]] = {}
+            for key, r in reading.items():
+                frame = np.asarray(r["value"])
+                median = self._medians.get(det_name)
+                if median is not None and median.shape == frame.shape and median.any():
+                    frame = np.divide(
+                        frame,
+                        median,
+                        out=np.ones_like(frame, dtype=np.float32),
+                        where=median != 0,
+                    ).astype(frame.dtype)
+                corrected[key] = {**r, "value": frame}
+            self.sigNewData.emit(corrected)
+
+        return _on_reading
+
+    def _update_median(self, data: dict[str, Reading[Any]]) -> None:
+        """Store the latest median frame per detector when MedianPresenter emits."""
+        for key, reading in data.items():
+            # median signal name is e.g. "camera_median-buffer"
+            # strip suffix to recover the parent detector name
+            det_name = key.removesuffix("_median-buffer")
+            if det_name in self._medians:
+                self._medians[det_name] = np.asarray(reading["value"])
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
@@ -91,6 +127,9 @@ class DetectorPresenter(Presenter, Loggable):
         sigs = find_signals(container, ["sigPropertyChanged"])
         if "sigPropertyChanged" in sigs:
             sigs["sigPropertyChanged"].connect(self.configure)
+        for cache in container.signals.values():
+            if "sigNewData" in cache:
+                cache["sigNewData"].connect(self._update_median)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
         """Get the layer specifications for all detector devices."""
