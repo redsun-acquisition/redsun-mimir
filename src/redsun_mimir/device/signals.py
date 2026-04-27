@@ -41,7 +41,7 @@ class BufferSignalBackend(SoftSignalBackend[np.ndarray]):
         return descriptor
 
 
-def buffer_signal(
+def readable_buffer_signal(
     roi_sig: SignalRW[ROIType], dtype: SignalRW[str]
 ) -> tuple[SignalR[Array2D], Callable[[Array2D], None]]:
     """Create a read-only Signal for a camera image buffer.
@@ -56,3 +56,20 @@ def buffer_signal(
     backend = BufferSignalBackend(roi_sig, dtype)
     signal = SignalR(backend, name="buffer", timeout=DEFAULT_TIMEOUT)
     return (signal, backend.set_value)
+
+
+def writeable_buffer_signal(
+    roi_sig: SignalRW[ROIType], dtype: SignalRW[str]
+) -> SignalRW[Array2D]:
+    """Create a read-write Signal for a camera image buffer.
+
+    Parameters
+    ----------
+    roi_sig: SignalRW[ROIType]
+        A signal providing the current ROI of the camera, used to determine the buffer shape.
+    dtype: SignalRW[str]
+        A signal providing the current data type of the camera image, used to determine the buffer dtype.
+    """
+    backend = BufferSignalBackend(roi_sig, dtype)
+    signal = SignalRW(backend, name="buffer", timeout=DEFAULT_TIMEOUT)
+    return signal

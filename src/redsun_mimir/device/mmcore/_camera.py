@@ -10,10 +10,11 @@ from pymmcore_plus import CMMCorePlus
 from redsun.log import Loggable
 from redsun.storage import create_writer
 
+from redsun_mimir.device.median import MedianDevice
+from redsun_mimir.device.signals import readable_buffer_signal
 from redsun_mimir.storage import SessionPathProvider
 
 from ._backend import (
-    buffer_signal,
     mm_exposure_signal,
     mm_property_signal,
     mm_roi_signal,
@@ -68,7 +69,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.roi = mm_roi_signal(self.core, name)
         self.pixel_dtype = pixel_dtype
 
-        self.buffer, setter = buffer_signal(self.roi, self.pixel_dtype)
+        self.buffer, setter = readable_buffer_signal(self.roi, self.pixel_dtype)
         self.write_sig = soft_signal_rw(bool, initial_value=False)
 
         trigger_logic = MMTriggerLogic(
@@ -123,4 +124,12 @@ class MMDemoCamera(MMBaseCameraDevice):
             pixel_dtype=self.pixel_dtype,
             adapter_info=adapter_info,
             writer=writer,
+        )
+
+        self.median = MedianDevice(
+            parent_name=name,
+            roi_sig=self.roi,
+            dtype_sig=self.pixel_dtype,
+            write_sig=self.write_sig,
+            writer=self.writer,
         )
