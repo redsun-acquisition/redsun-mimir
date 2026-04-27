@@ -26,6 +26,7 @@ from redsun.virtual import Signal
 
 from redsun_mimir.protocols import (  # noqa: TC001
     DetectorProtocol,
+    MedianFlyer,
     MotorProtocol,
     ReadableFlyer,
 )
@@ -215,7 +216,7 @@ class AcquisitionPresenter(Presenter, Loggable):
     @continous
     def live_median_scan(
         self,
-        detectors: Sequence[ReadableFlyer],
+        detectors: Sequence[MedianFlyer],
         motor: MotorProtocol,
         step: float = 1.0,
         scan_frames: int = 20,
@@ -238,8 +239,9 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         Parameters
         ----------
-        - detectors: ``Sequence[ReadableFlyer]``
+        - detectors: ``Sequence[MedianFlyer]``
             - The detectors to use for data collection.
+            - They must provide a `median` attribute that is a `MedianDevice`, which computes the median of the acquired frames.
         - motor: ``XYMotor``
             - The motor to use for the scan movement.
             - Must expose ``x`` and ``y`` as

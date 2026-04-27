@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from ophyd_async.core import AsyncStatus, SignalR, SignalRW
     from redsun.device import DeviceMap
 
+    from redsun_mimir.device.median import MedianDevice
+
 T = TypeVar("T", int, float)
 
 Array2D = np.ndarray[tuple[int, int], Any]
@@ -140,6 +142,14 @@ class ReadableFlyer(
 
     write_sig: SignalRW[bool]
     """Signal to control whether the device should write data to disk during acquisition."""
+
+
+@runtime_checkable
+class MedianFlyer(ReadableFlyer, Protocol):
+    """Protocol for a median device that computes the median of a stack of images."""
+
+    median: MedianDevice
+    """The median device, which provides the computed median image."""
 
 
 __all__ = [
