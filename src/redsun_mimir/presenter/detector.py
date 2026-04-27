@@ -106,15 +106,16 @@ class DetectorPresenter(Presenter, Loggable):
     def _update_median(self, data: dict[str, Reading[Any]]) -> None:
         """Store the latest median frame per detector when MedianPresenter emits."""
         for key, reading in data.items():
-            # median signal name is e.g. "camera_median-buffer"
-            # strip suffix to recover the parent detector name
-            det_name = key.removesuffix("_median-buffer")
-            if det_name in self._medians:
-                self._medians[det_name] = np.asarray(reading["value"])
-                self.logger.debug(
-                    f"Median updated for '{det_name}': shape={self._medians[det_name].shape}, "
-                    f"min={self._medians[det_name].min()}, max={self._medians[det_name].max()}"
-                )
+            # signal name may be "" if named before device init,
+            # fall back to matching by detector name presence in key
+            for det_name in self._medians:
+                if key == "" or f"{det_name}_median" in key:
+                    self._medians[det_name] = np.asarray(reading["value"])
+                    self.logger.debug(
+                        f"Median updated for '{det_name}': "
+                        f"shape={self._medians[det_name].shape}"
+                    )
+                    break
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
