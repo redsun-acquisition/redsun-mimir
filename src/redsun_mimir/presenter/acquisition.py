@@ -385,6 +385,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             stack = np.stack(det_frames, axis=0)
             median_frame = np.median(stack, axis=0).astype(stack.dtype)
             yield from bps.abs_set(det.median.buffer, median_frame, wait=True)
+            yield from bps.abs_set(det.median.buffer_ready, True, wait=True)
             self.logger.debug(
                 f"Median computed for '{det.name}': "
                 f"{len(det_frames)} frames, shape {median_frame.shape}"
