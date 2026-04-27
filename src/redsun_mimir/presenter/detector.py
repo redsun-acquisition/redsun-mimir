@@ -91,11 +91,6 @@ class DetectorPresenter(Presenter, Loggable):
             for key, r in reading.items():
                 frame = np.asarray(r["value"])
                 median = self._medians.get(det_name)
-                self.logger.debug(
-                    f"Buffer callback for '{det_name}': median={'set' if median is not None else 'None'}, "
-                    f"frame shape={frame.shape}"
-                    + (f", median shape={median.shape}" if median is not None else "")
-                )
                 if median is not None and median.shape == frame.shape and median.any():
                     frame = np.divide(
                         frame,
@@ -136,9 +131,9 @@ class DetectorPresenter(Presenter, Loggable):
         sigs = find_signals(container, ["sigPropertyChanged"])
         if "sigPropertyChanged" in sigs:
             sigs["sigPropertyChanged"].connect(self.configure)
-        for cache in container.signals.values():
-            if "sigNewData" in cache:
-                cache["sigNewData"].connect(self._update_median)
+        median_sigs = find_signals(container, ["sigNewMedian"])
+        if "sigNewMedian" in median_sigs:
+            median_sigs["sigNewMedian"].connect(self._update_median)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
         """Get the layer specifications for all detector devices."""
