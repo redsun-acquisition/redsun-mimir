@@ -16,6 +16,7 @@ from ophyd_async.core import (
 )
 from redsun.aio import run_coro
 from redsun.log import Loggable
+from redsun.storage import SourceInfo
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,8 +35,18 @@ DEFAULT_TIMEOUT: Final[float] = 1.0
 @dataclass
 class BaseTriggerLogic(DetectorTriggerLogic):
     datakey_name: str
+    writer: DataWriter
     roi: SignalRW[ROIType]
     dtype: SignalRW[str]
+
+    async def prepare_internal(
+        self, num: int, livetime: float, deadtime: float
+    ) -> None:
+        shape, np_dtype = await self._get_shape_and_dtype()
+        self.writer.register(
+            self.datakey_name,
+            SourceInfo(dtype_numpy=np_dtype, shape=shape, capacity=num),
+        )
 
     async def _get_shape_and_dtype(self) -> tuple[tuple[int, ...], str]:
         shape_array, np_dtype = await asyncio.gather(

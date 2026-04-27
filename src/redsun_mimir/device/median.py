@@ -83,6 +83,7 @@ class MedianDevice(StandardDetector):
 
         trigger_logic = MedianTriggerLogic(
             datakey_name=name,
+            writer=writer,
             roi=roi_sig,
             dtype=dtype_sig,
         )

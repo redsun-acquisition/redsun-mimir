@@ -15,15 +15,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class MMTriggerLogic(BaseTriggerLogic):
-    async def _get_shape_and_dtype(self) -> tuple[tuple[int, ...], str]:
-        shape_array, np_dtype = await asyncio.gather(
-            self.roi.get_value(), self.dtype.get_value()
-        )
-        shape = tuple(shape_array.tolist())
-        if len(shape) != 4:
-            raise ValueError(f"Expected shape array of length 4, got {len(shape)}")
-        return (shape[2] - shape[0], shape[3] - shape[1]), np_dtype
+class MMTriggerLogic(BaseTriggerLogic): ...
 
 
 @dataclass
