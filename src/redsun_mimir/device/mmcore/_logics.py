@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class MMBaseTriggerLogic(BaseTriggerLogic):
+class MMTriggerLogic(BaseTriggerLogic):
     async def _get_shape_and_dtype(self) -> tuple[tuple[int, ...], str]:
         shape_array, np_dtype = await asyncio.gather(
             self.roi.get_value(), self.dtype.get_value()
