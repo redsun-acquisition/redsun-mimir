@@ -75,7 +75,6 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
 
         trigger_logic = MMTriggerLogic(
             datakey_name=name,
-            core=self.core,
             writer=self.writer,
             roi=self.roi,
             dtype=pixel_dtype,
