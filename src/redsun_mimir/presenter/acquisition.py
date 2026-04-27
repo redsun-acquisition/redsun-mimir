@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
     from typing import Any, Callable, Mapping
 
-    from bluesky.protocols import Readable
+    import numpy.typing as npt
     from ophyd_async.core import Device
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
@@ -281,6 +281,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         buffers = [det.buffer for det in detectors]
+        medians = [det.median for det in detectors]
 
         yield from bps.open_run()
 
@@ -301,11 +302,11 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if name == scan_action.name:
                 if not scan_stream_declared:
-                    yield from bps.declare_stream(*buffers, name=scan_stream)
+                    yield from bps.declare_stream(*[buffers, medians], name=scan_stream)
                     scan_stream_declared = True
                 yield from self.square_scan(
                     scan_stream,
-                    buffers,
+                    detectors,
                     motor,
                     step,
                     scan_frames // 4,
@@ -325,7 +326,7 @@ class AcquisitionPresenter(Presenter, Loggable):
     def square_scan(
         self,
         stream: str,
-        buffers: Sequence[Readable[Any]],
+        detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
@@ -340,8 +341,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         ----------
         stream : str
             Document stream to emit documents on.
-        buffers: Sequence[Readable[Any]]
-            The buffers to read from for each detector before each motor movement.
+        detectors : Sequence[ReadableFlyer]
+            The detectors to read from before each motor movement.
         motor : MotorProtocol
             The motor to use for the scan movement.
         step : float
@@ -351,11 +352,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         axis : tuple[str, str]
             The order of motor movement axes (e.g. ``("x", "y")``).
         """
+        frames: dict[str, list[npt.NDArray[Any]]] = {}
         for idx in range(2):
             axis_device = motor.axis[axis[idx]]
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
-                yield from bps.trigger_and_read(buffers, stream)
+                reading = yield from bps.trigger_and_read(
+                    [det.buffer for det in detectors], stream
+                )
+                for key, reading in reading.items():
+                    frames.setdefault(key, []).append(reading["value"])
                 yield from bps.mvr(axis_device, step)
                 yield from bps.sleep(0.05)
         # scan on the negative direction
@@ -363,9 +369,17 @@ class AcquisitionPresenter(Presenter, Loggable):
             axis_device = motor.axis[axis[1 - idx]]
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
-                yield from bps.trigger_and_read(buffers, stream)
+                reading = yield from bps.trigger_and_read(
+                    [det.buffer for det in detectors], stream
+                )
+                for key, reading in reading.items():
+                    frames.setdefault(key, []).append(reading["value"])
                 yield from bps.mvr(axis_device, -step)
                 yield from bps.sleep(0.05)
+
+        for key, frames in frames.items():
+            # TODO: what to put?
+            ...
 
     @continous(togglable=True)
     def live_stream(
