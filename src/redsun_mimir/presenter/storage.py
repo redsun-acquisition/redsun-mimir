@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
@@ -8,7 +7,7 @@ from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
 
-from redsun_mimir.storage import SessionPathProvider
+from redsun_mimir.storage import get_path_provider
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -50,8 +49,7 @@ class FileStoragePresenter(Presenter, Loggable):
     ) -> None:
         super().__init__(name, devices, **kwargs)
         self._devices = devices
-        root_directory = Path.home() / "redsun-storage"
-        self._path_provider = SessionPathProvider(base_dir=root_directory, session="")
+        self._path_provider = get_path_provider()
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Provide the path provider and expose its signals on the container."""
