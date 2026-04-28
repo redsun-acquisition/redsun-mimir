@@ -300,9 +300,13 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.prepare(det, prepare_info, wait=True)
             for median in [det.median for det in detectors]:
                 yield from bps.prepare(median, median_info, wait=True)
+                val = yield from bps.rd(median.events_to_kickoff)
+                self.logger.debug(f"median events_to_kickoff before kickoff: {val}")
             if not live_stream_declared:
                 # declare the stream on first loop iteration
-                yield from bps.declare_stream(*all_detectors, name=live_stream)
+                yield from bps.declare_stream(
+                    *all_detectors, name=live_stream, collect=True
+                )
                 live_stream_declared = True
             yield from bps.kickoff_all(*all_detectors, wait=True)
 
@@ -327,9 +331,12 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # flip write_sig — pump starts writing from next frame
                 for det in detectors:
                     yield from bps.abs_set(det.write_sig, True, wait=True)
+                    self.logger.debug(f"Setting median write_sig for {det.median.name}")
                     yield from bps.abs_set(det.median.write_sig, True, wait=True)
+                    val = yield from bps.rd(det.median.write_sig)
+                    self.logger.debug(f"median write_sig after set: {val}")
                 yield from bps.complete_all(*all_detectors, wait=True)
-                yield from bps.collect(*all_detectors)
+                yield from bps.collect(*all_detectors, name=live_stream)
                 yield from bps.unstage_all(*all_detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)

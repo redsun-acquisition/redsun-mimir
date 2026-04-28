@@ -67,7 +67,19 @@ class MedianArmLogic(BaseArmLogic):
                         self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
             else:
-                self.writer.sources[self.datakey_name].update_counter(0)
+                source = self.writer.sources[self.datakey_name]
+                value = source.image_counter._connector.backend.reading["value"]
+                self.logger.debug(
+                    f"_pump: no median ready, ticking counter "
+                    f"signal_id={id(source.image_counter)}, "
+                    f"current={value}"
+                )
+                source.update_counter(1)
+                value = source.image_counter._connector.backend.reading["value"]
+                self.logger.debug(
+                    f"_pump: counter ticked to "
+                    f"{source.image_counter._connector.backend.reading['value']}"
+                )
             self._stop_event.set()
 
 
