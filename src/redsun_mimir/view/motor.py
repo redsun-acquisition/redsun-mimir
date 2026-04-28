@@ -50,7 +50,7 @@ class MotorView(QtView):
         self,
         name: str,
         /,
-        step_size: float = 100.0,
+        step_size: float = 10.0,
     ) -> None:
         super().__init__(name)
         self.step_size = step_size

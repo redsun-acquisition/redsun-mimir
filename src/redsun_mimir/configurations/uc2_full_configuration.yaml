@@ -8,7 +8,6 @@ devices:
   stage: {}
   laser:
     wavelength: 650
-    units: mW
   camera: {}
 
 
