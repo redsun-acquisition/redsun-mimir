@@ -30,7 +30,7 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.21.1",
-    "redsun[zarr]>=0.10.0rc2",
+    "redsun[zarr]>=0.10.0rc4",
 ]
 
 [dependency-groups]
@@ -177,6 +177,3 @@ include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
-
-[tool.uv.sources]
-redsun = { path = "../redsun", editable = true }
