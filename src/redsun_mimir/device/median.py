@@ -71,14 +71,16 @@ class MedianArmLogic(BaseArmLogic):
             await asyncio.sleep(0)
             if not await self.write_sig.get_value():
                 continue
+            # wait for the shared writer to be opened by the camera pump
+            while not self.writer.is_open and not self._stop_event.is_set():
+                await asyncio.sleep(0)
+            if self._stop_event.is_set():
+                break
             if await self.buffer_ready.get_value():
                 val = await self.buffer.get_value()
                 if val is not None and np.asarray(val).size > 0:
                     self.writer.write(self.datakey_name, np.asarray(val))
                     self.logger.debug("Median frame written to disk")
-                    self.writer.unregister(self.datakey_name)
-                    if len(self.writer.sources) == 0:
-                        self.writer.close(reset_path=True)
             else:
                 # we still need to update the counter, even
                 # though we haven't written anything
