@@ -48,7 +48,17 @@ class MedianArmLogic(BaseArmLogic):
     async def disarm(self, on_unstage: bool) -> None:
         """Reset the buffer and buffer ready signals on disarm."""
         await self.buffer_ready.set(False)
-        await super().disarm(on_unstage)
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+        if self._pump_task is not None:
+            await self._pump_task
+            self._pump_task = None
+        await self._stop_acquisition()
+        await self.write_sig.set(False)
+        # unregister our key from the shared writer but do not close it —
+        # the camera's disarm will close once its own key is also unregistered
+        if self.datakey_name in self.writer.sources:
+            self.writer.unregister(self.datakey_name)
 
     async def _start_acquisition(self) -> None:
         pass  # no hardware
@@ -64,17 +74,15 @@ class MedianArmLogic(BaseArmLogic):
             if await self.buffer_ready.get_value():
                 val = await self.buffer.get_value()
                 if val is not None and np.asarray(val).size > 0:
-                    if not self.writer.is_open:
-                        self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
                     self.logger.debug("Median frame written to disk")
                     self.writer.unregister(self.datakey_name)
                     if len(self.writer.sources) == 0:
                         self.writer.close(reset_path=True)
             else:
-                self.writer.unregister(self.datakey_name)
-                if len(self.writer.sources) == 0:
-                    self.writer.close(reset_path=True)
+                # we still need to update the counter, even
+                # though we haven't written anything
+                self.writer.sources[self.datakey_name].update_counter(1)
                 self.logger.debug("Median frame not ready, skipping write")
             self._stop_event.set()
 
