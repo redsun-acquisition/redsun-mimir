@@ -12,7 +12,7 @@ from redsun.storage import create_writer
 
 from redsun_mimir.device.median import MedianDevice
 from redsun_mimir.device.signals import readable_buffer_signal
-from redsun_mimir.storage import SessionPathProvider
+from redsun_mimir.storage import get_path_provider
 
 from ._backend import (
     mm_exposure_signal,
@@ -71,7 +71,6 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
 
         self.buffer, setter = readable_buffer_signal(self.roi, self.pixel_dtype)
         self.write_sig = soft_signal_rw(bool, initial_value=False)
-        self.path_provider = SessionPathProvider()
 
         trigger_logic = MMTriggerLogic(
             datakey_name=name,
@@ -88,7 +87,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             write_sig=self.write_sig,
         )
 
-        data_logic = MMDataLogic(writer=self.writer, path_provider=self.path_provider)
+        data_logic = MMDataLogic(writer=self.writer, path_provider=get_path_provider())
 
         logics: list[MMTriggerLogic | MMArmLogic | MMDataLogic] = [
             trigger_logic,
@@ -129,8 +128,5 @@ class MMDemoCamera(MMBaseCameraDevice):
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
             writer=create_writer(writer),
-            path_provider=SessionPathProvider(
-                base_dir=self.path_provider.base_dir,
-                session=self.path_provider.session,
-            ),
+            path_provider=get_path_provider(),
         )

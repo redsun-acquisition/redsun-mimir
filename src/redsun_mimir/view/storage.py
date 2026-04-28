@@ -10,11 +10,11 @@ from redsun.log import Loggable
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 
+from redsun_mimir.storage import get_path_provider
+
 if TYPE_CHECKING:
     from bluesky.protocols import Reading
     from redsun.virtual import VirtualContainer
-
-    from redsun_mimir.storage import SessionPathProvider
 
 
 class FileStorageView(QtView, Loggable):
@@ -68,7 +68,7 @@ class FileStorageView(QtView, Loggable):
         root.addWidget(self._open_dir_btn)
         root.addStretch()
         self.setLayout(root)
-        self._provider: SessionPathProvider | None = None
+        self._provider = get_path_provider()
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Get the root directory from the presenter if available."""
@@ -82,12 +82,11 @@ class FileStorageView(QtView, Loggable):
             )
             root_dir = None
         self._root_dir_edit.setText(root_dir or "No root directory provided.")
-        if self._provider is not None:
 
-            async def _wire() -> None:
-                self._provider.base_dir_sig.subscribe_reading(self._on_base_dir_changed)
+        async def _wire() -> None:
+            self._provider.base_dir_sig.subscribe_reading(self._on_base_dir_changed)
 
-            run_coro(_wire())
+        run_coro(_wire())
 
     def _on_base_dir_changed(self, reading: dict[str, Reading[str]]) -> None:
         value = next(iter(reading.values()))["value"]
@@ -102,12 +101,11 @@ class FileStorageView(QtView, Loggable):
         )
         if not chosen:
             return
-        if self._provider is not None:
 
-            async def _set() -> None:
-                await self._provider.base_dir_sig.set(chosen)
+        async def _set() -> None:
+            await self._provider.base_dir_sig.set(chosen)
 
-            run_coro(_set())
+        run_coro(_set())
 
     def _on_open_dir_clicked(self) -> None:
         """Open the current base directory in the system file explorer."""

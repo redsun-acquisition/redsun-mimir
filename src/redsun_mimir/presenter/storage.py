@@ -58,7 +58,6 @@ class FileStoragePresenter(Presenter, Loggable):
         self._path_provider.session = container.session
         container.root_directory = providers.Object(str(self._path_provider.base_dir))
         container.path_provider = providers.Object(self._path_provider)
-        container.register_callbacks(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect pre-launch, root-change, and plan-done signals."""

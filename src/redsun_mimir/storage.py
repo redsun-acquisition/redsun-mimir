@@ -161,4 +161,37 @@ class SessionPathProvider(PathProvider):
         )
 
 
-__all__ = ["SessionPathProvider"]
+_default_provider: SessionPathProvider | None = None
+
+
+def get_path_provider(
+    base_dir: Path | None = None,
+    session: str = "",
+    max_digits: int = 5,
+) -> SessionPathProvider:
+    """Return the shared :class:`SessionPathProvider` instance.
+
+    The first call constructs the provider with the given parameters.
+    Subsequent calls return the same instance regardless of arguments,
+    matching the singleton pattern used by ``CMMCorePlus.instance()``.
+
+    Parameters
+    ----------
+    base_dir : Path | None
+        Root directory for all output files. Only used on first call.
+    session : str
+        Session name. Only used on first call.
+    max_digits : int
+        Counter zero-padding width. Only used on first call.
+    """
+    global _default_provider
+    if _default_provider is None:
+        _default_provider = SessionPathProvider(
+            base_dir=base_dir,
+            session=session,
+            max_digits=max_digits,
+        )
+    return _default_provider
+
+
+__all__ = ["SessionPathProvider", "get_path_provider"]
