@@ -9,6 +9,8 @@ from ophyd_async.core import (
 )
 from redsun.log import Loggable
 
+from .signals import bounded_soft_signal_rw
+
 
 class MockLightDevice(StandardReadable, Loggable):
     """Mock light source for simulation and testing purposes.
@@ -25,11 +27,18 @@ class MockLightDevice(StandardReadable, Loggable):
         self,
         name: str,
         /,
-        *,
         wavelength: int = 0,
+        range: list[float] = [0.0, 200.0],
     ) -> None:
+        if len(range) != 2:
+            raise ValueError("Range must be a list of two floats [low, high]")
+        if range[0] >= range[1]:
+            raise ValueError("Range low value must be less than high value")
+
         with self.add_children_as_readables():
-            self.intensity = soft_signal_rw(float, initial_value=0.0, units="mW")
+            self.intensity = bounded_soft_signal_rw(
+                range[0], range[1], units="mW", initial_value=0.0
+            )
             self.enabled = soft_signal_rw(bool, initial_value=False)
 
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
