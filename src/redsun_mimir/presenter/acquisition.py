@@ -281,7 +281,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         scan_stream_declared = False
         scan_stream = "scan"
         live_stream = "live_stream"
-        prepare_info = TriggerInfo(number_of_events=stream_frames)
+        median_info = TriggerInfo(number_of_events=1)
 
         buffers = [det.buffer for det in detectors]
         all_detectors: list[MedianFlyer | MedianDevice] = [
@@ -293,9 +293,13 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             # live view
+            prepare_info = TriggerInfo(number_of_events=stream_frames)
+
             yield from bps.stage_all(*all_detectors)
-            for det in all_detectors:
+            for det in detectors:
                 yield from bps.prepare(det, prepare_info, wait=True)
+            for median in [det.median for det in detectors]:
+                yield from bps.prepare(median, median_info, wait=True)
             if not live_stream_declared:
                 # declare the stream on first loop iteration
                 yield from bps.declare_stream(*all_detectors, name=live_stream)

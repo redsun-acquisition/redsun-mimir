@@ -66,7 +66,6 @@ class MedianArmLogic(BaseArmLogic):
                     if not self.writer.is_open:
                         self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
-                    self.writer.unregister(self.datakey_name)
             else:
                 self.writer.sources[self.datakey_name].update_counter(0)
             self._stop_event.set()
