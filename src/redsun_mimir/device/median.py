@@ -90,7 +90,7 @@ class MedianDevice(StandardDetector):
         self.writer = writer
         self.write_sig = soft_signal_rw(bool, initial_value=False)
         self.buffer_ready = soft_signal_rw(bool, initial_value=False)
-        name = f"{parent_name}_median"
+        name = f"{parent_name}-median"
 
         trigger_logic = MedianTriggerLogic(
             datakey_name=name,
