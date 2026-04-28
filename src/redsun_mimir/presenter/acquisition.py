@@ -279,14 +279,17 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.action_map.update(**scan_action.event_map, **stream_action.event_map)
         live_stream_declared = False
         scan_stream_declared = False
+        median_stream_declared = False
         scan_stream = "scan"
         live_stream = "live_stream"
+        median_stream = "median_stream"
         median_info = TriggerInfo(number_of_events=1)
 
         buffers = [det.buffer for det in detectors]
+        median_detectors = [det.median for det in detectors]
         all_detectors: list[MedianFlyer | MedianDevice] = [
             *detectors,
-            *[det.median for det in detectors],
+            *median_detectors,
         ]
 
         yield from bps.open_run()
@@ -305,9 +308,14 @@ class AcquisitionPresenter(Presenter, Loggable):
             if not live_stream_declared:
                 # declare the stream on first loop iteration
                 yield from bps.declare_stream(
-                    *all_detectors, name=live_stream, collect=True
+                    *detectors, name=live_stream, collect=True
                 )
                 live_stream_declared = True
+            if not median_stream_declared:
+                yield from bps.declare_stream(
+                    *median_detectors, name=median_stream, collect=True
+                )
+                median_stream_declared = True
             yield from bps.kickoff_all(*all_detectors, wait=True)
 
             name, event = yield from rps.wait_for_actions(
@@ -336,7 +344,8 @@ class AcquisitionPresenter(Presenter, Loggable):
                     val = yield from bps.rd(det.median.write_sig)
                     self.logger.debug(f"median write_sig after set: {val}")
                 yield from bps.complete_all(*all_detectors, wait=True)
-                yield from bps.collect(*all_detectors, name=live_stream)
+                yield from bps.collect(*detectors, name=live_stream)
+                yield from bps.collect(*median_detectors, name=median_stream)
                 yield from bps.unstage_all(*all_detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
