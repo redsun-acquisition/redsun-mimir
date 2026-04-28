@@ -49,7 +49,7 @@ class SessionPathProvider(PathProvider):
         self._base_dir = (
             base_dir if base_dir is not None else Path.home() / "redsun-storage"
         )
-        self.group: str | None = None
+        self.plan: str | None = None
         self._session = session
         self._max_digits = max_digits
         self._date = datetime.datetime.now().strftime("%Y_%m_%d")
@@ -102,20 +102,25 @@ class SessionPathProvider(PathProvider):
 
     def _scan_existing(self) -> dict[str, int]:
         """Scan the current date directory and initialise counters from existing entries."""
-        directory = self._base_dir / self._session / self._date
+        directory = self._base_dir / self._session
         counters: dict[str, int] = {}
         if not directory.is_dir():
             return counters
-        for entry in directory.iterdir():
-            # strips last suffix: camera_00000.zarr → camera_00000
-            stem = entry.stem
-            parts = stem.rsplit("_", 1)
-            if len(parts) != 2 or not parts[1].isdigit():
+        for plan_dir in directory.iterdir():
+            if not plan_dir.is_dir():
                 continue
-            key, suffix = parts
-            n = int(suffix)
-            if n + 1 > counters.get(key, 0):
-                counters[key] = n + 1
+            for date_dir in plan_dir.iterdir():
+                if not date_dir.is_dir():
+                    continue
+                for entry in date_dir.iterdir():
+                    stem = entry.stem
+                    parts = stem.rsplit("_", 1)
+                    if len(parts) != 2 or not parts[1].isdigit():
+                        continue
+                    key, suffix = parts
+                    n = int(suffix)
+                    if n + 1 > counters.get(key, 0):
+                        counters[key] = n + 1
         return counters
 
     def __call__(self, datakey: str | None = None) -> PathInfo:
@@ -134,9 +139,7 @@ class SessionPathProvider(PathProvider):
             ``<base_dir>/<session>/<YYYY_MM_DD>/<key>[_<group>]_<counter>``.
         """
         resolved_key = datakey or "default"
-        bucket = (
-            f"{resolved_key}_{self.group}" if self.group is not None else resolved_key
-        )
+        bucket = resolved_key
         current = self._counters.get(bucket, 0)
 
         if len(str(current)) > self._max_digits:
@@ -146,12 +149,9 @@ class SessionPathProvider(PathProvider):
             )
 
         padded = f"{current:0{self._max_digits}}"
-        stem = (
-            f"{resolved_key}_{self.group}_{padded}"
-            if self.group
-            else f"{resolved_key}_{padded}"
-        )
-        directory = self._base_dir / self._session / self._date
+        stem = f"{resolved_key}_{padded}"
+        plan_segment = self.plan if self.plan is not None else "default"
+        directory = self._base_dir / self._session / plan_segment / self._date
         directory.mkdir(parents=True, exist_ok=True)
         self._counters[bucket] = current + 1
 

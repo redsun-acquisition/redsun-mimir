@@ -71,15 +71,9 @@ class FileStoragePresenter(Presenter, Loggable):
             sigs["sigPlanDone"].connect(self._close_writers)
 
     def _prepare_writers(self, plan_name: str) -> None:
-        """Set a fresh store path on every registered writer before the plan starts.
-
-        Parameters
-        ----------
-        plan_name : str
-            Name of the plan about to be launched.
-        """
-        self._path_provider.group = plan_name
+        """Set the active plan name on the path provider before each plan."""
+        self._path_provider.plan = plan_name
 
     def _close_writers(self) -> None:
-        """Reset the group name after the plan completes."""
-        self._path_provider.group = None
+        """Reset the plan name after the plan completes."""
+        self._path_provider.plan = None
