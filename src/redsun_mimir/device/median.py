@@ -56,43 +56,20 @@ class MedianArmLogic(BaseArmLogic):
         pass  # no hardware
 
     async def _pump(self) -> None:
-        self.logger.debug("MedianArmLogic._pump: started")
         while not self._stop_event.is_set():
             await asyncio.sleep(0)
-            write = await self.write_sig.get_value()
-            if not write:
+            if not await self.write_sig.get_value():
                 continue
-            self.logger.debug(
-                f"MedianArmLogic._pump: waiting for writer to open (is_open={self.writer.is_open})"
-            )
-            # wait for the shared writer to be opened by the camera pump
-            while not self.writer.is_open and not self._stop_event.is_set():
-                await asyncio.sleep(0)
-            if self._stop_event.is_set():
-                self.logger.debug(
-                    "MedianArmLogic._pump: stop event set while waiting for writer, exiting"
-                )
-                break
-            ready = await self.buffer_ready.get_value()
-            self.logger.debug(f"MedianArmLogic._pump: buffer_ready={ready}")
-            if ready:
+            if await self.buffer_ready.get_value():
                 val = await self.buffer.get_value()
-                self.logger.debug(
-                    f"MedianArmLogic._pump: buffer value shape={np.asarray(val).shape if val is not None else None}"
-                )
                 if val is not None and np.asarray(val).size > 0:
                     if not self.writer.is_open:
                         self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
+                    self.writer.unregister(self.datakey_name)
             else:
-                try:
-                    source = self.writer.sources[self.datakey_name]
-                    source.update_counter(1)
-                except Exception as e:
-                    self.logger.error(f"MedianArmLogic._pump: counter tick failed: {e}")
-            self.logger.debug("MedianArmLogic._pump: setting stop event")
+                self.writer.sources[self.datakey_name].update_counter(0)
             self._stop_event.set()
-        self.logger.debug("MedianArmLogic._pump: exited loop")
 
 
 class MedianDataLogic(BaseDataLogic):
