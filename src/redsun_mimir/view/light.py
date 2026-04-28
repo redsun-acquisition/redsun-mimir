@@ -106,21 +106,15 @@ class LightView(QtView, Loggable):
         """Create the UI from configuration readings and descriptors."""
         # map of device name to list of reading names and units
         reading_names: dict[str, list[str]] = {}
-        reading_units: dict[str, str] = {}
         for key in readings.keys():
-            try:
-                units = description[key]["units"] or "NA"
-            except KeyError:
-                units = "NA"
             name, prop = parse_key(key)
             reading_names.setdefault(name, []).append(prop)
-            reading_units.setdefault(name, units)
 
         for name, props in reading_names.items():
             layout = QtWidgets.QGridLayout()
             if "wavelength" in props:
                 wavelength = readings[f"{name}-wavelength"]["value"]
-            units = reading_units[name]
+            units = description[f"{name}-intensity"].get("units") or "NA"
             self._groups[_group_key(name)] = QtWidgets.QGroupBox(
                 f"{name} ({wavelength} nm)"
             )
