@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dependency_injector import providers
-from event_model import DocumentRouter
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.utils import find_signals
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 
-class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
+class FileStoragePresenter(Presenter, Loggable):
     """Presenter responsible for wiring writer paths before each acquisition.
 
     Before each plan launch, iterates all registered writers and calls

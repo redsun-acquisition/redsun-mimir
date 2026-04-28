@@ -57,13 +57,6 @@ class FileStorageView(QtView, Loggable):
         base_dir_row.addWidget(self._root_dir_edit)
         base_dir_row.addWidget(self._root_dir_btn)
 
-        self._writers_list = QtW.QListWidget()
-        self._writers_list.setSelectionMode(
-            QtW.QAbstractItemView.SelectionMode.NoSelection
-        )
-        self._refresh_btn = QtW.QPushButton("Refresh writers")
-        self._refresh_btn.clicked.connect(self._refresh_writers)
-
         self._open_dir_btn = QtW.QPushButton("Open root directory")
         self._open_dir_btn.clicked.connect(self._on_open_dir_clicked)
 
@@ -109,6 +102,12 @@ class FileStorageView(QtView, Loggable):
         )
         if not chosen:
             return
+        if self._provider is not None:
+
+            async def _set() -> None:
+                await self._provider.base_dir_sig.set(chosen)
+
+            run_coro(_set())
 
     def _on_open_dir_clicked(self) -> None:
         """Open the current base directory in the system file explorer."""
