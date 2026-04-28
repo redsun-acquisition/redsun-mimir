@@ -23,7 +23,7 @@ def run_light_container() -> None:
     class LightApp(QtAppContainer, config=_CONFIG):
         led = declare_device(MockLightDevice, from_config="led")
         laser = declare_device(MockLightDevice, from_config="laser")
-        ctrl = declare_presenter(LightPresenter, from_config="ctrl")
+        ctrl = declare_presenter(LightPresenter, from_config="light_ctrl")
         widget = declare_view(LightView, from_config="widget")
 
     LightApp().run()

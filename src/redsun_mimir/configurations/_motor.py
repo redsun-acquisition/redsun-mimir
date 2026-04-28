@@ -18,8 +18,8 @@ def run_stage_container() -> None:
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
     class MotorApp(QtAppContainer):
-        xy_motor = declare_device(MMDemoXYStage, config="demoxy")
-        z_motor = declare_device(MMDemoZStage, config="demoz")
+        xy_motor = declare_device(MMDemoXYStage)
+        z_motor = declare_device(MMDemoZStage)
         ctrl = declare_presenter(MotorPresenter)
         widget = declare_view(MotorView)
 

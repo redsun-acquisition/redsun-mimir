@@ -3,22 +3,16 @@ session: redsun-mimir
 frontend: pyqt
 
 devices:
-  camera1:
-    config: demo
-  xy-motor:
-    config: demoxy
-  z-motor:
-    config: demoz
+  camera1: {}
+  xy-motor: {}
+  z-motor: {}
 
 presenters:
   storage_ctrl: {}
-  median_ctrl:
-    median_streams: [square_scan]
-    live_streams: [live]
+  median_ctrl: {}
   det_ctrl:
     timeout: 5.0
-  acq_ctrl:
-    callbacks: [det_ctrl, median_ctrl]
+  acq_ctrl: {}
 
 views:
   acq_widget: {}

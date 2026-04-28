@@ -5,13 +5,8 @@ frontend: pyqt
 devices:
   led:
     wavelength: 300
-    binary: true
-    intensity_range: [0, 0]
   laser:
     wavelength: 650
-    egu: mW
-    intensity_range: [0, 100]
-    step_size: 1
 
 presenters:
   light_ctrl:

@@ -5,33 +5,22 @@ frontend: pyqt
 devices:
   serial:
     port: COM4
-  stage:
-    step_sizes:
-      X: 100.0
-      Y: 100.0
-      Z: 100.0
-    egu: um
+  stage: {}
   laser:
     wavelength: 650
-    egu: mW
-    intensity_range: [0, 1023]
-    step_size: 1
-  camera:
-    config: daheng
+    units: mW
+  camera: {}
 
 
 presenters:
   storage_ctrl: {}
-  acq_ctrl:
-    callbacks: [det_ctrl, median_ctrl]
-  median_ctrl:
-    median_streams: [square_scan]
-    live_streams: [live]
+  median_ctrl: {}
+  det_ctrl:
+    timeout: 2.0
+  acq_ctrl: {}
   light_ctrl:
     timeout: 2.0
   motor_ctrl:
-    timeout: 2.0
-  det_ctrl:
     timeout: 2.0
 
 

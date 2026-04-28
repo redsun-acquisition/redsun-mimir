@@ -3,34 +3,23 @@ session: redsun-mimir
 frontend: pyqt
 
 devices:
-  camera1:
-    config: demo
-  xy-motor:
-    config: demoxy
-  z-motor:
-    config: demoz
+  camera1: {}
+  xy-motor: {}
+  z-motor: {}
   led:
     wavelength: 300
-    binary: true
-    intensity_range: [0, 0]
   laser:
     wavelength: 650
-    egu: mW
-    intensity_range: [0, 100]
-    step_size: 1
 
 presenters:
   storage_ctrl: {}
-  acq_ctrl:
-    callbacks: [det_ctrl, median_ctrl]
-  median_ctrl:
-    median_streams: [square_scan]
-    live_streams: [live]
+  median_ctrl: {}
+  det_ctrl:
+    timeout: 2.0
+  acq_ctrl: {}
   light_ctrl:
     timeout: 2.0
   motor_ctrl:
-    timeout: 2.0
-  det_ctrl:
     timeout: 2.0
 
 
