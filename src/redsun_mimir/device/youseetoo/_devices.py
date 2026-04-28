@@ -196,9 +196,9 @@ class UC2MotorDevice(StandardReadable, Loggable):
             self.logger.debug("Serial port ready.")
 
         with self.add_children_as_readables():
-            self.x = uc2_axis_signal(self._serial, "x", units="mm")
-            self.y = uc2_axis_signal(self._serial, "y", units="mm")
-            self.z = uc2_axis_signal(self._serial, "z", units="mm")
+            self.x = uc2_axis_signal(self._serial, "x", units="um")
+            self.y = uc2_axis_signal(self._serial, "y", units="um")
+            self.z = uc2_axis_signal(self._serial, "z", units="um")
         self.axis = DeviceMap(
             {
                 "x": self.x,
