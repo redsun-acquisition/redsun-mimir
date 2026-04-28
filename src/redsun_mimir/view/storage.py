@@ -5,13 +5,16 @@ from typing import TYPE_CHECKING, Any
 from qtpy import QtWidgets as QtW
 from qtpy.QtCore import QUrl
 from qtpy.QtGui import QDesktopServices
+from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
-from redsun.virtual import Signal
 
 if TYPE_CHECKING:
+    from bluesky.protocols import Reading
     from redsun.virtual import VirtualContainer
+
+    from redsun_mimir.storage import SessionPathProvider
 
 
 class FileStorageView(QtView, Loggable):
@@ -36,8 +39,6 @@ class FileStorageView(QtView, Loggable):
     sigRootDirChanged : Signal[str]
         Emitted when the root output directory is changed by the user.
     """
-
-    sigRootDirChanged = Signal(str)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -66,53 +67,38 @@ class FileStorageView(QtView, Loggable):
         self._open_dir_btn = QtW.QPushButton("Open root directory")
         self._open_dir_btn.clicked.connect(self._on_open_dir_clicked)
 
-        writers_header = QtW.QLabel("Registered writer groups")
-        writers_header.setStyleSheet("font-weight: bold;")
-
-        # --- layout ---
         form = QtW.QFormLayout()
         form.addRow("Root directory", base_dir_row)
 
         root = QtW.QVBoxLayout(self)
         root.addLayout(form)
-        root.addWidget(writers_header)
-        root.addWidget(self._writers_list)
-
-        # buttons layout
-        btns_widget = QtW.QWidget()
-        btn_layout = QtW.QHBoxLayout()
-        btn_layout.addWidget(self._open_dir_btn)
-        btn_layout.addWidget(self._refresh_btn)
-        btns_widget.setLayout(btn_layout)
-        root.addWidget(btns_widget)
+        root.addWidget(self._open_dir_btn)
         root.addStretch()
         self.setLayout(root)
-
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the signals."""
-        container.register_signals(self)
+        self._provider: SessionPathProvider | None = None
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Get the root directory from the presenter if available."""
         try:
             root_dir: str | None = container.root_directory()
+            self._provider = container.path_provider()
+            root_dir = str(self._provider.base_dir)
         except AttributeError as e:
             self.logger.warning(
                 "Could not retrieve root directory from container: %s", e
             )
             root_dir = None
-        try:
-            self.available_writers: dict[str, list[str]] | None = (
-                container.available_writers()
-            )
-        except AttributeError as e:
-            self.available_writers = None
-            self.logger.warning(
-                "Could not retrieve available writers from container: %s", e
-            )
-            self.available_writers = None
         self._root_dir_edit.setText(root_dir or "No root directory provided.")
-        self._refresh_writers()
+        if self._provider is not None:
+
+            async def _wire() -> None:
+                self._provider.base_dir_sig.subscribe_reading(self._on_base_dir_changed)
+
+            run_coro(_wire())
+
+    def _on_base_dir_changed(self, reading: dict[str, Reading[str]]) -> None:
+        value = next(iter(reading.values()))["value"]
+        self._root_dir_edit.setText(value)
 
     def _on_browse_clicked(self) -> None:
         """Open a native folder-picker and update the base directory."""
@@ -123,23 +109,8 @@ class FileStorageView(QtView, Loggable):
         )
         if not chosen:
             return
-        self._update_base_dir(chosen)
 
     def _on_open_dir_clicked(self) -> None:
         """Open the current base directory in the system file explorer."""
         path = self._root_dir_edit.text()
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
-    def _update_base_dir(self, base_dir: str) -> None:
-        self.sigRootDirChanged.emit(base_dir)
-        self._root_dir_edit.setText(base_dir)
-
-    def _refresh_writers(self) -> None:
-        """Repopulate the writer groups list from the current registry."""
-        self._writers_list.clear()
-        if self.available_writers is None:
-            self._writers_list.addItem("(no writers registered)")
-            return
-        for mimetype, groups in sorted(self.available_writers.items()):
-            for group_name in sorted(groups):
-                self._writers_list.addItem(f"{group_name}  [{mimetype}]")

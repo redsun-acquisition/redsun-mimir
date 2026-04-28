@@ -7,8 +7,6 @@ from dependency_injector import providers
 from event_model import DocumentRouter
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import handle_descriptor_metadata
-from redsun.storage.presenter import get_available_writers
 from redsun.utils import find_signals
 
 from redsun_mimir.storage import SessionPathProvider
@@ -17,7 +15,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
-    from event_model.documents import EventDescriptor
     from ophyd_async.core import Device
     from redsun.virtual import VirtualContainer
 
@@ -55,42 +52,25 @@ class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
         super().__init__(name, devices, **kwargs)
         self._devices = devices
         root_directory = Path.home() / "redsun-storage"
-        self._path_provider = SessionPathProvider(
-            base_dir=root_directory, session="default"
-        )
-
-        self.available_writers = get_available_writers(devices)
+        self._path_provider = SessionPathProvider(base_dir=root_directory, session="")
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Provide the root directory and a string view of the available writers."""
+        """Provide the path provider and expose its signals on the container."""
         self._path_provider.session = container.session
         container.root_directory = providers.Object(str(self._path_provider.base_dir))
-
-        # extract the available writers by mimetype and group
-        available_writers_map: dict[str, list[str]] = {}
-        for mimetype, groups in self.available_writers.items():
-            available_writers_map[mimetype] = list(groups.keys())
-
-        container.available_writers = providers.Object(available_writers_map)
+        container.path_provider = providers.Object(self._path_provider)
         container.register_callbacks(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect pre-launch, root-change, and plan-done signals."""
         sigs = find_signals(
             container,
-            ["sigPreLaunchNotify", "sigRootDirChanged", "sigPlanDone"],
+            ["sigPreLaunchNotify", "sigPlanDone"],
         )
         if "sigPreLaunchNotify" in sigs:
             sigs["sigPreLaunchNotify"].connect(self._prepare_writers)
-        if "sigRootDirChanged" in sigs:
-            sigs["sigRootDirChanged"].connect(self._refresh_path_provider)
         if "sigPlanDone" in sigs:
             sigs["sigPlanDone"].connect(self._close_writers)
-
-    def descriptor(self, doc: EventDescriptor) -> EventDescriptor | None:
-        """Forward device configuration metadata into active writers."""
-        handle_descriptor_metadata(doc, self._devices)
-        return doc
 
     def _prepare_writers(self, plan_name: str) -> None:
         """Set a fresh store path on every registered writer before the plan starts.
@@ -100,36 +80,8 @@ class FileStoragePresenter(Presenter, DocumentRouter, Loggable):
         plan_name : str
             Name of the plan about to be launched.
         """
-        if not self.available_writers:
-            self.logger.debug("No writers registered; skipping path assignment.")
-            return
-
-        for mimetype, groups in self.available_writers.items():
-            for group_name, writer in groups.items():
-                store_path = self._path_provider(plan_name)
-                writer.set_store_path(store_path.directory_path)
-                self.logger.debug(
-                    f"Set store path for writer ({group_name!r}, {mimetype!r}): "
-                    f"{store_path}"
-                )
+        self._path_provider.group = plan_name
 
     def _close_writers(self) -> None:
-        """Close all registered writers after the plan completes."""
-        if not self.available_writers:
-            return
-        for groups in self.available_writers.values():
-            for writer in groups.values():
-                try:
-                    writer.close()
-                except Exception:  # noqa: PERF203
-                    self.logger.exception("Error closing writer %r.", writer)
-
-    def _refresh_path_provider(self, new_base_dir: str) -> None:
-        """Update the base directory of the path provider when it changes.
-
-        Parameters
-        ----------
-        new_base_dir : str
-            The new base directory to set on the path provider.
-        """
-        self._path_provider.base_dir = Path(new_base_dir)
+        """Reset the group name after the plan completes."""
+        self._path_provider.group = None
