@@ -137,12 +137,31 @@ class LightView(QtView, Loggable):
             slider: QLabeledDoubleSlider | QLabeledSlider
             range: list[int | float]
             dtype = description[f"{name}-intensity"]["dtype"]
+            limits = description[f"{name}-intensity"].get("limits", None)
+            low: int | float | None = None
+            high: int | float | None = None
+            if limits is not None:
+                ctrl = limits.get("control", None)
+                if (
+                    ctrl is not None
+                    and ctrl["low"] is not None
+                    and ctrl["high"]
+                    and ctrl["high"] is not None
+                ):
+                    low = ctrl["low"]
+                    high = ctrl["high"]
             if dtype == "number":
                 slider = QLabeledDoubleSlider(QtCore.Qt.Orientation.Horizontal)
-                range = [0.0, 100.0]  # TODO: get from descriptor
+                if low is not None and high is not None:
+                    range = [low, high]
+                else:
+                    range = [0.0, 100.0]
             elif dtype == "integer":
                 slider = QLabeledSlider(QtCore.Qt.Orientation.Horizontal)
-                range = [0, 100]  # TODO: get from descriptor
+                if low is not None and high is not None:
+                    range = [low, high]
+                else:
+                    range = [0.0, 100.0]
             else:
                 raise TypeError(
                     "Intensity descriptor must have dtype 'number' or 'integer'."
