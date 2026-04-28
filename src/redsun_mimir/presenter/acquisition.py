@@ -26,7 +26,6 @@ from redsun.utils import find_signals
 from redsun.virtual import Signal
 
 from redsun_mimir.protocols import (  # noqa: TC001
-    DetectorProtocol,
     MedianFlyer,
     MotorProtocol,
     ReadableFlyer,
@@ -164,7 +163,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.callback_tokens: dict[str, int] = {}
 
         self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
-            "snap": self.snap,
             "live_stream": self.live_stream,
             "live_median_scan": self.live_median_scan,
         }
@@ -225,35 +223,6 @@ class AcquisitionPresenter(Presenter, Loggable):
     def plans_specificiers(self) -> set[PlanSpec]:
         """Return the current set of plan specifications for the available plans."""
         return set(self.plan_specs.values())
-
-    def snap(
-        self, detectors: Sequence[DetectorProtocol], frames: int = 1
-    ) -> MsgGenerator[None]:
-        """Take ``frames`` number snapshot from each detector.
-
-        Parameters
-        ----------
-        - detectors: ``Sequence[DetectorProtocol]``
-            - The detectors to take a snapshot from.
-        - frames: ``int``, optional
-            - The number of snapshots to take for each detector.
-            Must be a non-zero, positive integer.
-            Default is 1.
-        """
-        if frames <= 0:
-            # safeguard against invalid input
-            frames = 1
-
-        prepare_info = TriggerInfo(number_of_events=frames)
-
-        yield from bps.open_run()
-        yield from bps.stage_all(*detectors)
-        for detector in detectors:
-            yield from bps.prepare(detector, prepare_info, wait=True)
-        yield from bps.kickoff_all(*detectors, wait=True)
-        yield from bps.complete_all(*detectors, wait=True)
-        yield from bps.unstage_all(*detectors)
-        yield from bps.close_run(exit_status="success")
 
     @continous
     def live_median_scan(
