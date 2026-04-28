@@ -143,9 +143,10 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         # TODO: this seems to be used primarely for
         # HDF5 files; maybe a custom provider could be
         # implemented for Zarr
+        sig = self.writer.get_counter(datakey_name)
         return StreamResourceDataProvider(
             uri=f"{path_info.directory_path}{path_info.filename}.{extension}",
             resources=[data_resource],
             mimetype=self.writer.mimetype,
-            collections_written_signal=self.writer.get_counter(datakey_name),
+            collections_written_signal=sig,
         )

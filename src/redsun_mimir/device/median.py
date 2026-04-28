@@ -12,11 +12,10 @@ from redsun_mimir.device._common import BaseArmLogic, BaseDataLogic, BaseTrigger
 from redsun_mimir.device.signals import writeable_buffer_signal
 
 if TYPE_CHECKING:
-    from ophyd_async.core import SignalRW
+    from ophyd_async.core import PathProvider, SignalRW
     from redsun.storage import DataWriter
 
     from redsun_mimir.protocols import Array2D, ROIType
-    from redsun_mimir.storage import SessionPathProvider
 
 
 @dataclass
@@ -48,17 +47,7 @@ class MedianArmLogic(BaseArmLogic):
     async def disarm(self, on_unstage: bool) -> None:
         """Reset the buffer and buffer ready signals on disarm."""
         await self.buffer_ready.set(False)
-        if not self._stop_event.is_set():
-            self._stop_event.set()
-        if self._pump_task is not None:
-            await self._pump_task
-            self._pump_task = None
-        await self._stop_acquisition()
-        await self.write_sig.set(False)
-        # unregister our key from the shared writer but do not close it —
-        # the camera's disarm will close once its own key is also unregistered
-        if self.datakey_name in self.writer.sources:
-            self.writer.unregister(self.datakey_name)
+        await super().disarm(on_unstage)
 
     async def _start_acquisition(self) -> None:
         pass  # no hardware
@@ -67,26 +56,43 @@ class MedianArmLogic(BaseArmLogic):
         pass  # no hardware
 
     async def _pump(self) -> None:
+        self.logger.debug("MedianArmLogic._pump: started")
         while not self._stop_event.is_set():
             await asyncio.sleep(0)
-            if not await self.write_sig.get_value():
+            write = await self.write_sig.get_value()
+            if not write:
                 continue
+            self.logger.debug(
+                f"MedianArmLogic._pump: waiting for writer to open (is_open={self.writer.is_open})"
+            )
             # wait for the shared writer to be opened by the camera pump
             while not self.writer.is_open and not self._stop_event.is_set():
                 await asyncio.sleep(0)
             if self._stop_event.is_set():
+                self.logger.debug(
+                    "MedianArmLogic._pump: stop event set while waiting for writer, exiting"
+                )
                 break
-            if await self.buffer_ready.get_value():
+            ready = await self.buffer_ready.get_value()
+            self.logger.debug(f"MedianArmLogic._pump: buffer_ready={ready}")
+            if ready:
                 val = await self.buffer.get_value()
+                self.logger.debug(
+                    f"MedianArmLogic._pump: buffer value shape={np.asarray(val).shape if val is not None else None}"
+                )
                 if val is not None and np.asarray(val).size > 0:
+                    if not self.writer.is_open:
+                        self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
-                    self.logger.debug("Median frame written to disk")
             else:
-                # we still need to update the counter, even
-                # though we haven't written anything
-                self.writer.sources[self.datakey_name].update_counter(1)
-                self.logger.debug("Median frame not ready, skipping write")
+                try:
+                    source = self.writer.sources[self.datakey_name]
+                    source.update_counter(1)
+                except Exception as e:
+                    self.logger.error(f"MedianArmLogic._pump: counter tick failed: {e}")
+            self.logger.debug("MedianArmLogic._pump: setting stop event")
             self._stop_event.set()
+        self.logger.debug("MedianArmLogic._pump: exited loop")
 
 
 class MedianDataLogic(BaseDataLogic):
@@ -110,7 +116,7 @@ class MedianDevice(StandardDetector):
         roi_sig: SignalRW[ROIType],
         dtype_sig: SignalRW[str],
         writer: DataWriter,
-        path_provider: SessionPathProvider,
+        path_provider: PathProvider,
     ) -> None:
         self.buffer = writeable_buffer_signal(roi_sig, dtype_sig)
         self.writer = writer
