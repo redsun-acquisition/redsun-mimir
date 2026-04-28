@@ -44,11 +44,6 @@ class MedianArmLogic(BaseArmLogic):
     buffer: SignalRW[Array2D]
     buffer_ready: SignalRW[bool]
 
-    async def disarm(self, on_unstage: bool) -> None:
-        """Reset the buffer and buffer ready signals on disarm."""
-        await self.buffer_ready.set(False)
-        await super().disarm(on_unstage)
-
     async def _start_acquisition(self) -> None:
         pass  # no hardware
 
@@ -66,6 +61,7 @@ class MedianArmLogic(BaseArmLogic):
                     if not self.writer.is_open:
                         self.writer.open()
                     self.writer.write(self.datakey_name, np.asarray(val))
+                    await self.buffer_ready.set(False)
             else:
                 source = self.writer.sources[self.datakey_name]
                 value = source.image_counter._connector.backend.reading["value"]
