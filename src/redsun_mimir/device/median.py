@@ -59,9 +59,9 @@ class MedianArmLogic(BaseArmLogic):
     async def _pump(self) -> None:
         while not self._stop_event.is_set():
             await asyncio.sleep(0)
-            if not await self.buffer_ready.get_value():
+            if not await self.write_sig.get_value():
                 continue
-            if await self.write_sig.get_value():
+            if await self.buffer_ready.get_value():
                 val = await self.buffer.get_value()
                 if val is not None and np.asarray(val).size > 0:
                     if not self.writer.is_open:
@@ -71,6 +71,11 @@ class MedianArmLogic(BaseArmLogic):
                     self.writer.unregister(self.datakey_name)
                     if len(self.writer.sources) == 0:
                         self.writer.close(reset_path=True)
+            else:
+                self.writer.unregister(self.datakey_name)
+                if len(self.writer.sources) == 0:
+                    self.writer.close(reset_path=True)
+                self.logger.debug("Median frame not ready, skipping write")
             self._stop_event.set()
 
 
