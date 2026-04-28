@@ -533,6 +533,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             The parameter values to pass to the plan.
             Elaborated from the UI inputs.
         """
+        self.action_map.clear()
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
