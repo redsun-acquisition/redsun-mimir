@@ -135,6 +135,15 @@ class DetectorPresenter(Presenter, Loggable):
         median_sigs = find_signals(container, ["sigNewMedian"])
         if "sigNewMedian" in median_sigs:
             median_sigs["sigNewMedian"].connect(self._update_median)
+        pre_launch_sigs = find_signals(container, ["sigPreLaunchNotify"])
+        if "sigPreLaunchNotify" in pre_launch_sigs:
+            pre_launch_sigs["sigPreLaunchNotify"].connect(self._clear_medians)
+
+    def _clear_medians(self, plan_name: str) -> None:
+        """Clear the stored median frames when a new plan starts."""
+        for det_name in self._medians:
+            self._medians[det_name] = None
+        self.logger.debug("Median frames cleared for new plan: %s", plan_name)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
         """Get the layer specifications for all detector devices."""

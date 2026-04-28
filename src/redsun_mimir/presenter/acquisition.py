@@ -455,37 +455,50 @@ class AcquisitionPresenter(Presenter, Loggable):
         write_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
-        while True:
+        if write_forever:
+            # single acquisition for the whole plan - write_sig toggles writing
             yield from bps.stage_all(*detectors)
             for det in detectors:
-                yield from bps.prepare(det, write_info, wait=True)
-            if not streams_declared:
-                # declare the stream on first loop iteration
-                yield from bps.declare_stream(*detectors, name=stream_name)
-                streams_declared = True
+                yield from bps.prepare(det, TriggerInfo(number_of_events=0), wait=True)
+            yield from bps.declare_stream(*detectors, name=stream_name)
             yield from bps.kickoff_all(*detectors, wait=True)
-
-            # live view
-            name, current_action = yield from rps.wait_for_actions(
-                self.action_map, wait_for="set"
-            )
-
-            self.logger.debug("Start writing")
-            # flip write_sig — pump starts writing from next frame
-            for det in detectors:
-                yield from bps.abs_set(det.write_sig, True, wait=True)
-
-            if write_forever:
-                # wait for the toggle off action instead of waiting for completion
+            while True:
+                name, current_action = yield from rps.wait_for_actions(
+                    self.action_map, wait_for="set"
+                )
+                self.logger.debug("Start writing")
+                for det in detectors:
+                    yield from bps.abs_set(det.write_sig, True, wait=True)
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="reset"
                 )
+                for det in detectors:
+                    yield from bps.abs_set(det.write_sig, False, wait=True)
+                self.logger.debug("Writing complete")
+                self.clear_and_notify(name, current_action)
+        else:
+            # bounded: one zarr per stream action
+            while True:
+                write_info = TriggerInfo(number_of_events=frames)
+                yield from bps.stage_all(*detectors)
+                for det in detectors:
+                    yield from bps.prepare(det, write_info, wait=True)
+                if not streams_declared:
+                    yield from bps.declare_stream(*detectors, name=stream_name)
+                    streams_declared = True
+                yield from bps.kickoff_all(*detectors, wait=True)
 
-            yield from bps.complete_all(*detectors, wait=True)
-            yield from bps.collect(*detectors)
-            yield from bps.unstage_all(*detectors)
-            self.logger.debug("Writing complete")
-            self.clear_and_notify(name, current_action)
+                name, current_action = yield from rps.wait_for_actions(
+                    self.action_map, wait_for="set"
+                )
+                self.logger.debug("Start writing")
+                for det in detectors:
+                    yield from bps.abs_set(det.write_sig, True, wait=True)
+                yield from bps.complete_all(*detectors, wait=True)
+                yield from bps.collect(*detectors)
+                yield from bps.unstage_all(*detectors)
+                self.logger.debug("Writing complete")
+                self.clear_and_notify(name, current_action)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
