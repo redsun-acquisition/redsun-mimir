@@ -76,18 +76,19 @@ class StreamAction(Action):
     toggle_states: tuple[str, str] = ("start", "stop")
 
 
-def _setup_acquisition(
+def _prepare_and_kickoff(
     detectors: Sequence[ReadableFlyer | MedianDevice],
     trigger_info: TriggerInfo,
     stream_name: str,
     *,
     collect: bool = True,
     declare: bool = True,
-    stage: bool = True,
 ) -> MsgGenerator[None]:
-    """Stage (optionally), prepare, optionally declare stream, and kickoff detectors."""
-    if stage:
-        yield from bps.stage_all(*detectors)
+    """Prepare, optionally declare stream, and kickoff detectors.
+
+    Staging is the caller's responsibility so that multiple device
+    groups can be staged together in one ``stage_all`` call.
+    """
     for det in detectors:
         yield from bps.prepare(det, trigger_info, wait=True)
     if declare:
@@ -95,12 +96,13 @@ def _setup_acquisition(
     yield from bps.kickoff_all(*detectors, wait=True)
 
 
-def _enable_writing(
+def _set_writing(
     detectors: Sequence[ReadableFlyer | MedianDevice],
+    enabled: bool,
 ) -> MsgGenerator[None]:
-    """Set ``write_sig=True`` on all detectors."""
+    """Set ``write_sig`` on all detectors to *enabled*."""
     for det in detectors:
-        yield from bps.abs_set(det.write_sig, True, wait=True)
+        yield from bps.abs_set(det.write_sig, enabled, wait=True)
 
 
 def _teardown_acquisition(
@@ -334,22 +336,19 @@ class AcquisitionPresenter(Presenter, Loggable):
         while True:
             # live view
             prepare_info = TriggerInfo(number_of_events=stream_frames)
-
             yield from bps.stage_all(*all_detectors)
-            yield from _setup_acquisition(
+            yield from _prepare_and_kickoff(
                 detectors,
                 prepare_info,
                 live_stream,
                 declare=not live_stream_declared,
-                stage=False,
             )
             live_stream_declared = True
-            yield from _setup_acquisition(
+            yield from _prepare_and_kickoff(
                 median_detectors,
                 median_info,
                 median_stream,
                 declare=not median_stream_declared,
-                stage=False,
             )
             median_stream_declared = True
 
@@ -371,9 +370,8 @@ class AcquisitionPresenter(Presenter, Loggable):
                 )
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
-                # flip write_sig — pump starts writing from next frame
-                yield from _enable_writing(detectors)
-                yield from _enable_writing(median_detectors)
+                yield from _set_writing(detectors, True)
+                yield from _set_writing(median_detectors, True)
                 yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.collect(*median_detectors, name=median_stream)
@@ -486,8 +484,8 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         yield from bps.open_run()
         if write_forever:
-            # single acquisition for the whole plan - write_sig toggles writing
-            yield from _setup_acquisition(
+            yield from bps.stage_all(*detectors)
+            yield from _prepare_and_kickoff(
                 detectors,
                 TriggerInfo(number_of_events=0),
                 stream_name,
@@ -497,30 +495,29 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.action_map, wait_for="set"
                 )
                 self.logger.debug("Start writing")
-                yield from _enable_writing(detectors)
+                yield from _set_writing(detectors, True)
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="reset"
                 )
-                for det in detectors:
-                    yield from bps.abs_set(det.write_sig, False, wait=True)
+                yield from _set_writing(detectors, False)
                 self.logger.debug("Writing complete")
                 self.clear_and_notify(name, current_action)
         else:
             # bounded: one zarr per stream action
             while True:
-                yield from _setup_acquisition(
+                yield from bps.stage_all(*detectors)
+                yield from _prepare_and_kickoff(
                     detectors,
                     TriggerInfo(number_of_events=frames),
                     stream_name,
                     declare=not streams_declared,
                 )
                 streams_declared = True
-
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="set"
                 )
                 self.logger.debug("Start writing")
-                yield from _enable_writing(detectors)
+                yield from _set_writing(detectors, True)
                 yield from _teardown_acquisition(detectors, stream_name)
                 self.logger.debug("Writing complete")
                 self.clear_and_notify(name, current_action)
