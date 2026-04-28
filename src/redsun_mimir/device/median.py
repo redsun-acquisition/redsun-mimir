@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ophyd_async.core import StandardDetector, TriggerInfo, soft_signal_rw
+from redsun.storage import SourceInfo
 
 from redsun_mimir.device._common import BaseArmLogic, BaseDataLogic, BaseTriggerLogic
 from redsun_mimir.device.signals import writeable_buffer_signal
@@ -21,6 +22,16 @@ if TYPE_CHECKING:
 @dataclass
 class MedianTriggerLogic(BaseTriggerLogic):
     """Trigger logic for the median device."""
+
+    async def prepare_internal(
+        self, num: int, livetime: float, deadtime: float
+    ) -> None:
+        """Prepare the writer to accept only one frame - the median."""
+        shape, np_dtype = await self._get_shape_and_dtype()
+        self.writer.register(
+            self.datakey_name,
+            SourceInfo(dtype_numpy=np_dtype, shape=shape, capacity=1),  # always 1
+        )
 
     async def default_trigger_info(self) -> TriggerInfo:
         """Return default trigger info for the median device."""
