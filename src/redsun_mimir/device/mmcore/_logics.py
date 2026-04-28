@@ -49,7 +49,9 @@ class MMArmLogic(BaseArmLogic):
                     frame_cnt = await self.writer.get_counter(
                         self.datakey_name
                     ).get_value()
-                    self.logger.debug(f"Frame count updated {frame_cnt}")
+                    self.logger.debug(
+                        f"Frame count updated for {self.datakey_name}: {frame_cnt}"
+                    )
 
 
 class MMDataLogic(BaseDataLogic): ...
