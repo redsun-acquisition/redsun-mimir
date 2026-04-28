@@ -41,6 +41,8 @@ if TYPE_CHECKING:
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
 
+    from redsun_mimir.device.median import MedianDevice
+
 
 @dataclass
 class ScanAction(Action):
@@ -282,19 +284,23 @@ class AcquisitionPresenter(Presenter, Loggable):
         prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         buffers = [det.buffer for det in detectors]
+        all_detectors: list[MedianFlyer | MedianDevice] = [
+            *detectors,
+            *[det.median for det in detectors],
+        ]
 
         yield from bps.open_run()
 
         while True:
             # live view
-            yield from bps.stage_all(*detectors)
-            for det in detectors:
+            yield from bps.stage_all(*all_detectors)
+            for det in all_detectors:
                 yield from bps.prepare(det, prepare_info, wait=True)
             if not live_stream_declared:
                 # declare the stream on first loop iteration
-                yield from bps.declare_stream(*detectors, name=live_stream)
+                yield from bps.declare_stream(*all_detectors, name=live_stream)
                 live_stream_declared = True
-            yield from bps.kickoff_all(*detectors, wait=True)
+            yield from bps.kickoff_all(*all_detectors, wait=True)
 
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
@@ -317,9 +323,10 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # flip write_sig — pump starts writing from next frame
                 for det in detectors:
                     yield from bps.abs_set(det.write_sig, True, wait=True)
-                yield from bps.complete_all(*detectors, wait=True)
-                yield from bps.collect(*detectors)
-                yield from bps.unstage_all(*detectors)
+                    yield from bps.abs_set(det.median.write_sig, True, wait=True)
+                yield from bps.complete_all(*all_detectors, wait=True)
+                yield from bps.collect(*all_detectors)
+                yield from bps.unstage_all(*all_detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
 
