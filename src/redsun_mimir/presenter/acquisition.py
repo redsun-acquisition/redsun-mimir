@@ -338,6 +338,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
+                yield from bps.collect(*median_detectors, name=median_stream)
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
                 yield from bps.declare_stream(
