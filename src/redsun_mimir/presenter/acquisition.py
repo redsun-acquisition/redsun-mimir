@@ -275,7 +275,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         - ``TypeError``
             - If `motor` does not expose ``x`` and ``y`` axes.
         """
-        if ["x", "y"] != list(motor.axis.keys()):
+        if ["x", "y"] not in list(motor.axis.keys()):
             self.logger.error(
                 "Motor does not have the required 'x' and 'y' axes. "
                 f"Found axes: {list(motor.axis.keys())}"
