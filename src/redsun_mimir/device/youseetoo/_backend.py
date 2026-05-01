@@ -192,6 +192,7 @@ class UC2LaserSignalBackend(SignalBackend[int]):
         )
         value = await self.get()
         metadata = make_metadata(self.datatype, units=self.units)
+        metadata["units"] = "mW"
         metadata["limits"] = {"control": {"low": self.range[0], "high": self.range[1]}}
         return make_datakey(self.datatype, value, source, metadata)
 
