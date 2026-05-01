@@ -318,6 +318,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 median_info,
                 median_stream,
                 declare=not median_stream_declared,
+                collect=False,
             )
             median_stream_declared = True
 
@@ -339,6 +340,9 @@ class AcquisitionPresenter(Presenter, Loggable):
                 )
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
+                yield from bps.declare_stream(
+                    *median_detectors, name=median_stream, collect=True
+                )
                 yield from _set_writing(detectors, True)
                 yield from _set_writing(median_detectors, True)
                 yield from bps.complete_all(*all_detectors, wait=True)
