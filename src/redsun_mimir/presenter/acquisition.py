@@ -292,6 +292,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         live_stream = "live_stream"
         median_stream = "median_stream"
         median_info = TriggerInfo(number_of_events=1)
+        live_prepare_info = TriggerInfo(number_of_events=0)
+        stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
 
         buffers = [det.buffer for det in detectors]
         median_detectors = [det.median for det in detectors]
@@ -304,7 +306,6 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             # live view: unbounded so the pump runs until an action fires
-            live_prepare_info = TriggerInfo(number_of_events=0)
             yield from bps.stage_all(*all_detectors)
             yield from _prepare_and_kickoff(
                 detectors,
@@ -339,8 +340,8 @@ class AcquisitionPresenter(Presenter, Loggable):
                     axis,
                 )
                 yield from bps.collect(*median_detectors, name=median_stream)
-                yield from bps.complete_all(*all_detectors, wait=True)
-                yield from bps.unstage(*all_detectors)
+                yield from bps.complete_all(*detectors, wait=True)
+                yield from bps.unstage_all(*all_detectors)
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
                 yield from bps.declare_stream(
@@ -348,6 +349,21 @@ class AcquisitionPresenter(Presenter, Loggable):
                 )
                 yield from _set_writing(detectors, True)
                 yield from _set_writing(median_detectors, True)
+                yield from bps.unstage_all(*all_detectors)
+                yield from bps.stage_all(*all_detectors)
+                yield from _prepare_and_kickoff(
+                    detectors,
+                    stream_prepare_info,
+                    live_stream,
+                    declare=not live_stream_declared,
+                )
+                yield from _prepare_and_kickoff(
+                    median_detectors,
+                    median_info,
+                    median_stream,
+                    declare=not median_stream_declared,
+                    collect=False,
+                )
                 yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.collect(*median_detectors, name=median_stream)
