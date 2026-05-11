@@ -63,8 +63,8 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.core.clearROI()
 
         # for simplicity, hardcode
-        # the default exposure time to 50 ms
-        self.core.setExposure(50.0)
+        # the default exposure time to 100 ms
+        self.core.setExposure(100.0)
         self.exposure = mm_exposure_signal(self.core, name)
         self.roi = mm_roi_signal(self.core, name)
         self.pixel_dtype = pixel_dtype
@@ -107,8 +107,6 @@ class MMDemoCamera(MMBaseCameraDevice):
         # numpy to adapter dtype mapping
         pixel_dtype: dict[str, str] = {
             "uint8": "8bit",
-            "uint16": "16bit",
-            "uint32": "32bit",
         }
         self.core = CMMCorePlus.instance()
         self.pixel_dtype = mm_property_signal(
@@ -122,6 +120,7 @@ class MMDemoCamera(MMBaseCameraDevice):
             adapter_info=adapter_info,
             writer=writer,
         )
+        self.core.setProperty(name, "PixelType", "8bit")
 
         self.median = MedianDevice(
             parent_name=name,
@@ -139,7 +138,6 @@ class MMDahengCamera(MMBaseCameraDevice):
         # numpy to adapter dtype mapping
         pixel_dtype: dict[str, str] = {
             "uint8": "Mono8",
-            "uint16": "Mono10",
         }
         self.core = CMMCorePlus.instance()
         self.pixel_dtype = mm_property_signal(
@@ -153,6 +151,7 @@ class MMDahengCamera(MMBaseCameraDevice):
             adapter_info=adapter_info,
             writer=writer,
         )
+        self.core.setProperty(name, "PixelType", "Mono8")
 
         self.median = MedianDevice(
             parent_name=name,

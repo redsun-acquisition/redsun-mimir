@@ -1,4 +1,4 @@
-from ._camera import MMDemoCamera, MMDahengCamera
+from ._camera import MMDahengCamera, MMDemoCamera
 from ._stage import MMDemoXYStage, MMDemoZStage
 
 __all__ = [
