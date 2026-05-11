@@ -347,8 +347,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.declare_stream(
                     *median_detectors, name=median_stream, collect=True
                 )
-                yield from _set_writing(detectors, True)
-                yield from _set_writing(median_detectors, True)
                 yield from bps.unstage_all(*all_detectors)
                 yield from bps.stage_all(*all_detectors)
                 yield from _prepare_and_kickoff(
@@ -364,10 +362,11 @@ class AcquisitionPresenter(Presenter, Loggable):
                     declare=not median_stream_declared,
                     collect=False,
                 )
+                yield from _set_writing(detectors, True)
+                yield from _set_writing(median_detectors, True)
                 yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.collect(*median_detectors, name=median_stream)
-                yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.unstage_all(*all_detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)
