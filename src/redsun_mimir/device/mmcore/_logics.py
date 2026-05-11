@@ -36,9 +36,12 @@ class MMArmLogic(BaseArmLogic):
         capacity = self.writer.sources[self.datakey_name].capacity
         frame_cnt = 0
         write_forever = capacity == 0
+        sleep_cnt = 0
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
+                sleep_cnt += 1
+                self.logger.debug("Waiting for new frame... (attempt %d)", sleep_cnt)
             img = self.core.popNextImage()
             self.set_buffer(img)
             if await self.write_sig.get_value():
