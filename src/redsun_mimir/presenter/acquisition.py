@@ -293,7 +293,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         median_stream = "median_stream"
         median_info = TriggerInfo(number_of_events=1)
 
-        buffers = [det.buffer for det in detectors]
         median_detectors = [det.median for det in detectors]
         all_detectors: list[MedianFlyer | MedianDevice] = [
             *detectors,
@@ -303,12 +302,12 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
 
         while True:
-            # live view
-            prepare_info = TriggerInfo(number_of_events=stream_frames)
+            # live view: unbounded so the pump runs until an action fires
+            live_prepare_info = TriggerInfo(number_of_events=0)
             yield from bps.stage_all(*all_detectors)
             yield from _prepare_and_kickoff(
                 detectors,
-                prepare_info,
+                live_prepare_info,
                 live_stream,
                 declare=not live_stream_declared,
             )
@@ -328,7 +327,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if name == scan_action.name:
                 if not scan_stream_declared:
-                    yield from bps.declare_stream(*buffers, name=scan_stream)
+                    yield from bps.declare_stream(*detectors, name=scan_stream)
                     scan_stream_declared = True
                 yield from self.square_scan(
                     scan_stream,
@@ -349,6 +348,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.collect(*median_detectors, name=median_stream)
+                yield from bps.complete_all(*all_detectors, wait=True)
                 yield from bps.unstage_all(*all_detectors)
                 self.logger.debug("Writing complete")
             self.clear_and_notify(name, event)

@@ -176,7 +176,9 @@ class UC2LaserDevice(StandardReadable, Loggable):
             await self.intensity.set(self._current_intensity)
         await self.enabled.set(not enabled)
 
-    async def shutdown(self) -> None: ...
+    async def shutdown(self) -> None:
+        await self.intensity.set(0)
+        await self.enabled.set(False)
 
 
 class UC2MotorDevice(StandardReadable, Loggable):
