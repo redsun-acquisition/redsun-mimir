@@ -139,7 +139,7 @@ class MMDahengCamera(MMBaseCameraDevice):
         # numpy to adapter dtype mapping
         pixel_dtype: dict[str, str] = {
             "uint8": "Mono8",
-            "uint16": "Mono16",
+            "uint16": "Mono10",
         }
         self.core = CMMCorePlus.instance()
         self.pixel_dtype = mm_property_signal(
