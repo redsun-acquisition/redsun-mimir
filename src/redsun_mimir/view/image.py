@@ -175,7 +175,7 @@ class ImageView(QtView, Loggable):
         for name, reading in data.items():
             name = name.removesuffix("-buffer")
             img = reading["value"]
-            self.logger.debug(f"New frame ({name})")
+            # self.logger.debug(f"New frame ({name})")
             if name not in self.viewer_model.layers:
                 self.logger.debug(f"Adding new layer for {name}")
                 self.viewer_model.add_image(img, name=name)

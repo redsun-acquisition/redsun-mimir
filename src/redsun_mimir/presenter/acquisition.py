@@ -293,6 +293,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         median_stream = "median_stream"
         median_info = TriggerInfo(number_of_events=1)
 
+        buffers = [det.buffer for det in detectors]
         median_detectors = [det.median for det in detectors]
         all_detectors: list[MedianFlyer | MedianDevice] = [
             *detectors,
@@ -327,7 +328,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if name == scan_action.name:
                 if not scan_stream_declared:
-                    yield from bps.declare_stream(*detectors, name=scan_stream)
+                    yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
                 yield from self.square_scan(
                     scan_stream,
@@ -338,6 +339,8 @@ class AcquisitionPresenter(Presenter, Loggable):
                     axis,
                 )
                 yield from bps.collect(*median_detectors, name=median_stream)
+                yield from bps.complete_all(*all_detectors, wait=True)
+                yield from bps.unstage(*all_detectors)
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
                 yield from bps.declare_stream(
