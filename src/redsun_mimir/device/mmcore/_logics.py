@@ -23,25 +23,16 @@ class MMArmLogic(BaseArmLogic):
     core: Core
     set_buffer: Callable[[Array2D], None]
 
-    async def _start_acquisition(self) -> None:
-        self.core.startContinuousSequenceAcquisition()
-
-    async def _stop_acquisition(self) -> None:
-        if self.core.isSequenceRunning():
-            self.core.stopSequenceAcquisition()
-
     async def _pump(self) -> None:
         exposure_ms = self.core.getExposure()
         sleep_s = exposure_ms / 1000.0
+        self.core.startContinuousSequenceAcquisition()
         capacity = self.writer.sources[self.datakey_name].capacity
         frame_cnt = 0
         write_forever = capacity == 0
-        sleep_cnt = 0
         while not self._stop_event.is_set():
             while self.core.getRemainingImageCount() < 1:
                 await asyncio.sleep(sleep_s)
-                sleep_cnt += 1
-                self.logger.debug("Waiting for new frame... (attempt %d)", sleep_cnt)
             img = self.core.popNextImage()
             self.set_buffer(img)
             if await self.write_sig.get_value():

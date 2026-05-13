@@ -69,19 +69,21 @@ class BaseArmLogic(DetectorArmLogic, Loggable):
 
     _pump_task: asyncio.Task[None] | None = field(default=None, init=False)
     _stop_event: asyncio.Event = field(init=False)
+    _idle_event: asyncio.Event = field(init=False)
 
     def __post_init__(self) -> None:
-        async def _make_event() -> asyncio.Event:
-            return asyncio.Event()
+        async def _make_event() -> tuple[asyncio.Event, asyncio.Event]:
+            return asyncio.Event(), asyncio.Event()
 
-        self._stop_event = run_coro(_make_event())
+        self._stop_event, self._idle_event = run_coro(_make_event())
 
     async def arm(self) -> None:
-        await self._start_acquisition()
         self._stop_event.clear()
+        self._idle_event.clear()
         self._pump_task = asyncio.create_task(self._pump())
 
-    async def wait_for_idle(self) -> None: ...
+    async def wait_for_idle(self) -> None:
+        await self._idle_event.wait()
 
     async def disarm(self, on_unstage: bool) -> None:
         if not self._stop_event.is_set():
@@ -89,18 +91,11 @@ class BaseArmLogic(DetectorArmLogic, Loggable):
         if self._pump_task is not None:
             await self._pump_task
             self._pump_task = None
-        await self._stop_acquisition()
         await self.write_sig.set(False)
         if self.writer.is_open:
             self.writer.unregister(self.datakey_name)
             if len(self.writer.sources) == 0:
                 self.writer.close(reset_path=on_unstage)
-
-    @abc.abstractmethod
-    async def _start_acquisition(self) -> None: ...
-
-    @abc.abstractmethod
-    async def _stop_acquisition(self) -> None: ...
 
     @abc.abstractmethod
     async def _pump(self) -> None: ...
