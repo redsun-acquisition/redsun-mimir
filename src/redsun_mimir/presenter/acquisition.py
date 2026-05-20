@@ -237,7 +237,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         scan_action: Action = ScanAction(),
         stream_action: Action = StreamAction(togglable=False),
     ) -> MsgGenerator[None]:
-        """Perform live data collection with median filtering.
+        """Perform live data collection with temporal median filtering.
 
         When starting the plan, detectors will start emitting acquired frames at their live-view rates.
         If the "scan" action is triggered from the UI, the plan will perform a square motor movement
@@ -276,37 +276,34 @@ class AcquisitionPresenter(Presenter, Loggable):
             - If `motor` does not expose ``x`` and ``y`` axes.
         """
         if not {"x", "y"}.issubset(motor.axis.keys()):
-            self.logger.error(
-                "Motor does not have the required 'x' and 'y' axes. "
-                f"Found axes: {list(motor.axis.keys())}"
-            )
             raise TypeError(
                 "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
         axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.action_map.update(**scan_action.event_map, **stream_action.event_map)
-        live_stream_declared = False
-        scan_stream_declared = False
-        median_stream_declared = False
+
         scan_stream = "scan"
         live_stream = "live_stream"
         median_stream = "median_stream"
-        median_info = TriggerInfo(number_of_events=1)
         live_prepare_info = TriggerInfo(number_of_events=0)
         stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
+        median_info = TriggerInfo(number_of_events=1)
 
         buffers = [det.buffer for det in detectors]
         median_detectors = [det.median for det in detectors]
-        all_detectors: list[MedianFlyer | MedianDevice] = [
-            *detectors,
-            *median_detectors,
-        ]
+
+        live_stream_declared = False
+        scan_stream_declared = False
+        median_stream_declared = False
 
         yield from bps.open_run()
 
         while True:
-            # live view: unbounded so the pump runs until an action fires
-            yield from bps.stage_all(*all_detectors)
+            # - live phase
+            # Only the main detectors are staged and kicked off here.
+            # MedianDevice is intentionally excluded: buffer_ready is not set yet
+            # and there is nothing for the median pump to consume.
+            yield from bps.stage_all(*detectors)
             yield from _prepare_and_kickoff(
                 detectors,
                 live_prepare_info,
@@ -314,23 +311,18 @@ class AcquisitionPresenter(Presenter, Loggable):
                 declare=not live_stream_declared,
             )
             live_stream_declared = True
-            yield from _prepare_and_kickoff(
-                median_detectors,
-                median_info,
-                median_stream,
-                declare=not median_stream_declared,
-                collect=False,
-            )
-            median_stream_declared = True
 
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
 
             if name == scan_action.name:
+                # scan branch
+                # Collect scan frames, compute median, then write the median frame.
                 if not scan_stream_declared:
                     yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
+
                 yield from self.square_scan(
                     scan_stream,
                     detectors,
@@ -339,36 +331,51 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
-                yield from bps.collect(*median_detectors, name=median_stream)
+
+                # Stop the live camera stream before writing the median.
                 yield from bps.complete_all(*detectors, wait=True)
-                yield from bps.unstage_all(*all_detectors)
-            elif name == stream_action.name:
-                self.logger.debug("Start writing")
-                yield from bps.declare_stream(
-                    *median_detectors, name=median_stream, collect=True
+                yield from bps.collect(*detectors, name=live_stream)
+                yield from bps.unstage_all(*detectors)
+
+                # Now stage and kick off the median device — buffer_ready is set
+                # by square_scan so the pump will find a frame immediately.
+                yield from bps.stage_all(*median_detectors)
+                yield from _set_writing(median_detectors, True)
+                yield from _prepare_and_kickoff(
+                    median_detectors,
+                    median_info,
+                    median_stream,
+                    declare=not median_stream_declared,
+                    collect=True,
                 )
-                yield from bps.unstage_all(*all_detectors)
-                yield from bps.stage_all(*all_detectors)
+                median_stream_declared = True
+                yield from bps.complete_all(*median_detectors, wait=True)
+                yield from bps.collect(*median_detectors, name=median_stream)
+                yield from bps.unstage_all(*median_detectors)
+
+            elif name == stream_action.name:
+                # - stream branch
+                # Write stream_frames camera frames to disk.
+                # MedianDevice is not involved here.
+                self.logger.debug("Start writing")
+                yield from bps.complete_all(*detectors, wait=True)
+                yield from bps.collect(*detectors, name=live_stream)
+                yield from bps.unstage_all(*detectors)
+
+                yield from bps.stage_all(*detectors)
+                yield from _set_writing(detectors, True)
                 yield from _prepare_and_kickoff(
                     detectors,
                     stream_prepare_info,
                     live_stream,
                     declare=not live_stream_declared,
                 )
-                yield from _prepare_and_kickoff(
-                    median_detectors,
-                    median_info,
-                    median_stream,
-                    declare=not median_stream_declared,
-                    collect=False,
-                )
-                yield from _set_writing(detectors, True)
-                yield from _set_writing(median_detectors, True)
-                yield from bps.complete_all(*all_detectors, wait=True)
+                yield from bps.complete_all(*detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
-                yield from bps.collect(*median_detectors, name=median_stream)
-                yield from bps.unstage_all(*all_detectors)
+                yield from bps.unstage_all(*detectors)
+                yield from _set_writing(detectors, False)
                 self.logger.debug("Writing complete")
+
             self.clear_and_notify(name, event)
 
     def square_scan(

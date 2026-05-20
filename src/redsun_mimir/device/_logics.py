@@ -66,24 +66,27 @@ class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
     _pump_task: asyncio.Task[None] | None = field(default=None, init=False)
     _arm_event: asyncio.Event = field(init=False)
     _disarm_event: asyncio.Event = field(init=False)
+    _idle_event: asyncio.Event = field(init=False)
 
     def __post_init__(self) -> None:
-        async def _make_event() -> tuple[asyncio.Event, asyncio.Event]:
-            return asyncio.Event(), asyncio.Event()
+        async def _make_event() -> tuple[asyncio.Event, asyncio.Event, asyncio.Event]:
+            return asyncio.Event(), asyncio.Event(), asyncio.Event()
 
-        self._arm_event, self._disarm_event = run_coro(_make_event())
+        self._arm_event, self._disarm_event, self._idle_event = run_coro(_make_event())
 
     async def ensure_ready(self) -> None:
         await super().ensure_ready()
         self._arm_event.clear()
         self._disarm_event.clear()
+        self._idle_event.clear()
         self._pump_task = asyncio.create_task(self._pump())
 
     async def start_acquiring(self) -> None:
         self._arm_event.set()
 
     async def wait_for_idle(self) -> None:
-        # TODO: what to put here?
+        # TODO: idle event should be waited here,
+        # but i'm not sure if the event is even needed
         ...
 
     async def ensure_stopped(self) -> None:
