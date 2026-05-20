@@ -125,7 +125,6 @@ class MedianDevice(StandardDetector):
             buffer=self.buffer,
             queue=queue,
             buffer_ready=self.buffer_ready,
-            write_sig=self.write_sig,
         )
         data_logic = MedianDataLogic(
             writer=self.writer,

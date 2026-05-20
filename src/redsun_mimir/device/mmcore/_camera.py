@@ -92,11 +92,15 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         acquire_logic = MMAcquireLogic(
             core=self.core,
             set_buffer=setter,
-            write_sig=self.write_sig,
             queue=queue,
         )
 
-        data_logic = MMDataLogic(writer=self.writer, path_provider=get_path_provider())
+        data_logic = MMDataLogic(
+            writer=self.writer,
+            write_sig=self.write_sig,
+            queue=queue,
+            path_provider=get_path_provider(),
+        )
 
         logics: list[MMTriggerLogic | MMAcquireLogic | MMDataLogic] = [
             trigger_logic,

@@ -63,8 +63,6 @@ class BaseTriggerLogic(DetectorTriggerLogic):
 
 @dataclass
 class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
-    write_sig: SignalRW[bool]
-
     _pump_task: asyncio.Task[None] | None = field(default=None, init=False)
     _arm_event: asyncio.Event = field(init=False)
     _disarm_event: asyncio.Event = field(init=False)

@@ -45,6 +45,7 @@ class MMAcquireLogic(BaseAcquireLogic):
         self.core.stopSequenceAcquisition()
 
 
+@dataclass
 class MMDataLogic(BaseDataLogic):
     write_sig: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
