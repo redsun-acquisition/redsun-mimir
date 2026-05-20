@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from redsun.log import Loggable
+
 from redsun_mimir.device._logics import (
     BaseAcquireLogic,
     BaseDataLogic,
@@ -46,7 +48,7 @@ class MMAcquireLogic(BaseAcquireLogic):
 
 
 @dataclass
-class MMDataLogic(BaseDataLogic):
+class MMDataLogic(BaseDataLogic, Loggable):
     write_sig: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
 
@@ -64,6 +66,7 @@ class MMDataLogic(BaseDataLogic):
                     if write_forever or frame_cnt < capacity:
                         self.writer.write(datakey_name, img)
                         frame_cnt += 1
+                        self.logger.debug(f"Frame {frame_cnt} written to disk.")
                     else:
                         # capacity reached, regardless of the
                         # value of close event, exit

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from ophyd_async.core import StandardDetector, TriggerInfo, soft_signal_rw
 from redsun.aio import run_coro
+from redsun.log import Loggable
 from redsun.storage import SourceInfo
 
 from redsun_mimir.device._logics import (
@@ -64,7 +65,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
 
 
 @dataclass
-class MedianDataLogic(BaseDataLogic):
+class MedianDataLogic(BaseDataLogic, Loggable):
     """Data logic for the median device.
 
     Write a single frame to disk.
@@ -81,6 +82,7 @@ class MedianDataLogic(BaseDataLogic):
                 if not self.writer.is_open:
                     self.writer.open()
                 self.writer.write(datakey_name, img)
+                self.logger.debug("Median written to disk.")
         except asyncio.CancelledError:
             ...
         finally:
