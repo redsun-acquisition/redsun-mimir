@@ -75,7 +75,7 @@ class StreamAction(Action):
     toggle_states: tuple[str, str] = ("start", "stop")
 
 
-def _prepare_and_kickoff(
+def prepare_and_kickoff(
     detectors: Sequence[ReadableFlyer | MedianDevice],
     trigger_info: TriggerInfo,
     stream_name: str,
@@ -95,7 +95,7 @@ def _prepare_and_kickoff(
     yield from bps.kickoff_all(*detectors, wait=True)
 
 
-def _set_writing(
+def set_writing(
     detectors: Sequence[ReadableFlyer | MedianDevice],
     enabled: bool,
 ) -> MsgGenerator[None]:
@@ -104,8 +104,8 @@ def _set_writing(
         yield from bps.abs_set(det.write_sig, enabled, wait=True)
 
 
-def _teardown_acquisition(
-    detectors: Sequence[ReadableFlyer],
+def teardown_acquisition(
+    detectors: Sequence[ReadableFlyer | MedianDevice],
     stream_name: str,
 ) -> MsgGenerator[None]:
     """Complete, collect, and unstage detectors."""
@@ -306,7 +306,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             # MedianDevice is intentionally excluded: buffer_ready is not set yet
             # and there is nothing for the median pump to consume.
             yield from bps.stage_all(*detectors)
-            yield from _prepare_and_kickoff(
+            yield from prepare_and_kickoff(
                 detectors,
                 live_prepare_info,
                 live_stream,
@@ -334,10 +334,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
-
-                yield from bps.complete_all(*detectors, wait=True)
-                yield from bps.collect(*detectors, name=live_stream)
-                yield from bps.unstage_all(*detectors)
+                yield from teardown_acquisition(detectors, live_stream)
 
             elif name == stream_action.name:
                 # stream branch
@@ -345,27 +342,23 @@ class AcquisitionPresenter(Presenter, Loggable):
                 # If a scan was previously performed (buffer_ready is set),
                 # also write the median frame to disk.
                 self.logger.debug("Start writing")
-                yield from bps.complete_all(*detectors, wait=True)
-                yield from bps.collect(*detectors, name=live_stream)
-                yield from bps.unstage_all(*detectors)
+                yield from teardown_acquisition(detectors, live_stream)
 
                 yield from bps.stage_all(*detectors)
-                yield from _set_writing(detectors, True)
-                yield from _prepare_and_kickoff(
+                yield from set_writing(detectors, True)
+                yield from prepare_and_kickoff(
                     detectors,
                     stream_prepare_info,
                     live_stream,
                     declare=not live_stream_declared,
                 )
-                yield from bps.complete_all(*detectors, wait=True)
-                yield from bps.collect(*detectors, name=live_stream)
-                yield from bps.unstage_all(*detectors)
-                yield from _set_writing(detectors, False)
+                yield from teardown_acquisition(detectors, live_stream)
+                yield from set_writing(detectors, False)
 
                 if medians_ready:
                     yield from bps.stage_all(*median_detectors)
-                    yield from _set_writing(median_detectors, True)
-                    yield from _prepare_and_kickoff(
+                    yield from set_writing(median_detectors, True)
+                    yield from prepare_and_kickoff(
                         median_detectors,
                         median_info,
                         median_stream,
@@ -373,9 +366,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                         collect=True,
                     )
                     median_stream_declared = True
-                    yield from bps.complete_all(*median_detectors, wait=True)
-                    yield from bps.collect(*median_detectors, name=median_stream)
-                    yield from bps.unstage_all(*median_detectors)
+                    yield from teardown_acquisition(median_detectors, median_stream)
 
                 self.logger.debug("Writing complete")
 
@@ -488,7 +479,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
         if write_forever:
             yield from bps.stage_all(*detectors)
-            yield from _prepare_and_kickoff(
+            yield from prepare_and_kickoff(
                 detectors,
                 TriggerInfo(number_of_events=0),
                 stream_name,
@@ -498,18 +489,18 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.action_map, wait_for="set"
                 )
                 self.logger.debug("Start writing")
-                yield from _set_writing(detectors, True)
+                yield from set_writing(detectors, True)
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="reset"
                 )
-                yield from _set_writing(detectors, False)
+                yield from set_writing(detectors, False)
                 self.logger.debug("Writing complete")
                 self.clear_and_notify(name, current_action)
         else:
             # bounded: one zarr per stream action
             while True:
                 yield from bps.stage_all(*detectors)
-                yield from _prepare_and_kickoff(
+                yield from prepare_and_kickoff(
                     detectors,
                     TriggerInfo(number_of_events=frames),
                     stream_name,
@@ -520,8 +511,8 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.action_map, wait_for="set"
                 )
                 self.logger.debug("Start writing")
-                yield from _set_writing(detectors, True)
-                yield from _teardown_acquisition(detectors, stream_name)
+                yield from set_writing(detectors, True)
+                yield from teardown_acquisition(detectors, stream_name)
                 self.logger.debug("Writing complete")
                 self.clear_and_notify(name, current_action)
 
