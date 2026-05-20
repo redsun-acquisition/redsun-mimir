@@ -22,7 +22,7 @@ from ._backend import (
     mm_roi_signal,
 )
 from ._common import MMAdapterInfo
-from ._logics import MMArmLogic, MMDataLogic, MMTriggerLogic
+from ._logics import MMAcquireLogic, MMDataLogic, MMTriggerLogic
 
 if TYPE_CHECKING:
     from ophyd_async.core import SignalRW
@@ -83,12 +83,13 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             dtype=pixel_dtype,
         )
 
-        async def _make_queue() -> asyncio.Queue[Array2D]:
-            return asyncio.Queue(maxsize=1)
+        async def _make_queue(size: int) -> asyncio.Queue[Array2D]:
+            return asyncio.Queue(maxsize=size)
 
-        queue = run_coro(_make_queue())
+        # TODO: make the queue size configurable
+        queue = run_coro(_make_queue(100))
 
-        arm_logic = MMArmLogic(
+        acquire_logic = MMAcquireLogic(
             core=self.core,
             set_buffer=setter,
             write_sig=self.write_sig,
@@ -97,9 +98,9 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
 
         data_logic = MMDataLogic(writer=self.writer, path_provider=get_path_provider())
 
-        logics: list[MMTriggerLogic | MMArmLogic | MMDataLogic] = [
+        logics: list[MMTriggerLogic | MMAcquireLogic | MMDataLogic] = [
             trigger_logic,
-            arm_logic,
+            acquire_logic,
             data_logic,
         ]
 

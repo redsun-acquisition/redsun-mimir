@@ -63,6 +63,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
             ...
 
 
+@dataclass
 class MedianDataLogic(BaseDataLogic):
     """Data logic for the median device.
 
@@ -120,8 +121,7 @@ class MedianDevice(StandardDetector):
             roi=roi_sig,
             dtype=dtype_sig,
         )
-        arm_logic = MedianAcquireLogic(
-            datakey_name=name,
+        acquire_logic = MedianAcquireLogic(
             buffer=self.buffer,
             queue=queue,
             buffer_ready=self.buffer_ready,
@@ -130,7 +130,9 @@ class MedianDevice(StandardDetector):
         data_logic = MedianDataLogic(
             writer=self.writer,
             path_provider=path_provider,
+            write_sig=self.write_sig,
+            queue=queue,
         )
 
-        self.add_detector_logics(trigger_logic, arm_logic, data_logic)
+        self.add_detector_logics(trigger_logic, acquire_logic, data_logic)
         super().__init__(name)

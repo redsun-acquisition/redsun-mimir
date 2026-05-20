@@ -24,7 +24,7 @@ class MMTriggerLogic(BaseTriggerLogic): ...
 
 
 @dataclass
-class MMArmLogic(BaseAcquireLogic):
+class MMAcquireLogic(BaseAcquireLogic):
     core: Core
     set_buffer: Callable[[Array2D], None]
     queue: asyncio.Queue[Array2D]
@@ -60,7 +60,6 @@ class MMDataLogic(BaseDataLogic):
                 if await self.write_sig.get_value():
                     if not self.writer.is_open:
                         self.writer.open()
-                    self.writer.write(datakey_name, img)
                     if write_forever or frame_cnt < capacity:
                         self.writer.write(datakey_name, img)
                         frame_cnt += 1
