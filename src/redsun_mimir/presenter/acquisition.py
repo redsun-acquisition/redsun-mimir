@@ -246,7 +246,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         end of the run.
 
         If the "stream" action is triggered, the plan will fly the detectors to disk for
-        ``stream_frames`` frames.
+        ``stream_frames`` frames. If a scan was previously performed, the computed median
+        frame will also be written to disk.
 
         Parameters
         ----------
@@ -256,7 +257,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         - motor: ``XYMotor``
             - The motor to use for the scan movement.
             - Must expose ``x`` and ``y`` as
-              [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
+            [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
         - step: ``float``, optional
             - The step size for motor movement. Default is 1.0.
             - The measurement unit is determined by the motor in use.
@@ -295,11 +296,12 @@ class AcquisitionPresenter(Presenter, Loggable):
         live_stream_declared = False
         scan_stream_declared = False
         median_stream_declared = False
+        medians_ready = False
 
         yield from bps.open_run()
 
         while True:
-            # - live phase
+            # live phase
             # Only the main detectors are staged and kicked off here.
             # MedianDevice is intentionally excluded: buffer_ready is not set yet
             # and there is nothing for the median pump to consume.
@@ -318,12 +320,13 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             if name == scan_action.name:
                 # scan branch
-                # Collect scan frames, compute median, then write the median frame.
+                # Collect scan frames and compute the median for live flat-field
+                # correction display. Nothing is written to disk here.
                 if not scan_stream_declared:
                     yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
 
-                yield from self.square_scan(
+                medians_ready = yield from self.square_scan(
                     scan_stream,
                     detectors,
                     motor,
@@ -332,31 +335,15 @@ class AcquisitionPresenter(Presenter, Loggable):
                     axis,
                 )
 
-                # Stop the live camera stream before writing the median.
                 yield from bps.complete_all(*detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.unstage_all(*detectors)
 
-                # Now stage and kick off the median device — buffer_ready is set
-                # by square_scan so the pump will find a frame immediately.
-                yield from bps.stage_all(*median_detectors)
-                yield from _set_writing(median_detectors, True)
-                yield from _prepare_and_kickoff(
-                    median_detectors,
-                    median_info,
-                    median_stream,
-                    declare=not median_stream_declared,
-                    collect=True,
-                )
-                median_stream_declared = True
-                yield from bps.complete_all(*median_detectors, wait=True)
-                yield from bps.collect(*median_detectors, name=median_stream)
-                yield from bps.unstage_all(*median_detectors)
-
             elif name == stream_action.name:
-                # - stream branch
+                # stream branch
                 # Write stream_frames camera frames to disk.
-                # MedianDevice is not involved here.
+                # If a scan was previously performed (buffer_ready is set),
+                # also write the median frame to disk.
                 self.logger.debug("Start writing")
                 yield from bps.complete_all(*detectors, wait=True)
                 yield from bps.collect(*detectors, name=live_stream)
@@ -374,6 +361,22 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.collect(*detectors, name=live_stream)
                 yield from bps.unstage_all(*detectors)
                 yield from _set_writing(detectors, False)
+
+                if medians_ready:
+                    yield from bps.stage_all(*median_detectors)
+                    yield from _set_writing(median_detectors, True)
+                    yield from _prepare_and_kickoff(
+                        median_detectors,
+                        median_info,
+                        median_stream,
+                        declare=not median_stream_declared,
+                        collect=True,
+                    )
+                    median_stream_declared = True
+                    yield from bps.complete_all(*median_detectors, wait=True)
+                    yield from bps.collect(*median_detectors, name=median_stream)
+                    yield from bps.unstage_all(*median_detectors)
+
                 self.logger.debug("Writing complete")
 
             self.clear_and_notify(name, event)
@@ -386,7 +389,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         step: float,
         frames_per_side: int,
         axis: tuple[str, str],
-    ) -> MsgGenerator[None]:
+    ) -> MsgGenerator[bool]:
         """Perform a square scan movement with the specified motor and detectors.
 
         Performs a square scan by moving the motor in a square pattern; before
@@ -445,6 +448,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 f"Median computed for '{det.name}': "
                 f"{len(det_frames)} frames, shape {median_frame.shape}"
             )
+        return True
 
     @continous(togglable=True)
     def live_stream(
