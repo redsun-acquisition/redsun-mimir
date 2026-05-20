@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ophyd_async.core import SignalR, SignalRW, SoftSignalBackend
 
-from redsun_mimir.device._common import DEFAULT_TIMEOUT
+from redsun_mimir.device._logics import DEFAULT_TIMEOUT
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -7,7 +7,7 @@ import msgspec
 from ophyd_async.core import SignalBackend, SignalRW, make_datakey
 from ophyd_async.core._signal_backend import make_metadata
 
-from redsun_mimir.device._common import DEFAULT_TIMEOUT
+from redsun_mimir.device._logics import DEFAULT_TIMEOUT
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ophyd_async.core import Callback
     from serial import Serial
 
-    from redsun_mimir.device._common import AxisType
+    from redsun_mimir.device._logics import AxisType
 
 NM_TO_NM: Final[int] = 1
 UM_TO_NM: Final[int] = 1_000

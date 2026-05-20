@@ -12,7 +12,7 @@ from ophyd_async.core import (
 )
 from ophyd_async.core._signal_backend import make_metadata
 
-from redsun_mimir.device._common import DEFAULT_TIMEOUT
+from redsun_mimir.device._logics import DEFAULT_TIMEOUT
 from redsun_mimir.protocols import ROIType
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ophyd_async.core import Callback
     from pymmcore_plus import CMMCorePlus as Core
 
-    from redsun_mimir.device._common import AxisType
+    from redsun_mimir.device._logics import AxisType
 
 PropT = TypeVar("PropT", bound=int | float | str)
 

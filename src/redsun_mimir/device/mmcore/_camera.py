@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from ophyd_async.core import (
@@ -7,6 +8,7 @@ from ophyd_async.core import (
     soft_signal_rw,
 )
 from pymmcore_plus import CMMCorePlus
+from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.storage import create_writer
 
@@ -24,6 +26,8 @@ from ._logics import MMArmLogic, MMDataLogic, MMTriggerLogic
 
 if TYPE_CHECKING:
     from ophyd_async.core import SignalRW
+
+    from redsun_mimir.protocols import Array2D
 
 
 class MMBaseCameraDevice(StandardDetector, Loggable):
@@ -79,12 +83,16 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             dtype=pixel_dtype,
         )
 
+        async def _make_queue() -> asyncio.Queue[Array2D]:
+            return asyncio.Queue(maxsize=1)
+
+        queue = run_coro(_make_queue())
+
         arm_logic = MMArmLogic(
-            datakey_name=name,
             core=self.core,
-            writer=self.writer,
             set_buffer=setter,
             write_sig=self.write_sig,
+            queue=queue,
         )
 
         data_logic = MMDataLogic(writer=self.writer, path_provider=get_path_provider())
