@@ -524,6 +524,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 self.logger.debug("Start writing")
                 yield from set_writing(detectors, True)
                 yield from teardown_acquisition(detectors, stream_name)
+                yield from set_writing(detectors, False)
                 self.logger.debug("Writing complete")
                 self.clear_and_notify(name, current_action)
 
