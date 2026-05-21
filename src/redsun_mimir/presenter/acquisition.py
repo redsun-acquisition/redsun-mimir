@@ -400,7 +400,14 @@ class AcquisitionPresenter(Presenter, Loggable):
             The number of frames to collect for each side of the square.
         axis : tuple[str, str]
             The order of motor movement axes (e.g. ``("x", "y")``).
+
+        Returns
+        -------
+        bool
+            Always returns True to indicate the median frames are ready.
         """
+        # TODO: handle the case of failure in motor movement or detector gracefully;
+        # probably best to wrap any exception in try-except and return false.
         frames: dict[str, list[npt.NDArray[Any]]] = {}
         for idx in range(2):
             axis_device = motor.axis[axis[idx]]
@@ -426,6 +433,10 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.mvr(axis_device, -step)
                 yield from bps.sleep(0.05)
 
+        # TODO: this should be handled by a dedicated presenter;
+        # the median stack should be accumulated in a pseudo device and stored
+        # in raw form on disk; it currently requires some rethinking so
+        # for now we keep it as it is otherwise we'll never finish
         for det in detectors:
             buf_name = det.buffer.name  # e.g. "camera-buffer"
             det_frames = frames.get(buf_name, [])
@@ -473,48 +484,38 @@ class AcquisitionPresenter(Presenter, Loggable):
             Default is False (only `frames` number of images will be streamed).
         """
         stream_name = "live_stream"
-        streams_declared = False
+        stream_declared = False
         self.action_map.update(stream_action.event_map)
 
         yield from bps.open_run()
-        if write_forever:
+        while True:
             yield from bps.stage_all(*detectors)
             yield from prepare_and_kickoff(
                 detectors,
-                TriggerInfo(number_of_events=0),
+                TriggerInfo(number_of_events=0 if write_forever else frames),
                 stream_name,
+                declare=not stream_declared,
             )
-            while True:
-                name, current_action = yield from rps.wait_for_actions(
-                    self.action_map, wait_for="set"
-                )
-                self.logger.debug("Start writing")
-                yield from set_writing(detectors, True)
+            stream_declared = True
+
+            name, current_action = yield from rps.wait_for_actions(
+                self.action_map, wait_for="set"
+            )
+            self.logger.debug("Start writing")
+            yield from set_writing(detectors, True)
+
+            if write_forever:
+                # Unbounded: flight runs until the user toggles the action off.
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="reset"
                 )
-                yield from set_writing(detectors, False)
-                self.logger.debug("Writing complete")
-                self.clear_and_notify(name, current_action)
-        else:
-            # bounded: one zarr per stream action
-            while True:
-                yield from bps.stage_all(*detectors)
-                yield from prepare_and_kickoff(
-                    detectors,
-                    TriggerInfo(number_of_events=frames),
-                    stream_name,
-                    declare=not streams_declared,
-                )
-                streams_declared = True
-                name, current_action = yield from rps.wait_for_actions(
-                    self.action_map, wait_for="set"
-                )
-                self.logger.debug("Start writing")
-                yield from set_writing(detectors, True)
-                yield from teardown_acquisition(detectors, stream_name)
-                self.logger.debug("Writing complete")
-                self.clear_and_notify(name, current_action)
+
+            # Bounded: the flight self-completes after `frames` events;
+            # no need to wait for the latch reset.
+            yield from set_writing(detectors, False)
+            yield from teardown_acquisition(detectors, stream_name)
+            self.logger.debug("Writing complete")
+            self.clear_and_notify(name, current_action)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
