@@ -486,13 +486,14 @@ class AcquisitionPresenter(Presenter, Loggable):
         stream_name = "live_stream"
         stream_declared = False
         self.action_map.update(stream_action.event_map)
+        prepare_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
         while True:
             yield from bps.stage_all(*detectors)
             yield from prepare_and_kickoff(
                 detectors,
-                TriggerInfo(number_of_events=0 if write_forever else frames),
+                prepare_info,
                 stream_name,
                 declare=not stream_declared,
             )
