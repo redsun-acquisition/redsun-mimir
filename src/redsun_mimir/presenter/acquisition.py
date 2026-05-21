@@ -484,39 +484,48 @@ class AcquisitionPresenter(Presenter, Loggable):
             Default is False (only `frames` number of images will be streamed).
         """
         stream_name = "live_stream"
-        stream_declared = False
+        streams_declared = False
         self.action_map.update(stream_action.event_map)
-        prepare_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         yield from bps.open_run()
-        while True:
+        if write_forever:
             yield from bps.stage_all(*detectors)
             yield from prepare_and_kickoff(
                 detectors,
-                prepare_info,
+                TriggerInfo(number_of_events=0),
                 stream_name,
-                declare=not stream_declared,
             )
-            stream_declared = True
-
-            name, current_action = yield from rps.wait_for_actions(
-                self.action_map, wait_for="set"
-            )
-            self.logger.debug("Start writing")
-            yield from set_writing(detectors, True)
-
-            if write_forever:
-                # Unbounded: flight runs until the user toggles the action off.
+            while True:
+                name, current_action = yield from rps.wait_for_actions(
+                    self.action_map, wait_for="set"
+                )
+                self.logger.debug("Start writing")
+                yield from set_writing(detectors, True)
                 name, current_action = yield from rps.wait_for_actions(
                     self.action_map, wait_for="reset"
                 )
-
-            # Bounded: the flight self-completes after `frames` events;
-            # no need to wait for the latch reset.
-            yield from set_writing(detectors, False)
-            yield from teardown_acquisition(detectors, stream_name)
-            self.logger.debug("Writing complete")
-            self.clear_and_notify(name, current_action)
+                yield from set_writing(detectors, False)
+                self.logger.debug("Writing complete")
+                self.clear_and_notify(name, current_action)
+        else:
+            # bounded: one zarr per stream action
+            while True:
+                yield from bps.stage_all(*detectors)
+                yield from prepare_and_kickoff(
+                    detectors,
+                    TriggerInfo(number_of_events=frames),
+                    stream_name,
+                    declare=not streams_declared,
+                )
+                streams_declared = True
+                name, current_action = yield from rps.wait_for_actions(
+                    self.action_map, wait_for="set"
+                )
+                self.logger.debug("Start writing")
+                yield from set_writing(detectors, True)
+                yield from teardown_acquisition(detectors, stream_name)
+                self.logger.debug("Writing complete")
+                self.clear_and_notify(name, current_action)
 
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
         """Launch the specified plan.
