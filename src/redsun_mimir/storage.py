@@ -146,7 +146,6 @@ class SessionPathProvider(PathProvider):
 
         padded = f"{current:0{self._max_digits}}"
         stem = f"{plan_segment}_{padded}"
-        plan_segment = self.plan if self.plan is not None else "default"
         directory = self._base_dir / self._session / plan_segment / self._date
         directory.mkdir(parents=True, exist_ok=True)
         self._counters[bucket] = current + 1
