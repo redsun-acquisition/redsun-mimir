@@ -87,8 +87,7 @@ class MedianDataLogic(BaseDataLogic, Loggable):
             ...
         finally:
             self.writer.unregister(datakey_name)
-            if len(self.writer.sources) == 0 and self.writer.is_open:
-                self.writer.close()
+            self.close_writer_if_idle()
 
 
 class MedianDevice(StandardDetector):

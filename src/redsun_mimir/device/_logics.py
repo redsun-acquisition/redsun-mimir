@@ -21,7 +21,7 @@ from redsun.storage import SourceInfo
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ophyd_async.core import PathInfo, PathProvider, SignalRW
+    from ophyd_async.core import PathProvider, SignalRW
     from ophyd_async.core._data_providers import StreamableDataProvider
     from redsun.storage import DataWriter
 
@@ -112,12 +112,11 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
         self._drain_ready_event = run_coro(_make_event())
         self._store_path = ""
-        self.path_info: PathInfo
 
     def close_writer_if_idle(self) -> None:
         """Close the writer if all datakeys have been unregistered."""
-        if len(self.writer.sources) == 0 and self.writer.is_path_set():
-            self.writer.close()
+        if len(self.writer.sources) == 0 and self.writer.is_open:
+            self.writer.close(reset_path=True)
             self._store_path = ""
 
     def get_store_path(self) -> str:
@@ -139,9 +138,9 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         extension = self.writer.file_extension
         if not self.writer.is_path_set():
             # resolve the path if not set
-            self.path_info = self.path_provider(datakey_name)
-            write_path = self.path_info.directory_path / ".".join(
-                [self.path_info.filename, extension]
+            path_info = self.path_provider(datakey_name)
+            write_path = path_info.directory_path / ".".join(
+                [path_info.filename, extension]
             )
             self.writer.set_store_path(write_path)
             self._store_path = str(write_path)
@@ -171,9 +170,8 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         )
 
         sig = self.writer.get_counter(datakey_name)
-        uri = f"{self.path_info.directory_path}{self.path_info.filename}.{self.writer.file_extension}"
         return StreamResourceDataProvider(
-            uri=uri,
+            uri=self._store_path,
             resources=[data_resource],
             mimetype=self.writer.mimetype,
             collections_written_signal=sig,
