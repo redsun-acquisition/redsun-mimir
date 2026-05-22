@@ -139,7 +139,7 @@ class MMDemoCamera(MMBaseCameraDevice):
             parent_name=name,
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
-            writer=create_writer(writer),
+            writer=self.writer,
             path_provider=get_path_provider(),
         )
 
@@ -170,6 +170,6 @@ class MMDahengCamera(MMBaseCameraDevice):
             parent_name=name,
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
-            writer=create_writer(writer),
+            writer=self.writer,
             path_provider=get_path_provider(),
         )
