@@ -21,7 +21,7 @@ from redsun.storage import SourceInfo
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ophyd_async.core import PathProvider, SignalRW
+    from ophyd_async.core import PathInfo, PathProvider, SignalRW
     from ophyd_async.core._data_providers import StreamableDataProvider
     from redsun.storage import DataWriter
 
@@ -111,19 +111,44 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
             return asyncio.Event()
 
         self._drain_ready_event = run_coro(_make_event())
+        self._store_path = ""
+        self.path_info: PathInfo
+
+    def close_writer_if_idle(self) -> None:
+        """Close the writer if all datakeys have been unregistered."""
+        if len(self.writer.sources) == 0 and self.writer.is_path_set():
+            self.writer.close()
+            self._store_path = ""
+
+    def get_store_path(self) -> str:
+        """Get the current store path of the writer.
+
+        Returns
+        -------
+            str: The current DataWriter store path.
+        """
+        path = self.writer.get_store_path()
+        if path is None:
+            raise RuntimeError("Writer path is not set.")
+        return str(path)
 
     def get_hinted_fields(self, datakey_name: str) -> Sequence[str]:
         return [datakey_name]
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
-        path_info = self.path_provider(datakey_name)
         extension = self.writer.file_extension
         if not self.writer.is_path_set():
-            write_path = path_info.directory_path / ".".join(
-                [path_info.filename, extension]
+            # resolve the path if not set
+            self.path_info = self.path_provider(datakey_name)
+            write_path = self.path_info.directory_path / ".".join(
+                [self.path_info.filename, extension]
             )
             self.writer.set_store_path(write_path)
+            self._store_path = str(write_path)
             self.logger.debug(f"Writer path set to {write_path}")
+        else:
+            # reuse the existing path
+            self._store_path = self.get_store_path()
 
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity
@@ -145,12 +170,10 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
             parameters={},
         )
 
-        # TODO: this seems to be used primarely for
-        # HDF5 files; maybe a custom provider could be
-        # implemented for Zarr
         sig = self.writer.get_counter(datakey_name)
+        uri = f"{self.path_info.directory_path}{self.path_info.filename}.{self.writer.file_extension}"
         return StreamResourceDataProvider(
-            uri=f"{path_info.directory_path}{path_info.filename}.{extension}",
+            uri=uri,
             resources=[data_resource],
             mimetype=self.writer.mimetype,
             collections_written_signal=sig,
