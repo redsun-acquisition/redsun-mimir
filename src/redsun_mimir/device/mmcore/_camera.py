@@ -64,6 +64,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
         self.core.initializeDevice(name)
         self.core.setCameraDevice(name)
         self.writer = create_writer(writer)
+        self.path_provider = get_path_provider()
         self.core.clearROI()
 
         # for simplicity, hardcode
@@ -99,7 +100,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             writer=self.writer,
             write_sig=self.write_sig,
             queue=queue,
-            path_provider=get_path_provider(),
+            path_provider=self.path_provider,
         )
 
         logics: list[MMTriggerLogic | MMAcquireLogic | MMDataLogic] = [
@@ -140,7 +141,7 @@ class MMDemoCamera(MMBaseCameraDevice):
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
             writer=self.writer,
-            path_provider=get_path_provider(),
+            path_provider=self.path_provider,
         )
 
 
@@ -171,5 +172,5 @@ class MMDahengCamera(MMBaseCameraDevice):
             roi_sig=self.roi,
             dtype_sig=self.pixel_dtype,
             writer=self.writer,
-            path_provider=get_path_provider(),
+            path_provider=self.path_provider,
         )
