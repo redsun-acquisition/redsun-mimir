@@ -20,14 +20,6 @@ if TYPE_CHECKING:
 class SessionPathProvider(PathProvider):
     """Session-scoped path provider with per-key auto-increment counters.
 
-    Produces paths of the form::
-
-        <base_dir>/<session>/<YYYY_MM_DD>/<key>[_<group>]_<counter>
-
-    The date segment is fixed at construction time so that a session
-    started just before midnight does not split its files across two
-    date directories.
-
     Parameters
     ----------
     base_dir : Path | None
@@ -138,8 +130,12 @@ class SessionPathProvider(PathProvider):
             Full path rooted at
             ``<base_dir>/<session>/<YYYY_MM_DD>/<key>[_<group>]_<counter>``.
         """
-        resolved_key = datakey or "default"
-        bucket = resolved_key
+        plan_segment = self.plan if self.plan is not None else "default"
+        # Counter is keyed by plan, not datakey: all datakeys written during
+        # the same plan run share one store, so the counter must advance once
+        # per run (i.e. once per prepare_unbounded on the primary logic) and
+        # the filename must reflect the plan rather than a specific datakey.
+        bucket = plan_segment
         current = self._counters.get(bucket, 0)
 
         if len(str(current)) > self._max_digits:
@@ -149,7 +145,7 @@ class SessionPathProvider(PathProvider):
             )
 
         padded = f"{current:0{self._max_digits}}"
-        stem = f"{resolved_key}_{padded}"
+        stem = f"{plan_segment}_{padded}"
         plan_segment = self.plan if self.plan is not None else "default"
         directory = self._base_dir / self._session / plan_segment / self._date
         directory.mkdir(parents=True, exist_ok=True)
