@@ -511,6 +511,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             # bounded: one zarr per stream action
             while True:
                 yield from bps.stage_all(*detectors)
+                yield from set_writing(detectors, True)
                 yield from prepare_and_kickoff(
                     detectors,
                     TriggerInfo(number_of_events=frames),
@@ -522,7 +523,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                     self.action_map, wait_for="set"
                 )
                 self.logger.debug("Start writing")
-                yield from set_writing(detectors, True)
                 yield from teardown_acquisition(detectors, stream_name)
                 yield from set_writing(detectors, False)
                 self.logger.debug("Writing complete")
