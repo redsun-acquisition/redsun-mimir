@@ -76,6 +76,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
 
         self.buffer, setter = readable_buffer_signal(self.roi, self.pixel_dtype)
         self.write_sig = soft_signal_rw(bool, initial_value=False)
+        self.store_path_sig = soft_signal_rw(str, initial_value="")
 
         trigger_logic = MMTriggerLogic(
             datakey_name=name,
@@ -101,6 +102,7 @@ class MMBaseCameraDevice(StandardDetector, Loggable):
             write_sig=self.write_sig,
             queue=queue,
             path_provider=self.path_provider,
+            store_path_sig=self.store_path_sig,
         )
 
         logics: list[MMTriggerLogic | MMAcquireLogic | MMDataLogic] = [
@@ -142,6 +144,7 @@ class MMDemoCamera(MMBaseCameraDevice):
             dtype_sig=self.pixel_dtype,
             writer=self.writer,
             path_provider=self.path_provider,
+            store_path_sig=self.store_path_sig,
         )
 
 
@@ -173,4 +176,5 @@ class MMDahengCamera(MMBaseCameraDevice):
             dtype_sig=self.pixel_dtype,
             writer=self.writer,
             path_provider=self.path_provider,
+            store_path_sig=self.store_path_sig,
         )

@@ -113,23 +113,18 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         self._drain_ready_event = run_coro(_make_event())
         self._store_path = ""
 
-    def close_writer_if_idle(self, wrote: bool = False) -> None:
+    def close_writer_if_idle(self, reset_path: bool) -> None:
         """Close the writer if all datakeys have been unregistered.
 
         Parameters
         ----------
-        wrote : bool
-            Whether this drain actually wrote data to the store.  Only when
-            ``True`` is the store path reset so the next prepare cycle
-            allocates a fresh store.  Live-phase drains that never open the
-            writer pass ``False``, leaving the path intact so it can be
-            reused by the median prepare that follows in the same write cycle.
-
-            Default is ``False``.
+        reset_path : bool
+            If True, also reset the store path of the writer. Should only be True
+            if the current logic is responsible for setting the store path.
         """
         if len(self.writer.sources) == 0 and self.writer.is_open:
-            self.writer.close(reset_path=wrote)
-            if wrote:
+            self.writer.close(reset_path=reset_path)
+            if reset_path:
                 self._store_path = ""
 
     def get_store_path(self) -> str:

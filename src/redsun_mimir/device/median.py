@@ -80,13 +80,21 @@ class MedianDataLogic(BaseDataLogic, Loggable):
 
     write_sig: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
+    store_path_sig: SignalRW[str]
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         """Prepare the data provider for the median device.
 
         Always act as secondary: read the store path from the shared writer.
         """
-        self._store_path = self.get_store_path()
+        store_path = await self.store_path_sig.get_value()
+        if not store_path:
+            raise RuntimeError(
+                "store_path_sig is empty — ensure the camera write phase "
+                "ran before preparing the median."
+            )
+        self._store_path = store_path
+
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity
         dtype_numpy = np.dtype(self.writer.sources[datakey_name].dtype_numpy).str
@@ -121,7 +129,6 @@ class MedianDataLogic(BaseDataLogic, Loggable):
             ...
         finally:
             self.writer.unregister(datakey_name)
-            self.close_writer_if_idle()
 
 
 class MedianDevice(StandardDetector):
@@ -136,6 +143,7 @@ class MedianDevice(StandardDetector):
         parent_name: str,
         roi_sig: SignalRW[ROIType],
         dtype_sig: SignalRW[str],
+        store_path_sig: SignalRW[str],
         writer: DataWriter,
         path_provider: PathProvider,
     ) -> None:
@@ -165,6 +173,7 @@ class MedianDevice(StandardDetector):
             writer=self.writer,
             path_provider=path_provider,
             write_sig=self.write_sig,
+            store_path_sig=store_path_sig,
             queue=queue,
         )
 

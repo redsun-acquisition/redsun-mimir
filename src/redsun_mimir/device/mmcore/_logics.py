@@ -15,7 +15,7 @@ from redsun_mimir.device._logics import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ophyd_async.core import SignalRW
+    from ophyd_async.core import SignalRW, StreamableDataProvider
     from pymmcore_plus import CMMCorePlus as Core
 
     from redsun_mimir.protocols import Array2D
@@ -51,6 +51,12 @@ class MMAcquireLogic(BaseAcquireLogic):
 class MMDataLogic(BaseDataLogic, Loggable):
     write_sig: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
+    store_path_sig: SignalRW[str]
+
+    async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
+        provider = await super().prepare_unbounded(datakey_name)
+        await self.store_path_sig.set(self.get_store_path())
+        return provider
 
     async def _drain(self, datakey_name: str) -> None:
         capacity = self.writer.sources[datakey_name].capacity
@@ -74,6 +80,5 @@ class MMDataLogic(BaseDataLogic, Loggable):
         except asyncio.CancelledError:
             ...
         finally:
-            wrote = self.writer.is_open
             self.writer.unregister(datakey_name)
-            self.close_writer_if_idle(wrote=wrote)
+            self.close_writer_if_idle(reset_path=True)
