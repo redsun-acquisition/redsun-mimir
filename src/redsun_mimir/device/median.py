@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -94,6 +95,7 @@ class MedianDataLogic(BaseDataLogic, Loggable):
                 "ran before preparing the median."
             )
         self._store_path = store_path
+        self.writer.set_store_path(PurePath(store_path))
 
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity
