@@ -113,10 +113,24 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         self._drain_ready_event = run_coro(_make_event())
         self._store_path = ""
 
-    def close_writer_if_idle(self) -> None:
-        """Close the writer if all datakeys have been unregistered."""
+    def close_writer_if_idle(self, wrote: bool = False) -> None:
+        """Close the writer if all datakeys have been unregistered.
+
+        Parameters
+        ----------
+        wrote : bool
+            Whether this drain actually wrote data to the store.  Only when
+            ``True`` is the store path reset so the next prepare cycle
+            allocates a fresh store.  Live-phase drains that never open the
+            writer pass ``False``, leaving the path intact so it can be
+            reused by the median prepare that follows in the same write cycle.
+
+            Default is ``False``.
+        """
         if len(self.writer.sources) == 0 and self.writer.is_open:
-            self.writer.close(reset_path=False)
+            self.writer.close(reset_path=wrote)
+            if wrote:
+                self._store_path = ""
 
     def get_store_path(self) -> str:
         """Get the current store path of the writer.
@@ -135,13 +149,16 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         extension = self.writer.file_extension
-        path_info = self.path_provider(datakey_name)
-        write_path = path_info.directory_path / ".".join(
-            [path_info.filename, extension]
-        )
-        self.writer.set_store_path(write_path)
-        self._store_path = str(write_path)
-        self.logger.debug(f"Writer path set to {write_path}")
+        if not self.writer.is_path_set():
+            path_info = self.path_provider(datakey_name)
+            write_path = path_info.directory_path / ".".join(
+                [path_info.filename, extension]
+            )
+            self.writer.set_store_path(write_path)
+            self._store_path = str(write_path)
+            self.logger.debug(f"Writer path set to {write_path}")
+        else:
+            self._store_path = self.get_store_path()
 
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity

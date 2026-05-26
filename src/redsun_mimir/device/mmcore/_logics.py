@@ -74,5 +74,6 @@ class MMDataLogic(BaseDataLogic, Loggable):
         except asyncio.CancelledError:
             ...
         finally:
+            wrote = self.writer.is_open
             self.writer.unregister(datakey_name)
-            self.close_writer_if_idle()
+            self.close_writer_if_idle(wrote=wrote)
