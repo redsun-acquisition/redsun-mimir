@@ -55,7 +55,7 @@ class MMDataLogic(BaseDataLogic, Loggable):
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         provider = await super().prepare_unbounded(datakey_name)
-        await self.store_path_sig.set(self.get_store_path())
+        await self.store_path_sig.set(self._store_path)
         return provider
 
     async def _drain(self, datakey_name: str) -> None:
