@@ -53,6 +53,9 @@ class MMDataLogic(BaseDataLogic, Loggable):
     queue: asyncio.Queue[Array2D]
     store_path_sig: SignalRW[str]
 
+    async def should_allocate_path(self) -> bool:
+        return await self.write_sig.get_value()  # type: ignore
+
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         provider = await super().prepare_unbounded(datakey_name)
         await self.store_path_sig.set(self._store_path)
@@ -69,7 +72,6 @@ class MMDataLogic(BaseDataLogic, Loggable):
                 if await self.write_sig.get_value():
                     if not self.writer.is_open:
                         self.writer.open()
-                        self._did_open = True
                     if write_forever or frame_cnt < capacity:
                         self.writer.write(datakey_name, img)
                         frame_cnt += 1

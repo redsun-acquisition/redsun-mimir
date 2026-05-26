@@ -105,7 +105,6 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
     _drain_task: asyncio.Task[None] | None = field(default=None, init=False)
     _drain_ready_event: asyncio.Event = field(init=False)
-    _did_open: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         async def _make_event() -> asyncio.Event:
@@ -134,16 +133,21 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
     def get_hinted_fields(self, datakey_name: str) -> Sequence[str]:
         return [datakey_name]
 
+    async def should_allocate_path(self) -> bool:
+        """Return True if prepare_unbounded should call path_provider."""
+        return True
+
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         extension = self.writer.file_extension
         if not self.writer.is_path_set():
-            path_info = self.path_provider(datakey_name)
-            write_path = path_info.directory_path / ".".join(
-                [path_info.filename, extension]
-            )
-            self.writer.set_store_path(write_path)
-            self._store_path = str(write_path)
-            self.logger.debug(f"Writer path set to {write_path}")
+            if await self.should_allocate_path():
+                path_info = self.path_provider(datakey_name)
+                write_path = path_info.directory_path / ".".join(
+                    [path_info.filename, extension]
+                )
+                self.writer.set_store_path(write_path)
+                self._store_path = str(write_path)
+                self.logger.debug(f"Writer path set to {write_path}")
         else:
             self._store_path = self.get_store_path()
 
@@ -179,10 +183,9 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         if self._drain_task is not None:
             self._drain_task.cancel()
             await self._drain_task
-        if self._did_open:
+        if self.writer.is_path_set() and not self.writer.is_open:
             self.writer.reset_store_path()
             self._store_path = ""
-            self._did_open = False
 
     @abc.abstractmethod
     async def _drain(self, datakey_name: str) -> None: ...
