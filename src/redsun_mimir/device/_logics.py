@@ -116,8 +116,7 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
     def close_writer_if_idle(self) -> None:
         """Close the writer if all datakeys have been unregistered."""
         if len(self.writer.sources) == 0 and self.writer.is_open:
-            self.writer.close(reset_path=True)
-            self._store_path = ""
+            self.writer.close(reset_path=False)
 
     def get_store_path(self) -> str:
         """Get the current store path of the writer.
@@ -136,18 +135,13 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         extension = self.writer.file_extension
-        if not self.writer.is_path_set():
-            # resolve the path if not set
-            path_info = self.path_provider(datakey_name)
-            write_path = path_info.directory_path / ".".join(
-                [path_info.filename, extension]
-            )
-            self.writer.set_store_path(write_path)
-            self._store_path = str(write_path)
-            self.logger.debug(f"Writer path set to {write_path}")
-        else:
-            # reuse the existing path
-            self._store_path = self.get_store_path()
+        path_info = self.path_provider(datakey_name)
+        write_path = path_info.directory_path / ".".join(
+            [path_info.filename, extension]
+        )
+        self.writer.set_store_path(write_path)
+        self._store_path = str(write_path)
+        self.logger.debug(f"Writer path set to {write_path}")
 
         shape = self.writer.sources[datakey_name].shape
         capacity = self.writer.sources[datakey_name].capacity
