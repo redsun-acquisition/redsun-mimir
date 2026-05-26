@@ -301,9 +301,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
 
         while True:
-            # live phase
-            # Only the main detectors are staged and kicked off here.
-            # MedianDevice is intentionally excluded: buffer_ready is not set yet
+            # ── live phase ───────────────────────────────────────────────────
+            # Camera only: median excluded because buffer_ready is not set yet
             # and there is nothing for the median pump to consume.
             yield from bps.stage_all(*detectors)
             yield from prepare_and_kickoff(
@@ -317,11 +316,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
+            yield from teardown_acquisition(detectors, live_stream)
 
             if name == scan_action.name:
-                # scan branch
-                # Collect scan frames and compute the median for live flat-field
-                # correction display. Nothing is written to disk here.
+                # ── scan branch ──────────────────────────────────────────────
+                # Collect frames and compute the median. Nothing written to disk.
                 if not scan_stream_declared:
                     yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
@@ -334,39 +333,43 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
-                yield from teardown_acquisition(detectors, live_stream)
 
             elif name == stream_action.name:
-                # stream branch
-                # Write stream_frames camera frames to disk.
-                # If a scan was previously performed (buffer_ready is set),
-                # also write the median frame to disk.
+                # ── stream branch ────────────────────────────────────────────
+                # Camera and median are staged and prepared together so they
+                # share the same Zarr store and lifecycle.
+                # Median writes only if medians_ready; otherwise its drain is
+                # silent (write_sig=False).
                 self.logger.debug("Start writing")
-                yield from teardown_acquisition(detectors, live_stream)
 
-                yield from bps.stage_all(*detectors)
                 yield from set_writing(detectors, True)
+                if medians_ready:
+                    yield from set_writing(median_detectors, True)
+
+                yield from bps.stage_all(*detectors, *median_detectors)
+
                 yield from prepare_and_kickoff(
                     detectors,
                     stream_prepare_info,
                     live_stream,
                     declare=not live_stream_declared,
                 )
-                yield from teardown_acquisition(detectors, live_stream)
-                yield from set_writing(detectors, False)
+                yield from prepare_and_kickoff(
+                    median_detectors,
+                    median_info,
+                    median_stream,
+                    declare=not median_stream_declared,
+                    collect=True,
+                )
+                median_stream_declared = True
 
-                if medians_ready:
-                    yield from bps.stage_all(*median_detectors)
-                    yield from set_writing(median_detectors, True)
-                    yield from prepare_and_kickoff(
-                        median_detectors,
-                        median_info,
-                        median_stream,
-                        declare=not median_stream_declared,
-                        collect=True,
-                    )
-                    median_stream_declared = True
-                    yield from teardown_acquisition(median_detectors, median_stream)
+                # Complete median first (its single frame depends on the camera
+                # buffer), then complete the camera.
+                yield from teardown_acquisition(median_detectors, median_stream)
+                yield from teardown_acquisition(detectors, live_stream)
+
+                yield from set_writing(detectors, False)
+                yield from set_writing(median_detectors, False)
 
                 self.logger.debug("Writing complete")
 
