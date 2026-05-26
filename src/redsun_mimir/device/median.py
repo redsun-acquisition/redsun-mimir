@@ -83,6 +83,10 @@ class MedianDataLogic(BaseDataLogic, Loggable):
     queue: asyncio.Queue[Array2D]
     store_path_sig: SignalRW[str]
 
+    async def should_allocate_path(self) -> bool:
+        """Return False to defer path allocation to the camera write phase."""
+        return False
+
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
         """Prepare the data provider for the median device.
 
