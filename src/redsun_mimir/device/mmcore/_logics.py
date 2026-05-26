@@ -81,4 +81,4 @@ class MMDataLogic(BaseDataLogic, Loggable):
             ...
         finally:
             self.writer.unregister(datakey_name)
-            self.close_writer_if_idle(reset_path=True)
+            self.close_writer_if_idle()

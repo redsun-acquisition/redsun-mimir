@@ -113,19 +113,10 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         self._drain_ready_event = run_coro(_make_event())
         self._store_path = ""
 
-    def close_writer_if_idle(self, reset_path: bool) -> None:
-        """Close the writer if all datakeys have been unregistered.
-
-        Parameters
-        ----------
-        reset_path : bool
-            If True, also reset the store path of the writer. Should only be True
-            if the current logic is responsible for setting the store path.
-        """
+    def close_writer_if_idle(self) -> None:
+        """Close the writer if all datakeys have been unregistered."""
         if len(self.writer.sources) == 0 and self.writer.is_open:
-            self.writer.close(reset_path=reset_path)
-            if reset_path:
-                self._store_path = ""
+            self.writer.close(reset_path=False)
 
     def get_store_path(self) -> str:
         """Get the current store path of the writer.
@@ -187,6 +178,9 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         if self._drain_task is not None:
             self._drain_task.cancel()
             await self._drain_task
+        if self.writer.is_path_set() and not self.writer.is_open:
+            self.writer.reset_store_path()
+            self._store_path = ""
 
     @abc.abstractmethod
     async def _drain(self, datakey_name: str) -> None: ...

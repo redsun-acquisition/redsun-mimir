@@ -30,8 +30,7 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.6.6",
     "msgspec>=0.21.1",
-    "redsun[zarr]>=0.10.0rc5",
-    "ophyd-async>=0.17a5",
+    "redsun[zarr]>=0.10.0rc6",
 ]
 
 [dependency-groups]
@@ -178,3 +177,6 @@ include = ["src"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/redsun_mimir"]
+
+[tool.uv]
+prerelease = "if-necessary-or-explicit"
