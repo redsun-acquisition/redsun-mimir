@@ -4,7 +4,14 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ophyd_async.core import StandardDetector, TriggerInfo, soft_signal_rw
+import numpy as np
+from ophyd_async.core import (
+    StandardDetector,
+    StreamResourceDataProvider,
+    StreamResourceInfo,
+    TriggerInfo,
+    soft_signal_rw,
+)
 from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.storage import SourceInfo
@@ -17,7 +24,7 @@ from redsun_mimir.device._logics import (
 from redsun_mimir.device.signals import writeable_buffer_signal
 
 if TYPE_CHECKING:
-    from ophyd_async.core import PathProvider, SignalRW
+    from ophyd_async.core import PathProvider, SignalRW, StreamableDataProvider
     from redsun.storage import DataWriter
 
     from redsun_mimir.protocols import Array2D, ROIType
@@ -73,6 +80,33 @@ class MedianDataLogic(BaseDataLogic, Loggable):
 
     write_sig: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
+
+    async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
+        """Prepare the data provider for the median device.
+
+        Always act as secondary: read the store path from the shared writer.
+        """
+        self._store_path = self.get_store_path()
+        shape = self.writer.sources[datakey_name].shape
+        capacity = self.writer.sources[datakey_name].capacity
+        dtype_numpy = np.dtype(self.writer.sources[datakey_name].dtype_numpy).str
+        self._drain_task = asyncio.create_task(self._drain(datakey_name))
+        await self._drain_ready_event.wait()
+        actual_capacity = capacity if capacity > 0 else None
+        data_resource = StreamResourceInfo(
+            data_key=datakey_name,
+            shape=(actual_capacity, *shape),
+            chunk_shape=shape,
+            dtype_numpy=dtype_numpy,
+            parameters={},
+        )
+        sig = self.writer.get_counter(datakey_name)
+        return StreamResourceDataProvider(
+            uri=self._store_path,
+            resources=[data_resource],
+            mimetype=self.writer.mimetype,
+            collections_written_signal=sig,
+        )
 
     async def _drain(self, datakey_name: str) -> None:
         self._drain_ready_event.set()
