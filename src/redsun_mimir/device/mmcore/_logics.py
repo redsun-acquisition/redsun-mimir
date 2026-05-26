@@ -69,6 +69,7 @@ class MMDataLogic(BaseDataLogic, Loggable):
                 if await self.write_sig.get_value():
                     if not self.writer.is_open:
                         self.writer.open()
+                        self._did_open = True
                     if write_forever or frame_cnt < capacity:
                         self.writer.write(datakey_name, img)
                         frame_cnt += 1

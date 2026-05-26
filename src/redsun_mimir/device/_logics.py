@@ -105,6 +105,7 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
     _drain_task: asyncio.Task[None] | None = field(default=None, init=False)
     _drain_ready_event: asyncio.Event = field(init=False)
+    _did_open: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         async def _make_event() -> asyncio.Event:
@@ -178,9 +179,10 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         if self._drain_task is not None:
             self._drain_task.cancel()
             await self._drain_task
-        if self.writer.is_path_set() and not self.writer.is_open:
+        if self._did_open:
             self.writer.reset_store_path()
             self._store_path = ""
+            self._did_open = False
 
     @abc.abstractmethod
     async def _drain(self, datakey_name: str) -> None: ...

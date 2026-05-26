@@ -123,6 +123,7 @@ class MedianDataLogic(BaseDataLogic, Loggable):
             if await self.write_sig.get_value():
                 if not self.writer.is_open:
                     self.writer.open()
+                    self._did_open = True
                 self.writer.write(datakey_name, img)
                 self.logger.debug("Median written to disk.")
         except asyncio.CancelledError:
