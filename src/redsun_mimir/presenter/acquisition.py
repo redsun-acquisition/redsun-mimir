@@ -356,12 +356,19 @@ class AcquisitionPresenter(Presenter, Loggable):
                     )
                     median_stream_declared = True
 
-                # Complete median first (its single frame depends on the camera
-                # buffer), then complete the camera.
+                yield from bps.complete_all(*detectors, wait=True)
                 if medians_ready:
-                    yield from teardown_acquisition(median_detectors, median_stream)
+                    yield from bps.complete_all(*median_detectors, wait=True)
+
+                if medians_ready:
+                    yield from bps.collect(*median_detectors, name=median_stream)
+                yield from bps.collect(*detectors, name=live_stream)
+
+                if medians_ready:
+                    yield from bps.unstage_all(*median_detectors)
                     yield from set_writing(median_detectors, False)
-                yield from teardown_acquisition(detectors, live_stream)
+
+                yield from bps.unstage_all(*detectors)
                 yield from set_writing(detectors, False)
                 restage = True
                 self.logger.debug("Writing complete")

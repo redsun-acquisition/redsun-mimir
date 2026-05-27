@@ -61,10 +61,13 @@ class MedianAcquireLogic(BaseAcquireLogic):
     async def _pump(self) -> None:
         try:
             await self._arm_event.wait()
-            while not await self.buffer_ready.get_value():
-                await asyncio.sleep(0)
-            self.queue.put_nowait(await self.buffer.get_value())
-            await self.buffer_ready.set(False)
+
+            buffer_ready = await self.buffer_ready.get_value()
+            if buffer_ready:
+                # we actually have something to write to disk;
+                # put it in the queue
+                self.queue.put_nowait(await self.buffer.get_value())
+                await self.buffer_ready.set(False)
             await self._disarm_event.wait()
         except asyncio.CancelledError:
             ...
