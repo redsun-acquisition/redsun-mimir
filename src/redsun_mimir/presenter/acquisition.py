@@ -346,6 +346,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
                 yield from set_writing(detectors, True)
                 if medians_ready:
+                    yield from bps.stage_all(*median_detectors)
                     yield from set_writing(median_detectors, True)
                     yield from prepare_and_kickoff(
                         median_detectors,
