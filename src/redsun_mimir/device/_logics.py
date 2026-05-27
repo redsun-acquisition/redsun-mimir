@@ -76,7 +76,7 @@ class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
         await super().ensure_ready()
         self._arm_event.clear()
         self._disarm_event.clear()
-        self._pump_task = asyncio.create_task(self._pump())
+        self._pump_task = asyncio.create_task(self.pump())
 
     async def start_acquiring(self) -> None:
         self._arm_event.set()
@@ -94,7 +94,7 @@ class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
         self._disarm_event.clear()
 
     @abc.abstractmethod
-    async def _pump(self) -> None: ...
+    async def pump(self) -> None: ...
 
 
 @dataclass

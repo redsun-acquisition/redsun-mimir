@@ -46,7 +46,7 @@ class MMAcquireLogic(BaseAcquireLogic):
                 self.queue.sync_put(img)
         self.core.stopSequenceAcquisition()
 
-    async def _pump(self) -> None:
+    async def pump(self) -> None:
         await self._arm_event.wait()
         await asyncio.to_thread(self._acquisition_loop)
 

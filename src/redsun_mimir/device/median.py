@@ -58,7 +58,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
     buffer_ready: SignalRW[bool]
     queue: asyncio.Queue[Array2D]
 
-    async def _pump(self) -> None:
+    async def pump(self) -> None:
         try:
             await self._arm_event.wait()
 
