@@ -181,6 +181,3 @@ class ImageView(QtView, Loggable):
                 self.viewer_model.add_image(img, name=name)
             else:
                 self.viewer_model.layers[name].data = img
-                self.viewer_model.layers[name].reset_contrast_limits()
-                avg = np.mean(img)
-                self.logger.debug("Avg: %.2f", avg)
