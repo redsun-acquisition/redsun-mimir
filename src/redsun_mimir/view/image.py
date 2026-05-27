@@ -112,6 +112,7 @@ class ImageView(QtView, Loggable):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
+        self.seen_layers: set[str] = set()
 
         # Apply napari's stylesheet so icons and theme colours render correctly.
         # Window.__init__ normally does this via _update_theme(); since we bypass
@@ -175,10 +176,11 @@ class ImageView(QtView, Loggable):
         for name, reading in data.items():
             name = name.removesuffix("-buffer")
             img = reading["value"]
-            # self.logger.debug(f"New frame ({name})")
             if name not in self.viewer_model.layers:
                 self.logger.debug(f"Adding new layer for {name}")
                 self.viewer_model.add_image(img, name=name)
             else:
                 self.viewer_model.layers[name].data = img
-            # self.logger.debug("Avg: %.2f", np.mean(img))
+                self.viewer_model.layers[name].reset_contrast_limits()
+                avg = np.mean(img)
+                self.logger.debug("Avg: %.2f", avg)
