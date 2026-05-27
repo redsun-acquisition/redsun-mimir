@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import culsans
 from redsun.log import Loggable
 
 from redsun_mimir.device._logics import (
@@ -29,28 +31,30 @@ class MMTriggerLogic(BaseTriggerLogic): ...
 class MMAcquireLogic(BaseAcquireLogic):
     core: Core
     set_buffer: Callable[[Array2D], None]
-    queue: asyncio.Queue[Array2D]
+    queue: culsans.Queue[Array2D]
 
-    async def _pump(self) -> None:
+    def _acquisition_loop(self) -> None:
+        """Synchronous frame-grab loop; runs in a worker thread via asyncio.to_thread."""
         sleep_s = self.core.getExposure() / 1000.0
-
-        await self._arm_event.wait()
-
         self.core.startContinuousSequenceAcquisition()
         while not self._disarm_event.is_set():
             if self.core.getRemainingImageCount() < 1:
-                await asyncio.sleep(sleep_s)
+                time.sleep(sleep_s)
             else:
                 img = self.core.popNextImage()
                 self.set_buffer(img)
-                self.queue.put_nowait(img)
+                self.queue.sync_put(img)
         self.core.stopSequenceAcquisition()
+
+    async def _pump(self) -> None:
+        await self._arm_event.wait()
+        await asyncio.to_thread(self._acquisition_loop)
 
 
 @dataclass
 class MMDataLogic(BaseDataLogic, Loggable):
     write_sig: SignalRW[bool]
-    queue: asyncio.Queue[Array2D]
+    queue: culsans.Queue[Array2D]
     store_path_sig: SignalRW[str]
 
     async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
@@ -65,7 +69,7 @@ class MMDataLogic(BaseDataLogic, Loggable):
         self._drain_ready_event.set()
         try:
             while True:
-                img = await self.queue.get()
+                img = await self.queue.async_get()
                 if await self.write_sig.get_value():
                     if not self.writer.is_open:
                         self.writer.open()

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal
 
 import numpy as np
+import aiologic
 from ophyd_async.core import (
     DetectorAcquireLogic,
     DetectorDataLogic,
@@ -64,21 +65,17 @@ class BaseTriggerLogic(DetectorTriggerLogic):
 @dataclass
 class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
     _pump_task: asyncio.Task[None] | None = field(default=None, init=False)
-    _arm_event: asyncio.Event = field(init=False)
-    _disarm_event: asyncio.Event = field(init=False)
-    _idle_event: asyncio.Event = field(init=False)
+    _arm_event: aiologic.REvent = field(init=False)
+    _disarm_event: aiologic.REvent = field(init=False)
 
     def __post_init__(self) -> None:
-        async def _make_event() -> tuple[asyncio.Event, asyncio.Event, asyncio.Event]:
-            return asyncio.Event(), asyncio.Event(), asyncio.Event()
-
-        self._arm_event, self._disarm_event, self._idle_event = run_coro(_make_event())
+        self._arm_event = aiologic.REvent()
+        self._disarm_event = aiologic.REvent()
 
     async def ensure_ready(self) -> None:
         await super().ensure_ready()
         self._arm_event.clear()
         self._disarm_event.clear()
-        self._idle_event.clear()
         self._pump_task = asyncio.create_task(self._pump())
 
     async def start_acquiring(self) -> None:
@@ -93,6 +90,8 @@ class BaseAcquireLogic(DetectorAcquireLogic, Loggable):
         if self._pump_task is not None:
             self._disarm_event.set()
             await self._pump_task
+            self._pump_task = None
+        self._disarm_event.clear()
 
     @abc.abstractmethod
     async def _pump(self) -> None: ...
@@ -104,14 +103,10 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
     path_provider: PathProvider
 
     _drain_task: asyncio.Task[None] | None = field(default=None, init=False)
-    _drain_ready_event: asyncio.Event = field(init=False)
+    _drain_ready_event: aiologic.REvent = field(init=False)
 
     def __post_init__(self) -> None:
-        async def _make_event() -> asyncio.Event:
-            return asyncio.Event()
-
-        self._drain_ready_event = run_coro(_make_event())
-        self._store_path = ""
+        self._drain_ready_event = aiologic.REvent()
 
     def close_writer_if_idle(self) -> None:
         """Close the writer if all datakeys have been unregistered."""
@@ -183,6 +178,8 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         if self._drain_task is not None:
             self._drain_task.cancel()
             await self._drain_task
+            self._drain_task = None
+        self._drain_ready_event.clear()
         if self.writer.is_path_set() and not self.writer.is_open:
             self.writer.reset_store_path()
             self._store_path = ""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import asyncio
 from typing import TYPE_CHECKING
 
 import msgspec
@@ -62,6 +63,13 @@ class UC2AxisSignalBackend(SignalBackend[float]):
         """Write *value* to the MM property."""
         if value is not None:
             await self._send_cmd(value)
+            # we unfortunately do not have a true
+            # asynchronous serial and this may impact
+            # the behavior of the event loop and other
+            # participants... do a small sleep everytime
+            # we set a value to allow other tasks to run and prevent
+            # starvation. This is a band-aid for the underlying issue
+            await asyncio.sleep(0.05)
             self._current_position = value
 
     async def get_value(self) -> float:

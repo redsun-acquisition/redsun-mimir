@@ -174,6 +174,7 @@ class ImageView(QtView, Loggable):
             Incoming reading from a detector buffer.
         """
         for name, reading in data.items():
+            # self.logger.debug(f"New {name} frame")
             name = name.removesuffix("-buffer")
             img = reading["value"]
             if name not in self.viewer_model.layers:

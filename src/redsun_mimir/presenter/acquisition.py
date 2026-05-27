@@ -420,7 +420,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                 for key, reading in reading.items():
                     frames.setdefault(key, []).append(reading["value"])
                 yield from bps.mvr(axis, step)
-                yield from bps.sleep(0.05)
         # scan on the negative direction
 
         for axis in (y, x):
@@ -432,7 +431,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                 for key, reading in reading.items():
                     frames.setdefault(key, []).append(reading["value"])
                 yield from bps.mvr(axis, -step)
-                yield from bps.sleep(0.05)
 
         # TODO: this should be handled by a dedicated presenter;
         # the median stack should be accumulated in a pseudo device and stored
