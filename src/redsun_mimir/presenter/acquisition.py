@@ -410,23 +410,25 @@ class AcquisitionPresenter(Presenter, Loggable):
         for axis in (x, y):
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis.name} by {step} steps.")
-                reading = yield from bps.trigger_and_read(
-                    [det.buffer for det in detectors], stream
-                )
-                for key, reading in reading.items():
-                    frames.setdefault(key, []).append(reading["value"])
+                for det in detectors:
+                    # rd directly returns the "value"
+                    # field of the document
+                    reading = yield from bps.rd(det.buffer)
+                    frames.setdefault(det.buffer.name, []).append(reading)
                 yield from bps.mvr(axis, step)
+                yield from bps.sleep(0.05)
         # scan on the negative direction
 
         for axis in (y, x):
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis.name} by {-step} steps.")
-                reading = yield from bps.trigger_and_read(
-                    [det.buffer for det in detectors], stream
-                )
-                for key, reading in reading.items():
-                    frames.setdefault(key, []).append(reading["value"])
+                for det in detectors:
+                    # rd directly returns the "value"
+                    # field of the document
+                    reading = yield from bps.rd(det.buffer)
+                    frames.setdefault(det.buffer.name, []).append(reading)
                 yield from bps.mvr(axis, -step)
+                yield from bps.sleep(0.05)
 
         # TODO: this should be handled by a dedicated presenter;
         # the median stack should be accumulated in a pseudo device and stored
