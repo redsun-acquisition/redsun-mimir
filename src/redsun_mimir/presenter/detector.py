@@ -97,7 +97,7 @@ class DetectorPresenter(Presenter, Loggable):
                         median,
                         out=np.ones_like(frame, dtype=np.float32),
                         where=median != 0,
-                    ).astype(frame.dtype)
+                    )
                 corrected[key] = {**r, "value": frame}
             self.sigNewData.emit(corrected)
 
