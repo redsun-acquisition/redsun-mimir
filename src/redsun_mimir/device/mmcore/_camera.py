@@ -154,7 +154,7 @@ class MMDahengCamera(MMBaseCameraDevice):
     def __init__(self, name: str, *, writer: str = "zarr") -> None:
         # numpy to adapter dtype mapping
         pixel_dtype: dict[str, str] = {
-            "uint8": "Mono8",
+            "uint16": "Mono10",
         }
         self.core = CMMCorePlus.instance()
         self.pixel_dtype = mm_property_signal(
@@ -168,7 +168,7 @@ class MMDahengCamera(MMBaseCameraDevice):
             adapter_info=adapter_info,
             writer=writer,
         )
-        self.core.setProperty(name, "PixelType", "Mono8")
+        self.core.setProperty(name, "PixelType", "Mono10")
 
         self.median = MedianDevice(
             parent_name=name,

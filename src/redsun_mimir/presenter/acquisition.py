@@ -229,9 +229,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         self,
         detectors: Sequence[MedianFlyer],
         motor: MotorProtocol,
-        step: float = 1.0,
-        scan_frames: int = 20,
-        direction: Literal["xy", "yx"] = "xy",
+        step: float = 20.0,
+        scan_frames: int = 100,
         stream_frames: int = 10,
         /,
         scan_action: Action = ScanAction(),
@@ -259,14 +258,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             - Must expose ``x`` and ``y`` as
             [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
         - step: ``float``, optional
-            - The step size for motor movement. Default is 1.0.
+            - The step size for motor movement. Default is 20.0.
             - The measurement unit is determined by the motor in use.
         - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
-            - Default is 20 (resulting in 4 frames per side of the square).
-        - direction: ``Literal["xy", "yx"]``, optional
-            - The order of motor movement axes.
-            - Default is "xy".
+            - Default is 100 (resulting in 25 frames per side of the square).
         - stream_frames: ``int``, optional
             - The number of frames to stream to disk when the stream action is triggered.
             - Default is 10.
@@ -280,7 +276,6 @@ class AcquisitionPresenter(Presenter, Loggable):
             raise TypeError(
                 "The provided motor must expose 'x' and 'y' MotorAxis attributes."
             )
-        axis = ("x", "y") if direction == "xy" else ("y", "x")
         self.action_map.update(**scan_action.event_map, **stream_action.event_map)
 
         scan_stream = "scan"
@@ -331,8 +326,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     detectors,
                     motor,
                     step,
-                    scan_frames // 4,
-                    axis,
+                    scan_frames // 4
                 )
                 medians_ready = True
 
@@ -383,12 +377,15 @@ class AcquisitionPresenter(Presenter, Loggable):
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
-        axis: tuple[str, str],
     ) -> MsgGenerator[None]:
         """Perform a square scan movement with the specified motor and detectors.
 
         Performs a square scan by moving the motor in a square pattern; before
         each movement step, a reading is taken from the specified detectors.
+
+        Scan sequence is: x -> y -> -y -> -x, 
+        with the number of frames collected for each side determined
+        by the *frames_per_side* parameter.
 
         Parameters
         ----------
@@ -402,8 +399,6 @@ class AcquisitionPresenter(Presenter, Loggable):
             The step size for motor movement.
         frames_per_side : int
             The number of frames to collect for each side of the square.
-        axis : tuple[str, str]
-            The order of motor movement axes (e.g. ``("x", "y")``).
 
         Returns
         -------
@@ -412,29 +407,31 @@ class AcquisitionPresenter(Presenter, Loggable):
         """
         # TODO: handle the case of failure in motor movement or detector gracefully;
         # probably best to wrap any exception in try-except and return false.
+        x = motor.axis["x"]
+        y = motor.axis["y"]
+
         frames: dict[str, list[npt.NDArray[Any]]] = {}
-        for idx in range(2):
-            axis_device = motor.axis[axis[idx]]
+        for axis in (x, y):
             for _ in range(frames_per_side):
-                self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
+                self.logger.debug(f"Moving {axis.name} by {step} steps.")
                 reading = yield from bps.trigger_and_read(
                     [det.buffer for det in detectors], stream
                 )
                 for key, reading in reading.items():
                     frames.setdefault(key, []).append(reading["value"])
-                yield from bps.mvr(axis_device, step)
+                yield from bps.mvr(axis, step)
                 yield from bps.sleep(0.05)
         # scan on the negative direction
-        for idx in range(2):
-            axis_device = motor.axis[axis[1 - idx]]
+
+        for axis in (y, x):
             for _ in range(frames_per_side):
-                self.logger.debug(f"Moving {axis[idx]} axis by {step} steps.")
+                self.logger.debug(f"Moving {axis.name} by {-step} steps.")
                 reading = yield from bps.trigger_and_read(
                     [det.buffer for det in detectors], stream
                 )
                 for key, reading in reading.items():
                     frames.setdefault(key, []).append(reading["value"])
-                yield from bps.mvr(axis_device, -step)
+                yield from bps.mvr(axis, -step)
                 yield from bps.sleep(0.05)
 
         # TODO: this should be handled by a dedicated presenter;
