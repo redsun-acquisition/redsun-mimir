@@ -61,7 +61,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
     async def pump(self) -> None:
         """Send the buffered frame to the queue when ready."""
         try:
-            await self._arm_event.wait()
+            await self._arm_event
 
             buffer_ready = await self.buffer_ready.get_value()
             if buffer_ready:
@@ -69,7 +69,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
                 # put it in the queue
                 self.queue.put_nowait(await self.buffer.get_value())
                 await self.buffer_ready.set(False)
-            await self._disarm_event.wait()
+            await self._disarm_event
         except asyncio.CancelledError:
             ...
         finally:
@@ -109,7 +109,7 @@ class MedianDataLogic(BaseDataLogic, Loggable):
         capacity = self.writer.sources[datakey_name].capacity
         dtype_numpy = np.dtype(self.writer.sources[datakey_name].dtype_numpy).str
         self._drain_task = asyncio.create_task(self._drain(datakey_name))
-        await self._drain_ready_event.wait()
+        await self._drain_ready_event
         actual_capacity = capacity if capacity > 0 else None
         data_resource = StreamResourceInfo(
             data_key=datakey_name,

@@ -153,7 +153,7 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
         self._drain_task = asyncio.create_task(self._drain(datakey_name))
 
         # wait until the drain loop is ready before returning the provider
-        await self._drain_ready_event.wait()
+        await self._drain_ready_event
 
         # when unlimited capacity is requested, the time axis of
         # shape requires a None flag to indicate it grows indefinetely

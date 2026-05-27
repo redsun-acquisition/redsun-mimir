@@ -47,7 +47,7 @@ class MMAcquireLogic(BaseAcquireLogic):
         self.core.stopSequenceAcquisition()
 
     async def pump(self) -> None:
-        await self._arm_event.wait()
+        await self._arm_event
         await asyncio.to_thread(self._acquisition_loop)
 
 
