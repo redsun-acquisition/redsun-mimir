@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import Future
 from enum import IntEnum
+from threading import Lock
 from typing import TYPE_CHECKING
 
 from ophyd_async.core import (
@@ -65,6 +66,7 @@ class UC2Serial(StandardReadable, Loggable):
     # Shared across all instances and device classes that need serial access
     _serial: ClassVar[Serial | None] = None
     _futures: ClassVar[set[Future[Serial]]] = set()
+    _lock: ClassVar[Lock] = Lock()
 
     def __init__(
         self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 1.0
@@ -131,6 +133,11 @@ class UC2Serial(StandardReadable, Loggable):
             return future
         return cls._serial
 
+    @classmethod
+    def get_lock(cls) -> Lock:
+        """Return the class-level lock for synchronizing serial access."""
+        return cls._lock
+
 
 class UC2LaserDevice(StandardReadable, Loggable):
     """Interface for UC2 laser source."""
@@ -151,9 +158,11 @@ class UC2LaserDevice(StandardReadable, Loggable):
             self._serial = serial_or_future
             self.logger.debug("Serial port ready.")
 
+        lock = UC2Serial.get_lock()
+
         with self.add_children_as_readables():
             self.intensity = uc2_laser_signal(
-                self._serial, laser_id=1, units=units, range=(0, 1023)
+                self._serial, laser_id=1, units=units, range=(0, 1023), lock=lock
             )
 
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
@@ -198,10 +207,12 @@ class UC2MotorDevice(StandardReadable, Loggable):
             self._serial = serial_or_future
             self.logger.debug("Serial port ready.")
 
+        lock = UC2Serial.get_lock()
+
         with self.add_children_as_readables():
-            self.x = uc2_axis_signal(self._serial, "x", units="um")
-            self.y = uc2_axis_signal(self._serial, "y", units="um")
-            self.z = uc2_axis_signal(self._serial, "z", units="um")
+            self.x = uc2_axis_signal(self._serial, "x", units="um", lock=lock)
+            self.y = uc2_axis_signal(self._serial, "y", units="um", lock=lock)
+            self.z = uc2_axis_signal(self._serial, "z", units="um", lock=lock)
         self.axis = DeviceMap(
             {
                 "x": self.x,
