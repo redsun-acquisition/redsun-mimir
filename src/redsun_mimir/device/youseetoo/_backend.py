@@ -97,6 +97,7 @@ class UC2AxisSignalBackend(SignalBackend[float]):
 
     def _send_cmd(self, value: float) -> None:
         with self.lock:
+            self.serial.reset_input_buffer()
             steps = int(value * self._factor / MOTOR_STEP)
             action = MotorAction(
                 movement=MotorAction.generate_movement(
@@ -148,7 +149,6 @@ class UC2AxisSignalBackend(SignalBackend[float]):
                     f"Invalid response from motor. Expected qid {self._axis_id}, "
                     f"but received {motor_response.qid}."
                 )
-            # self.serial.reset_input_buffer()
 
 
 class UC2LaserSignalBackend(SignalBackend[int]):
@@ -215,6 +215,7 @@ class UC2LaserSignalBackend(SignalBackend[int]):
 
     def _send_cmd(self, value: int) -> None:
         with self.lock:
+            self.serial.reset_input_buffer()
             action = LaserAction(id=self.id, qid=self.qid, value=value)
             packet = msgspec.json.encode(action)
             written = self.serial.write(packet)
@@ -234,7 +235,6 @@ class UC2LaserSignalBackend(SignalBackend[int]):
             response = msgspec.json.decode(resp_str, type=Acknowledge)
             if response.qid != self.qid:
                 raise RuntimeError(f"Invalid response from laser. Received: {response}")
-            # self.serial.reset_input_buffer()
 
 
 def uc2_axis_signal(
