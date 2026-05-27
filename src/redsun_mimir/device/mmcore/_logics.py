@@ -35,16 +35,29 @@ class MMAcquireLogic(BaseAcquireLogic):
 
     def _acquisition_loop(self) -> None:
         """Perform frame-grab loop in a separate thread."""
-        sleep_s = self.core.getExposure() / 1000.0
-        self.core.startContinuousSequenceAcquisition()
+        # sleep_s = self.core.getExposure() / 1000.0
+        # self.core.startContinuousSequenceAcquisition()
+        # while not self._disarm_event.is_set():
+        #     if self.core.getRemainingImageCount() < 1:
+        #         time.sleep(sleep_s)
+        #     else:
+        #         img = self.core.popNextImage()
+        #         self.set_buffer(img)
+        #         self.queue.sync_put(img)
+        # self.core.stopSequenceAcquisition()
+
+        # TODO: if anyone is reading this, i truly apologize:
+        # this shit is... shit; but there seems to be some
+        # problems when dealing with the mmcore sequence API
+        # and other devices, in particular with the daheng adapter;
+        # since this is a prototype and i'm out of time 
+        # i don't have much of a choice for now... the loop above
+        # should be the correct one... maybe this is a problem specific
+        # to some adapters, no clue
         while not self._disarm_event.is_set():
-            if self.core.getRemainingImageCount() < 1:
-                time.sleep(sleep_s)
-            else:
-                img = self.core.popNextImage()
-                self.set_buffer(img)
-                self.queue.sync_put(img)
-        self.core.stopSequenceAcquisition()
+            img = self.core.snap()
+            self.set_buffer(img)
+            self.queue.sync_put(img)
 
     async def pump(self) -> None:
         await self._arm_event

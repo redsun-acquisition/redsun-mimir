@@ -148,7 +148,7 @@ class UC2AxisSignalBackend(SignalBackend[float]):
                     f"Invalid response from motor. Expected qid {self._axis_id}, "
                     f"but received {motor_response.qid}."
                 )
-            self.serial.reset_input_buffer()
+            # self.serial.reset_input_buffer()
 
 
 class UC2LaserSignalBackend(SignalBackend[int]):
@@ -234,7 +234,7 @@ class UC2LaserSignalBackend(SignalBackend[int]):
             response = msgspec.json.decode(resp_str, type=Acknowledge)
             if response.qid != self.qid:
                 raise RuntimeError(f"Invalid response from laser. Received: {response}")
-            self.serial.reset_input_buffer()
+            # self.serial.reset_input_buffer()
 
 
 def uc2_axis_signal(
