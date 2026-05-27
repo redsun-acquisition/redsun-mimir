@@ -286,7 +286,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         scan_stream = "scan"
         live_stream = "live_stream"
         median_stream = "median_stream"
-        live_prepare_info = TriggerInfo(number_of_events=0)
         stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
         median_info = TriggerInfo(number_of_events=1)
 
@@ -297,6 +296,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         scan_stream_declared = False
         median_stream_declared = False
         medians_ready = False
+        restage = True
 
         yield from bps.open_run()
 
@@ -304,19 +304,20 @@ class AcquisitionPresenter(Presenter, Loggable):
             # ── live phase ───────────────────────────────────────────────────
             # Camera only: median excluded because buffer_ready is not set yet
             # and there is nothing for the median pump to consume.
-            yield from bps.stage_all(*detectors)
-            yield from prepare_and_kickoff(
-                detectors,
-                live_prepare_info,
-                live_stream,
-                declare=not live_stream_declared,
-            )
-            live_stream_declared = True
+            if restage:
+                yield from bps.stage_all(*detectors)
+                yield from prepare_and_kickoff(
+                    detectors,
+                    stream_prepare_info,
+                    live_stream,
+                    declare=not live_stream_declared,
+                )
+                live_stream_declared = True
+                restage = False
 
             name, event = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
-            yield from teardown_acquisition(detectors, live_stream)
 
             if name == scan_action.name:
                 # ── scan branch ──────────────────────────────────────────────
@@ -325,7 +326,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     yield from bps.declare_stream(*buffers, name=scan_stream)
                     scan_stream_declared = True
 
-                medians_ready = yield from self.square_scan(
+                yield from self.square_scan(
                     scan_stream,
                     detectors,
                     motor,
@@ -333,6 +334,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_frames // 4,
                     axis,
                 )
+                medians_ready = True
 
             elif name == stream_action.name:
                 # ── stream branch ────────────────────────────────────────────
@@ -345,32 +347,23 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from set_writing(detectors, True)
                 if medians_ready:
                     yield from set_writing(median_detectors, True)
-
-                yield from bps.stage_all(*detectors, *median_detectors)
-
-                yield from prepare_and_kickoff(
-                    detectors,
-                    stream_prepare_info,
-                    live_stream,
-                    declare=not live_stream_declared,
-                )
-                yield from prepare_and_kickoff(
-                    median_detectors,
-                    median_info,
-                    median_stream,
-                    declare=not median_stream_declared,
-                    collect=True,
-                )
-                median_stream_declared = True
+                    yield from prepare_and_kickoff(
+                        median_detectors,
+                        median_info,
+                        median_stream,
+                        declare=not median_stream_declared,
+                        collect=True,
+                    )
+                    median_stream_declared = True
 
                 # Complete median first (its single frame depends on the camera
                 # buffer), then complete the camera.
-                yield from teardown_acquisition(median_detectors, median_stream)
+                if medians_ready:
+                    yield from teardown_acquisition(median_detectors, median_stream)
+                    yield from set_writing(median_detectors, False)
                 yield from teardown_acquisition(detectors, live_stream)
-
                 yield from set_writing(detectors, False)
-                yield from set_writing(median_detectors, False)
-
+                restage = True
                 self.logger.debug("Writing complete")
 
             self.clear_and_notify(name, event)
@@ -383,7 +376,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         step: float,
         frames_per_side: int,
         axis: tuple[str, str],
-    ) -> MsgGenerator[bool]:
+    ) -> MsgGenerator[None]:
         """Perform a square scan movement with the specified motor and detectors.
 
         Performs a square scan by moving the motor in a square pattern; before
@@ -453,7 +446,6 @@ class AcquisitionPresenter(Presenter, Loggable):
                 f"Median computed for '{det.name}': "
                 f"{len(det_frames)} frames, shape {median_frame.shape}"
             )
-        return True
 
     @continous(togglable=True)
     def live_stream(
