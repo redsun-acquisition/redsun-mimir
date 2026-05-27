@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 AxisType = Literal["x", "y", "z"]
 
-DEFAULT_TIMEOUT: Final[float] = 1.0
+DEFAULT_TIMEOUT: Final[float] = 5.0
 
 
 @dataclass
