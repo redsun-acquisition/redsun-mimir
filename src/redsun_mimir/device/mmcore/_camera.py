@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from ophyd_async.core import SignalRW
 
 
-
 class MMBaseCameraDevice(StandardDetector, Loggable):
     """Base camera wrapper for Micro-Manager Core.
 
