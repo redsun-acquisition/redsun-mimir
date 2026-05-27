@@ -5,7 +5,6 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import culsans
 from redsun.log import Loggable
 
 from redsun_mimir.device._logics import (
@@ -17,6 +16,7 @@ from redsun_mimir.device._logics import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import culsans
     from ophyd_async.core import SignalRW, StreamableDataProvider
     from pymmcore_plus import CMMCorePlus as Core
 
@@ -34,7 +34,7 @@ class MMAcquireLogic(BaseAcquireLogic):
     queue: culsans.Queue[Array2D]
 
     def _acquisition_loop(self) -> None:
-        """Synchronous frame-grab loop; runs in a worker thread via asyncio.to_thread."""
+        """Perform frame-grab loop in a separate thread."""
         sleep_s = self.core.getExposure() / 1000.0
         self.core.startContinuousSequenceAcquisition()
         while not self._disarm_event.is_set():

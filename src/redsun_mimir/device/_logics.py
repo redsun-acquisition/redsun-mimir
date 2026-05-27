@@ -5,8 +5,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal
 
-import numpy as np
 import aiologic
+import numpy as np
 from ophyd_async.core import (
     DetectorAcquireLogic,
     DetectorDataLogic,
@@ -15,7 +15,6 @@ from ophyd_async.core import (
     StreamResourceInfo,
     TriggerInfo,
 )
-from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.storage import SourceInfo
 
@@ -107,6 +106,7 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
     def __post_init__(self) -> None:
         self._drain_ready_event = aiologic.REvent()
+        self._store_path = ""
 
     def close_writer_if_idle(self) -> None:
         """Close the writer if all datakeys have been unregistered."""
@@ -152,6 +152,7 @@ class BaseDataLogic(DetectorDataLogic, Loggable):
 
         self._drain_task = asyncio.create_task(self._drain(datakey_name))
 
+        # wait until the drain loop is ready before returning the provider
         await self._drain_ready_event.wait()
 
         # when unlimited capacity is requested, the time axis of

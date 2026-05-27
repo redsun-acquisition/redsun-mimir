@@ -59,6 +59,7 @@ class MedianAcquireLogic(BaseAcquireLogic):
     queue: asyncio.Queue[Array2D]
 
     async def pump(self) -> None:
+        """Send the buffered frame to the queue when ready."""
         try:
             await self._arm_event.wait()
 

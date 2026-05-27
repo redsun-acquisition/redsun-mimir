@@ -3319,6 +3319,7 @@ zarr = [
 name = "redsun-mimir"
 source = { editable = "." }
 dependencies = [
+    { name = "aiologic" },
     { name = "culsans" },
     { name = "msgspec" },
     { name = "napari" },
@@ -3374,6 +3375,7 @@ uc2 = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiologic", specifier = ">=0.16.0" },
     { name = "culsans", specifier = ">=0.11.0" },
     { name = "msgspec", specifier = ">=0.21.1" },
     { name = "napari", specifier = ">=0.6.6" },

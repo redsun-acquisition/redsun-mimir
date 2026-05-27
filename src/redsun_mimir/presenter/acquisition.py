@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
 import numpy as np
@@ -322,11 +322,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                     scan_stream_declared = True
 
                 yield from self.square_scan(
-                    scan_stream,
-                    detectors,
-                    motor,
-                    step,
-                    scan_frames // 4
+                    scan_stream, detectors, motor, step, scan_frames // 4
                 )
                 medians_ready = True
 
@@ -383,7 +379,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         Performs a square scan by moving the motor in a square pattern; before
         each movement step, a reading is taken from the specified detectors.
 
-        Scan sequence is: x -> y -> -y -> -x, 
+        Scan sequence is: x -> y -> -y -> -x,
         with the number of frames collected for each side determined
         by the *frames_per_side* parameter.
 
