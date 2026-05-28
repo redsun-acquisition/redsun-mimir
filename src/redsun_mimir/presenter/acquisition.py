@@ -288,7 +288,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         median_detectors = [det.median for det in detectors]
 
         live_stream_declared = False
-        scan_stream_declared = False
         median_stream_declared = False
         medians_ready = False
         restage = True
@@ -315,19 +314,14 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                # ── scan branch ──────────────────────────────────────────────
-                # Collect frames and compute the median. Nothing written to disk.
-                if not scan_stream_declared:
-                    yield from bps.declare_stream(*buffers, name=scan_stream)
-                    scan_stream_declared = True
+                # Collect frames and compute the median. Nothing written to disk
 
                 yield from self.square_scan(
-                    scan_stream, detectors, motor, step, scan_frames // 4
+                    detectors, motor, step, scan_frames // 4
                 )
                 medians_ready = True
 
             elif name == stream_action.name:
-                # ── stream branch ────────────────────────────────────────────
                 # Camera and median are staged and prepared together so they
                 # share the same Zarr store and lifecycle.
                 # Median writes only if medians_ready; otherwise its drain is
@@ -368,7 +362,6 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     def square_scan(
         self,
-        stream: str,
         detectors: Sequence[MedianFlyer],
         motor: MotorProtocol,
         step: float,
@@ -379,7 +372,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         Performs a square scan by moving the motor in a square pattern; before
         each movement step, a reading is taken from the specified detectors.
 
-        Scan sequence is: x -> y -> -y -> -x,
+        Scan sequence is: x -> y -> -x -> -y,
         with the number of frames collected for each side determined
         by the *frames_per_side* parameter.
 
@@ -407,27 +400,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         y = motor.axis["y"]
 
         frames: dict[str, list[npt.NDArray[Any]]] = {}
-        for axis in (x, y):
-            for _ in range(frames_per_side):
-                self.logger.debug(f"Moving {axis.name} by {step} steps.")
-                for det in detectors:
-                    # rd directly returns the "value"
-                    # field of the document
-                    reading = yield from bps.rd(det.buffer)
-                    frames.setdefault(det.buffer.name, []).append(reading)
-                yield from bps.mvr(axis, step)
-                yield from bps.sleep(0.05)
-        # scan on the negative direction
 
-        for axis in (y, x):
+        for axis, direction in ((x, step), (y, step), (x, -step), (y, -step)):
             for _ in range(frames_per_side):
-                self.logger.debug(f"Moving {axis.name} by {-step} steps.")
+                self.logger.debug(f"Moving {axis.name} by {direction} steps.")
                 for det in detectors:
                     # rd directly returns the "value"
                     # field of the document
                     reading = yield from bps.rd(det.buffer)
                     frames.setdefault(det.buffer.name, []).append(reading)
-                yield from bps.mvr(axis, -step)
+                yield from bps.mvr(axis, direction)
                 yield from bps.sleep(0.05)
 
         # TODO: this should be handled by a dedicated presenter;
