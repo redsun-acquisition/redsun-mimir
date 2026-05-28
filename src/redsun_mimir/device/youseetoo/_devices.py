@@ -60,7 +60,7 @@ class UC2Serial(StandardReadable, Loggable):
     bauderate :
         Baud rate for serial communication.
     timeout :
-        Read timeout in seconds. Defaults to ``1.0``.
+        Read timeout in seconds. Defaults to ``3.0``.
     """
 
     # Shared across all instances and device classes that need serial access
@@ -69,7 +69,7 @@ class UC2Serial(StandardReadable, Loggable):
     _lock: ClassVar[Lock] = Lock()
 
     def __init__(
-        self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 1.0
+        self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 3.0
     ) -> None:
         if bauderate not in BaudeRate.__members__.values():
             self.logger.error(
