@@ -293,9 +293,6 @@ class AcquisitionPresenter(Presenter, Loggable):
         yield from bps.open_run()
 
         while True:
-            # ── live phase ───────────────────────────────────────────────────
-            # Camera only: median excluded because buffer_ready is not set yet
-            # and there is nothing for the median pump to consume.
             if restage:
                 yield from bps.stage_all(*detectors)
                 yield from prepare_and_kickoff(
@@ -312,16 +309,10 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                # Collect frames and compute the median. Nothing written to disk
-
                 yield from self.square_scan(detectors, motor, step, scan_frames // 4)
                 medians_ready = True
 
             elif name == stream_action.name:
-                # Camera and median are staged and prepared together so they
-                # share the same Zarr store and lifecycle.
-                # Median writes only if medians_ready; otherwise its drain is
-                # silent (write_sig=False).
                 self.logger.debug("Start writing")
 
                 yield from set_writing(detectors, True)
