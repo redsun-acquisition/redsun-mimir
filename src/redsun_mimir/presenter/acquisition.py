@@ -229,8 +229,8 @@ class AcquisitionPresenter(Presenter, Loggable):
         self,
         detectors: Sequence[MedianFlyer],
         motor: MotorProtocol,
-        step: float = 20.0,
-        scan_frames: int = 100,
+        step: float = 5.0,
+        scan_frames: int = 40,
         stream_frames: int = 10,
         /,
         scan_action: Action = ScanAction(),
@@ -258,11 +258,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             - Must expose ``x`` and ``y`` as
             [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
         - step: ``float``, optional
-            - The step size for motor movement. Default is 20.0.
+            - The step size for motor movement. Default is 5.0.
             - The measurement unit is determined by the motor in use.
         - scan_frames: ``int``, optional
             - The number of frames to collect for median filtering.
-            - Default is 100 (resulting in 25 frames per side of the square).
+            - Default is 40 (resulting in 10 frames per side of the square).
         - stream_frames: ``int``, optional
             - The number of frames to stream to disk when the stream action is triggered.
             - Default is 10.
