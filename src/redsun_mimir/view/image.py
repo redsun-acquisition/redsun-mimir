@@ -65,6 +65,7 @@ class ImageView(QtView, Loggable):
         self.viewer_model = ViewerModel(
             title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
+        self.viewer_model.grid.enabled = True
 
         register_qt_types()
 
