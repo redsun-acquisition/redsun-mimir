@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -50,7 +49,7 @@ class MMAcquireLogic(BaseAcquireLogic):
         # this shit is... shit; but there seems to be some
         # problems when dealing with the mmcore sequence API
         # and other devices, in particular with the daheng adapter;
-        # since this is a prototype and i'm out of time 
+        # since this is a prototype and i'm out of time
         # i don't have much of a choice for now... the loop above
         # should be the correct one... maybe this is a problem specific
         # to some adapters, no clue

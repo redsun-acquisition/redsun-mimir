@@ -278,13 +278,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
         self.action_map.update(**scan_action.event_map, **stream_action.event_map)
 
-        scan_stream = "scan"
         live_stream = "live_stream"
         median_stream = "median_stream"
         stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
         median_info = TriggerInfo(number_of_events=1)
 
-        buffers = [det.buffer for det in detectors]
         median_detectors = [det.median for det in detectors]
 
         live_stream_declared = False
@@ -316,9 +314,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             if name == scan_action.name:
                 # Collect frames and compute the median. Nothing written to disk
 
-                yield from self.square_scan(
-                    detectors, motor, step, scan_frames // 4
-                )
+                yield from self.square_scan(detectors, motor, step, scan_frames // 4)
                 medians_ready = True
 
             elif name == stream_action.name:
