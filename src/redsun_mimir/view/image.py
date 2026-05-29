@@ -4,15 +4,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from napari._app_model import get_app_model
+from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
 from napari.utils._proxies import PublicOnlyProxy
-from napari.viewer import (
-    Viewer,  # noqa: TC002 (needed for napari injection until 0.7.0)
-)
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
 from redsun.view import ViewPosition
@@ -68,20 +66,21 @@ class ImageView(QtView, Loggable):
             title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
 
+        register_qt_types()
+
         # QtViewer is a QSplitter containing the canvas and the dims bar.
         # It does not carry any main-window chrome (no menu bar, status bar,
         # activity dialog, etc.), making it safe to embed as a child widget.
         self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
-        # TODO: this is an hotfix to make the application not crash
-        # when manually deleting layers from the viewer; it should
-        # go away once napari 0.7.0 is released, which allows
-        # to manipulate the viewer model more easily
-        def _provide_embedded_viewer() -> Viewer | None:
+        def _provide_embedded_viewer() -> ViewerModel | None:
             return PublicOnlyProxy(self.viewer_model)
 
+        def _provide_embedded_qt_viewer() -> QtViewer | None:
+            return self._qt_viewer
+
         self._provider_disposer = get_app_model().injection_store.register(
-            providers=[(_provide_embedded_viewer,)]
+            providers=[(_provide_embedded_viewer,), (_provide_embedded_qt_viewer,)],
         )
 
         # Access the sub-panels via QtViewer's lazy properties so they are
@@ -124,9 +123,7 @@ class ImageView(QtView, Loggable):
         self.logger.info("Initialized")
 
     def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
-        # on teardown, ensure we unregister the
-        # embedded viewer provider to keep things clean;
-        # TODO: this should go away after napari 0.7.0 is released
+        # Unregister the embedded viewer/qt-viewer providers on teardown
         self._provider_disposer()
         super().closeEvent(event)
 
