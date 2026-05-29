@@ -90,6 +90,7 @@ class ImageView(QtView, Loggable):
         controls = self._qt_viewer.controls
         layer_buttons = self._qt_viewer.layerButtons
         layer_list = self._qt_viewer.layers
+        viewer_buttons = self._qt_viewer.viewerButtons
 
         # Left panel: layer controls on top, layer list + buttons below.
         left_panel = QtWidgets.QWidget()
@@ -99,6 +100,7 @@ class ImageView(QtView, Loggable):
         left_layout.addWidget(controls)
         left_layout.addWidget(layer_buttons)
         left_layout.addWidget(layer_list)
+        left_layout.addWidget(viewer_buttons)
         left_panel.setLayout(left_layout)
 
         # Horizontal splitter: left panel | canvas+dims
