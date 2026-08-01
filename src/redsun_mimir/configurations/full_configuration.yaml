@@ -8,6 +8,7 @@ devices:
   z-motor: {}
   led:
     wavelength: 300
+    binary: true
   laser:
     wavelength: 650
 

@@ -116,6 +116,7 @@ class LightView(QtView, Loggable):
             layout = QtWidgets.QGridLayout()
             if "wavelength" in props:
                 wavelength = readings[f"{name}-wavelength"]["value"]
+            binary = bool(readings[f"{name}-binary"]["value"])
             units = description[f"{name}-intensity"].get("units") or "NA"
             self._groups[_group_key(name)] = QtWidgets.QGroupBox(
                 f"{name} ({wavelength} nm)"
@@ -130,6 +131,12 @@ class LightView(QtView, Loggable):
             self._buttons[_button_on_key(name)].clicked.connect(
                 lambda _, lbl=name: self._on_toggle_button_checked(lbl)
             )
+            if binary:
+                layout.addWidget(self._buttons[_button_on_key(name)], 0, 0)
+                self._groups[_group_key(name)].setLayout(layout)
+                self.main_layout.addWidget(self._groups[_group_key(name)])
+                continue
+
             slider: QLabeledDoubleSlider | QLabeledSlider
             range: list[int | float]
             dtype = description[f"{name}-intensity"]["dtype"]

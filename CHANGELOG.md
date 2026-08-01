@@ -152,6 +152,12 @@ caller.
 
 ### Added
 
+- **Binary light sources.** `LightProtocol` gained a read-only `binary` signal,
+  and `MockLightDevice` a `binary=` argument. A binary source keeps its
+  `intensity` signal, so every light has the same shape, but `LightPresenter.set`
+  refuses to apply a value and `LightView` offers only the on/off button. The
+  simulated `led` is declared `binary: true`; it previously showed a 0-200 mW
+  slider that did not reflect the device it stands for.
 - `redsun_mimir.providers`, the typed keys this bundle binds on the virtual
   container, importable by a third-party component without pulling in a
   presenter.

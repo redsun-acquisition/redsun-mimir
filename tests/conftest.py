@@ -144,3 +144,11 @@ async def mock_laser() -> MockLightDevice:
     device = MockLightDevice("laser", wavelength=650, range=(0.0, 100.0))
     await device.connect(mock=True)
     return device
+
+
+@pytest.fixture
+async def mock_binary_led() -> MockLightDevice:
+    """Mock LED device that is on/off only."""
+    device = MockLightDevice("binary_led", wavelength=300, binary=True)
+    await device.connect(mock=True)
+    return device

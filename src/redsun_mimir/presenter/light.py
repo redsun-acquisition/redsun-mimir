@@ -107,7 +107,7 @@ class LightPresenter(Presenter, Loggable):
 
     @slot
     async def set(self, name: str, intensity: float) -> None:
-        """Set the intensity of a light source.
+        """Set the intensity of a light source, unless it is binary.
 
         Parameters
         ----------
@@ -117,6 +117,9 @@ class LightPresenter(Presenter, Loggable):
             New intensity value.
         """
         light = self._lights[name]
+        if await light.binary.get_value():
+            self.logger.warning(f"{name!r} is a binary light source; intensity ignored")
+            return
         await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
 
     def shutdown(self) -> None:

@@ -61,6 +61,9 @@ class LightProtocol(AsyncConfigurable, Protocol):
         Read-only signal reflecting the current on/off state.
         Updated internally each time [`trigger`][redsun_mimir.protocols.LightProtocol.trigger]
         is called.
+    binary :
+        Read-only signal marking the source as on/off only.
+        A binary source refuses intensity changes.
     """
 
     intensity: SignalRW[int | float]
@@ -70,6 +73,9 @@ class LightProtocol(AsyncConfigurable, Protocol):
 
     enabled: SignalRW[bool]
     """Current on/off state of the light source."""
+
+    binary: SignalR[bool]
+    """Whether the source is on/off only, ignoring ``intensity``."""
 
     async def read(self) -> dict[str, Reading[Any]]:
         """Read the current state of the light source.

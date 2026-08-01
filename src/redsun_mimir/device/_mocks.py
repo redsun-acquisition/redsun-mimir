@@ -21,6 +21,10 @@ class MockLightDevice(StandardReadable, Loggable):
         Device name.
     wavelength : int, optional
         Wavelength of the light source in nanometers. Defaults to ``0``.
+    binary : bool, optional
+        Mark the source as on/off only. Defaults to ``False``.
+    range : tuple[float, float], optional
+        Bounds of ``intensity`` in mW. Ignored when *binary*.
     """
 
     def __init__(
@@ -28,6 +32,7 @@ class MockLightDevice(StandardReadable, Loggable):
         name: str,
         /,
         wavelength: int = 0,
+        binary: bool = False,
         range: tuple[float, float] = (0.0, 200.0),
     ) -> None:
         if len(range) != 2:
@@ -43,6 +48,7 @@ class MockLightDevice(StandardReadable, Loggable):
 
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
+            self.binary, _ = soft_signal_r_and_setter(bool, initial_value=binary)
 
         super().__init__(name)
 
