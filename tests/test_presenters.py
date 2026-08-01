@@ -167,6 +167,26 @@ class TestLightPresenter:
         await controller.set("laser", 75.0)
         assert await mock_laser.intensity.get_value() == pytest.approx(75.0)
 
+    async def test_binary_source_refuses_intensity(
+        self, mock_binary_led: MockLightDevice
+    ) -> None:
+        """A binary source keeps the signal but ignores requests to set it."""
+        ctrl = LightPresenter("light_presenter", {"binary_led": mock_binary_led})
+
+        await ctrl.set("binary_led", 42.0)
+
+        assert await mock_binary_led.intensity.get_value() == pytest.approx(0.0)
+
+    async def test_binary_source_still_toggles(
+        self, mock_binary_led: MockLightDevice
+    ) -> None:
+        """Only intensity is refused; on/off is the whole point of the device."""
+        ctrl = LightPresenter("light_presenter", {"binary_led": mock_binary_led})
+
+        await ctrl.trigger("binary_led")
+
+        assert await mock_binary_led.enabled.get_value() is True
+
     def test_non_light_devices_are_excluded(self, motor_stage: FakeXYStage) -> None:
         """A device that does not satisfy LightProtocol is not included in _lights."""
         devices: dict[str, Any] = {"motor": motor_stage}

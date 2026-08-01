@@ -177,6 +177,15 @@ class TestLightView:
         assert "on:laser" in widget._buttons
         assert "power:laser" in widget._sliders
 
+    async def test_binary_source_gets_no_slider(
+        self, widget: LightView, mock_binary_led: MockLightDevice
+    ) -> None:
+        """A binary source offers on/off and nothing else."""
+        await _build_light_view(widget, mock_binary_led)
+
+        assert "on:binary_led" in widget._buttons
+        assert "power:binary_led" not in widget._sliders
+
     async def test_slider_range_follows_device_limits(
         self, widget: LightView, mock_laser: MockLightDevice
     ) -> None:
