@@ -1,34 +1,31 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from napari._app_model import get_app_model
+from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
 from napari.utils._proxies import PublicOnlyProxy
-from napari.viewer import (
-    Viewer,  # noqa: TC002 (needed for napari injection until 0.7.0)
-)
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
-from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
+from redsun.virtual import slot
 
-from redsun_mimir.utils.napari import (
-    ROIInteractionBoxOverlay,
-    highlight_roi_box_handles,
-    resize_selection_box,
-)
+from redsun_mimir.providers import DETECTOR_LAYER_SPECS
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
-    from bluesky.protocols import Descriptor, Reading
+    from typing import Any
+
+    from bluesky.protocols import Reading
     from redsun.virtual import VirtualContainer
+
+    from redsun_mimir.protocols import LayerSpec
 
 
 class ImageView(QtView, Loggable):
@@ -49,9 +46,6 @@ class ImageView(QtView, Loggable):
     ----------
     name :
         Identity key of the view.
-    hints :
-        Data key suffixes to watch for in incoming data packets.
-        Defaults to ``["buffer"]``, which is the conventional suffix for raw frame arrays.
     """
 
     @property
@@ -63,10 +57,8 @@ class ImageView(QtView, Loggable):
         self,
         name: str,
         /,
-        hints: list[str] | None = None,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(name, **kwargs)
+        super().__init__(name)
 
         # Ensure the QApplication exists and napari's theme search paths
         # (theme_<name>:/) are registered via QDir.addSearchPath.
@@ -77,21 +69,23 @@ class ImageView(QtView, Loggable):
         self.viewer_model = ViewerModel(
             title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
+        self.viewer_model.grid.enabled = True
+
+        register_qt_types()
 
         # QtViewer is a QSplitter containing the canvas and the dims bar.
         # It does not carry any main-window chrome (no menu bar, status bar,
         # activity dialog, etc.), making it safe to embed as a child widget.
         self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
-        # TODO: this is an hotfix to make the application not crash
-        # when manually deleting layers from the viewer; it should
-        # go away once napari 0.7.0 is released, which allows
-        # to manipulate the viewer model more easily
-        def _provide_embedded_viewer() -> Viewer | None:
+        def _provide_embedded_viewer() -> ViewerModel | None:
             return PublicOnlyProxy(self.viewer_model)
 
+        def _provide_embedded_qt_viewer() -> QtViewer | None:
+            return self._qt_viewer
+
         self._provider_disposer = get_app_model().injection_store.register(
-            providers=[(_provide_embedded_viewer,)]
+            providers=[(_provide_embedded_viewer,), (_provide_embedded_qt_viewer,)],
         )
 
         # Access the sub-panels via QtViewer's lazy properties so they are
@@ -100,6 +94,7 @@ class ImageView(QtView, Loggable):
         controls = self._qt_viewer.controls
         layer_buttons = self._qt_viewer.layerButtons
         layer_list = self._qt_viewer.layers
+        viewer_buttons = self._qt_viewer.viewerButtons
 
         # Left panel: layer controls on top, layer list + buttons below.
         left_panel = QtWidgets.QWidget()
@@ -109,6 +104,7 @@ class ImageView(QtView, Loggable):
         left_layout.addWidget(controls)
         left_layout.addWidget(layer_buttons)
         left_layout.addWidget(layer_list)
+        left_layout.addWidget(viewer_buttons)
         left_panel.setLayout(left_layout)
 
         # Horizontal splitter: left panel | canvas+dims
@@ -122,8 +118,7 @@ class ImageView(QtView, Loggable):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
-
-        self.hints = frozenset(hints or ["buffer"])
+        self.seen_layers: set[str] = set()
 
         # Apply napari's stylesheet so icons and theme colours render correctly.
         # Window.__init__ normally does this via _update_theme(); since we bypass
@@ -133,9 +128,7 @@ class ImageView(QtView, Loggable):
         self.logger.info("Initialized")
 
     def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
-        # on teardown, ensure we unregister the
-        # embedded viewer provider to keep things clean;
-        # TODO: this should go away after napari 0.7.0 is released
+        # Unregister the embedded viewer/qt-viewer providers on teardown
         self._provider_disposer()
         super().closeEvent(event)
 
@@ -160,90 +153,31 @@ class ImageView(QtView, Loggable):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Inject detector configuration and create image layers."""
-        descriptors: dict[str, Descriptor] = container.detector_descriptors()
-        readings: dict[str, Reading[Any]] = container.detector_readings()
-        self._setup_layers(descriptors, readings)
-        for cache in container.signals.values():
-            if "sigNewData" in cache:
-                cache["sigNewData"].connect(self._update_layers, thread="main")
+        """Create one image layer per detector."""
+        self.setup_layers(container.require(DETECTOR_LAYER_SPECS))
 
-    def _setup_layers(
-        self,
-        descriptors: dict[str, Descriptor],
-        readings: dict[str, Reading[Any]],
-    ) -> None:
-        """Create one napari image layer per device.
+    def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
+        """Create an empty image layer for each detector based on the provided specifications."""
+        for name, spec in specs.items():
+            self.logger.debug(f"Creating layer for {name} with spec {spec}")
+            buffer = np.zeros(spec["shape"], dtype=np.dtype(spec["dtype"]))
+            self.viewer_model.add_image(buffer, name=name)
 
-        Parameters
-        ----------
-        descriptors :
-            Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name-property``.
-        readings :
-            Flat merged ``read_configuration()`` output, keyed identically.
-        """
-        devices: dict[str, dict[str, Descriptor]] = {}
-        for key, descriptor in descriptors.items():
-            try:
-                name, _ = parse_key(key)
-            except ValueError:
-                self.logger.warning(f"Skipping malformed descriptor key: {key!r}")
-                continue
-            devices.setdefault(name, {})[key] = descriptor
-
-        for device_label, dev_descriptors in devices.items():
-            dev_readings: dict[str, Reading[Any]] = {
-                k: v for k, v in readings.items() if k in dev_descriptors
-            }
-
-            sensor_shape: tuple[int, int] = (512, 512)
-            for key, reading in dev_readings.items():
-                if descriptors[key].get("dtype") == "array" and "sensor_shape" in key:
-                    val = reading["value"]
-                    if isinstance(val, (list, tuple)) and len(val) == 2:
-                        sensor_shape = (int(val[0]), int(val[1]))
-                    break
-
-            dtype: str = "uint8"
-            for key, desc in dev_descriptors.items():
-                if desc.get("dtype") == "array" and any(
-                    hint in key for hint in self.hints
-                ):
-                    dtype = str(desc.get("dtype_numpy", "uint8"))
-                    break
-
-            layer = self.viewer_model.add_image(
-                np.zeros(shape=sensor_shape, dtype=dtype),
-                name=device_label,
-            )
-            layer._overlays.update(
-                {
-                    "roi_box": ROIInteractionBoxOverlay(
-                        bounds=((0, 0), layer.data.shape), handles=True
-                    )
-                }
-            )
-            layer.mouse_drag_callbacks.append(resize_selection_box)
-            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-
-    def _update_layers(self, data: dict[str, dict[str, Any]]) -> None:
+    @slot
+    def update_layers(self, data: dict[str, Reading[Any]]) -> None:
         """Push incoming frame data into the corresponding image layers.
 
         Parameters
         ----------
-        data :
-            Nested dict keyed by detector name. Each value is a packet
-            containing at least ``"buffer"`` (the raw frame array) and
-            ``"roi"`` (a 4-tuple ``(x_start, x_end, y_start, y_end)``).
+        data : dict[str, Reading[Any]]
+            Incoming reading from a detector buffer.
         """
-        for obj_name, packet in data.items():
-            for hint in self.hints:
-                if hint not in packet:
-                    continue
-                buffer: npt.NDArray[Any] = packet[hint]
-                if obj_name not in self.viewer_model.layers:
-                    self.logger.debug(f"Adding new layer for {obj_name}")
-                    self.viewer_model.add_image(name=obj_name, data=buffer)
-                else:
-                    self.viewer_model.layers[obj_name].data = buffer
+        for name, reading in data.items():
+            # self.logger.debug(f"New {name} frame")
+            name = name.removesuffix("-buffer")
+            img = reading["value"]
+            if name not in self.viewer_model.layers:
+                self.logger.debug(f"Adding new layer for {name}")
+                self.viewer_model.add_image(img, name=name)
+            else:
+                self.viewer_model.layers[name].data = img

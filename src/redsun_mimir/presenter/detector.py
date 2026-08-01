@@ -1,35 +1,52 @@
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor  # noqa: TC002
-from bluesky.utils import maybe_await
-from dependency_injector import providers
 from event_model import DocumentRouter
+from redsun.aio import run_coro
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.utils import find_signals
-from redsun.utils.descriptors import parse_key
-from redsun.virtual import Signal
+from redsun.virtual import Signal, slot
 
 from redsun_mimir.protocols import DetectorProtocol
+from redsun_mimir.providers import (
+    DETECTOR_DESCRIPTORS,
+    DETECTOR_LAYER_SPECS,
+    DETECTOR_READINGS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Reading
-    from event_model import Event
-    from redsun.device import Device
+    from event_model.documents import Event, EventDescriptor
+    from ophyd_async.core import Device, SignalRW
     from redsun.virtual import VirtualContainer
+
+    from redsun_mimir.protocols import LayerSpec
+
+
+#: Configuration properties a view may change, each named after the signal
+#: that carries it on a detector. A whitelist, so a stray port name cannot
+#: reach an arbitrary attribute.
+_CONFIGURABLE = frozenset({"roi", "exposure", "pixel_dtype"})
 
 
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
-    Implements [`DocumentRouter`][event_model.DocumentRouter] to receive
-    event documents emitted by the run engine and forward new image data
-    to [`DetectorView`][redsun_mimir.view.DetectorView] via the virtual container.
+    Live frames reach this presenter as Event documents - the plan puts each
+    detector's buffer signal under ``bps.monitor`` - rather than through a
+    direct ``subscribe_reading`` on the signal. Going through the document
+    sequence keeps every displayed frame part of the run: it is ordered
+    against the other documents, and any callback that reasons about the run
+    sees it.
+
+    Frames are forwarded **raw**. Background-median correction is
+    [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter]'s
+    responsibility, and it publishes the corrected frames on its own signal
+    so raw and filtered end up as separate viewer layers.
 
     Parameters
     ----------
@@ -37,36 +54,22 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    timeout: float | None, keyword-only, optional
-        Status object wait time in seconds
-        for configuration confirmation.
-        If `None`, waits indefinetely.
-        Defaults to 1.0 seconds.
-    hints: list[str] | None, keyword-only, optional
-        List of data key suffixes to look for in event documents
-        when routing data to the view. If `None`, no data will be routed.
-        Defaults to `["buffer", "roi"]`.
+    timeout : float | None, keyword-only, optional
+        Timeout in seconds for async configuration calls.
+        Defaults to ``1.0``.
 
     Attributes
     ----------
-    sigNewConfiguration :
+    sig_new_configuration : Signal[str, str, object]
         Emitted after a detector setting is successfully applied.
-        Carries the detector name (`str`) and a mapping of the
-        changed setting to its new value (`dict[str, object]`).
-    sigConfigurationConfirmed :
-        Emitted after each individual setting change attempt.
-        Carries detector name (`str`), setting name (`str`),
-        and success status (`bool`).
-    sigNewData :
-        Emitted on each incoming event document.
-        Carries a nested `dict` keyed by detector name, with inner
-        keys `buffer` (raw image array) and `roi`
-        (tuple `(x_start, x_end, y_start, y_end)`).
+        Carries the detector name (``str``), the canonical key of the
+        changed setting (``str``) and its new value (``object``).
+    sig_new_data : Signal[dict[str, Reading[Any]]]
+        Emitted for every live frame carried by an Event document.
     """
 
-    sigNewConfiguration = Signal(str, dict[str, object])
-    sigConfigurationConfirmed = Signal(str, str, bool)
-    sigNewData = Signal(object)
+    sig_new_configuration = Signal(str, str, object)
+    sig_new_data = Signal(object)
 
     def __init__(
         self,
@@ -74,122 +77,98 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         devices: Mapping[str, Device],
         /,
         timeout: float | None = 1.0,
-        hints: list[str] | None = ["buffer", "roi"],
     ) -> None:
         super().__init__(name, devices)
         self.timeout = timeout or 1.0
-        self.hints = hints or ["buffer", "roi"]
-        self.detectors = {
+        self.detectors: dict[str, DetectorProtocol] = {
             name: device
             for name, device in devices.items()
             if isinstance(device, DetectorProtocol)
         }
-        # data stream name,
-        # extracted from the incoming
-        # descriptor document
-        # whenever a new stream is declared
-        self.current_stream = ""
-        self.packet: dict[str, dict[str, Any]] = {}
+        #: buffer data keys this presenter forwards, by descriptor uid
+        self._live_streams: dict[str, list[str]] = {}
+        self._buffer_keys = {
+            detector.buffer.name for detector in self.detectors.values()
+        }
+
+    def descriptor(self, doc: EventDescriptor) -> None:
+        """Remember which streams carry a tracked detector's buffer."""
+        keys = [key for key in doc["data_keys"] if key in self._buffer_keys]
+        if keys:
+            self._live_streams[doc["uid"]] = keys
+
+    def event(self, doc: Event) -> Event:
+        """Forward the raw frames of a live event to the viewer."""
+        keys = self._live_streams.get(doc["descriptor"])
+        if keys is None:
+            return doc
+        readings: dict[str, Reading[Any]] = {
+            key: {"value": doc["data"][key], "timestamp": doc["time"]}
+            for key in keys
+            if key in doc["data"]
+        }
+        if readings:
+            self.sig_new_data.emit(readings)
+        return doc
 
     def register_providers(self, container: VirtualContainer) -> None:
-        r"""Register detector info as providers in the DI container.
-
-        Injects two flat dicts keyed by the canonical ``prefix:name-property``
-        scheme so the view can populate its tree directly at construction:
-
-        - ``detector_descriptors``: merged ``describe_configuration()`` output
-          from all detectors.
-        - ``detector_readings``: merged ``read_configuration()`` output from
-          all detectors.
+        """Register detector info as providers in the DI container.
 
         Also registers detector signals in the container.
         """
-        descriptors: dict[str, Descriptor] = {}
-        readings: dict[str, Reading[Any]] = {}
-        for detector in self.detectors.values():
-            descriptors.update(
-                asyncio.run(maybe_await(detector.describe_configuration()))
-            )
-            readings.update(asyncio.run(maybe_await(detector.read_configuration())))
-
-        container.detector_descriptors = providers.Object(descriptors)
-        container.detector_readings = providers.Object(readings)
+        container.provide(DETECTOR_DESCRIPTORS, self.devices_description())
+        container.provide(DETECTOR_READINGS, self.devices_configuration())
+        container.provide(DETECTOR_LAYER_SPECS, self.layer_specs())
         container.register_signals(self)
         container.register_callbacks(self)
 
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect to the virtual container signals."""
-        sigs = find_signals(container, ["sigPropertyChanged"])
-        if "sigPropertyChanged" in sigs:
-            sigs["sigPropertyChanged"].connect(self.configure)
+    def layer_specs(self) -> dict[str, LayerSpec]:
+        """Get the layer specifications for all detector devices."""
+        specs: dict[str, LayerSpec] = {}
+        for device in self.detectors.values():
+            roi = run_coro(device.roi.get_value())
+            dtype = run_coro(device.pixel_dtype.get_value())
+            specs[device.name] = {"shape": roi[2:], "dtype": dtype}
+        return specs
 
-    def configure(self, detector: str, config: dict[str, Any]) -> None:
-        r"""Configure a detector with confirmation feedback.
+    def devices_configuration(self) -> dict[str, Reading[Any]]:
+        """Get the current configuration readings of all detector devices."""
+        result: dict[str, Reading[Any]] = {}
+        for device in self.detectors.values():
+            result.update(run_coro(device.read_configuration()))
+        return result
 
-        Update one or more configuration parameters of a detector.
+    def devices_description(self) -> dict[str, Descriptor]:
+        """Get the configuration descriptors of all detector devices."""
+        result: dict[str, Descriptor] = {}
+        for device in self.detectors.values():
+            result.update(run_coro(device.describe_configuration()))
+        return result
 
-        Emits ``sigNewConfiguration`` signal when successful,
-        with the detector name and the new configuration.
-        Emits ``sigConfigurationConfirmed`` signal for each setting
-        with confirmation of success or failure.
+    @slot
+    async def set(self, detector: str, property: str, value: Any) -> None:
+        """Set a detector configuration property and announce the new value.
 
         Parameters
         ----------
-        detector : ``str``
-            Device label (``prefix:name``) as emitted by
-            :class:`~redsun_mimir.view.DetectorView`.
-        config : ``dict[str, Any]``
-            Mapping of canonical ``prefix:name-property`` keys to new values.
-
+        detector : str
+            Bare device name as emitted by the view.
+        property : str
+            Configuration key representing the setting to change.
+        value : object
+            New value for the setting.
         """
-        # device_label is "name"; self.detectors is keyed by bare name
-        try:
-            bare_name, _ = parse_key(next(iter(config)))
-        except (StopIteration, ValueError):
-            # fall back to treating detector arg as the bare name directly
-            bare_name = detector
-
-        device = self.detectors.get(bare_name)
-        if device is None:
-            self.logger.error(
-                f"No detector found for label {detector!r} (bare name {bare_name!r})"
-            )
+        if property not in _CONFIGURABLE:
+            self.logger.error(f"Unknown property {property!r} for {detector!r}")
             return
 
-        for key, value in config.items():
-            self.logger.debug(f"Configuring '{key}' of {detector} to {value}")
-            s = device.set(value, propr=key)
-            try:
-                s.wait(self.timeout)
-                success = s.success
-
-                if success:
-                    self.sigNewConfiguration.emit(detector, {key: value})
-                else:
-                    self.logger.error(
-                        f"Failed to configure '{key}' of {detector}: {s.exception()}"
-                    )
-                self.sigConfigurationConfirmed.emit(detector, key, success)
-
-            except Exception as e:
-                self.logger.error(f"Exception configuring '{key}' of {detector}: {e}")
-                self.sigConfigurationConfirmed.emit(detector, key, False)
-
-    def event(self, doc: Event) -> Event:
-        """Process new event documents.
-
-        Parameters
-        ----------
-        doc : ``Event``
-            The event document.
-        """
-        for key, value in doc["data"].items():
-            parts = key.split("-")
-            if len(parts) < 2:
-                continue
-            obj_name, hint = parts[0], parts[1]
-            if hint in self.hints:
-                self.packet.setdefault(obj_name, {})
-                self.packet[obj_name][hint] = value
-        self.sigNewData.emit(self.packet)
-        return doc
+        obj: SignalRW[Any] = getattr(self.detectors[detector], property)
+        status = obj.set(value)
+        await status
+        if not status.success:
+            self.logger.error(f"Failed to set {obj} to {value!r}: {status.exception()}")
+            return
+        new_reading = await obj.read()
+        self.sig_new_configuration.emit(
+            detector, obj.name, new_reading[obj.name]["value"]
+        )

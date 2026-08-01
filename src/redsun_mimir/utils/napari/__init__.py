@@ -7,6 +7,6 @@ overlay_to_visual.update({ROIInteractionBoxOverlay: VispyROIBoxOverlay})
 
 __all__ = [
     "ROIInteractionBoxOverlay",
-    "resize_selection_box",
     "highlight_roi_box_handles",
+    "resize_selection_box",
 ]

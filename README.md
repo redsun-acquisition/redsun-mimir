@@ -30,7 +30,7 @@ It is **strongly reccomended** to install `redsun-mimir` in a virtual environmen
 
 ```bash
 # create the venv
-uv venv --python 3.10
+uv venv --python 3.11
 
 # activate the environment in...
 # ... linux
@@ -94,7 +94,7 @@ To run it, you have to:
 uv pip install redsun-mimir[sim]
 
 # install micro-manager device adapters
-mmcore install
+mmcore install --test-adapters
 
 # run the example container via command line
 mimir sim
@@ -110,12 +110,68 @@ mimir sim
 pip install redsun-mimir[sim]
 
 # install micro-manager device adapters
-mmcore install
+mmcore install --test-adapters
 
 # run the example container via command line
 mimir sim
 ```
 </details>
+
+## Wiring a session from YAML
+
+The shipped containers declare their connections in `wire()`. A session built
+only from a configuration file has no `wire()` to override, so it must declare
+them in a `wiring:` section: **without one the components build and connect to
+nothing.**
+
+Do not add this section to a configuration that already backs a container class
+with a `wire()` method. The two are applied one after the other, so every rule
+would connect a second time and each slot would run twice per emission.
+
+```yaml
+wiring:
+  - from: det_ctrl.sig_new_data
+    to: img_widget.update_layers
+  - from: median_ctrl.median
+    to: img_widget.update_layers
+  - from: median_ctrl.filtered
+    to: img_widget.update_layers
+  - from: det_widget.sig_property_changed
+    to: det_ctrl.set
+  - from: det_ctrl.sig_new_configuration
+    to: det_widget.on_new_configuration
+  - from: motor_widget.sig_motor_move
+    to: motor_ctrl.move
+  - from: motor_ctrl.sig_new_position
+    to: motor_widget.update_setpoint
+  - from: light_widget.sig_toggle_light_request
+    to: light_ctrl.trigger
+  - from: light_widget.sig_intensity_request
+    to: light_ctrl.set
+  - from: acq_widget.sig_launch_plan_request
+    to: acq_ctrl.launch_plan
+  - from: acq_widget.sig_stop_plan_request
+    to: acq_ctrl.stop_plan
+  - from: acq_widget.sig_pause_resume_request
+    to: acq_ctrl.pause_or_resume_plan
+  - from: acq_widget.sig_action_request
+    to: acq_ctrl.toggle_action_event
+  - from: acq_ctrl.sig_plan_done
+    to: acq_widget.on_plan_done
+  - from: acq_ctrl.sig_action_done
+    to: acq_widget.on_action_done
+  - from: acq_ctrl.sig_pre_launch_notify
+    to: median_ctrl.clear_medians
+  - from: acq_ctrl.sig_pre_launch_notify
+    to: storage_ctrl.set_plan
+  - from: acq_ctrl.sig_plan_done
+    to: storage_ctrl.reset_plan
+```
+
+Component names are the keys used under `devices:`, `presenters:` and `views:`;
+port names are the signal attributes and the names the slots declare. The last
+two rules reach `redsun`'s own `StoragePresenter`, which stopped discovering
+those signals by itself in 0.11.0.
 
 ## Features
 
