@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
-from redsun.utils import find_signals
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
-from redsun.virtual import Signal
+from redsun.virtual import Signal, slot
+
+from redsun_mimir.providers import PLAN_SPECS
 
 if TYPE_CHECKING:
     from redsun.presenter.plan_spec import PlanSpec
@@ -25,29 +26,29 @@ class AcquisitionView(QtView, Loggable):
 
     Parameters
     ----------
-    virtual_bus :
-        Reference to the virtual bus.
+    name : str
+        Identity key of the view.
 
     Attributes
     ----------
-    sigLaunchPlanRequest : Signal[str, dict[str, Any]]
+    sig_launch_plan_request : Signal[str, dict[str, Any]]
         Emitted when the user starts a plan.
         Carries the plan name (``str``) and its resolved parameters
         (``dict[str, Any]``).
-    sigStopPlanRequest : Signal
+    sig_stop_plan_request : Signal
         Emitted when the user requests plan stop.
-    sigPauseResumeRequest : Signal[bool]
+    sig_pause_resume_request : Signal[bool]
         Emitted when the user toggles pause/resume.
         Carries ``True`` to pause, ``False`` to resume.
-    sigActionRequest : Signal[str, bool]
+    sig_action_request : Signal[str, bool]
         Emitted when the user triggers an action button.
         Carries the action name (``str``) and toggle state (``bool``).
     """
 
-    sigLaunchPlanRequest = Signal(str, object)
-    sigStopPlanRequest = Signal()
-    sigPauseResumeRequest = Signal(bool)
-    sigActionRequest = Signal(str, bool)
+    sig_launch_plan_request = Signal(str, object)
+    sig_stop_plan_request = Signal()
+    sig_pause_resume_request = Signal(bool)
+    sig_action_request = Signal(str, bool)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -58,9 +59,8 @@ class AcquisitionView(QtView, Loggable):
         self,
         name: str,
         /,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(name, **kwargs)
+        super().__init__(name)
         self.plans_info: dict[str, str] = {}
 
         self.root_layout = QtW.QVBoxLayout(self)
@@ -103,14 +103,8 @@ class AcquisitionView(QtView, Loggable):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Inject plan specs from the DI container and build the UI."""
-        specs: set[PlanSpec] = container.plan_specs()
-        self.setup_ui(specs)
-        sigs = find_signals(container, ["sigPlanDone", "sigActionDone"])
-        if "sigPlanDone" in sigs:
-            sigs["sigPlanDone"].connect(self._on_plan_done)
-        if "sigActionDone" in sigs:
-            sigs["sigActionDone"].connect(self._on_action_done, thread="main")
+        """Build the plan controls from the acquisition presenter's specs."""
+        self.setup_ui(container.require(PLAN_SPECS))
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """Build the UI for the acquisition plans.
@@ -141,29 +135,33 @@ class AcquisitionView(QtView, Loggable):
         plan_widget = self.plan_widgets[plan]
         plan_widget.toggle(toggled)
         if toggled:
-            self.sigLaunchPlanRequest.emit(plan, plan_widget.parameters)
+            self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
         else:
-            self.sigStopPlanRequest.emit()
+            self.sig_stop_plan_request.emit()
 
     def _on_plan_maybe_paused(self, paused: bool) -> None:
         self.logger.debug(f"Plan pause toggled: {paused}")
         plan = self.plans_combobox.currentText()
         self.plan_widgets[plan].pause(paused)
-        self.sigPauseResumeRequest.emit(paused)
+        self.sig_pause_resume_request.emit(paused)
 
     def _on_plan_launch(self) -> None:
         plan = self.plans_combobox.currentText()
         plan_widget = self.plan_widgets[plan]
         plan_widget.setEnabled(False)
         plan_widget.enable_actions(False)
-        self.sigLaunchPlanRequest.emit(plan, plan_widget.parameters)
+        self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
 
-    def _on_plan_done(self) -> None:
+    @slot
+    def on_plan_done(self) -> None:
+        """Re-enable the current plan's controls now that the run finished."""
         plan = self.plans_combobox.currentText()
         self.plan_widgets[plan].setEnabled(True)
         self.plan_widgets[plan].enable_actions(False)
 
-    def _on_action_done(self, action_name: str) -> None:
+    @slot
+    def on_action_done(self, action_name: str) -> None:
+        """Restore the button of *action_name* once its event is cleared."""
         plan = self.plans_combobox.currentText()
         plan_widget = self.plan_widgets[plan]
         action_button = plan_widget.get_action_button(action_name)
@@ -183,7 +181,7 @@ class AcquisitionView(QtView, Loggable):
         group = self.plan_widgets[plan].actions_group
         if group:
             group.setEnabled(False)
-        self.sigActionRequest.emit(action_name, True)
+        self.sig_action_request.emit(action_name, True)
 
     def _on_action_toggled(self, checked: bool, action_name: str) -> None:
         if not checked:
@@ -191,7 +189,7 @@ class AcquisitionView(QtView, Loggable):
             action_button = self.plan_widgets[plan].get_action_button(action_name)
             if action_button:
                 action_button.setEnabled(False)
-        self.sigActionRequest.emit(action_name, checked)
+        self.sig_action_request.emit(action_name, checked)
 
     def _wire_device_validation(self, plan_widget: PlanWidget) -> None:
         """Disable Run if any DeviceSequenceEdit has an empty selection."""

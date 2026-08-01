@@ -83,3 +83,7 @@ venv/
 
 # written by setuptools_scm
 **/_version.py
+
+# claude
+.claude/settings.local.json
+.claude/plans

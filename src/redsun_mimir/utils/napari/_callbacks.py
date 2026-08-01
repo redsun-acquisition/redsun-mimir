@@ -36,7 +36,6 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import numpy as np
-
 from napari.components.overlays.interaction_box import InteractionBoxHandle
 from napari.layers.utils.interaction_box import (
     generate_interaction_box_vertices,
@@ -44,7 +43,7 @@ from napari.layers.utils.interaction_box import (
 )
 
 if TYPE_CHECKING:
-    from typing import Iterator
+    from collections.abc import Iterator
 
     from napari._vispy.mouse_event import NapariMouseEvent
     from napari.layers import Image

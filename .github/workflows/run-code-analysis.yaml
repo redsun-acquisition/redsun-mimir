@@ -18,8 +18,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
         with:
-          args: "check --fix"
-          src: "src/redsun_mimir"
+          # keep this pinned to the floor in pyproject.toml: ruff's default
+          # rule set widens between minor releases, so an unpinned action
+          # silently disagrees with what passes locally
+          version: 0.16.0
+          args: "check"
+          src: "."
 
   mypy:
     name: mypy
@@ -47,7 +51,10 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      # config-driven: [tool.mypy] files= decides the scope, so passing an
+      # explicit path here would silently narrow it
       - name: Run mypy
-        run: uv run mypy src/ $(uv run qtpy mypy-args)
+        run: uv run mypy $(uv run qtpy mypy-args)
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_API: pyqt6

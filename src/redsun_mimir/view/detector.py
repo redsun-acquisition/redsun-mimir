@@ -5,40 +5,29 @@ from typing import TYPE_CHECKING, Any
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
 from qtpy import QtWidgets
 from redsun.log import Loggable
-from redsun.utils import find_signals
 from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.view.qt.treeview import DescriptorTreeView
-from redsun.virtual import Signal
+from redsun.virtual import Signal, slot
+
+from redsun_mimir.providers import DETECTOR_DESCRIPTORS, DETECTOR_READINGS
 
 if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
-    r"""Widget for controlling device settings, backed by a descriptor tree view.
-
-    Populated once at construction from the descriptor and reading dicts
-    provided by the DI container — no separate setup step required.
+    """Widget for controlling device settings, backed by a descriptor tree view.
 
     Parameters
     ----------
-    descriptors :
-        Flat ``describe_configuration()`` dict for one device,
-        keyed in ``prefix:name-property`` form.
-    readings :
-        Flat ``read_configuration()`` dict matching the same keys.
-    parent :
+    descriptors : dict[str, Descriptor]
+        Detector output of "describe()".
+    readings : dict[str, Reading[Any]]
+        Detector output of "read()".
+    parent : QtWidgets.QWidget | None, optional
         Optional parent widget.
-
-    Note
-    ----
-    The ROI control buttons are present but currently non-functional.
-    Full ROI wiring (toggling napari overlay visibility) will be
-    implemented in a follow-up task once the ROI signal is published
-    on the virtual bus by
-    [`ImageView`][redsun_mimir.view.ImageView].
     """
 
     def __init__(
@@ -49,26 +38,10 @@ class SettingsControlWidget(QtWidgets.QWidget):
     ) -> None:
         super().__init__(parent=parent)
 
-        self.tree_view = DescriptorTreeView(descriptors, readings, self)
-
-        self._enable_roi_button = QtWidgets.QPushButton("Toggle ROI control")
-        self._enable_roi_button.setCheckable(True)
-        self._full_roi_button = QtWidgets.QPushButton("Full ROI")
-        self._accept_button = QtWidgets.QPushButton("Accept")
-        self._full_roi_button.setEnabled(False)
-        self._accept_button.setEnabled(False)
-        self._enable_roi_button.toggled.connect(self._on_resize_button_toggled)
-
+        self.tree_view = DescriptorTreeView(descriptors, readings, parent=self)
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.tree_view)
-        layout.addWidget(self._enable_roi_button)
-        layout.addWidget(self._full_roi_button)
-        layout.addWidget(self._accept_button)
         self.setLayout(layout)
-
-    def _on_resize_button_toggled(self, checked: bool) -> None:
-        self._full_roi_button.setEnabled(checked)
-        self._accept_button.setEnabled(checked)
 
 
 class DetectorView(QtView, Loggable):
@@ -85,20 +58,19 @@ class DetectorView(QtView, Loggable):
 
     Parameters
     ----------
-    virtual_bus :
-        Reference to the virtual bus.
-    **kwargs :
-        Additional keyword arguments passed to the parent view.
+    name: str
+        Identity key of the view.
 
     Attributes
     ----------
-    sigPropertyChanged :
+    sig_property_changed : Signal[str, str, Any]
         Emitted when the user changes a detector property.
-        Carries the detector name (`str`) and a mapping of the changed
-        property to its new value (`dict[str, object]`).
+        - str: The detector name.
+        - str: The property name.
+        - Any: The new value of the property.
     """
 
-    sigPropertyChanged = Signal(str, dict[str, object])
+    sig_property_changed = Signal(str, str, object)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -109,7 +81,6 @@ class DetectorView(QtView, Loggable):
         self,
         name: str,
         /,
-        **kwargs: Any,
     ) -> None:
         super().__init__(name)
 
@@ -130,13 +101,11 @@ class DetectorView(QtView, Loggable):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Inject detector configuration from the DI container."""
-        descriptors: dict[str, Descriptor] = container.detector_descriptors()
-        readings: dict[str, Reading[Any]] = container.detector_readings()
-        self.setup_ui(descriptors, readings)
-        sigs = find_signals(container, ["sigConfigurationConfirmed"])
-        if "sigConfigurationConfirmed" in sigs:
-            sigs["sigConfigurationConfirmed"].connect(self._handle_configuration_result)
+        """Build the settings panels from the detector presenter's snapshots."""
+        self.setup_ui(
+            container.require(DETECTOR_DESCRIPTORS),
+            container.require(DETECTOR_READINGS),
+        )
 
     def setup_ui(
         self,
@@ -145,19 +114,12 @@ class DetectorView(QtView, Loggable):
     ) -> None:
         r"""Initialise the settings panels.
 
-        Groups descriptors and readings by their ``prefix:name`` device label
-        (the part of the key before the backslash) and creates one
-        [`SettingsControlWidget`][redsun_mimir.view.SettingsControlWidget]
-        tab per device.
-
         Parameters
         ----------
-        descriptors :
-            Flat merged ``describe_configuration()`` output from all detectors,
-            keyed as ``prefix:name-property``.
-        readings :
-            Flat merged ``read_configuration()`` output from all detectors,
-            keyed identically.
+        descriptors : dict[str, Descriptor]
+            Flat merged ``describe()`` output from all detectors, keyed identically.
+        readings : dict[str, Reading[Any]]
+            Flat merged ``read()`` output from all detectors, keyed identically.
         """
         devices: dict[str, dict[str, Descriptor]] = {}
         for key, descriptor in descriptors.items():
@@ -172,31 +134,30 @@ class DetectorView(QtView, Loggable):
             dev_readings = {k: v for k, v in readings.items() if k in dev_descriptors}
 
             widget = SettingsControlWidget(dev_descriptors, dev_readings, self)
-            widget.tree_view.sigPropertyChanged.connect(
-                lambda setting, value, lbl=device_label: self.sigPropertyChanged.emit(
-                    lbl, {setting: value}
-                )
-            )
+            widget.tree_view.sig_property_changed.connect(self.sig_property_changed)
             self.settings_controls[device_label] = widget
             self.settings_tab_widget.addTab(widget, device_label)
 
-    def _handle_configuration_result(
-        self, detector: str, setting_name: str, success: bool
-    ) -> None:
-        """Handle the result of a configuration change.
+    @slot
+    def on_new_configuration(self, detector: str, key: str, value: Any) -> None:
+        """Clear the pending edit for *key* once the presenter applied it.
+
+        [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter] only
+        emits ``sig_new_configuration`` after a successful ``set``, so the
+        edit is always confirmed here; failures are logged by the presenter
+        and leave the pending value in place.
 
         Parameters
         ----------
-        detector :
-            Name of the detector.
-        setting_name :
-            Name of the setting that was attempted.
-        success :
-            Whether the change was applied successfully.
+        detector : str
+            Name of the detector that applied the change.
+        key : str
+            Canonical ``name-property`` key of the setting that was applied.
+        value : Any
+            New value read back from the device.
         """
-        if detector in self.settings_controls:
-            self.settings_controls[detector].tree_view.confirm_change(
-                setting_name, success
-            )
-            if not success:
-                self.logger.error(f"Failed to configure {setting_name} for {detector}")
+        widget = self.settings_controls.get(detector)
+        if widget is None:
+            self.logger.warning(f"No settings panel for detector {detector!r}")
+            return
+        widget.tree_view.confirm_change(key, True)

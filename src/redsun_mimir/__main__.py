@@ -1,6 +1,6 @@
 from argparse import ArgumentParser, Namespace
 
-import redsun_mimir.configurations as configurations
+from redsun_mimir import configurations
 
 
 class Options(Namespace):

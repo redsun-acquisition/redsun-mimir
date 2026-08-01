@@ -1,228 +1,148 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, TypeVar, runtime_checkable
 
+import numpy as np
 from bluesky.protocols import (
     Collectable,
     Flyable,
-    Locatable,
-    Movable,
     Preparable,
-    Readable,
-    Stageable,
-    Triggerable,
     WritesStreamAssets,
 )
-from redsun.device import PDevice
-from redsun.device.protocols import HasCache
-from redsun.storage.protocols import HasWriter
+from ophyd_async.core import (
+    AsyncConfigurable,
+    AsyncReadable,
+    AsyncStageable,
+)
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from redsun.engine import Status
+    from ophyd_async.core import AsyncStatus, DeviceMap, SignalR, SignalRW
+
+T = TypeVar("T", int, float)
+
+Array2D = np.ndarray[tuple[int, int], Any]
+#: A 2D array type, with shape (height, width).
+
+ROIType = np.ndarray[tuple[int, int, int, int], Any]
+#: A region of interest (ROI) type, represented as an array of four integers: (x, y, width, height).
+
+
+class LayerSpec(TypedDict):
+    """Specification for an image layer in the view."""
+
+    shape: tuple[int, int]
+    """Shape of the image data (height, width)."""
+
+    dtype: str
+    """Data type of the image data, as a string (e.g. 'uint16')."""
 
 
 @runtime_checkable
-class Settable(Movable[Any], Protocol):
-    """Protocol for settable models.
+class MotorProtocol(AsyncReadable, Protocol):
+    """Protocol for individual motor axes."""
 
-    Reimplemented from the ``Movable`` bluesky protocol
-    for a more generic use case.
+    axis: DeviceMap[SignalRW[float]]
+    """Map of axis names to settable signals."""
 
-    Models implementing this protocol should be able to
-    set a value and return a status object.
+
+@runtime_checkable
+class LightProtocol(AsyncConfigurable, Protocol):
+    """Protocol for light source devices.
+
+    Attributes
+    ----------
+    intensity :
+        Settable signal for the current light intensity.
+        The ``units`` field of its ``Descriptor`` carries the engineering unit.
+    wavelength :
+        Read-only signal for the wavelength in nanometres.
+    enabled :
+        Read-only signal reflecting the current on/off state.
+        Updated internally each time [`trigger`][redsun_mimir.protocols.LightProtocol.trigger]
+        is called.
     """
 
-    def set(self, value: Any, **kwargs: Any) -> Status:
-        """Set a value in the model.
+    intensity: SignalRW[int | float]
+    """Light source intensity."""
+    wavelength: SignalR[int]
+    """Light source wavelength."""
 
-        `set` usage is dual:
+    enabled: SignalRW[bool]
+    """Current on/off state of the light source."""
 
-        - when no keyword arguments are provided,
-          the method will set a default ``value``
-          for which the model was implemented
-          (i.e. motor position, temperature, etc.);
-        - when keyword arguments are provided,
-          the method will update a configuration value
-          of the target device; for reference use ``prop``
-          as the keyword name.
-
-        For example, a motorized device can use
-        this protocol as follows:
-
-        .. code-block:: python
-
-            # set motor position
-            status = motor.set(10)
-
-            # update configuration value
-            status = motor.set("Y", prop="axis")
-
-
-        Parameters
-        ----------
-        value : ``Any``
-            New value to set.
-            When no keyword arguments are provided,
-            the method will set the object to ``value``.
-        **kwargs : ``Any``
-            Additional keyword arguments.
-            When used, the method will update
-            a local configuration value.
+    async def read(self) -> dict[str, Reading[Any]]:
+        """Read the current state of the light source.
 
         Returns
         -------
-        ``Status``
-            Status object of the operation.
-
+        dict[str, Any]
+            Dictionary of signal names to their current values.
         """
         ...
 
+    async def describe(self) -> dict[str, Descriptor]:
+        """Describe the light source signals.
 
-@runtime_checkable
-class MotorProtocol(PDevice, Settable, Locatable[Any], Protocol):
-    """Protocol for motor models.
+        Returns
+        -------
+        dict[str, Descriptor]
+            Dictionary of signal names to their descriptors.
+        """
+        ...
 
-    Implements the ``Locatable`` protocol.
-
-    Attributes
-    ----------
-    axis : ``str``
-        Motor current active axis.
-        It can be changed via
-        ``set(<new_axis>, prop="axis")``.
-
-    egu : ``str``
-        Engineering units for the motor position.
-    """
-
-    axis: list[str]
-    egu: str
-    step_sizes: dict[str, float]
-
-
-@runtime_checkable
-class LightProtocol(PDevice, Settable, Readable[Any], Triggerable, Protocol):
-    """Protocol for light models.
-
-    Implements the ``Readable`` protocol.
-
-    Attributes
-    ----------
-    intensity : ``float | int``
-        Light intensity.
-    enabled : ``bool``
-        Light activation status.
-        - ``True``: light is on
-        - ``False``: light is off
-
-    """
-
-    intensity: float | int
-    enabled: bool
-    binary: bool
-    wavelength: int
-    egu: str
-    intensity_range: tuple[int | float, ...]
-    step_size: int | float
-
-    def trigger(self) -> Status:
+    def trigger(self) -> AsyncStatus:
         """Toggle the activation status of the light source.
 
         Returns
         -------
-        ``Status``
+        AsyncStatus
             Status object of the operation.
-
-        """
-        ...
-
-    def read(self) -> dict[str, Reading[float | int | bool]]:
-        """Read the current status of the light source.
-
-        Returns a dictionary with the values of ``intensity`` and ``enabled``.
-
-        Returns
-        -------
-        ``dict[str, Reading[int | float | bool]]``
-            Dictionary with the current light intensity and activation status.
-
-        """
-        ...
-
-    def describe(self) -> dict[str, Descriptor]:
-        """Return a dictionary with the same keys as ``read``.
-
-        The dictionary holds the metadata with relevant
-        information about the light source.
         """
         ...
 
 
 @runtime_checkable
-class DetectorProtocol(PDevice, Settable, Readable[Any], Stageable, Protocol):
-    """Protocol for detector models.
+class BufferDataProtocol(Protocol):
+    """Protocol for devices that provide a continuously updated data buffer."""
 
-    Implements the following protocols:
+    buffer: SignalR[Array2D]
+    """Readable signal providing access to the current data buffer."""
 
-    - ``Settable``
-    - ``Readable``
-    - ``Stageable``
 
-    Attributes
-    ----------
-    roi : ``tuple[int, int, int, int]``
-        Region of interest (ROI) for the detector.
-        The ROI is defined as a tuple of four integers:
-        - (x, y, width, height), where:
-            - x: X coordinate of the top-left corner of the ROI
-            - y: Y coordinate of the top-left corner of the ROI
-            - width: Width of the ROI
-            - height: Height of the ROI
-    """
+@runtime_checkable
+class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Protocol):
+    """Protocol for detector models."""
 
-    roi: tuple[int, int, int, int]
-    sensor_shape: tuple[int, int]
+    exposure: SignalRW[float]
+    """Signal for exposure time."""
+
+    roi: SignalRW[ROIType]
+    """Signal for setting region of interest (ROI)."""
+
+    pixel_dtype: SignalRW[str]
+    """Signal for setting pixel data type."""
 
 
 @runtime_checkable
 class ReadableFlyer(
-    PDevice,
-    Readable[Any],
-    Preparable,
-    Flyable,
-    Collectable,
-    WritesStreamAssets,
-    HasWriter,
-    Protocol,
-):
-    """Protocol for objects that are both Readable and Flyable.
-
-    A model compliant with this protocol is capable of being used
-    concurrently to read data continously while flying,
-    and provides the necessary methods to be able to retrieve
-    the filepath locations of where the data is stored.
-
-    The required protocols are:
-
-    - ``Readable`` (read() and describe() methods)
-    - ``Flyable`` (kickoff() and complete() methods)
-    - ``Preparable`` (prepare() method)
-    - ``Collectable`` (describe_collect() method)
-    - ``WritesStreamAssets`` (collect_asset_docs() method)
-    """
-
-    sensor_shape: tuple[int, int]
-
-
-@runtime_checkable
-class PseudoCacheFlyer(
-    Readable[Any],
-    HasCache,
+    DetectorProtocol,
     Preparable,
     Flyable,
     Collectable,
     WritesStreamAssets,
     Protocol,
 ):
-    """A protocol for a pseudo-model flyer."""
+    """Protocol for objects that can write to disk."""
+
+
+__all__ = [
+    "Array2D",
+    "BufferDataProtocol",
+    "DetectorProtocol",
+    "LayerSpec",
+    "LightProtocol",
+    "MotorProtocol",
+    "ROIType",
+    "ReadableFlyer",
+]

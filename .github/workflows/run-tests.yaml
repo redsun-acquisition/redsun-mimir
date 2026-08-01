@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,9 +54,22 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # Auto-detect version from installed pymmcore/pymmcore-nano
-      # (must run after uv sync / pip install)
-      - uses: pymmcore-plus/setup-mm-test-adapters@main
+      # Auto-detects the device interface version from the installed
+      # pymmcore/pymmcore-nano, so it must run after uv sync. Installs to the
+      # directory find_micromanager() searches, the same one
+      # `mmcore install --test-adapters` uses.
+      # pinned by SHA: the action publishes no tags, and it puts binaries on
+      # the runner. main = 501885f as of 2026-03-11.
+      - uses: pymmcore-plus/setup-mm-test-adapters@501885fc43ebc486d3901441f1db4da8e04fdf54
+
+      # The adapters are downloaded binaries, and the action falls back to the
+      # latest release when detection fails; without this the mismatch would
+      # surface much later as a loadDevice error naming neither cause.
+      - name: Verify device adapters
+        run: >
+          uv run python -c
+          "from pymmcore_plus import find_micromanager;
+          assert find_micromanager(), 'no Micro-Manager device adapters found'"
 
       - name: Run tests with coverage (Linux)
         if: runner.os == 'Linux'
@@ -86,7 +99,6 @@ jobs:
 
   upload_coverage:
     name: Upload coverage
-    if: always()
     needs: [test]
     runs-on: ubuntu-latest
     steps:

@@ -32,7 +32,7 @@ jobs:
 
   build:
     name: Build Package
-    needs: [tests]
+    needs: [code_analysis, tests]
     if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
-from dependency_injector import providers
+from redsun.aio import run_coro
+from redsun.device.protocols import HasAsyncShutdown
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.utils import find_signals
-from redsun.virtual import HasShutdown
+from redsun.virtual import slot
 
-from redsun_mimir.protocols import LightProtocol  # noqa: TC001
+from redsun_mimir.protocols import LightProtocol
+from redsun_mimir.providers import LIGHT_CONFIGURATION, LIGHT_DESCRIPTION
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from redsun.device import Device
+    from ophyd_async.core import Device
     from redsun.virtual import VirtualContainer
 
 
@@ -32,10 +34,8 @@ class LightPresenter(Presenter, Loggable):
         Identity key of the presenter.
     devices :
         Mapping of device names to device instances.
-    **kwargs :
-        Additional keyword arguments.
-
-        - `timeout` (`float | None`): Status wait timeout in seconds.
+    timeout :
+        Status wait timeout in seconds. Defaults to ``2.0``.
     """
 
     def __init__(
@@ -43,26 +43,25 @@ class LightPresenter(Presenter, Loggable):
         name: str,
         devices: Mapping[str, Device],
         /,
-        **kwargs: Any,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(name, devices)
-        self._timeout: float | None = kwargs.get("timeout", 2.0)
+        self._timeout: float = timeout or 2.0
 
-        self._lights = {
-            name: model
-            for name, model in devices.items()
-            if isinstance(model, LightProtocol)
+        self._lights: dict[str, LightProtocol] = {
+            name: device
+            for name, device in devices.items()
+            if isinstance(device, LightProtocol)
         }
-        if len(self._lights) == 0:
-            self.logger.warning("No light devices found.")
+        self._locks = {name: asyncio.Lock() for name in self._lights}
+        if not self._lights:
+            self.logger.warning("No device found.")
         else:
-            self.logger.debug(f"Found light devices: {list(self._lights)}")
+            names = ", ".join(light.name for light in self._lights.values())
+            self.logger.debug(f"Found devices: {names}")
 
-    def models_configuration(self) -> dict[str, Reading[Any]]:
-        r"""Get the current configuration readings of all light devices.
-
-        Returns a flat dict keyed by the canonical ``prefix:name-property``
-        scheme, merging all lights together (matching the detector pattern).
+    def device_configuration(self) -> dict[str, Reading[Any]]:
+        """Get the current configuration readings of all light devices.
 
         Returns
         -------
@@ -71,14 +70,12 @@ class LightPresenter(Presenter, Loggable):
         """
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
-            result.update(light.read_configuration())
+            result.update(run_coro(light.read_configuration()))
+            result.update(run_coro(light.read()))
         return result
 
-    def models_description(self) -> dict[str, Descriptor]:
-        r"""Get the configuration descriptors of all light devices.
-
-        Returns a flat dict keyed by the canonical ``prefix:name-property``
-        scheme, merging all lights together (matching the detector pattern).
+    def device_description(self) -> dict[str, Descriptor]:
+        """Get the configuration descriptors of all light devices.
 
         Returns
         -------
@@ -87,63 +84,43 @@ class LightPresenter(Presenter, Loggable):
         """
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
-            result.update(light.describe_configuration())
+            result.update(run_coro(light.describe_configuration()))
+            result.update(run_coro(light.describe()))
         return result
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register light model info as a provider in the DI container."""
-        container.light_configuration = providers.Object(self.models_configuration())
-        container.light_description = providers.Object(self.models_description())
+        container.provide(LIGHT_CONFIGURATION, self.device_configuration())
+        container.provide(LIGHT_DESCRIPTION, self.device_description())
         container.register_signals(self)
 
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect to the virtual container signals."""
-        sigs = find_signals(container, ["sigToggleLightRequest", "sigIntensityRequest"])
-        if "sigToggleLightRequest" in sigs:
-            sigs["sigToggleLightRequest"].connect(self.trigger)
-        if "sigIntensityRequest" in sigs:
-            sigs["sigIntensityRequest"].connect(self.set)
+    @slot
+    async def trigger(self, name: str) -> None:
+        """Toggle a light source and log the new state on completion."""
+        # toggling reads and flips device state, so two overlapping requests
+        # would race; intensity is absolute and needs no such guard
+        async with self._locks[name]:
+            light = self._lights[name]
+            await asyncio.wait_for(light.trigger(), timeout=self._timeout)
+            state = await light.enabled.get_value()
+            self.logger.debug(f"Toggled {name!r} -> enabled={state}")
 
-    def trigger(self, name: str) -> None:
-        """Toggle the light.
+    @slot
+    async def set(self, name: str, intensity: float) -> None:
+        """Set the intensity of a light source.
 
         Parameters
         ----------
-        name : ``str``
-            Name of the light.
-
+        name : str
+            Name of the light device.
+        intensity : int | float
+            New intensity value.
         """
-        s = self._lights[name].trigger()
-        try:
-            s.wait(self._timeout)
-        except Exception as e:
-            self.logger.error(f"Failed toggle on {name}: {e}")
-        else:
-            light = self._lights[name]
-            self.logger.debug(
-                f"Toggled source {name} {not light.enabled} -> {light.enabled}"
-            )
+        light = self._lights[name]
+        await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
 
     def shutdown(self) -> None:
         """Shutdown the presenter and all light devices."""
         for light in self._lights.values():
-            if isinstance(light, HasShutdown):
-                light.shutdown()
-
-    def set(self, name: str, intensity: int | float) -> None:
-        """Set the intensity of the light.
-
-        Parameters
-        ----------
-        name : ``str``
-            Name of the light.
-        intensity : ``float``
-            Intensity to set.
-
-        """
-        light = self._lights[name]
-        s = light.set(intensity)
-        try:
-            s.wait(self._timeout)
-        except Exception:
-            self.logger.exception(f"Timeout when setting {name} at {intensity}")
+            if isinstance(light, HasAsyncShutdown):
+                run_coro(light.shutdown())
