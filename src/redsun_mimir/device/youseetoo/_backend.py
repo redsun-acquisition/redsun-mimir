@@ -13,19 +13,28 @@ axis and laser.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
+from functools import cached_property
 from typing import TYPE_CHECKING, Final
 
 import msgspec
-from ophyd_async.core import soft_signal_rw
+from ophyd_async.core import (
+    MovableLogic,
+    StandardMovable,
+    StandardReadable,
+    soft_signal_r_and_setter,
+    soft_signal_rw,
+)
 
 from redsun_mimir.device.signals import bounded_soft_signal_rw
 
 from ._actions import Acknowledge, LaserAction, MotorAction, MotorResponse
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from threading import Lock
 
-    from ophyd_async.core import SignalRW
+    from ophyd_async.core import SignalRW, TimeoutCalculator
     from serial import Serial
 
     from redsun_mimir.device._logics import AxisType
@@ -115,39 +124,74 @@ def _set_laser(serial: Serial, lock: Lock, laser_id: int, qid: int, value: int) 
             raise RuntimeError(f"Invalid response from laser. Received: {response}")
 
 
-def uc2_axis_signal(
-    serial: Serial, axis: AxisType, units: str, lock: Lock
-) -> SignalRW[float]:
-    """Create a `SignalRW` for a YouSeeToo axis.
+@dataclass
+class UC2AxisLogic(MovableLogic[float]):
+    """Move logic for a YouSeeToo axis.
+
+    The controller cannot be queried, so ``readback`` is written from the
+    commanded value once the serial exchange is acknowledged: ``locate()``
+    reports the two as equal because the device cannot tell them apart.
+    """
+
+    readback_set: Callable[[float], None] = field(default=lambda _: None)
+
+    async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
+        """Command the axis and adopt the commanded value as the readback."""
+        await self.setpoint.set(new_position, timeout=timeout())
+        self.readback_set(new_position)
+
+
+class UC2Axis(StandardReadable, StandardMovable[float]):
+    """One axis of a YouSeeToo stage.
 
     Parameters
     ----------
-    serial: Serial
+    serial : Serial
         Serial connection to the YouSeeToo controller.
-    axis: AxisType
+    axis : AxisType
         Axis to control. Must be one of "x", "y", or "z".
-    units: str
+    units : str
         Units for the axis. Must be one of "nm", "um", or "mm".
-    lock: threading.Lock
+    lock : threading.Lock
         Lock for synchronizing access to the serial port.
+    name : str, optional
+        Device name. Assigned by the parent when held in a ``DeviceMap``.
     """
-    axis_id = _AXIS_ID[axis]
-    factor = _CONVERSION[units]
 
-    async def setter(value: float | None) -> float | None:
-        if value is None:
-            return None
-        # pyserial is blocking: keep it off the event loop
-        await asyncio.to_thread(_move_axis, serial, lock, axis_id, factor, value)
-        return value
+    def __init__(
+        self,
+        serial: Serial,
+        axis: AxisType,
+        units: str,
+        lock: Lock,
+        name: str = "",
+    ) -> None:
+        axis_id = _AXIS_ID[axis]
+        factor = _CONVERSION[units]
 
-    return soft_signal_rw(
-        float,
-        0.0,
-        name=f"{axis}_position",
-        units=units,
-        setter=setter,
-    )
+        async def setter(value: float | None) -> float | None:
+            if value is None:
+                return None
+            # pyserial is blocking: keep it off the event loop
+            await asyncio.to_thread(_move_axis, serial, lock, axis_id, factor, value)
+            return value
+
+        with self.add_children_as_readables():
+            self.readback, self._readback_set = soft_signal_r_and_setter(
+                float, 0.0, units=units
+            )
+        self.setpoint = soft_signal_rw(float, 0.0, units=units, setter=setter)
+
+        super().__init__(name)
+
+    @cached_property
+    def movable_logic(self) -> MovableLogic[float]:
+        """Setpoint and echoed readback of this axis."""
+        return UC2AxisLogic(
+            setpoint=self.setpoint,
+            readback=self.readback,
+            readback_set=self._readback_set,
+        )
 
 
 def uc2_laser_signal(

@@ -104,9 +104,9 @@ class MotorPresenter(Presenter, Loggable):
         # both coordinates on every set, so a concurrent move on the sibling
         # axis would carry a stale value for this one and revert it
         async with self._locks[motor]:
-            signal = self._motors[motor].axis[axis]
-            target = await signal.get_value() + delta
-            await signal.set(target)
+            movable = self._motors[motor].axis[axis]
+            target = (await movable.locate())["readback"] + delta
+            await movable.set(target)
             self.sig_new_position.emit(motor, axis, target)
 
     def shutdown(self) -> None:

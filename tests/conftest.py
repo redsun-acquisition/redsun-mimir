@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import os
 import sys
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import pytest
-from ophyd_async.core import DeviceMap, StandardReadable, soft_signal_rw
+from ophyd_async.core import (
+    DeviceMap,
+    MovableLogic,
+    StandardMovable,
+    StandardReadable,
+    soft_signal_r_and_setter,
+    soft_signal_rw,
+)
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
 from qtpy.QtWidgets import QApplication
@@ -24,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
     from pathlib import Path
 
-    from ophyd_async.core import SignalRW
     from qtpy.QtCore import QCoreApplication
 
 
@@ -37,29 +44,55 @@ needs_mm_adapters = pytest.mark.skipif(
 )
 
 
+class FakeAxis(StandardReadable, StandardMovable[float]):
+    """Soft-signal stand-in for one movable axis.
+
+    Built like the production axes: a readback separate from the setpoint,
+    joined by a `MovableLogic`. The setter writes the readback, so a move
+    lands exactly where it was sent.
+    """
+
+    def __init__(self, name: str = "") -> None:
+        with self.add_children_as_readables():
+            self.readback, self._readback_set = soft_signal_r_and_setter(
+                float, 0.0, units="um"
+            )
+
+        async def setter(value: float | None) -> float | None:
+            if value is not None:
+                self._readback_set(value)
+            return value
+
+        self.setpoint = soft_signal_rw(float, 0.0, units="um", setter=setter)
+        super().__init__(name)
+
+    @cached_property
+    def movable_logic(self) -> MovableLogic[float]:
+        """Setpoint and readback of this axis."""
+        return MovableLogic(setpoint=self.setpoint, readback=self.readback)
+
+
 class FakeXYStage(StandardReadable):
     """Minimal ``MotorProtocol``-conformant test double for an XY stage.
 
     Presenter/view/acquisition-layer tests only need *some* device that
     structurally satisfies
-    [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] (an
-    ``AsyncReadable`` exposing ``axis: DeviceMap[SignalRW[float]]``) whose
-    axes show up in ``read()``/``describe()``. Using this instead of
-    ``MMDemoXYStage`` keeps those tests off the process-wide
-    ``CMMCorePlus`` singleton, which only tolerates one device per name.
+    [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] whose axes show
+    up in ``read()``/``describe()``. Using this instead of ``MMDemoXYStage``
+    keeps those tests off the process-wide ``CMMCorePlus`` singleton, which
+    only tolerates one device per name.
 
-    It is built exactly like the production stages: axis signals go straight
-    into the ``DeviceMap`` and are never bound as top-level attributes first
-    (a ``Device`` cannot be re-parented), and they are registered with
+    It is built exactly like the production stages: axes go straight into the
+    ``DeviceMap`` and are never bound as top-level attributes first (a
+    ``Device`` cannot be re-parented), and they are registered with
     [`add_readables`][ophyd_async.core.StandardReadable.add_readables] so
     readings are keyed ``<device>-axis-<name>``.
     """
 
-    axis: DeviceMap[SignalRW[float]]
+    axis: DeviceMap[StandardMovable[float]]
 
     def __init__(self, name: str, /, axes: tuple[str, ...] = ("x", "y")) -> None:
-        signals = {axis: soft_signal_rw(float, initial_value=0.0) for axis in axes}
-        self.axis = DeviceMap(signals)
+        self.axis = DeviceMap({axis: FakeAxis() for axis in axes})
         self.add_readables(list(self.axis.values()))
         super().__init__(name)
 

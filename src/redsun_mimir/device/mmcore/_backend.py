@@ -13,13 +13,23 @@ Micro-Manager's own change events are not hooked up.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Final, cast
 
 import numpy as np
-from ophyd_async.core import StrictEnum, soft_signal_rw
+from ophyd_async.core import (
+    MovableLogic,
+    StandardMovable,
+    StandardReadable,
+    StrictEnum,
+    set_and_wait_for_other_value,
+    soft_signal_r_and_setter,
+    soft_signal_rw,
+)
 
 if TYPE_CHECKING:
-    from ophyd_async.core import SignalRW
+    from ophyd_async.core import SignalRW, TimeoutCalculator
     from pymmcore_plus import CMMCorePlus as Core
 
     from redsun_mimir.device._logics import AxisType
@@ -96,10 +106,32 @@ def mm_property_signal(
     )
 
 
-def mm_position_signal(
-    core: Core, device_label: str, axis: AxisType, units: str = "um"
-) -> SignalRW[float]:
-    """Create a signal for one axis of a Micro-Manager stage.
+#: A Micro-Manager stage settles on its own grid rather than exactly where it
+#: was sent: the demo XY stage lands within 0.006 um of any request, and
+#: exposes no step-size property to derive this from. `MovableLogic.move`
+#: waits for equality by default, which would never be satisfied.
+POSITION_TOLERANCE: Final[float] = 0.01
+
+
+@dataclass
+class MMAxisLogic(MovableLogic[float]):
+    """Move logic for one axis of a Micro-Manager stage."""
+
+    tolerance: float = POSITION_TOLERANCE
+
+    async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
+        """Write the setpoint and wait for the readback to land within tolerance."""
+        await set_and_wait_for_other_value(
+            self.setpoint,
+            new_position,
+            self.readback,
+            lambda value: bool(np.isclose(value, new_position, atol=self.tolerance)),
+            timeout=timeout(),
+        )
+
+
+class MMAxis(StandardReadable, StandardMovable[float]):
+    """One axis of a Micro-Manager stage.
 
     Parameters
     ----------
@@ -111,41 +143,59 @@ def mm_position_signal(
         The axis to control (``"x"``, ``"y"`` or ``"z"``).
     units : str, optional
         Physical units of the position, published in the DataKey.
+    name : str, optional
+        Device name. Assigned by the parent when held in a ``DeviceMap``.
     """
-    lateral = axis in ("x", "y")
 
-    def getter() -> float:
-        if not lateral:
-            return float(core.getPosition(device_label))
-        x, y = core.getXYPosition(device_label)
-        return float(x if axis == "x" else y)
+    def __init__(
+        self,
+        core: Core,
+        device_label: str,
+        axis: AxisType,
+        units: str = "um",
+        name: str = "",
+    ) -> None:
+        lateral = axis in ("x", "y")
 
-    async def setter(value: float | None) -> None:
-        if value is None:
-            return
-        if not lateral:
-            core.setPosition(device_label, value)
-        else:
+        def getter() -> float:
+            if not lateral:
+                return core.getPosition(device_label)
             x, y = core.getXYPosition(device_label)
-            core.setXYPosition(
-                device_label,
-                value if axis == "x" else x,
-                value if axis == "y" else y,
-            )
-        # a stage takes time to travel: block the *set* until it has
-        # arrived, so a plan's move completes when the axis is really there.
-        # waitForDevice is a blocking core call, hence the thread.
-        await asyncio.to_thread(core.waitForDevice, device_label)
+            return x if axis == "x" else y
 
-    return soft_signal_rw(
-        float,
-        0.0,
-        name="position",
-        units=units,
-        getter=getter,
-        setter=setter,
-        poll_period=POLL_PERIOD,
-    )
+        async def setter(value: float | None) -> None:
+            if value is None:
+                return
+            if not lateral:
+                core.setPosition(device_label, value)
+            else:
+                x, y = core.getXYPosition(device_label)
+                core.setXYPosition(
+                    device_label,
+                    value if axis == "x" else x,
+                    value if axis == "y" else y,
+                )
+            # a stage takes time to travel: block the *set* until it has
+            # arrived, so a plan's move completes when the axis is really
+            # there. waitForDevice is a blocking core call, hence the thread.
+            await asyncio.to_thread(core.waitForDevice, device_label)
+
+        with self.add_children_as_readables():
+            self.readback, _ = soft_signal_r_and_setter(
+                float,
+                0.0,
+                units=units,
+                getter=getter,
+                poll_period=POLL_PERIOD,
+            )
+        self.setpoint = soft_signal_rw(float, 0.0, units=units, setter=setter)
+
+        super().__init__(name)
+
+    @cached_property
+    def movable_logic(self) -> MovableLogic[float]:
+        """Setpoint and readback of this axis."""
+        return MMAxisLogic(setpoint=self.setpoint, readback=self.readback)
 
 
 def mm_exposure_signal(
@@ -168,7 +218,7 @@ def mm_exposure_signal(
         core.setExposure(device_label, initial_exposure)
 
     def getter() -> float:
-        return float(core.getExposure(device_label))
+        return core.getExposure(device_label)
 
     def setter(value: float | None) -> None:
         if value is not None:
