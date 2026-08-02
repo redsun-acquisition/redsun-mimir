@@ -13,17 +13,25 @@ from redsun_mimir.providers import (
     LIGHT_CONFIGURATION,
     LIGHT_DESCRIPTION,
     MOTOR_DESCRIPTION,
+    MOTOR_READBACKS,
     MOTOR_READINGS,
 )
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
 
 if TYPE_CHECKING:
+    from bluesky.protocols import Reading
+
     from redsun_mimir.device._mocks import MockLightDevice
 
     from .conftest import FakeXYStage
 
 pytestmark = pytest.mark.qt
+
+
+def _reading(key: str, value: float) -> dict[str, Reading[Any]]:
+    """Build the one-entry reading dict a signal subscription delivers."""
+    return {key: {"value": value, "timestamp": 0.0}}
 
 
 def _make_container(*bindings: tuple[ProviderKey[Any], Any]) -> VirtualContainer:
@@ -38,6 +46,10 @@ async def _build_motor_view(widget: MotorView, motor: FakeXYStage) -> VirtualCon
     container = _make_container(
         (MOTOR_READINGS, await motor.read()),
         (MOTOR_DESCRIPTION, await motor.describe()),
+        (
+            MOTOR_READBACKS,
+            {a.name: a.movable_logic.readback for a in motor.axis.values()},
+        ),
     )
     widget.register_providers(container)
     widget.inject_dependencies(container)
@@ -99,7 +111,7 @@ class TestMotorView:
     ) -> None:
         await _build_motor_view(widget, motor_stage)
 
-        widget.update_setpoint("xystage", "x", 7.5)
+        widget.update_setpoint(_reading("xystage-axis-x", 7.5))
         assert widget._labels["pos:xystage:x"].text().startswith("7.50")
 
     @pytest.mark.parametrize(
@@ -123,7 +135,7 @@ class TestMotorView:
         would move nothing.
         """
         await _build_motor_view(widget, motor_stage)
-        widget.update_setpoint("xystage", "x", 123.0)
+        widget.update_setpoint(_reading("xystage-axis-x", 123.0))
 
         received: list[tuple[str, str, float]] = []
         widget.sig_motor_move.connect(
@@ -137,13 +149,18 @@ class TestMotorView:
         assert (motor, axis) == ("xystage", "x")
         assert delta == pytest.approx(expected)
 
-    async def test_presenter_position_updates_reach_the_view(
+    async def test_label_follows_a_move_the_presenter_never_made(
         self,
         widget: MotorView,
         motor_stage: FakeXYStage,
         virtual_container: VirtualContainer,
     ) -> None:
-        """End-to-end wiring: the presenter's signal drives the view's label."""
+        """The label reports the axis, not the last request the view sent.
+
+        The axis is moved directly, exactly as a plan running in the
+        `RunEngine` would move it: nothing passes through the presenter, and
+        the label still tracks it.
+        """
         presenter = MotorPresenter("motor_ctrl", {"xystage": motor_stage})
         presenter.register_providers(virtual_container)
         widget.register_providers(virtual_container)
@@ -151,11 +168,7 @@ class TestMotorView:
 
         assert "motor_view" in virtual_container.signals
 
-        # the application owns the connection now, so the test makes the same
-        # one a container would rather than relying on discovery
-        virtual_container.connect(presenter.sig_new_position, widget.update_setpoint)
-
-        presenter.sig_new_position.emit("xystage", "x", 3.25)
+        await motor_stage.axis["x"].set(3.25)
         assert widget._labels["pos:xystage:x"].text().startswith("3.25")
 
         presenter.shutdown()

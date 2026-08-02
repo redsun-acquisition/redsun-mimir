@@ -57,6 +57,20 @@ caller.
   connect, but the third argument was an absolute position and is now a
   relative step. **Anything connected to this signal must be updated, and
   nothing will tell you if it is not.**
+- **Position labels are driven by the axes, not by the presenter.**
+  `MotorPresenter.sig_new_position` is gone and `MotorView.update_setpoint`
+  takes the reading dictionary a signal subscription delivers:
+
+  ```python
+  view.update_setpoint("stage", "x", 3.25)  # was
+  view.update_setpoint({"stage-axis-x": reading})  # is
+  ```
+
+  The view subscribes to every axis readback published under the new
+  `MOTOR_READBACKS` provider key, so a label now follows the stage itself
+  rather than the last request the widget sent: a move made by a plan, or one
+  a hardware limit clamped, shows up. There is no rule to write for it in a
+  `wiring:` section, and the corresponding line in `wire_motor` is gone.
 - **`MedianPresenter.sig_new_median` and `sig_new_filtered_data` are now
   `frames.median` and `frames.filtered`** on a strict `SignalGroup`:
 

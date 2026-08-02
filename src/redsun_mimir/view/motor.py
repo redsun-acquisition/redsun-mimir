@@ -9,9 +9,11 @@ from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal, slot
 
-from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READINGS
+from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READBACKS, MOTOR_READINGS
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from bluesky.protocols import Descriptor, Reading
     from redsun.virtual import VirtualContainer
 
@@ -71,10 +73,17 @@ class MotorView(QtView, Loggable):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the per-axis controls from the motor presenter's snapshots."""
+        """Build the per-axis controls, then follow each axis readback.
+
+        The subscription is made here rather than in the application's
+        ``wire()`` because subscribing delivers the current reading at once,
+        and the labels it writes to must exist by then.
+        """
         self.setup_ui(
             container.require(MOTOR_READINGS), container.require(MOTOR_DESCRIPTION)
         )
+        for readback in container.require(MOTOR_READBACKS).values():
+            container.subscribe(readback, self.update_setpoint)
 
     def setup_ui(
         self,
@@ -156,20 +165,18 @@ class MotorView(QtView, Loggable):
         self.sig_motor_move.emit(motor, axis, step_size if direction_up else -step_size)
 
     @slot
-    def update_setpoint(self, motor: str, axis: str, position: float) -> None:
-        """Update the current motor setpoint as text.
+    def update_setpoint(self, reading: Mapping[str, Reading[Any]]) -> None:
+        """Write an axis reading into its position label.
 
         Parameters
         ----------
-        motor : str
-            Motor device label.
-        axis : str
-            Motor axis.
-        position : float
-            New position of the motor.
+        reading : Mapping[str, Reading[Any]]
+            Reading of a single axis, keyed ``<device>-axis-<name>``.
         """
-        _, units = self._labels[f"step:{motor}:{axis}"].text().split()
-        self._labels[f"pos:{motor}:{axis}"].setText(f"{position:.2f} {units}")
+        for key, value in reading.items():
+            motor, _, axis = parse_map_key(key, "axis")
+            _, units = self._labels[f"step:{motor}:{axis}"].text().split()
+            self._labels[f"pos:{motor}:{axis}"].setText(f"{value['value']:.2f} {units}")
 
     def _validate(self, motor: str, axis: str) -> None:
         """Validate the new step size.
