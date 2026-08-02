@@ -191,7 +191,6 @@ _FULL_LINKS = (
     | _ACQUISITION_LINKS
     | {
         ("motor_widget.sig_motor_move", "motor_ctrl.move"),
-        ("motor_ctrl.sig_new_position", "motor_widget.update_setpoint"),
         ("light_widget.sig_toggle_light_request", "light_ctrl.trigger"),
         ("light_widget.sig_intensity_request", "light_ctrl.set"),
     }
@@ -208,10 +207,7 @@ _GRAPHS = [
     ),
     pytest.param(
         build_stage_container,
-        {
-            ("widget.sig_motor_move", "ctrl.move"),
-            ("ctrl.sig_new_position", "widget.update_setpoint"),
-        },
+        {("widget.sig_motor_move", "ctrl.move")},
         id="motor",
     ),
     pytest.param(
@@ -250,6 +246,53 @@ def test_container_declares_the_expected_graph(
                 f"{link.consumer}.{link.consumer_port}",
             )
             for link in container.virtual_container.connections
+        }
+        assert actual == expected
+    finally:
+        container.shutdown()
+
+
+_SUBSCRIPTIONS = [
+    pytest.param(
+        build_stage_container,
+        {
+            ("xy_motor-axis-x", "widget.update_setpoint"),
+            ("xy_motor-axis-y", "widget.update_setpoint"),
+            ("z_motor-axis-z", "widget.update_setpoint"),
+        },
+        id="motor",
+    ),
+    pytest.param(
+        build_simulation_container,
+        {
+            ("XY-axis-x", "motor_widget.update_setpoint"),
+            ("XY-axis-y", "motor_widget.update_setpoint"),
+            ("Z-axis-z", "motor_widget.update_setpoint"),
+        },
+        id="simulation",
+        marks=needs_opengl,
+    ),
+]
+
+
+@pytest.mark.parametrize(("factory", "expected"), _SUBSCRIPTIONS)
+def test_container_declares_the_expected_subscriptions(
+    factory: Callable[[], QtAppContainer],
+    expected: set[tuple[str, str]],
+) -> None:
+    """Every axis readback reaches the position labels.
+
+    These are not declared in ``wire()``: the view subscribes to them while
+    injecting its dependencies, so an axis silently missing from the map would
+    leave one label frozen and nothing else would notice.
+    """
+    container = factory()
+    try:
+        container.build()
+
+        actual = {
+            (record.source, f"{record.consumer}.{record.consumer_port}")
+            for record in container.virtual_container.subscriptions
         }
         assert actual == expected
     finally:

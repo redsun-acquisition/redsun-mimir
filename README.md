@@ -142,8 +142,6 @@ wiring:
     to: det_widget.on_new_configuration
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
-  - from: motor_ctrl.sig_new_position
-    to: motor_widget.update_setpoint
   - from: light_widget.sig_toggle_light_request
     to: light_ctrl.trigger
   - from: light_widget.sig_intensity_request
@@ -172,6 +170,10 @@ Component names are the keys used under `devices:`, `presenters:` and `views:`;
 port names are the signal attributes and the names the slots declare. The last
 two rules reach `redsun`'s own `StoragePresenter`, which stopped discovering
 those signals by itself in 0.11.0.
+
+There is no rule feeding `motor_widget.update_setpoint`: the motor view
+subscribes to the axis readbacks themselves, so its labels track the stage even
+when a plan is what moved it.
 
 ## Features
 

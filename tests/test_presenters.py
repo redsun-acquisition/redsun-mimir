@@ -27,6 +27,7 @@ from redsun_mimir.providers import (
     DETECTOR_LAYER_SPECS,
     LIGHT_CONFIGURATION,
     MOTOR_DESCRIPTION,
+    MOTOR_READBACKS,
     MOTOR_READINGS,
 )
 from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
@@ -68,22 +69,17 @@ class TestMotorPresenter:
         controller.register_providers(virtual_container)
         readings = virtual_container.require(MOTOR_READINGS)
         description = virtual_container.require(MOTOR_DESCRIPTION)
+        readbacks = virtual_container.require(MOTOR_READBACKS)
         assert any("xystage" in k for k in readings)
         assert any("xystage" in k for k in description)
+        assert set(readbacks) == set(readings)
 
-    async def test_move_applies_a_delta_and_emits(
+    async def test_move_applies_a_delta(
         self, controller: MotorPresenter, motor_stage: FakeXYStage
     ) -> None:
-        """move() displaces the axis and announces where it asked it to go."""
-        received: list[tuple[str, str, float]] = []
-        controller.sig_new_position.connect(lambda m, a, p: received.append((m, a, p)))
-
+        """move() displaces the axis from wherever it currently is."""
         await controller.move(motor_stage.name, "x", 10.0)
 
-        assert len(received) == 1
-        motor, axis, position = received[0]
-        assert (motor, axis) == (motor_stage.name, "x")
-        assert position == pytest.approx(10.0)
         assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
 
     async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:

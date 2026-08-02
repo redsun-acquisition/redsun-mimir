@@ -53,9 +53,12 @@ def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> N
 
 
 def wire_motor(app: AppContainer, ctrl: MotorPresenter, view: MotorView) -> None:
-    """Connect stage step requests and the positions they produce."""
+    """Connect stage step requests.
+
+    The return path is not a connection: the view subscribes to the axis
+    readbacks itself, so it also follows moves this presenter never made.
+    """
     app.connect(view.sig_motor_move, ctrl.move)
-    app.connect(ctrl.sig_new_position, view.update_setpoint)
 
 
 def wire_light(app: AppContainer, ctrl: LightPresenter, view: LightView) -> None:

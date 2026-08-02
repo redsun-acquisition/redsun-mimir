@@ -7,17 +7,17 @@ from redsun.aio import run_coro
 from redsun.device.protocols import HasAsyncShutdown
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.virtual import Signal, slot
+from redsun.virtual import slot
 
 from redsun_mimir.protocols import MotorProtocol
-from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READINGS
+from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READBACKS, MOTOR_READINGS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import Device
+    from ophyd_async.core import Device, SignalR
     from redsun.virtual import VirtualContainer
 
 
@@ -31,6 +31,10 @@ class MotorPresenter(Presenter, Loggable):
     Moves are serialised per device: a stage that writes several coordinates on
     every set cannot have two of them in flight at once.
 
+    Positions are not announced: the axis readbacks are published as
+    [`MOTOR_READBACKS`][redsun_mimir.providers.MOTOR_READBACKS] and whoever
+    displays them subscribes to those instead.
+
     Axes are discovered at initialisation by iterating over each device's
     [`children()`][ophyd_async.core.Device.children] and retaining those that
     satisfy [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol].
@@ -43,16 +47,7 @@ class MotorPresenter(Presenter, Loggable):
         Mapping of device names to device instances.
     timeout :
         Timeout for motor operations in seconds. Defaults to ``2.0``.
-
-    Attributes
-    ----------
-    sig_new_position :
-        Emitted when a move completes successfully.
-        Carries motor name (``str``), axis name (``str``), and new position
-        (``float``).
     """
-
-    sig_new_position = Signal(str, str, float)
 
     def __init__(
         self,
@@ -87,9 +82,17 @@ class MotorPresenter(Presenter, Loggable):
             result.update(run_coro(device.describe()))
         return result
 
+    def devices_readbacks(self) -> dict[str, SignalR[float]]:
+        """Get the readback signal of every motor axis, by data key."""
+        return {
+            movable.name: movable.movable_logic.readback
+            for device in self._motors.values()
+            for movable in device.axis.values()
+        }
+
     @slot
     async def move(self, motor: str, axis: str, delta: float) -> None:
-        """Move *axis* by *delta* and emit the position asked for.
+        """Move *axis* by *delta*.
 
         Parameters
         ----------
@@ -105,9 +108,7 @@ class MotorPresenter(Presenter, Loggable):
         # axis would carry a stale value for this one and revert it
         async with self._locks[motor]:
             movable = self._motors[motor].axis[axis]
-            target = (await movable.locate())["readback"] + delta
-            await movable.set(target)
-            self.sig_new_position.emit(motor, axis, target)
+            await movable.set((await movable.locate())["readback"] + delta)
 
     def shutdown(self) -> None:
         """Shutdown all motor devices."""
@@ -119,4 +120,5 @@ class MotorPresenter(Presenter, Loggable):
         """Register motor model info as a provider in the DI container."""
         container.provide(MOTOR_READINGS, self.devices_readings())
         container.provide(MOTOR_DESCRIPTION, self.devices_description())
+        container.provide(MOTOR_READBACKS, self.devices_readbacks())
         container.register_signals(self)
