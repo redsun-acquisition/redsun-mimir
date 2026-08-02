@@ -9,6 +9,47 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ## [Unreleased]
 
+Motor axes are ophyd-async movables, and the position they report is read from
+the device instead of echoed back from the last request.
+
+### Changed (breaking)
+
+- **Motor axes are `StandardMovable` devices.** Each axis in
+  `MotorProtocol.axis` is now an ophyd-async movable, built on the documented
+  `StandardReadable` + `StandardMovable` mixin rather than being a bare
+  `SignalRW`. Setpoint and readback are separate signals, so `locate()` reports
+  what was commanded and what was measured as two distinct numbers. Axes also
+  gain `stop()`, `check_value()` and `WatcherUpdate` progress reporting.
+
+  Reading keys are unchanged (`<device>-axis-<name>`), so views, providers and
+  wiring are unaffected. Code reaching into `motor.axis[...]` keeps `.set()`;
+  `.get_value()` becomes `.locate()`.
+
+  - Micro-Manager axes read the stage position live. The demo stage settles on
+    its own grid rather than exactly where it was sent, so a move completes
+    once the readback lands within `POSITION_TOLERANCE` instead of waiting for
+    exact equality.
+  - YouSeeToo axes report `setpoint == readback`, because the controller
+    acknowledges commands but cannot be queried. That echo already existed; it
+    is now declared by the device rather than hidden behind a signal that
+    looked readable.
+- **Position labels are driven by the axes, not by the presenter.**
+  `MotorPresenter.sig_new_position` is gone and `MotorView.update_setpoint`
+  takes the reading dictionary a signal subscription delivers:
+
+  ```python
+  view.update_setpoint("stage", "x", 3.25)  # was
+  view.update_setpoint({"stage-axis-x": reading})  # is
+  ```
+
+  The view subscribes to every axis readback published under the new
+  `MOTOR_READBACKS` provider key, so a label now follows the stage itself
+  rather than the last request the widget sent: a move made by a plan, or one
+  a hardware limit clamped, shows up. There is no rule to write for it in a
+  `wiring:` section, and the corresponding line in `wire_motor` is gone.
+
+## [0.3.0] - 01-08-2026
+
 Migration to `redsun` 0.11.0, covering two reworks of the framework: the 0.10.0
 device and storage redesign, and the 0.11.0 move to application-declared wiring
 and typed providers. See redsun's own changelog for both.
@@ -57,20 +98,6 @@ caller.
   connect, but the third argument was an absolute position and is now a
   relative step. **Anything connected to this signal must be updated, and
   nothing will tell you if it is not.**
-- **Position labels are driven by the axes, not by the presenter.**
-  `MotorPresenter.sig_new_position` is gone and `MotorView.update_setpoint`
-  takes the reading dictionary a signal subscription delivers:
-
-  ```python
-  view.update_setpoint("stage", "x", 3.25)  # was
-  view.update_setpoint({"stage-axis-x": reading})  # is
-  ```
-
-  The view subscribes to every axis readback published under the new
-  `MOTOR_READBACKS` provider key, so a label now follows the stage itself
-  rather than the last request the widget sent: a move made by a plan, or one
-  a hardware limit clamped, shows up. There is no rule to write for it in a
-  `wiring:` section, and the corresponding line in `wire_motor` is gone.
 - **`MedianPresenter.sig_new_median` and `sig_new_filtered_data` are now
   `frames.median` and `frames.filtered`** on a strict `SignalGroup`:
 
@@ -166,25 +193,6 @@ caller.
 
 ### Added
 
-- **Motor axes are `StandardMovable` devices.** Each axis in
-  `MotorProtocol.axis` is now an ophyd-async movable, built on the documented
-  `StandardReadable` + `StandardMovable` mixin rather than being a bare
-  `SignalRW`. Setpoint and readback are separate signals, so `locate()` reports
-  what was commanded and what was measured as two distinct numbers. Axes also
-  gain `stop()`, `check_value()` and `WatcherUpdate` progress reporting.
-
-  Reading keys are unchanged (`<device>-axis-<name>`), so views, providers and
-  wiring are unaffected. Code reaching into `motor.axis[...]` keeps `.set()`;
-  `.get_value()` becomes `.locate()`.
-
-  - Micro-Manager axes read the stage position live. The demo stage settles on
-    its own grid rather than exactly where it was sent, so a move completes
-    once the readback lands within `POSITION_TOLERANCE` instead of waiting for
-    exact equality.
-  - YouSeeToo axes report `setpoint == readback`, because the controller
-    acknowledges commands but cannot be queried. That echo already existed; it
-    is now declared by the device rather than hidden behind a signal that
-    looked readable.
 - **Binary light sources.** `LightProtocol` gained a read-only `binary` signal,
   and `MockLightDevice` a `binary=` argument. A binary source keeps its
   `intensity` signal, so every light has the same shape, but `LightPresenter.set`
@@ -259,4 +267,6 @@ caller.
 
 - Initial release.
 
+[Unreleased]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.0...main
+[0.3.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.2.0...v0.3.0
 [0.1.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.1.0
