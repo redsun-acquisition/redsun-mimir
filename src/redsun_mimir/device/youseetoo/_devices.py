@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ophyd_async.core import (
     AsyncStatus,
     DeviceMap,
+    StandardMovable,
     StandardReadable,
     StandardReadableFormat,
     soft_signal_r_and_setter,
@@ -18,7 +19,7 @@ from redsun.aio import run_coro
 from redsun.log import Loggable
 from serial import Serial
 
-from ._backend import uc2_axis_signal, uc2_laser_signal
+from ._backend import UC2Axis, uc2_laser_signal
 
 if TYPE_CHECKING:
     from typing import ClassVar
@@ -193,7 +194,7 @@ class UC2LaserDevice(StandardReadable, Loggable):
 class UC2MotorDevice(StandardReadable, Loggable):
     """UC2 motor device."""
 
-    axis: DeviceMap[SignalRW[float]]
+    axis: DeviceMap[StandardMovable[float]]
 
     def __init__(self, name: str) -> None:
         def _callback(future: Future[Serial]) -> None:
@@ -215,7 +216,7 @@ class UC2MotorDevice(StandardReadable, Loggable):
         # so readings are keyed "<device>-axis-<name>" (parse_map_key).
         self.axis = DeviceMap(
             {
-                axis: uc2_axis_signal(self._serial, axis, units="um", lock=lock)
+                axis: UC2Axis(self._serial, axis, units="um", lock=lock)
                 for axis in ("x", "y", "z")
             }
         )
@@ -227,5 +228,5 @@ class UC2MotorDevice(StandardReadable, Loggable):
 
     async def _set_zero(self) -> None:
         """Set all axes to zero."""
-        for signal in self.axis.values():
-            await signal.set(0)
+        for movable in self.axis.values():
+            await movable.set(0)

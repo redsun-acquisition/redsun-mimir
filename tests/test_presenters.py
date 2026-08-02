@@ -84,7 +84,7 @@ class TestMotorPresenter:
         motor, axis, position = received[0]
         assert (motor, axis) == (motor_stage.name, "x")
         assert position == pytest.approx(10.0)
-        assert run_coro(motor_stage.axis["x"].get_value()) == pytest.approx(10.0)
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
 
     async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:
         """move() on a name that is not a tracked motor raises KeyError."""
@@ -105,7 +105,7 @@ class TestMotorPresenter:
             controller.move(motor_stage.name, "x", 10.0),
         )
 
-        assert await motor_stage.axis["x"].get_value() == pytest.approx(20.0)
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(20.0)
 
     async def test_opposite_steps_cancel_out(
         self, controller: MotorPresenter, motor_stage: FakeXYStage
@@ -116,7 +116,7 @@ class TestMotorPresenter:
             controller.move(motor_stage.name, "x", -10.0),
         )
 
-        assert await motor_stage.axis["x"].get_value() == pytest.approx(0.0)
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(0.0)
 
     def test_shutdown_does_not_raise(self, motor_stage: FakeXYStage) -> None:
         """shutdown() completes even for a device with no async shutdown."""

@@ -13,6 +13,7 @@ from ophyd_async.core import (
     AsyncConfigurable,
     AsyncReadable,
     AsyncStageable,
+    StandardMovable,
 )
 
 if TYPE_CHECKING:
@@ -42,8 +43,12 @@ class LayerSpec(TypedDict):
 class MotorProtocol(AsyncReadable, Protocol):
     """Protocol for individual motor axes."""
 
-    axis: DeviceMap[SignalRW[float]]
-    """Map of axis names to settable signals."""
+    axis: DeviceMap[StandardMovable[float]]
+    """Map of axis names to movable axes.
+
+    ``locate`` reports the commanded setpoint and the measured readback
+    separately; a controller that cannot be queried reports them as equal.
+    """
 
 
 @runtime_checkable

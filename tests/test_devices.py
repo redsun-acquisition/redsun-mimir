@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from ophyd_async.core import soft_signal_r_and_setter, soft_signal_rw
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMDemoXYStage, MMDemoZStage
+from redsun_mimir.device.mmcore._backend import POSITION_TOLERANCE
+from redsun_mimir.device.youseetoo._backend import UC2AxisLogic
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from tests.conftest import needs_mm_adapters
@@ -66,7 +69,39 @@ class TestMMDemoStage:
         await device.connect(mock=True)
 
         await device.axis["x"].set(12.5)
-        assert await device.axis["x"].get_value() == pytest.approx(12.5, abs=0.05)
+        assert (await device.axis["x"].locate())["readback"] == pytest.approx(
+            12.5, abs=0.05
+        )
+
+    @needs_mm_adapters
+    async def test_quantised_move_completes(self) -> None:
+        """A stage that settles off-target still finishes the move.
+
+        The demo stage lands within ~0.006 um of any request. `MovableLogic`'s
+        default waits for the readback to equal the setpoint *exactly*, which
+        would never happen; `MMAxisLogic` waits within `POSITION_TOLERANCE`.
+        Without that override this test hangs rather than fails.
+        """
+        device = MMDemoXYStage("stage")
+        await device.connect(mock=True)
+
+        await asyncio.wait_for(device.axis["x"].set(10.0), timeout=10.0)
+
+        location = await device.axis["x"].locate()
+        assert location["readback"] != location["setpoint"]
+        assert location["readback"] == pytest.approx(10.0, abs=POSITION_TOLERANCE)
+
+    @needs_mm_adapters
+    async def test_locate_separates_setpoint_from_readback(self) -> None:
+        """The stage can be queried, so the two differ by the settling error."""
+        device = MMDemoXYStage("stage")
+        await device.connect(mock=True)
+
+        await device.axis["x"].set(10.0)
+
+        location = await device.axis["x"].locate()
+        assert location["setpoint"] == pytest.approx(10.0)
+        assert location["readback"] == pytest.approx(10.0, abs=POSITION_TOLERANCE)
 
 
 class TestMockLightDevice:
@@ -180,7 +215,32 @@ class TestMMDemoStageConcurrency:
 
             # the demo stage snaps to its own grid, so compare loosely: the
             # point is that neither axis was left behind, not the exact stop
-            assert await stage.axis["x"].get_value() == pytest.approx(10.0, abs=0.1)
-            assert await stage.axis["y"].get_value() == pytest.approx(10.0, abs=0.1)
+            assert (await stage.axis["x"].locate())["readback"] == pytest.approx(
+                10.0, abs=0.1
+            )
+            assert (await stage.axis["y"].locate())["readback"] == pytest.approx(
+                10.0, abs=0.1
+            )
         finally:
             presenter.shutdown()
+
+
+class TestUC2AxisLogic:
+    """The YouSeeToo controller cannot be queried, so its readback is an echo.
+
+    Exercised through the logic alone: the serial exchange needs hardware, the
+    echo semantics do not.
+    """
+
+    async def test_move_adopts_the_commanded_value_as_readback(self) -> None:
+        """``locate`` reports setpoint and readback equal, and says so."""
+        setpoint = soft_signal_rw(float, 0.0)
+        readback, readback_set = soft_signal_r_and_setter(float, 0.0)
+        logic = UC2AxisLogic(
+            setpoint=setpoint, readback=readback, readback_set=readback_set
+        )
+
+        await logic.move(7.0, lambda: None)
+
+        assert await readback.get_value() == pytest.approx(7.0)
+        assert await setpoint.get_value() == pytest.approx(7.0)

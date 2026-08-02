@@ -152,6 +152,25 @@ caller.
 
 ### Added
 
+- **Motor axes are `StandardMovable` devices.** Each axis in
+  `MotorProtocol.axis` is now an ophyd-async movable, built on the documented
+  `StandardReadable` + `StandardMovable` mixin rather than being a bare
+  `SignalRW`. Setpoint and readback are separate signals, so `locate()` reports
+  what was commanded and what was measured as two distinct numbers. Axes also
+  gain `stop()`, `check_value()` and `WatcherUpdate` progress reporting.
+
+  Reading keys are unchanged (`<device>-axis-<name>`), so views, providers and
+  wiring are unaffected. Code reaching into `motor.axis[...]` keeps `.set()`;
+  `.get_value()` becomes `.locate()`.
+
+  - Micro-Manager axes read the stage position live. The demo stage settles on
+    its own grid rather than exactly where it was sent, so a move completes
+    once the readback lands within `POSITION_TOLERANCE` instead of waiting for
+    exact equality.
+  - YouSeeToo axes report `setpoint == readback`, because the controller
+    acknowledges commands but cannot be queried. That echo already existed; it
+    is now declared by the device rather than hidden behind a signal that
+    looked readable.
 - **Binary light sources.** `LightProtocol` gained a read-only `binary` signal,
   and `MockLightDevice` a `binary=` argument. A binary source keeps its
   `intensity` signal, so every light has the same shape, but `LightPresenter.set`
