@@ -168,3 +168,33 @@ class MMDahengCamera(MMBaseCameraDevice):
             live_period=live_period,
         )
         self.core.setProperty(name, "PixelType", "Mono10")
+
+
+class MMHamamatsuCamera(MMBaseCameraDevice):
+    """Hamamatsu camera device."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        storage: BaseStorage | None = None,
+        live_period: float = 0.1,
+    ) -> None:
+        # numpy to adapter dtype mapping
+        pixel_dtype: dict[str, str] = {
+            "uint16": "16bit",
+        }
+        self.core = CMMCorePlus.instance()
+        self.pixel_dtype = mm_property_signal(
+            self.core, name, "PixelType", enum_map=pixel_dtype
+        )
+        adapter_info = MMAdapterInfo(adapter="HamamatsuHam", device="HamamatsuHam_DCAM")
+        super().__init__(
+            name,
+            core=self.core,
+            pixel_dtype=self.pixel_dtype,
+            adapter_info=adapter_info,
+            storage=storage,
+            live_period=live_period,
+        )
+        self.core.setProperty(name, "PixelType", "16bit")

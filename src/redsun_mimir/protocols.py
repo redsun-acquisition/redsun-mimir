@@ -52,6 +52,18 @@ class MotorProtocol(AsyncReadable, Protocol):
 
 
 @runtime_checkable
+class StatedProtocol(AsyncConfigurable, Protocol):
+    """Protocol for devices selecting one of a finite set of positions."""
+
+    state: SignalRW[str]
+    """Currently selected position, named as the device labels it.
+
+    The ``choices`` field of its ``Descriptor`` carries every selectable
+    name, which is what a consumer builds its selector from.
+    """
+
+
+@runtime_checkable
 class LightProtocol(AsyncConfigurable, Protocol):
     """Protocol for light source devices.
 
@@ -156,4 +168,5 @@ __all__ = [
     "MotorProtocol",
     "ROIType",
     "ReadableFlyer",
+    "StatedProtocol",
 ]

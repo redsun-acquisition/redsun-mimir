@@ -16,11 +16,13 @@ if TYPE_CHECKING:
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
+    from redsun_mimir.presenter.filterwheel import FilterWheelPresenter
     from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
     from redsun_mimir.presenter.motor import MotorPresenter
     from redsun_mimir.view.acquisition import AcquisitionView
     from redsun_mimir.view.detector import DetectorView
+    from redsun_mimir.view.filterwheel import FilterWheelView
     from redsun_mimir.view.image import ImageView
     from redsun_mimir.view.light import LightView
     from redsun_mimir.view.motor import MotorView
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 __all__ = [
     "wire_acquisition",
     "wire_detector",
+    "wire_filterwheel",
     "wire_light",
     "wire_median",
     "wire_motor",
@@ -65,6 +68,13 @@ def wire_light(app: AppContainer, ctrl: LightPresenter, view: LightView) -> None
     """Connect the light source controls."""
     app.connect(view.sig_toggle_light_request, ctrl.trigger)
     app.connect(view.sig_intensity_request, ctrl.set)
+
+
+def wire_filterwheel(
+    app: AppContainer, ctrl: FilterWheelPresenter, view: FilterWheelView
+) -> None:
+    """Connect filter wheel selection requests."""
+    app.connect(view.sig_state_request, ctrl.set_state)
 
 
 def wire_acquisition(
