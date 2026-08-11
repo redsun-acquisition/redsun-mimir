@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
+## [Unreleased]
+
+- Add filter wheel stack
+    - A mmcore device and a protocol, `StatedProtocol`, expressing a device with a specific set of positions
+    - A view and presenter leveraging this protocol
+- Add `mm_value_signal` for plan value properties of a mmcore device
+- Add Hamamatsu wrapper
+- Add serial device
+- Add ASITiger stage device
+
 ## [0.3.1]
 
 Motor axes are ophyd-async movables, and the position they report is read from
