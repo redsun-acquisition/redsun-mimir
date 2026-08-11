@@ -36,6 +36,41 @@ class MMDemoXYStage(StandardReadable, Loggable):
         super().__init__(name)
 
 
+class MMASIXYStage(StandardReadable, Loggable):
+    """ASI XY stage device.
+
+    Parameters
+    ----------
+    name : str
+        Name for this device.
+    units : str
+        Engineering units for the position signals.
+    port : str
+        MMCore label of the pre-loaded serial port device.
+    """
+
+    axis: DeviceMap[StandardMovable[float]]
+
+    def __init__(self, name: str, *, units: str = "um", port: str = "serial") -> None:
+        adapter_info = MMAdapterInfo(
+            adapter="ASIStage",
+            device="XYStage",
+        )
+        self.core = Core.instance()
+        self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
+        self.core.setProperty(name, "Port", port)
+        self.core.initializeDevice(name)
+        # see MMDemoXYStage for why the signals live only in the map
+        self.axis = DeviceMap(
+            {
+                "x": MMAxis(self.core, name, "x", units),
+                "y": MMAxis(self.core, name, "y", units),
+            }
+        )
+        self.add_readables(list(self.axis.values()))
+        super().__init__(name)
+
+
 class MMDemoZStage(StandardReadable):
     """Demo stage device."""
 
@@ -48,6 +83,36 @@ class MMDemoZStage(StandardReadable):
         )
         self.core = Core.instance()
         self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
+        self.core.initializeDevice(name)
+        # see MMDemoXYStage for why the signals live only in the map
+        self.axis = DeviceMap({"z": MMAxis(self.core, name, "z", units)})
+        self.add_readables(list(self.axis.values()))
+        super().__init__(name)
+
+
+class MMASIZStage(StandardReadable, Loggable):
+    """ASI Z stage device.
+
+    Parameters
+    ----------
+    name : str
+        Name for this device.
+    units : str
+        Engineering units for the position signals.
+    port : str
+        MMCore label of the pre-loaded serial port device.
+    """
+
+    axis: DeviceMap[StandardMovable[float]]
+
+    def __init__(self, name: str, *, units: str = "um", port: str = "serial") -> None:
+        adapter_info = MMAdapterInfo(
+            adapter="ASIStage",
+            device="ZStage",
+        )
+        self.core = Core.instance()
+        self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
+        self.core.setProperty(name, "Port", port)
         self.core.initializeDevice(name)
         # see MMDemoXYStage for why the signals live only in the map
         self.axis = DeviceMap({"z": MMAxis(self.core, name, "z", units)})

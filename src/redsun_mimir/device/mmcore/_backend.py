@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, TypeVar, cast
 
 import numpy as np
 from ophyd_async.core import (
@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 #: change events of its own, but a soft signal has no place to hook them, so
 #: subscribers are served by polling instead.
 POLL_PERIOD: Final[float] = 0.2
+
+T = TypeVar("T", int, float, str)
 
 
 def mm_property_signal(
@@ -196,6 +198,57 @@ class MMAxis(StandardReadable, StandardMovable[float]):
     def movable_logic(self) -> MovableLogic[float]:
         """Setpoint and readback of this axis."""
         return MMAxisLogic(setpoint=self.setpoint, readback=self.readback)
+
+
+def mm_value_signal(
+    core: Core,
+    device_label: str,
+    property_name: str,
+    datatype: type[T],
+    *,
+    name: str = "",
+    units: str | None = None,
+) -> SignalRW[T]:
+    """Create a signal for a Micro-Manager property holding a plain value.
+
+    Micro-Manager stores every property as a string; *datatype* is the type
+    the signal publishes and the one the raw value is parsed into. Use
+    [`mm_property_signal`][redsun_mimir.device.mmcore._backend.mm_property_signal]
+    instead when the property has a fixed set of choices.
+
+    Parameters
+    ----------
+    core : CMMCorePlus
+        The Micro-Manager core.
+    device_label : str
+        The MM device label (e.g. ``"Spectra"``).
+    property_name : str
+        The MM property name (e.g. ``"Cyan_Level"``).
+    datatype : type[T]
+        Type the signal publishes.
+    name : str, optional
+        Signal name. Defaults to *property_name*.
+    units : str | None, optional
+        Physical units of the value, published in the DataKey.
+    """
+    prop = core.getPropertyObject(device_label, property_name)
+
+    def getter() -> T:
+        return datatype(prop.value)
+
+    def setter(value: T | None) -> None:
+        if value is not None:
+            prop.setValue(value)
+
+    return soft_signal_rw(
+        datatype,
+        datatype(),
+        name=name or property_name,
+        units=units,
+        getter=getter,
+        setter=setter,
+        poll_period=POLL_PERIOD,
+    )
 
 
 def mm_exposure_signal(

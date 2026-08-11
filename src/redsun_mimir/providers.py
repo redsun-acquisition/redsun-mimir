@@ -62,6 +62,17 @@ LIGHT_CONFIGURATION: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(
 #: Descriptors of every light source, by data key.
 LIGHT_DESCRIPTION: ProviderKey[dict[str, Descriptor]] = dip.Dependency(instance_of=dict)
 
+#: Current readings of every stated device, by data key.
+STATED_CONFIGURATION: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(
+    instance_of=dict
+)
+
+#: Descriptors of every stated device, by data key. The ``choices`` field of
+#: each descriptor is what a selector is built from.
+STATED_DESCRIPTION: ProviderKey[dict[str, Descriptor]] = dip.Dependency(
+    instance_of=dict
+)
+
 #: Specifiers of the plans the acquisition presenter can launch.
 PLAN_SPECS: ProviderKey[set[Any]] = dip.Dependency(instance_of=set)
 
@@ -75,4 +86,6 @@ __all__ = [
     "MOTOR_READBACKS",
     "MOTOR_READINGS",
     "PLAN_SPECS",
+    "STATED_CONFIGURATION",
+    "STATED_DESCRIPTION",
 ]
