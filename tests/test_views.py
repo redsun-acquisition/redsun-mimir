@@ -12,7 +12,7 @@ from qtpy.QtWidgets import QApplication
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMCoreStageDevice
+from redsun_mimir.device.mmcore import MMDemoXYStage
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.view.light import LightView
@@ -28,7 +28,7 @@ def _make_container(**objects: Any) -> VirtualContainer:
 
 async def _build_motor_view(
     widget: MotorView,
-    xy_mock_motor: MMCoreStageDevice,
+    xy_mock_motor: MMDemoXYStage,
     container: VirtualContainer | None = None,
 ) -> VirtualContainer:
     """Full build sequence: register_providers then inject_dependencies."""
@@ -81,7 +81,7 @@ class TestMotorView:
         assert widget is not None
 
     async def test_register_providers_builds_ui(
-        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
+        self, widget: MotorView, xy_mock_motor: MMDemoXYStage
     ) -> None:
         """register_providers() + inject_dependencies() populates group boxes, labels, and buttons."""
         await _build_motor_view(widget, xy_mock_motor)
@@ -93,7 +93,7 @@ class TestMotorView:
         assert "button:xystage:x:down" in widget._buttons
 
     async def test_step_size_initialised_from_device(
-        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
+        self, widget: MotorView, xy_mock_motor: MMDemoXYStage
     ) -> None:
         """Step size line edits are seeded from device step_sizes."""
         await _build_motor_view(widget, xy_mock_motor)
@@ -102,7 +102,7 @@ class TestMotorView:
         assert widget._line_edits["edit:xystage:y"].text() == "0.015"
 
     async def test_update_position_changes_label(
-        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
+        self, widget: MotorView, xy_mock_motor: MMDemoXYStage
     ) -> None:
         """_update_position() refreshes the position label text."""
         await _build_motor_view(widget, xy_mock_motor)
@@ -111,7 +111,7 @@ class TestMotorView:
         assert "7.50" in widget._labels["pos:xystage:x"].text()
 
     async def test_step_up_emits_signal(
-        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
+        self, widget: MotorView, xy_mock_motor: MMDemoXYStage
     ) -> None:
         """Clicking the '+' button emits sigMotorMove with position + step."""
         await _build_motor_view(widget, xy_mock_motor)
@@ -124,7 +124,7 @@ class TestMotorView:
         assert received[0] == ("xystage", "x", cast("float", pytest.approx(0.015)))
 
     async def test_step_down_emits_signal(
-        self, widget: MotorView, xy_mock_motor: MMCoreStageDevice
+        self, widget: MotorView, xy_mock_motor: MMDemoXYStage
     ) -> None:
         """Clicking the '-' button emits sigMotorMove with position - step."""
         await _build_motor_view(widget, xy_mock_motor)
@@ -139,7 +139,7 @@ class TestMotorView:
     async def test_inject_dependencies_registers_signals(
         self,
         widget: MotorView,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
         virtual_container: VirtualContainer,
     ) -> None:
         """register_providers() registers the widget signals; inject_dependencies() connects inbound signals."""

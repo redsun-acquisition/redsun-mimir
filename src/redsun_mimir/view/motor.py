@@ -90,11 +90,20 @@ class MotorView(QtView):
         """Create the UI based on the provided readings and description."""
         axis_map: dict[str, list[str]] = {}
         axis_units: dict[str, list[str]] = {}
+        axis_positions: dict[str, dict[str, float]] = {}
         for key in readings.keys():
             units = description[key]["units"] or "NA"
             name, _, axis = parse_map_key(key, "axis")
             axis_map.setdefault(name, list()).append(axis)
             axis_units.setdefault(name, list()).append(units)
+            try:
+                axis_positions.setdefault(name, {})[axis] = float(
+                    readings[key]["value"]
+                )
+            except (KeyError, TypeError, ValueError):
+                # Keep a safe zero fallback if a device does not provide a
+                # usable startup position for an axis.
+                axis_positions.setdefault(name, {})[axis] = 0.0
 
         for name, axes in axis_map.items():
             layout = QtWidgets.QGridLayout()
@@ -108,7 +117,10 @@ class MotorView(QtView):
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
-                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {units}")
+                initial_position = axis_positions.get(name, {}).get(axis, 0.0)
+                self._labels["pos:" + suffix] = QtWidgets.QLabel(
+                    f"{initial_position:.2f} {units}"
+                )
                 self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
                 self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
                 self._labels["step:" + suffix] = QtWidgets.QLabel(f"step ({units})")

@@ -11,7 +11,7 @@ from redsun.engine import get_shared_loop
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMCoreStageDevice
+from redsun_mimir.device.mmcore import MMDemoXYStage
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
@@ -27,7 +27,7 @@ class TestMotorPresenter:
     @pytest.fixture
     async def controller(
         self,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
         virtual_container: VirtualContainer,
     ) -> AsyncGenerator[MotorPresenter, None]:
         devices = {xy_mock_motor.name: xy_mock_motor}
@@ -52,7 +52,7 @@ class TestMotorPresenter:
     def test_move_updates_position(
         self,
         controller: MotorPresenter,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
     ) -> None:
         """move() dispatches an async move and emits sigNewPosition on completion."""
         done = threading.Event()
@@ -79,7 +79,7 @@ class TestMotorPresenter:
     def test_move_via_device_name(
         self,
         controller: MotorPresenter,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
     ) -> None:
         """move() accepts the bare device name."""
         done = threading.Event()
@@ -95,7 +95,7 @@ class TestMotorPresenter:
     def test_configure_step_size(
         self,
         controller: MotorPresenter,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
     ) -> None:
         """configure() updates the step size and emits sigNewConfiguration."""
         received: list[tuple[str, dict[str, bool]]] = []
@@ -112,7 +112,7 @@ class TestMotorPresenter:
     def test_configure_via_device_name(
         self,
         controller: MotorPresenter,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
     ) -> None:
         """configure() accepts the bare device name."""
         step_key = f"{xy_mock_motor.name}-x-step_size"
@@ -228,7 +228,7 @@ class TestLightPresenter:
 
     def test_non_light_devices_are_excluded(
         self,
-        xy_mock_motor: MMCoreStageDevice,
+        xy_mock_motor: MMDemoXYStage,
         virtual_container: VirtualContainer,
     ) -> None:
         """MotorDevice is not included in _lights even if passed in devices."""

@@ -6,6 +6,9 @@ devices:
 
   # mmcore devices
   mmcore-camera: redsun_mimir.device.mmcore:MMCoreCameraDevice
+  mmcore-filterwheel: redsun_mimir.device.mmcore:MMASIFilterWheel
+  mmcore-fw-controller: redsun_mimir.device.mmcore:MMASIFWController
+  mmcore-spectra: redsun_mimir.device.mmcore:MMSpectraShutteredDevice
   mmcore-stage: redsun_mimir.device.mmcore:MMCoreStageDevice
 
   # mock devices
@@ -18,6 +21,7 @@ presenters:
   detector: redsun_mimir.presenter.detector:DetectorPresenter
   median: redsun_mimir.presenter.median:MedianPresenter
   storage: redsun_mimir.presenter.storage:FileStoragePresenter
+  filterwheel: redsun_mimir.presenter.filterwheel:FilterWheelPresenter
 
 views:
   acquisition: redsun_mimir.view.acquisition:AcquisitionView
@@ -26,3 +30,4 @@ views:
   motor: redsun_mimir.view.motor:MotorView
   light: redsun_mimir.view.light:LightView
   storage: redsun_mimir.view.storage:FileStorageView
+  filterwheel: redsun_mimir.view.filterwheel:FilterWheelView

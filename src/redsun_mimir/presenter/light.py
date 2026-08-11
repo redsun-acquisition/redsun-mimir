@@ -95,7 +95,15 @@ class LightPresenter(Presenter, Loggable):
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
         """Connect to the virtual container signals."""
-        sigs = find_signals(container, ["sigToggleLightRequest", "sigIntensityRequest"])
+        sigs = find_signals(
+            container,
+            [
+                "sigToggleLightRequest",
+                "sigIntensityRequest",
+                "sigChannelEnableRequest",
+                "sigChannelLevelRequest",
+            ],
+        )
         if "sigToggleLightRequest" in sigs:
             sigs["sigToggleLightRequest"].connect(
                 lambda name: run_coro(self.trigger(name))
@@ -103,6 +111,18 @@ class LightPresenter(Presenter, Loggable):
         if "sigIntensityRequest" in sigs:
             sigs["sigIntensityRequest"].connect(
                 lambda name, intensity: run_coro(self.set(name, intensity))
+            )
+        if "sigChannelEnableRequest" in sigs:
+            sigs["sigChannelEnableRequest"].connect(
+                lambda name, channel, value: run_coro(
+                    self.set_channel_enable(name, channel, value)
+                )
+            )
+        if "sigChannelLevelRequest" in sigs:
+            sigs["sigChannelLevelRequest"].connect(
+                lambda name, channel, level: run_coro(
+                    self.set_channel_level(name, channel, level)
+                )
             )
 
     async def trigger(self, name: str) -> None:
@@ -124,6 +144,46 @@ class LightPresenter(Presenter, Loggable):
         """
         light = self._lights[name]
         await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
+
+    async def set_channel_enable(self, name: str, channel: str, value: str) -> None:
+        """Enable or disable a single channel on a light device.
+
+        Parameters
+        ----------
+        name : str
+            Name of the light device.
+        channel : str
+            Channel name (e.g. ``"Cyan"``).
+        value : str
+            ``"1"`` to enable, ``"0"`` to disable.
+        """
+        light = self._lights[name]
+        sig = getattr(light, f"{channel.lower()}_enable", None)
+        if sig is None:
+            self.logger.warning("Channel %r not found on device %r", channel, name)
+            return
+        await sig.set(value)
+        self.logger.debug("Set %s %s enable -> %s", name, channel, value)
+
+    async def set_channel_level(self, name: str, channel: str, level: int) -> None:
+        """Set the power level of a single channel.
+
+        Parameters
+        ----------
+        name : str
+            Name of the light device.
+        channel : str
+            Channel name (e.g. ``"Cyan"``).
+        level : int
+            Power level (0-100).
+        """
+        light = self._lights[name]
+        sig = getattr(light, f"{channel.lower()}_level", None)
+        if sig is None:
+            self.logger.warning("Channel %r not found on device %r", channel, name)
+            return
+        await sig.set(level)
+        self.logger.debug("Set %s %s level -> %d", name, channel, level)
 
     def shutdown(self) -> None:
         """Shutdown the presenter and all light devices."""

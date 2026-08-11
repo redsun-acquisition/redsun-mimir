@@ -15,7 +15,7 @@ from redsun.engine import get_shared_loop
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMCoreStageDevice
+from redsun_mimir.device.mmcore import MMDemoXYStage
 
 if TYPE_CHECKING:
     import asyncio
@@ -91,10 +91,10 @@ def virtual_container() -> VirtualContainer:
 
 
 @pytest.fixture
-async def xy_mock_motor() -> AsyncGenerator[MMCoreStageDevice, None]:
+async def xy_mock_motor() -> AsyncGenerator[MMDemoXYStage, None]:
     """XY motor device backed by the MMCore demo stage."""
     core = Core.instance()
-    device = MMCoreStageDevice("xystage", config="demoxy")
+    device = MMDemoXYStage("xystage")
     await device.connect(mock=False)
     yield device
     if "xystage" in core.getLoadedDevices():
@@ -104,7 +104,7 @@ async def xy_mock_motor() -> AsyncGenerator[MMCoreStageDevice, None]:
 @pytest.fixture
 async def mock_led() -> MockLightDevice:
     """Binary mock LED device."""
-    device = MockLightDevice("led", wavelength=450, binary=True, intensity_range=(0, 0))
+    device = MockLightDevice("led", wavelength=450)
     await device.connect(mock=True)
     return device
 
@@ -115,9 +115,7 @@ async def mock_laser() -> MockLightDevice:
     device = MockLightDevice(
         "laser",
         wavelength=650,
-        egu="mW",
-        intensity_range=(0, 100),
-        step_size=1,
+        range=[0.0, 100.0],
     )
     await device.connect(mock=True)
     return device

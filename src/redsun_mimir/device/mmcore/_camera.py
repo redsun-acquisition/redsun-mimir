@@ -172,3 +172,33 @@ class MMDahengCamera(MMBaseCameraDevice):
             path_provider=self.path_provider,
             store_path_sig=self.store_path_sig,
         )
+
+class MMHamamatsuCamera(MMBaseCameraDevice):
+    """Hamamatsu camera device."""
+
+    def __init__(self, name: str, *, writer: str = "zarr") -> None:
+        # numpy to adapter dtype mapping
+        pixel_dtype: dict[str, str] = {
+            "uint16": "16bit",
+        }
+        self.core = CMMCorePlus.instance()
+        self.pixel_dtype = mm_property_signal(
+            self.core, name, "PixelType", enum_map=pixel_dtype, datatype=str
+        )
+        adapter_info = MMAdapterInfo(adapter="HamamatsuHam", device="HamamatsuHam_DCAM")
+        super().__init__(
+            name,
+            core=self.core,
+            pixel_dtype=self.pixel_dtype,
+            adapter_info=adapter_info,
+            writer=writer,
+        )
+
+        self.median = MedianDevice(
+            parent_name=name,
+            roi_sig=self.roi,
+            dtype_sig=self.pixel_dtype,
+            writer=self.writer,
+            path_provider=self.path_provider,
+            store_path_sig=self.store_path_sig
+        )

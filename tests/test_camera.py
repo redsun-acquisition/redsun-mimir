@@ -1,4 +1,4 @@
-"""Fly-scan lifecycle test for MMCoreCameraDevice (demo adapter).
+"""Fly-scan lifecycle test for MMDemoCamera (demo adapter).
 
 Mirrors the ``test_fly_scan_lifecycle`` test in redsun's SDK test suite,
 adapted for the MMCore camera device and its custom arm/trigger/data logics.
@@ -26,7 +26,7 @@ from ophyd_async.testing import assert_emitted
 from pymmcore_plus import CMMCorePlus
 from redsun.storage import DataWriter, SourceInfo
 
-from redsun_mimir.device.mmcore import MMCoreCameraDevice
+from redsun_mimir.device.mmcore import MMDemoCamera
 
 # ---------------------------------------------------------------------------
 # Minimal DataWriter stub
@@ -100,24 +100,24 @@ def bluesky_re() -> BlueskyRunEngine:
 
 @pytest.fixture
 def demo_camera(tmp_path: Path, bluesky_re: BlueskyRunEngine) -> Any:
-    """Yield a connected MMCoreCameraDevice (demo adapter) with a concrete writer.
+    """Yield a connected MMDemoCamera (demo adapter) with a concrete writer.
 
     Connects the device on the RunEngine's event loop so that all ophyd-async
     signal infrastructure (including the frame-counter setter used from the
     streaming thread) is bound to the same loop that drives the plan.
     """
-    MMCoreCameraDevice.initialized = False
+    MMDemoCamera.initialized = False
     writer = _ConcreteDataWriter()
     pp = StaticPathProvider(StaticFilenameProvider("cam"), PurePath(tmp_path))
 
-    cam = MMCoreCameraDevice("cam", writer, config="demo", path_provider=pp)
+    cam = MMDemoCamera("cam", writer, config="demo", path_provider=pp)
     bluesky_re.loop.call_soon_threadsafe(cam.connect(mock=False))
     yield cam, writer
 
     # Cleanup: unload all MM devices and reset the initialized guard so other
     # tests or test re-runs don't see stale state.
     CMMCorePlus.instance().reset()
-    MMCoreCameraDevice.initialized = False
+    MMDemoCamera.initialized = False
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +126,10 @@ def demo_camera(tmp_path: Path, bluesky_re: BlueskyRunEngine) -> Any:
 
 
 def test_fly_scan_lifecycle(
-    demo_camera: tuple[MMCoreCameraDevice, _ConcreteDataWriter],
+    demo_camera: tuple[MMDemoCamera, _ConcreteDataWriter],
     bluesky_re: BlueskyRunEngine,
 ) -> None:
-    """Fly scan plan lifecycle with MMCoreCameraDevice (demo adapter).
+    """Fly scan plan lifecycle with MMDemoCamera (demo adapter).
 
     Verifies that the standard bluesky fly-scan protocol
     (stage → prepare → declare_stream → kickoff → collect_while_completing → unstage)

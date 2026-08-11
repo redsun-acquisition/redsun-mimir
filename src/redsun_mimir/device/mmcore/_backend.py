@@ -53,6 +53,7 @@ class MMPropertySignalBackend(SignalBackend[PropT]):
         datatype: type[PropT] | None = None,
     ):
         self.enum_map = enum_map
+        self._inverse_map: dict[str, str] | None = None
         self.current_enum: str | None = None
         self.choices: list[str] | None = None
         if self.enum_map is not None:
