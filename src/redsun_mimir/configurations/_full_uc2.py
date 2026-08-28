@@ -3,7 +3,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import declare_device, declare_presenter, declare_view
+from redsun.containers import (
+    declare_device,
+    declare_hook,
+    declare_presenter,
+    declare_view,
+)
 from redsun.presenter.builtins import StoragePresenter
 from redsun.qt import QtAppContainer
 from redsun.view.qt.builtins import StorageView
@@ -29,6 +34,9 @@ def run_uc2_container() -> None:
         UC2Serial,
     )
 
+    # hooks
+    from redsun_mimir.hooks import NapariApplication
+
     # presenters
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -45,7 +53,14 @@ def run_uc2_container() -> None:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
+    napari_app = NapariApplication()
+
     class MimirMicroscope(QtAppContainer, config=_CONFIG):
+        # one object at both points: the theme it applies is the one it
+        # restores on shutdown
+        create_application = declare_hook(napari_app)
+        configure_application = declare_hook(napari_app)
+
         # devices
         serial = declare_device(UC2Serial, from_config="serial")
         iscat = declare_device(MMDahengCamera, from_config="camera")

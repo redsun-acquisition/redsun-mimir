@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from napari.settings import get_settings
 from redsun.virtual import ProviderKey, VirtualContainer
 
+from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.providers import (
@@ -16,11 +18,17 @@ from redsun_mimir.providers import (
     MOTOR_READBACKS,
     MOTOR_READINGS,
 )
+from redsun_mimir.utils.napari import stylesheet
+from redsun_mimir.view.image import ImageView
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
 
+from .conftest import needs_opengl
+
 if TYPE_CHECKING:
     from bluesky.protocols import Reading
+    from qtpy.QtCore import QCoreApplication
+    from qtpy.QtWidgets import QApplication
 
     from redsun_mimir.device._mocks import MockLightDevice
 
@@ -282,3 +290,45 @@ class TestLightView:
         widget.inject_dependencies(virtual_container)
 
         assert "light_view" in virtual_container.signals
+
+
+@needs_opengl
+class TestImageViewTheme:
+    """Tests for styling the embedded napari viewer."""
+
+    def test_it_is_themed_as_it_is_built(self) -> None:
+        get_settings().appearance.theme = "dark"
+
+        view = ImageView("image_view")
+
+        try:
+            assert view.styleSheet() != ""
+            assert view.styleSheet() == view._qt_viewer.styleSheet()
+            # the canvas and the layer controls read the theme off the model,
+            # not off the stylesheet
+            assert view.viewer_model.theme == "dark"
+        finally:
+            view.close()
+
+
+class TestNapariApplication:
+    """Tests for the hook that runs the session on napari's application."""
+
+    @pytest.fixture
+    def hook(self) -> NapariApplication:
+        get_settings().appearance.theme = "dark"
+        return NapariApplication()
+
+    def test_it_supplies_naparis_application(
+        self, hook: NapariApplication, qapp: QCoreApplication
+    ) -> None:
+        assert hook.create_application([]) is qapp
+
+    def test_it_styles_the_whole_application(
+        self, hook: NapariApplication, qapp: QCoreApplication
+    ) -> None:
+        app = cast("QApplication", qapp)
+
+        hook.configure_application(app)
+
+        assert app.styleSheet() == stylesheet()

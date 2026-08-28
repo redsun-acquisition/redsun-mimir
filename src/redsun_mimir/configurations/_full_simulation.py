@@ -3,7 +3,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from redsun.containers import declare_device, declare_presenter, declare_view
+from redsun.containers import (
+    declare_device,
+    declare_hook,
+    declare_presenter,
+    declare_view,
+)
 from redsun.presenter.builtins import StoragePresenter
 from redsun.qt import QtAppContainer
 from redsun.view.qt.builtins import StorageView
@@ -25,6 +30,9 @@ def build_simulation_container() -> QtAppContainer:
     from redsun_mimir.device import MockLightDevice
     from redsun_mimir.device.mmcore import MMDemoCamera, MMDemoXYStage, MMDemoZStage
 
+    # hooks
+    from redsun_mimir.hooks import NapariApplication
+
     # presenters
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -41,7 +49,14 @@ def build_simulation_container() -> QtAppContainer:
 
     logging.getLogger("redsun").setLevel(logging.DEBUG)
 
+    napari_app = NapariApplication()
+
     class MimirSimulator(QtAppContainer, config=_CONFIG):
+        # one object at both points: the theme it applies is the one it
+        # restores on shutdown
+        create_application = declare_hook(napari_app)
+        configure_application = declare_hook(napari_app)
+
         # devices
         mmcamera = declare_device(MMDemoCamera, from_config="camera1")
         XY = declare_device(MMDemoXYStage, from_config="xy-motor")

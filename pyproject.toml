@@ -30,7 +30,7 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.7.0",
     "msgspec>=0.21.1",
-    "redsun[zarr]>=0.11.0",
+    "redsun[zarr]>=0.11.2",
 ]
 
 [dependency-groups]
@@ -137,9 +137,6 @@ pythonpath = ["."]
 markers = [
     "qt: tests that need a Qt application (auto-skipped headless)",
 ]
-
-[tool.pytest_env]
-QT_QPA_PLATFORM = "offscreen"
 
 [tool.ruff]
 fix = true

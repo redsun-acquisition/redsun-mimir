@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
+## [Unreleased]
+
+### Added
+
+- `NapariApplication` (`redsun_mimir.hooks`) - a container hook that runs the
+  session on napari's application and applies napari's stylesheet to it, so a
+  window embedding a napari viewer is styled throughout. It serves
+  `create_application` and `configure_application`. Requires `redsun>=0.11.2`.
+
+  ```yaml
+  hooks:
+    create_application: &napari
+      provider: "redsun_mimir.hooks:NapariApplication"
+    configure_application: *napari
+  ```
+
+- `stylesheet` (`redsun_mimir.utils.napari`) - napari's QSS for the theme and
+  font size currently in its settings.
+
+### Changed
+
+- The minimum `redsun` version is 0.11.2.
+
+### Removed
+
+- The `light`, `motor` and `acquisition` example containers, their
+  configuration files and their `mimir` CLI subcommands. `redsun_mimir.configurations`
+  exposes `build_simulation_container`, `run_simulation_container` and
+  `run_uc2_container`; the CLI accepts `sim` and `uc2`.
+
+### Fixed
+
+- `ImageView` sets napari's theme on its viewer model, which the canvas and the
+  layer controls read; its docstring no longer describes a live theme switch it
+  did not implement.
+- `ImageView.closeEvent` unregisters its viewer providers through
+  `InjectionContext.cleanup` instead of calling the context, which raised
+  `TypeError` and left the providers registered.
+
 ## [0.3.1]
 
 Motor axes are ophyd-async movables, and the position they report is read from

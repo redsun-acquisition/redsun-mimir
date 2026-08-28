@@ -43,6 +43,14 @@ needs_mm_adapters = pytest.mark.skipif(
     reason="no Micro-Manager device adapters; run 'mmcore install --test-adapters'",
 )
 
+#: A napari viewer needs a real OpenGL context - ``QT_QPA_PLATFORM=offscreen``
+#: cannot provide one and construction dies inside PyOpenGL. Opt in on a machine
+#: with a display.
+needs_opengl = pytest.mark.skipif(
+    not os.environ.get("MIMIR_TEST_OPENGL"),
+    reason="napari needs a real OpenGL context; set MIMIR_TEST_OPENGL=1 to run",
+)
+
 
 class FakeAxis(StandardReadable, StandardMovable[float]):
     """Soft-signal stand-in for one movable axis.

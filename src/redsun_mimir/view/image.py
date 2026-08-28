@@ -6,7 +6,6 @@ import numpy as np
 from napari._app_model import get_app_model
 from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
-from napari._qt.qt_resources import get_stylesheet
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.settings import get_settings
@@ -18,6 +17,7 @@ from redsun.view.qt import QtView
 from redsun.virtual import slot
 
 from redsun_mimir.providers import DETECTOR_LAYER_SPECS
+from redsun_mimir.utils.napari import stylesheet
 
 if TYPE_CHECKING:
     from typing import Any
@@ -120,33 +120,29 @@ class ImageView(QtView, Loggable):
         self.setLayout(main_layout)
         self.seen_layers: set[str] = set()
 
-        # Apply napari's stylesheet so icons and theme colours render correctly.
-        # Window.__init__ normally does this via _update_theme(); since we bypass
-        # Window entirely we do it here and re-apply on theme changes.
+        # Apply napari's stylesheet so icons and theme colours render correctly
+        # even when the session installs no hook to style the application.
         self._apply_napari_stylesheet()
 
         self.logger.info("Initialized")
 
     def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
         # Unregister the embedded viewer/qt-viewer providers on teardown
-        self._provider_disposer()
+        self._provider_disposer.cleanup()
         super().closeEvent(event)
 
     def _apply_napari_stylesheet(self) -> None:
-        """Apply (or re-apply) napari's QSS theme to this widget and the canvas.
+        """Apply napari's QSS theme to this widget and the canvas.
 
-        Normally ``Window._update_theme`` does this; since we bypass ``Window``
-        entirely we call it once at startup and reconnect it to the theme-change
-        event so that live theme switching keeps working.
+        ``Window._update_theme`` normally does this; since ``Window`` is
+        bypassed entirely it is done here, once, as the widget is built. The
+        viewer model carries the theme too, which is what the canvas and the
+        layer controls read.
         """
-        settings = get_settings()
-        theme = settings.appearance.theme
-        font_size = f"{settings.appearance.font_size}pt"
-        stylesheet: str = get_stylesheet(
-            theme, extra_variables={"font_size": font_size}
-        )
-        self.setStyleSheet(stylesheet)
-        self._qt_viewer.setStyleSheet(stylesheet)
+        qss = stylesheet()
+        self.viewer_model.theme = get_settings().appearance.theme
+        self.setStyleSheet(qss)
+        self._qt_viewer.setStyleSheet(qss)
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register image view signals in the virtual container."""

@@ -12,72 +12,25 @@ completion.
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import pytest
-from ophyd_async.core import AsyncConfigurable
 from redsun.presenter import PPresenter
 from redsun.view import PView
 
-from redsun_mimir.configurations import (
-    build_acquisition_container,
-    build_light_container,
-    build_simulation_container,
-    build_stage_container,
-)
+from redsun_mimir.configurations import build_simulation_container
+
+from .conftest import needs_opengl
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable
 
     from redsun.qt import QtAppContainer
 
 pytestmark = pytest.mark.qt
 
-#: Containers declaring `ImageView` embed a napari viewer, which needs a real
-#: OpenGL context - `QT_QPA_PLATFORM=offscreen` cannot provide one and the
-#: build dies inside PyOpenGL. Opt in on a machine with a display.
-needs_opengl = pytest.mark.skipif(
-    not os.environ.get("MIMIR_TEST_OPENGL"),
-    reason="napari needs a real OpenGL context; set MIMIR_TEST_OPENGL=1 to run",
-)
-
-
-@pytest.fixture
-def built_container(
-    request: pytest.FixtureRequest,
-) -> Generator[QtAppContainer, None, None]:
-    """Build the container returned by the requested factory, then shut it down."""
-    factory: Callable[[], QtAppContainer] = request.param
-    container = factory()
-    container.build()
-    yield container
-    container.shutdown()
-
 
 _CONTAINERS = [
-    pytest.param(
-        build_light_container,
-        {"led", "laser"},
-        {"ctrl"},
-        {"widget"},
-        id="light",
-    ),
-    pytest.param(
-        build_stage_container,
-        {"xy_motor", "z_motor"},
-        {"ctrl"},
-        {"widget"},
-        id="motor",
-    ),
-    pytest.param(
-        build_acquisition_container,
-        {"mm_camera", "xy_motor", "z_motor"},
-        {"storage_ctrl", "median_ctrl", "det_ctrl", "acq_ctrl"},
-        {"acq_widget", "img_widget", "det_widget", "storage_widget"},
-        id="acquisition",
-        marks=needs_opengl,
-    ),
     pytest.param(
         build_simulation_container,
         {"mmcamera", "XY", "Z", "laser", "led"},
@@ -133,9 +86,6 @@ def test_container_builds_every_component(
 
 
 _FACTORIES = [
-    pytest.param(build_light_container, id="light"),
-    pytest.param(build_stage_container, id="motor"),
-    pytest.param(build_acquisition_container, id="acquisition", marks=needs_opengl),
     pytest.param(build_simulation_container, id="simulation", marks=needs_opengl),
 ]
 
@@ -198,25 +148,6 @@ _FULL_LINKS = (
 
 _GRAPHS = [
     pytest.param(
-        build_light_container,
-        {
-            ("widget.sig_toggle_light_request", "ctrl.trigger"),
-            ("widget.sig_intensity_request", "ctrl.set"),
-        },
-        id="light",
-    ),
-    pytest.param(
-        build_stage_container,
-        {("widget.sig_motor_move", "ctrl.move")},
-        id="motor",
-    ),
-    pytest.param(
-        build_acquisition_container,
-        _DETECTOR_LINKS | _MEDIAN_LINKS | _ACQUISITION_LINKS,
-        id="acquisition",
-        marks=needs_opengl,
-    ),
-    pytest.param(
         build_simulation_container,
         _FULL_LINKS,
         id="simulation",
@@ -254,20 +185,14 @@ def test_container_declares_the_expected_graph(
 
 _SUBSCRIPTIONS = [
     pytest.param(
-        build_stage_container,
-        {
-            ("xy_motor-axis-x", "widget.update_setpoint"),
-            ("xy_motor-axis-y", "widget.update_setpoint"),
-            ("z_motor-axis-z", "widget.update_setpoint"),
-        },
-        id="motor",
-    ),
-    pytest.param(
         build_simulation_container,
         {
             ("XY-axis-x", "motor_widget.update_setpoint"),
             ("XY-axis-y", "motor_widget.update_setpoint"),
             ("Z-axis-z", "motor_widget.update_setpoint"),
+            # the storage view follows the session path provider, whose soft
+            # signal carries no name, hence the empty source
+            ("", "storage_widget.update_base_dir"),
         },
         id="simulation",
         marks=needs_opengl,
@@ -297,13 +222,3 @@ def test_container_declares_the_expected_subscriptions(
         assert actual == expected
     finally:
         container.shutdown()
-
-
-@pytest.mark.parametrize("built_container", [build_light_container], indirect=True)
-async def test_devices_connect_in_mock_mode(built_container: QtAppContainer) -> None:
-    """``connect_devices(mock=True)`` completes without touching hardware."""
-    built_container.connect_devices(mock=True)
-
-    for device in built_container.devices.values():
-        assert isinstance(device, AsyncConfigurable)
-        assert await device.read_configuration()

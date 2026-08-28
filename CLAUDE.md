@@ -58,9 +58,14 @@ mmcore list                              # verify: the active install must be DI
   do not widen that list to silence a real error.
 - pytest is `asyncio_mode = "auto"` - **do not decorate async tests** with
   `@pytest.mark.asyncio`.
-- Qt tests need a display; on Linux set `QT_QPA_PLATFORM=offscreen`. Use the
-  session-scoped `qapp` fixture from `conftest.py`, never build a
-  `QApplication` yourself.
+- Qt tests need a display; on Linux without one set `QT_QPA_PLATFORM=offscreen`
+  yourself - nothing sets it for you. Use the session-scoped `qapp` fixture from
+  `conftest.py`, never build a `QApplication` yourself.
+- **`offscreen` has no OpenGL context**, and napari's `QtViewer` needs a real
+  one, so anything constructing an `ImageView` carries `needs_opengl` from
+  `conftest.py` and is skipped unless `MIMIR_TEST_OPENGL` is set. CI provides
+  the context with `pyvista/setup-headless-display-action` and sets that
+  variable, which is why no workflow pins `QT_QPA_PLATFORM` for the test run.
 - **Micro-Manager adapters are downloaded, not pip-installed**, and their device
   interface version must match the installed `pymmcore` - `mmcore list` marks a
   mismatched install `(incompatible)`. Install only the test adapters
