@@ -296,16 +296,22 @@ class TestLightView:
 class TestImageViewTheme:
     """Tests for styling the embedded napari viewer."""
 
-    def test_it_is_themed_as_it_is_built(self) -> None:
+    def test_it_carries_no_stylesheet_of_its_own(self, qapp: QCoreApplication) -> None:
+        """The view is styled by the application, never by itself.
+
+        A stylesheet set on the widget would win over the application's and
+        pin the view to the theme it was built under.
+        """
         get_settings().appearance.theme = "dark"
+        NapariApplication().configure_application(cast("QApplication", qapp))
 
         view = ImageView("image_view")
 
         try:
-            assert view.styleSheet() != ""
-            assert view.styleSheet() == view._qt_viewer.styleSheet()
+            assert view.styleSheet() == ""
+            assert view._qt_viewer.styleSheet() == ""
             # the canvas and the layer controls read the theme off the model,
-            # not off the stylesheet
+            # which takes it from the same settings the stylesheet does
             assert view.viewer_model.theme == "dark"
         finally:
             view.close()

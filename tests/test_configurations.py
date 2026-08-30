@@ -18,7 +18,10 @@ import pytest
 from redsun.presenter import PPresenter
 from redsun.view import PView
 
-from redsun_mimir.configurations import build_simulation_container
+from redsun_mimir.configurations import (
+    build_simulation_container,
+    build_uc2_container,
+)
 
 from .conftest import needs_opengl
 
@@ -30,30 +33,76 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.qt
 
 
+#: Declared by `MimirApp`, so every session has them whatever its hardware.
+_SHARED_PRESENTERS = {
+    "storage_ctrl",
+    "median_ctrl",
+    "det_ctrl",
+    "acq_ctrl",
+    "light_ctrl",
+    "motor_ctrl",
+}
+_SHARED_VIEWS = {
+    "acq_widget",
+    "img_widget",
+    "det_widget",
+    "light_widget",
+    "motor_widget",
+    "storage_widget",
+}
+
 _CONTAINERS = [
     pytest.param(
         build_simulation_container,
         {"mmcamera", "XY", "Z", "laser", "led"},
-        {
-            "storage_ctrl",
-            "median_ctrl",
-            "det_ctrl",
-            "acq_ctrl",
-            "light_ctrl",
-            "motor_ctrl",
-        },
-        {
-            "acq_widget",
-            "img_widget",
-            "det_widget",
-            "light_widget",
-            "motor_widget",
-            "storage_widget",
-        },
+        _SHARED_PRESENTERS,
+        _SHARED_VIEWS,
         id="simulation",
         marks=needs_opengl,
     ),
 ]
+
+
+@pytest.mark.parametrize(
+    ("factory", "session_file", "devices"),
+    [
+        pytest.param(
+            build_simulation_container,
+            "full_configuration.yaml",
+            {"mmcamera", "XY", "Z", "laser", "led"},
+            id="simulation",
+        ),
+        pytest.param(
+            build_uc2_container,
+            "uc2_full_configuration.yaml",
+            {"serial", "iscat", "stage", "laser"},
+            id="uc2",
+        ),
+    ],
+)
+def test_a_session_declares_only_its_devices(
+    factory: Callable[[], QtAppContainer],
+    session_file: str,
+    devices: set[str],
+) -> None:
+    """Both sessions take the same presenters, views and hooks from the base.
+
+    Nothing is built, so this covers the UC2 session too, whose hardware no
+    test machine has. The declarations are the thing being checked: the two
+    sessions differ in their devices and in the file that configures them, and
+    in nothing else.
+    """
+    cls = type(factory())
+
+    assert set(cls._device_components) == devices
+    assert set(cls._presenter_components) == _SHARED_PRESENTERS
+    assert set(cls._view_components) == _SHARED_VIEWS
+    assert set(cls._hook_providers) == {"create_application", "configure_application"}
+    # the common file first, the session's own laid over it
+    assert [path.name for path in cls._config_paths] == [
+        "common_configuration.yaml",
+        session_file,
+    ]
 
 
 @pytest.mark.parametrize(("factory", "devices", "presenters", "views"), _CONTAINERS)

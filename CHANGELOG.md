@@ -14,7 +14,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `NapariApplication` (`redsun_mimir.hooks`) - a container hook that runs the
   session on napari's application and applies napari's stylesheet to it, so a
   window embedding a napari viewer is styled throughout. It serves
-  `create_application` and `configure_application`. Requires `redsun>=0.11.2`.
+  `create_application` and `configure_application`.
 
   ```yaml
   hooks:
@@ -26,11 +26,36 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `stylesheet` (`redsun_mimir.utils.napari`) - napari's QSS for the theme and
   font size currently in its settings.
 
+- `build_uc2_container` (`redsun_mimir.configurations`) - the UC2 container,
+  unbuilt, matching `build_simulation_container`.
+
+- `common_configuration.yaml` (`redsun_mimir.configurations`) - the identity,
+  presenters and views both sessions share. `full_configuration.yaml` and
+  `uc2_full_configuration.yaml` now carry a `devices` section only and are laid
+  over it.
+
 ### Changed
 
-- The minimum `redsun` version is 0.11.2.
+- The example sessions ask for their log level with
+  `MimirSimulator(log_level=logging.DEBUG)` rather than reaching for the
+  `redsun` logger by name in their factories.
+
+- Both example sessions are built on one container. `MimirApp` declares the
+  hooks, the presenters, the views and `wire`; `MimirSimulator` and
+  `MimirMicroscope` add their devices and the file that configures them.
+
+- The minimum `redsun` version is 0.12.0.
+
+- `LightProtocol.trigger` returns `AsyncStatus[None]`. `AsyncStatus` is
+  generic in the value its awaitable produces from `ophyd-async` 0.21.2
+  onwards.
 
 ### Removed
+
+- `ImageView` no longer applies napari's stylesheet to itself and to its
+  embedded `QtViewer`, and no longer sets the theme on its viewer model. The
+  view is styled by whatever `configure_application` hook the session installs;
+  with `NapariApplication` installed it renders exactly as before.
 
 - The `light`, `motor` and `acquisition` example containers, their
   configuration files and their `mimir` CLI subcommands. `redsun_mimir.configurations`
@@ -39,9 +64,6 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
-- `ImageView` sets napari's theme on its viewer model, which the canvas and the
-  layer controls read; its docstring no longer describes a live theme switch it
-  did not implement.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

@@ -8,7 +8,6 @@ from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
-from napari.settings import get_settings
 from napari.utils._proxies import PublicOnlyProxy
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
@@ -17,7 +16,6 @@ from redsun.view.qt import QtView
 from redsun.virtual import slot
 
 from redsun_mimir.providers import DETECTOR_LAYER_SPECS
-from redsun_mimir.utils.napari import stylesheet
 
 if TYPE_CHECKING:
     from typing import Any
@@ -41,6 +39,10 @@ class ImageView(QtView, Loggable):
     One image layer is created per detector during
     [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies];
     layers are updated in real-time as new frames arrive from the presenter.
+
+    The widget sets no stylesheet of its own; it is styled by the application
+    it is built under, so a session that wants napari's theme puts napari's QSS
+    on the application.
 
     Parameters
     ----------
@@ -120,29 +122,12 @@ class ImageView(QtView, Loggable):
         self.setLayout(main_layout)
         self.seen_layers: set[str] = set()
 
-        # Apply napari's stylesheet so icons and theme colours render correctly
-        # even when the session installs no hook to style the application.
-        self._apply_napari_stylesheet()
-
         self.logger.info("Initialized")
 
     def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
         # Unregister the embedded viewer/qt-viewer providers on teardown
         self._provider_disposer.cleanup()
         super().closeEvent(event)
-
-    def _apply_napari_stylesheet(self) -> None:
-        """Apply napari's QSS theme to this widget and the canvas.
-
-        ``Window._update_theme`` normally does this; since ``Window`` is
-        bypassed entirely it is done here, once, as the widget is built. The
-        viewer model carries the theme too, which is what the canvas and the
-        layer controls read.
-        """
-        qss = stylesheet()
-        self.viewer_model.theme = get_settings().appearance.theme
-        self.setStyleSheet(qss)
-        self._qt_viewer.setStyleSheet(qss)
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register image view signals in the virtual container."""

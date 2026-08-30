@@ -1,6 +1,4 @@
-schema_version: 1.0
-session: redsun-mimir
-frontend: pyqt
+# UC2 hardware. Lays over common_configuration.yaml.
 
 devices:
   serial:
@@ -9,24 +7,3 @@ devices:
   laser:
     wavelength: 650
   camera: {}
-
-
-presenters:
-  storage_ctrl: {}
-  median_ctrl: {}
-  det_ctrl:
-    timeout: 2.0
-  acq_ctrl: {}
-  light_ctrl:
-    timeout: 2.0
-  motor_ctrl:
-    timeout: 2.0
-
-
-views:
-  light_widget: {}
-  motor_widget: {}
-  acq_widget: {}
-  img_widget: {}
-  det_widget: {}
-  storage_widget: {}

@@ -102,12 +102,12 @@ class LightProtocol(AsyncConfigurable, Protocol):
         """
         ...
 
-    def trigger(self) -> AsyncStatus:
+    def trigger(self) -> AsyncStatus[None]:
         """Toggle the activation status of the light source.
 
         Returns
         -------
-        AsyncStatus
+        AsyncStatus[None]
             Status object of the operation.
         """
         ...
