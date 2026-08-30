@@ -117,6 +117,33 @@ mimir sim
 ```
 </details>
 
+## Installing the napari application hook
+
+`ImageView` embeds a napari viewer but carries no stylesheet of its own: it is
+styled by the application it is built under. `NapariApplication` supplies that
+application. It serves two hook points, returning the application napari itself
+would build (`create_application`) and putting napari's stylesheet on it
+(`configure_application`).
+
+A session built only from a configuration file installs it in a `hooks:`
+section. One entry serves both points, so a YAML anchor keeps it a single
+provider instance:
+
+```yaml
+hooks:
+  create_application: &napari
+    provider: "redsun_mimir.hooks:NapariApplication"
+  configure_application: *napari
+```
+
+Without it the viewer still works and its canvas still follows the theme in
+napari's settings, but nothing sets a stylesheet on the application, so the
+layer list, the layer controls and the rest of the Qt chrome keep their default
+look.
+
+The shipped containers declare the hook themselves, so `mimir sim` and
+`mimir uc2` need no `hooks:` section.
+
 ## Wiring a session from YAML
 
 The shipped containers declare their connections in `wire()`. A session built
