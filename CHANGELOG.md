@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
-## [Unreleased]
+## [0.4.0] - 03-09-2026
 
 ### Added
 
@@ -328,6 +328,7 @@ caller.
 
 - Initial release.
 
+[0.4.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.2.0...v0.3.0
 [0.1.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.1.0
