@@ -63,7 +63,7 @@ class MotorView(QtView, Loggable):
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
 
-        self.main_layout = QtWidgets.QVBoxLayout()
+        self.main_layout = QtWidgets.QVBoxLayout(self)
 
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
@@ -102,23 +102,33 @@ class MotorView(QtView, Loggable):
             axis_units.setdefault(name, []).append(units)
 
         for name, axes in axis_map.items():
-            layout = QtWidgets.QGridLayout()
-            self._groups.setdefault(name, QtWidgets.QGroupBox(name))
+            self._groups.setdefault(name, QtWidgets.QGroupBox(name, self))
             self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+            layout = QtWidgets.QGridLayout(self._groups[name])
 
             for i, axis in enumerate(axes):
                 suffix = f"{name}:{axis}"
                 units = axis_units[name][i]
-                self._labels["label:" + suffix] = QtWidgets.QLabel(f"{axis}")
+                self._labels["label:" + suffix] = QtWidgets.QLabel(
+                    f"{axis}", self._groups[name]
+                )
                 self._labels["label:" + suffix].setTextFormat(
                     QtCore.Qt.TextFormat.RichText
                 )
-                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f} {units}")
-                self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton("+")
-                self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton("-")
-                self._labels["step:" + suffix] = QtWidgets.QLabel(f"step ({units})")
+                self._labels["pos:" + suffix] = QtWidgets.QLabel(
+                    f"{0:.2f} {units}", self._groups[name]
+                )
+                self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton(
+                    "+", self._groups[name]
+                )
+                self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton(
+                    "-", self._groups[name]
+                )
+                self._labels["step:" + suffix] = QtWidgets.QLabel(
+                    f"step ({units})", self._groups[name]
+                )
                 self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
-                    str(self.step_size)
+                    str(self.step_size), self._groups[name]
                 )
                 self._line_edits["edit:" + suffix].setAlignment(
                     QtCore.Qt.AlignmentFlag.AlignHCenter
@@ -141,10 +151,7 @@ class MotorView(QtView, Loggable):
                     lambda lbl=name, a=axis: self._validate(lbl, a)
                 )
 
-            self._groups[name].setLayout(layout)
             self.main_layout.addWidget(self._groups[name])
-
-        self.setLayout(self.main_layout)
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.
