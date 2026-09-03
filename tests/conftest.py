@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import os
 import sys
 from functools import cached_property
@@ -18,6 +19,7 @@ from ophyd_async.core import (
 )
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
+from qtpy.QtCore import QEvent
 from qtpy.QtWidgets import QApplication
 from redsun.aio import get_shared_loop
 from redsun.storage import BaseStorage, SessionPathProvider, clear_registry
@@ -143,6 +145,25 @@ def _clear_storage_registry() -> Generator[None, None, None]:
     """Clear redsun's process-wide storage registry after each test."""
     yield
     clear_registry()
+
+
+@pytest.fixture(autouse=True)
+def _destroy_widgets() -> Generator[None, None, None]:
+    """Destroy the widgets a test built, between tests rather than during one.
+
+    A view connects its own bound methods to the signals of the widgets it
+    creates, so every widget a test builds sits in a reference cycle that only
+    the cyclic collector can break. Left alone that collection happens at an
+    arbitrary later point, and a ``QWidget`` destroyed while Qt is walking its
+    widget list - which ``QApplication.setStyleSheet`` does - takes the process
+    down with an access violation.
+    """
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    gc.collect()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @pytest.fixture
