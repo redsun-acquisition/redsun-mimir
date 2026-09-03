@@ -80,7 +80,7 @@ class LightView(QtView, Loggable):
         self._description: dict[str, Descriptor] = {}
         self.setWindowTitle("Light sources")
 
-        self.main_layout = QtWidgets.QVBoxLayout()
+        self.main_layout = QtWidgets.QVBoxLayout(self)
 
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
@@ -113,27 +113,27 @@ class LightView(QtView, Loggable):
             reading_names.setdefault(name, []).append(prop)
 
         for name, props in reading_names.items():
-            layout = QtWidgets.QGridLayout()
             if "wavelength" in props:
                 wavelength = readings[f"{name}-wavelength"]["value"]
             binary = bool(readings[f"{name}-binary"]["value"])
             units = description[f"{name}-intensity"].get("units") or "NA"
             self._groups[_group_key(name)] = QtWidgets.QGroupBox(
-                f"{name} ({wavelength} nm)"
+                f"{name} ({wavelength} nm)", self
             )
             self._groups[_group_key(name)].setAlignment(
                 QtCore.Qt.AlignmentFlag.AlignHCenter
                 | QtCore.Qt.AlignmentFlag.AlignRight
             )
-            self._groups[_group_key(name)].setLayout(layout)
-            self._buttons[_button_on_key(name)] = QtWidgets.QPushButton("ON")
+            layout = QtWidgets.QGridLayout(self._groups[_group_key(name)])
+            self._buttons[_button_on_key(name)] = QtWidgets.QPushButton(
+                "ON", self._groups[_group_key(name)]
+            )
             self._buttons[_button_on_key(name)].setCheckable(True)
             self._buttons[_button_on_key(name)].clicked.connect(
                 lambda _, lbl=name: self._on_toggle_button_checked(lbl)
             )
             if binary:
                 layout.addWidget(self._buttons[_button_on_key(name)], 0, 0)
-                self._groups[_group_key(name)].setLayout(layout)
                 self.main_layout.addWidget(self._groups[_group_key(name)])
                 continue
 
@@ -154,13 +154,17 @@ class LightView(QtView, Loggable):
                     low = ctrl["low"]
                     high = ctrl["high"]
             if dtype == "number":
-                slider = QLabeledDoubleSlider(QtCore.Qt.Orientation.Horizontal)
+                slider = QLabeledDoubleSlider(
+                    QtCore.Qt.Orientation.Horizontal, self._groups[_group_key(name)]
+                )
                 if low is not None and high is not None:
                     range = [low, high]
                 else:
                     range = [0.0, 100.0]
             elif dtype == "integer":
-                slider = QLabeledSlider(QtCore.Qt.Orientation.Horizontal)
+                slider = QLabeledSlider(
+                    QtCore.Qt.Orientation.Horizontal, self._groups[_group_key(name)]
+                )
                 if low is not None and high is not None:
                     range = [low, high]
                 else:
@@ -174,15 +178,14 @@ class LightView(QtView, Loggable):
             self._sliders[_slider_power_key(name)].valueChanged.connect(
                 lambda value, lbl=name: self._on_slider_changed(value, lbl)
             )
-            self._labels[_label_egu_key(name)] = QtWidgets.QLabel(units)
+            self._labels[_label_egu_key(name)] = QtWidgets.QLabel(
+                units, self._groups[_group_key(name)]
+            )
             layout.addWidget(self._buttons[_button_on_key(name)], 0, 0)
             layout.addWidget(self._sliders[_slider_power_key(name)], 0, 1, 1, 3)
             layout.addWidget(self._labels[_label_egu_key(name)], 0, 4)
 
-            self._groups[_group_key(name)].setLayout(layout)
             self.main_layout.addWidget(self._groups[_group_key(name)])
-
-        self.setLayout(self.main_layout)
 
     def _on_toggle_button_checked(self, device_label: str) -> None:
         """Toggle the light source."""
