@@ -17,12 +17,40 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from redsun.virtual import VirtualContainer
 
+_JOG_SPACING = 4
+
+# napari's stylesheet floors QAbstractSpinBox at a 70px min-width plus 10px of
+# padding either side, so a narrower request is raised to this
+_STEP_WIDTH = 90
+
+# the same floor vertically is an 18px min-height plus 1px of padding
+_STEP_HEIGHT = 20
+
+# no min-width: a stylesheet one is written into the widget's minimumWidth when
+# the style is polished, overwriting the size the buttons are given in code
+_JOG_STYLE = "QPushButton#jog { padding: 0px; }"
+
+
+def _resized(font: QtGui.QFont, delta: int) -> QtGui.QFont:
+    """Return a copy of *font* with its point size shifted by *delta*."""
+    resized = QtGui.QFont(font)
+    # a font sized in pixels reports -1 here, and setPointSize would then be
+    # handed an invalid size
+    point_size = resized.pointSize()
+    if point_size > 0:
+        resized.setPointSize(point_size + delta)
+    return resized
+
 
 class MotorView(QtView, Loggable):
     """View for manual motor stage control.
 
     Builds one control group per motor device using configuration
     provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
+
+    Each axis is one row of its device's group: the axis name, the readback
+    position, and a jog strip carrying the step size between the two buttons
+    that apply it.
 
     Parameters
     ----------
@@ -61,12 +89,15 @@ class MotorView(QtView, Loggable):
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
-        self._line_edits: dict[str, QtWidgets.QLineEdit] = {}
+        self._steps: dict[str, QtWidgets.QDoubleSpinBox] = {}
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
-        float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
-        self.validator = QtGui.QRegularExpressionValidator(float_regex)
+        self.setStyleSheet(_JOG_STYLE)
+
+        self._readout_font = _resized(
+            QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont), 2
+        )
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Build the UI and register motor view signals in the virtual container."""
@@ -91,67 +122,92 @@ class MotorView(QtView, Loggable):
         description: dict[str, Descriptor],
     ) -> None:
         """Create the UI based on the provided readings and description."""
-        axis_map: dict[str, list[str]] = {}
-        axis_units: dict[str, list[str]] = {}
+        axis_map: dict[str, list[tuple[str, str]]] = {}
         for key in readings:
             # "units" is optional in the descriptor spec: absent for plain
             # soft signals, so it must not be indexed directly
             units = description[key].get("units") or "NA"
             name, _, axis = parse_map_key(key, "axis")
-            axis_map.setdefault(name, []).append(axis)
-            axis_units.setdefault(name, []).append(units)
+            axis_map.setdefault(name, []).append((axis, units))
 
         for name, axes in axis_map.items():
-            self._groups.setdefault(name, QtWidgets.QGroupBox(name, self))
-            self._groups[name].setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-            layout = QtWidgets.QGridLayout(self._groups[name])
+            group = QtWidgets.QGroupBox(name, self)
+            group.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+            self._groups[name] = group
 
-            for i, axis in enumerate(axes):
+            grid = QtWidgets.QGridLayout(group)
+            grid.setColumnStretch(1, 1)
+
+            for i, (axis, units) in enumerate(axes):
                 suffix = f"{name}:{axis}"
-                units = axis_units[name][i]
-                self._labels["label:" + suffix] = QtWidgets.QLabel(
-                    f"{axis}", self._groups[name]
+                self._labels["label:" + suffix] = QtWidgets.QLabel(axis, group)
+                self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f}", group)
+                self._labels["pos:" + suffix].setFont(self._readout_font)
+                self._labels["pos:" + suffix].setAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignRight
+                    | QtCore.Qt.AlignmentFlag.AlignVCenter
                 )
-                self._labels["label:" + suffix].setTextFormat(
-                    QtCore.Qt.TextFormat.RichText
-                )
-                self._labels["pos:" + suffix] = QtWidgets.QLabel(
-                    f"{0:.2f} {units}", self._groups[name]
-                )
-                self._buttons["button:" + suffix + ":up"] = QtWidgets.QPushButton(
-                    "+", self._groups[name]
-                )
-                self._buttons["button:" + suffix + ":down"] = QtWidgets.QPushButton(
-                    "-", self._groups[name]
-                )
-                self._labels["step:" + suffix] = QtWidgets.QLabel(
-                    f"step ({units})", self._groups[name]
-                )
-                self._line_edits["edit:" + suffix] = QtWidgets.QLineEdit(
-                    str(self.step_size), self._groups[name]
-                )
-                self._line_edits["edit:" + suffix].setAlignment(
-                    QtCore.Qt.AlignmentFlag.AlignHCenter
-                )
+                self._labels["units:" + suffix] = QtWidgets.QLabel(units, group)
 
-                layout.addWidget(self._labels["label:" + suffix], i, 0)
-                layout.addWidget(self._labels["pos:" + suffix], i, 1)
-                layout.addWidget(self._buttons["button:" + suffix + ":up"], i, 2)
-                layout.addWidget(self._buttons["button:" + suffix + ":down"], i, 3)
-                layout.addWidget(self._labels["step:" + suffix], i, 5)
-                layout.addWidget(self._line_edits["edit:" + suffix], i, 6)
+                grid.addWidget(self._labels["label:" + suffix], i, 0)
+                grid.addWidget(self._labels["pos:" + suffix], i, 1)
+                grid.addWidget(self._labels["units:" + suffix], i, 2)
+                grid.addWidget(self._jog_strip(name, axis, units, group), i, 3)
 
-                self._buttons["button:" + suffix + ":up"].clicked.connect(
-                    lambda _, lbl=name, a=axis: self._step(lbl, a, True)
-                )
-                self._buttons["button:" + suffix + ":down"].clicked.connect(
-                    lambda _, lbl=name, a=axis: self._step(lbl, a, False)
-                )
-                self._line_edits["edit:" + suffix].editingFinished.connect(
-                    lambda lbl=name, a=axis: self._validate(lbl, a)
-                )
+            self.main_layout.addWidget(group)
 
-            self.main_layout.addWidget(self._groups[name])
+        self.main_layout.addStretch(1)
+
+    def _jog_strip(
+        self, motor: str, axis: str, units: str, parent: QtWidgets.QWidget
+    ) -> QtWidgets.QWidget:
+        """Build the step control and its two jog buttons as one strip.
+
+        Parameters
+        ----------
+        motor : str
+            Motor device label.
+        axis : str
+            Motor axis.
+        units : str
+            Engineering unit of the axis.
+        parent : QtWidgets.QWidget
+            Widget the strip is built in.
+        """
+        suffix = f"{motor}:{axis}"
+        strip = QtWidgets.QWidget(parent)
+        layout = QtWidgets.QHBoxLayout(strip)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(_JOG_SPACING)
+
+        step = QtWidgets.QDoubleSpinBox(strip)
+        step.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        step.setDecimals(2)
+        step.setRange(0.0, 1e6)
+        step.setValue(self.step_size)
+        step.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+        step.setToolTip(f"Step size ({units})")
+        # a spin box expands by default, which would leave the buttons beside
+        # it a fraction of its width
+        step.setFixedSize(_STEP_WIDTH, _STEP_HEIGHT)
+        self._steps["step:" + suffix] = step
+
+        side = _STEP_HEIGHT
+        for direction, glyph in (("down", "-"), ("up", "+")):
+            button = QtWidgets.QPushButton(glyph, strip)
+            button.setObjectName("jog")
+            button.setFixedSize(side, side)
+            button.setFont(_resized(button.font(), 2))
+            button.setToolTip(f"Move {axis} by one step")
+            button.clicked.connect(
+                lambda _, m=motor, a=axis, up=direction == "up": self._step(m, a, up)
+            )
+            self._buttons[f"button:{suffix}:{direction}"] = button
+
+        layout.addWidget(self._buttons[f"button:{suffix}:up"])
+        layout.addWidget(step)
+        layout.addWidget(self._buttons[f"button:{suffix}:down"])
+        return strip
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.
@@ -168,7 +224,7 @@ class MotorView(QtView, Loggable):
         # a displacement, never a target computed from the position label: the
         # label only refreshes once a move completes, so two quick clicks would
         # both read the pre-move value and ask for the same absolute position
-        step_size = float(self._line_edits["edit:" + motor + ":" + axis].text())
+        step_size = self._steps[f"step:{motor}:{axis}"].value()
         self.sig_motor_move.emit(motor, axis, step_size if direction_up else -step_size)
 
     @slot
@@ -182,24 +238,4 @@ class MotorView(QtView, Loggable):
         """
         for key, value in reading.items():
             motor, _, axis = parse_map_key(key, "axis")
-            _, units = self._labels[f"step:{motor}:{axis}"].text().split()
-            self._labels[f"pos:{motor}:{axis}"].setText(f"{value['value']:.2f} {units}")
-
-    def _validate(self, motor: str, axis: str) -> None:
-        """Validate the new step size.
-
-        Parameters
-        ----------
-        motor : str
-            Motor device label.
-        axis : str
-            Motor axis.
-        """
-        text = self._line_edits[f"edit:{motor}:{axis}"].text()
-        state = self.validator.validate(text, 0)[0]
-        if state == QtGui.QRegularExpressionValidator.State.Invalid:
-            self._line_edits[f"edit:{motor}:{axis}"].setStyleSheet(
-                "border: 2px solid red;"
-            )
-        else:
-            self._line_edits[f"edit:{motor}:{axis}"].setStyleSheet("")
+            self._labels[f"pos:{motor}:{axis}"].setText(f"{value['value']:.2f}")
