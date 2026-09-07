@@ -3576,7 +3576,7 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.12.1"
+version = "0.12.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bluesky" },
@@ -3588,9 +3588,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/f1/0bd5d482b492895136c2ccf79fdbc5b7ee85d5bc5932d80ff192a68e7841/redsun-0.12.1.tar.gz", hash = "sha256:11f6d4e10f54c42878e8801d80befd62041e9578bb32caa4139d9ff0dc6cb19d", size = 90759, upload-time = "2026-09-03T19:53:22.204Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/42/56/9710f2ca04aa689e8c6900e649391f233879de27b507904f535d7c1e8602/redsun-0.12.2.tar.gz", hash = "sha256:aef137d50dd31b690b5e20b37b0d24aa3e50f042b27b455282fded22b3ffa31a", size = 91164, upload-time = "2026-09-07T15:37:02.959Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/5b/8972d841c465e5173047dd70a4115f5e6778f3fb5648c4a8829b315b8f2c/redsun-0.12.1-py3-none-any.whl", hash = "sha256:fc997d0b289dccd55bfe6f4ee5a3e519816b152c242e1abc3688b445b7bd1187", size = 107190, upload-time = "2026-09-03T19:53:19.908Z" },
+    { url = "https://files.pythonhosted.org/packages/54/05/72257357f45ab7fcfbd5f4bbfc2b941421d2d9d2e7066733262abee48de8/redsun-0.12.2-py3-none-any.whl", hash = "sha256:65fc151d5a04d5395bd5626cd67871a1cdf595e00aaf9520995ea312847f0677", size = 107405, upload-time = "2026-09-07T15:37:01.295Z" },
 ]
 
 [package.optional-dependencies]
@@ -3678,7 +3678,7 @@ requires-dist = [
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
     { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
-    { name = "redsun", extras = ["zarr"], specifier = ">=0.12.1" },
+    { name = "redsun", extras = ["zarr"], specifier = ">=0.12.2" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 
