@@ -102,6 +102,7 @@ class TestMotorView:
         assert "xystage" in widget._groups
         for axis in ("x", "y"):
             assert f"pos:xystage:{axis}" in widget._labels
+            assert f"step:xystage:{axis}" in widget._steps
             assert f"button:xystage:{axis}:up" in widget._buttons
             assert f"button:xystage:{axis}:down" in widget._buttons
 
@@ -112,7 +113,7 @@ class TestMotorView:
         widget = MotorView("motor_view", step_size=2.5)
         await _build_motor_view(widget, motor_stage)
 
-        assert widget._line_edits["edit:xystage:x"].text() == "2.5"
+        assert widget._steps["step:xystage:x"].value() == pytest.approx(2.5)
 
     async def test_update_setpoint_refreshes_label(
         self, widget: MotorView, motor_stage: FakeXYStage
