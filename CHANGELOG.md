@@ -29,12 +29,70 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `build_uc2_container` (`redsun_mimir.configurations`) - the UC2 container,
   unbuilt, matching `build_simulation_container`.
 
+- `redsun_mimir.services.mmcore_camera` - a Micro-Manager camera served over
+  PVAccess. It owns its own `CMMCorePlus`, reads frames through
+  `startContinuousSequenceAcquisition`, writes a capture window to a Zarr
+  store with `acquire-zarr`, and publishes every property the camera lets a
+  client write under `properties`. `State` reads `idle`, `acquiring` or
+  `faulted`, and `LastError` carries the exception that stopped it.
+
+  ```yaml
+  services:
+    transport: pv-access
+    camera1_ioc:
+      plugin_name: redsun-mimir
+      plugin_id: mmcore-camera
+      prefix: "MIMIR-CAM1:"
+      args: ["--adapter", "DemoCamera", "--device", "DCam"]
+  ```
+
+- `redsun_mimir.services.mmcore_stage` - a Micro-Manager stage served over
+  PVAccess, one process per stage, with the axes it moves given as
+  `--axes x,y`. It serialises moves.
+
+- `redsun_mimir.services.uc2_controller` - a YouSeeToo board served over
+  PVAccess, owning the serial port, with a sub-controller per axis and per
+  laser. `--port` takes anything `pyserial` opens by url, `COM4` included.
+
+- `MMStage` (`redsun_mimir.device.mmcore`) - a stage reached through its
+  service, its axes taken from the served PVI tree.
+
+- `ReadableDeviceMap` (`redsun_mimir.device`) - a `DeviceMap` that answers
+  `read` and `describe` from the entries it holds, including entries a
+  connector adds at connect.
+
 - `common_configuration.yaml` (`redsun_mimir.configurations`) - the identity,
   presenters and views both sessions share. `full_configuration.yaml` and
   `uc2_full_configuration.yaml` now carry a `devices` section only and are laid
   over it.
 
 ### Changed
+
+- `MMCamera` (`redsun_mimir.device.mmcore`) takes the prefix of its service
+  and builds its signals from PVI. It reports what the service wrote through
+  `StreamResource`/`StreamDatum`, and `describe_configuration` carries the
+  camera's own properties beside `exposure` and `roi`.
+
+- `UC2MotorDevice` and `UC2LaserDevice` (`redsun_mimir.device.youseetoo`) take
+  the prefix of the service that owns the board and build their signals from
+  PVI. Neither opens a serial port.
+
+- `MotorProtocol.axis` is a read-only `Mapping[str, StandardMovable[float]]`.
+
+- `DetectorPresenter.set` accepts any setting the detector publishes in
+  `describe_configuration`, keyed as the view names it, rather than `exposure`
+  and `roi` alone.
+
+- `MedianPresenter` writes the median with `redsun.storage.writers.zarr` into
+  the store the acquisition's `StreamResource` names, under
+  `<detector>_median`.
+
+- The detector view sizes an intensity slider from a signal's display limits
+  when it carries no control ones.
+
+- The minimum `redsun` version is 0.13.0rc2, and the bundle installs
+  `fastcs[epicspva]` and `ophyd-async[pva]`.
+
 
 - The example sessions ask for their log level with
   `MimirSimulator(log_level=logging.DEBUG)` rather than reaching for the
@@ -51,6 +109,18 @@ Dates are specified in the format `DD-MM-YYYY`.
   onwards.
 
 ### Removed
+
+- `UC2Serial` (`redsun_mimir.device.youseetoo`). A session declares the
+  `youseetoo-controller` service and names it from each device's `service:`.
+
+- `MMDemoXYStage` and `MMDemoZStage` (`redsun_mimir.device.mmcore`), replaced
+  by `MMStage`. The adapter, the device and the axis names belong to the
+  service declaration.
+
+- `redsun_mimir.storage`, and the `storage_ctrl` and `storage_widget`
+  declarations from the example sessions. A session takes an optional
+  `storage:` section instead, and the plan name reaches the session's path
+  provider.
 
 - `ImageView` no longer applies napari's stylesheet to itself and to its
   embedded `QtViewer`, and no longer sets the theme on its viewer model. The
