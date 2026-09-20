@@ -16,6 +16,7 @@ from __future__ import annotations
 # mypy: disable-error-code="misc, untyped-decorator"
 import argparse
 import asyncio
+import re
 import sys
 import threading
 import time
@@ -46,6 +47,15 @@ DEFAULT_EXPOSURE: Final = 100.0
 
 #: Seconds the grabbing thread waits when the camera has no frame ready.
 EMPTY_POLL: Final = 0.001
+
+#: Seconds between two reads of a Micro-Manager property.
+PROPERTY_POLL: Final = 1.0
+
+#: Where the camera's own properties sit under its prefix.
+PROPERTY_GROUP: Final = "properties"
+
+#: What a PV name may not carry, replaced by an underscore.
+NOT_IN_A_PV_NAME: Final = re.compile(r"[^A-Za-z0-9_]")
 
 #: What ``State`` reads while the camera takes no frames.
 IDLE: Final = "idle"
@@ -96,6 +106,41 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 await attr.update(np.asarray(roi, dtype=np.int32))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
+
+
+@dataclass
+class PropertyRef(AttributeIORef):
+    """Names the Micro-Manager property an attribute reads and writes."""
+
+    property: str = ""
+
+
+class PropertyIO(AttributeIO[str, PropertyRef]):
+    """Reads and writes one Micro-Manager property of the camera.
+
+    Every property travels as text, which is how Micro-Manager itself holds
+    them; a client that wants a number parses what it reads.
+    """
+
+    def __init__(self, core: CMMCorePlus, label: str) -> None:
+        super().__init__()
+        self._core = core
+        self._label = label
+
+    async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
+        """Write the property, and read back what the camera made of it."""
+        await asyncio.to_thread(
+            self._core.setProperty, self._label, attr.io_ref.property, value
+        )
+        if isinstance(attr, AttrR):
+            await self.update(attr)
+
+    async def update(self, attr: AttrR[str, PropertyRef]) -> None:
+        """Read the camera's own value of the property."""
+        value = await asyncio.to_thread(
+            self._core.getProperty, self._label, attr.io_ref.property
+        )
+        await attr.update(str(value))
 
 
 class FrameStore:
@@ -165,9 +210,11 @@ class MMCameraController(Controller):
     state = AttrR(String())
     last_error = AttrR(String())
 
-    def __init__(self, core: CMMCorePlus, data_key: str) -> None:
-        super().__init__(ios=[CoreIO(core)])
+    def __init__(self, core: CMMCorePlus, label: str, data_key: str) -> None:
+        self._property_io = PropertyIO(core, label)
+        super().__init__(ios=[CoreIO(core), self._property_io])
         self._core = core
+        self._label = label
         self._default_data_key = data_key
         self._latest: NDArray[Any] | None = None
         self._grabbed = 0
@@ -195,6 +242,41 @@ class MMCameraController(Controller):
         self.buffer = AttrR(Waveform(frame.dtype, shape=frame.shape))
         await self.pixel_dtype.update(frame.dtype.name)
         await self.data_key.update(self._default_data_key)
+        self.add_sub_controller(PROPERTY_GROUP, await self._build_properties())
+
+    async def _build_properties(self) -> Controller:
+        """Publish every property the camera lets a client write.
+
+        Which properties a camera has is known only once it is loaded, so the
+        attributes are built here rather than declared on the class. Read-only
+        properties are left out: a client can change nothing about them.
+        """
+        names = await asyncio.to_thread(self._core.getDevicePropertyNames, self._label)
+        read_only = await asyncio.to_thread(
+            lambda: {
+                name: self._core.isPropertyReadOnly(self._label, name) for name in names
+            }
+        )
+        properties = Controller(ios=[self._property_io])
+        for name in names:
+            if read_only[name]:
+                continue
+            # a PV name takes no spaces or brackets, and Micro-Manager's do
+            # ("Photon Conversion Factor"): the attribute is named for the PV,
+            # the reference keeps the name the camera answers to
+            attribute = NOT_IN_A_PV_NAME.sub("_", name)
+            if attribute in properties.attributes:
+                logger.warning(f"Property {name!r} clashes with {attribute!r}, skipped")
+                continue
+            setattr(
+                properties,
+                attribute,
+                AttrRW(
+                    String(),
+                    io_ref=PropertyRef(property=name, update_period=PROPERTY_POLL),
+                ),
+            )
+        return properties
 
     async def disconnect(self) -> None:
         """Stop grabbing and finish a capture left open."""
@@ -380,7 +462,7 @@ def build_controller(
     core.setCameraDevice(label)
     core.clearROI()
     core.setExposure(DEFAULT_EXPOSURE)
-    return MMCameraController(core, data_key)
+    return MMCameraController(core, label, data_key)
 
 
 def main(argv: list[str] | None = None) -> int:

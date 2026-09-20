@@ -23,10 +23,13 @@ from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
 
 from redsun_mimir.device._logics import DEFAULT_TIMEOUT
+from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from bluesky.protocols import Reading
+    from event_model import DataKey
     from ophyd_async.core import PathProvider, StreamableDataProvider
 
 #: What a capture window writes, as the documents name it.
@@ -168,6 +171,7 @@ class MMCamera(StandardDetector, Loggable):
     data_key: SignalRW[str]
     num_capture: SignalRW[int]
     captured: SignalR[int]
+    properties: ReadableDeviceMap[SignalRW[str]]
 
     def __init__(
         self, prefix: str, *, path_provider: PathProvider, name: str = ""
@@ -178,6 +182,20 @@ class MMCamera(StandardDetector, Loggable):
             ServiceAcquireLogic(self),
             ServiceDataLogic(self, path_provider),
         )
+
+    async def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Return the settings, and every property the camera lets one write."""
+        settings, properties = await asyncio.gather(
+            super().read_configuration(), self.properties.read()
+        )
+        return {**settings, **properties}
+
+    async def describe_configuration(self) -> dict[str, DataKey]:
+        """Describe the settings, and every property the camera lets one write."""
+        settings, properties = await asyncio.gather(
+            super().describe_configuration(), self.properties.describe()
+        )
+        return {**settings, **properties}
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:  # type: ignore[override]

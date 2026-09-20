@@ -31,7 +31,16 @@ if TYPE_CHECKING:
 #: that carries it on a detector. A whitelist, so a stray port name cannot
 #: reach an arbitrary attribute. ``pixel_dtype`` is not among them: the
 #: camera reports it, nobody sets it.
-_CONFIGURABLE = frozenset({"roi", "exposure"})
+def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
+    """Return the detector's writable settings, keyed as the view names them.
+
+    A key is the signal's data key without the device's own name, which is
+    what a view splits off before it asks for a setting to change.
+    """
+    signals: list[SignalRW[Any]] = [detector.exposure, detector.roi]
+    properties: Mapping[str, SignalRW[str]] = getattr(detector, "properties", {})
+    signals.extend(properties.values())
+    return {signal.name.removeprefix(f"{detector.name}-"): signal for signal in signals}
 
 
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):
@@ -90,6 +99,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         self._live_streams: dict[str, list[str]] = {}
         self._buffer_keys = {
             detector.buffer.name for detector in self.detectors.values()
+        }
+        # the camera's properties come from its service, so they exist only
+        # once it has connected, which the build does before presenters
+        self._settables = {
+            name: _settable_signals(detector)
+            for name, detector in self.detectors.items()
         }
 
     def descriptor(self, doc: EventDescriptor) -> None:
@@ -159,11 +174,11 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         value : object
             New value for the setting.
         """
-        if property not in _CONFIGURABLE:
+        obj = self._settables.get(detector, {}).get(property)
+        if obj is None:
             self.logger.error(f"Unknown property {property!r} for {detector!r}")
             return
 
-        obj: SignalRW[Any] = getattr(self.detectors[detector], property)
         status = obj.set(value)
         await status
         if not status.success:

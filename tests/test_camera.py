@@ -100,3 +100,24 @@ def test_fly_scan_lifecycle(
 
     store = Path(url2pathname(urlparse(docs["stream_resource"][0]["uri"]).path))
     assert (store / "cam" / "zarr.json").exists()
+
+
+@needs_mm_adapters
+async def test_the_camera_carries_its_properties_into_its_configuration(
+    mm_camera: MMCamera,
+) -> None:
+    """A property the camera lets one write is a setting like any other.
+
+    The view builds its panel from ``describe_configuration``, so a property
+    that stays inside the service is a property nobody can change.
+    """
+    described = await mm_camera.describe_configuration()
+
+    assert f"{mm_camera.name}-exposure" in described
+    assert f"{mm_camera.name}-properties-Binning" in described
+
+    await mm_camera.properties["Binning"].set("2")
+
+    assert await mm_camera.properties["Binning"].get_value() == "2"
+    readings = await mm_camera.read_configuration()
+    assert readings[f"{mm_camera.name}-properties-Binning"]["value"] == "2"

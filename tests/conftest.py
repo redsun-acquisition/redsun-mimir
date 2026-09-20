@@ -44,6 +44,10 @@ CAMERA_PREFIX = "MIMIR-TESTCAM:"
 #: PV prefix the stage service serves under while the tests run.
 STAGE_PREFIX = "MIMIR-TESTXY:"
 
+#: Seconds a device may take to connect. A service of its own has to start
+#: first, and several of them do while the whole suite runs.
+CONNECT_TIMEOUT = 30.0
+
 # p4p logs a subscription's keyword arguments as ``_log.debug("Subscription(%s)",
 # kws)``; ``logging`` reads that single dict as a mapping and raises
 # ``TypeError: not all arguments converted during string formatting`` wherever a
@@ -215,7 +219,7 @@ def stage_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
 async def mm_stage(stage_service: Service) -> AsyncGenerator[MMStage, None]:
     """Return an ``MMStage`` connected to the stage service."""
     device = MMStage(stage_service.prefix, name="XY")
-    await device.connect()
+    await device.connect(timeout=CONNECT_TIMEOUT)
     yield device
 
 
@@ -229,7 +233,7 @@ async def mm_camera(
         path_provider=SessionPathProvider(base_dir=tmp_path, session="test"),
         name="camera1",
     )
-    await device.connect()
+    await device.connect(timeout=CONNECT_TIMEOUT)
     yield device
 
 

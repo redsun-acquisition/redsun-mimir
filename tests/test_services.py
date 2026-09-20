@@ -31,6 +31,7 @@ PREFIX = CAMERA_PREFIX.rstrip(":")
 CAPTURED_FRAMES = 4
 TIMEOUT = 30.0
 DATA_KEY = "cam"
+LABEL = "cam"
 FRAME_SHAPE = (4, 4)
 UC2_PREFIX = "MIMIR-TEST-UC2:"
 
@@ -79,6 +80,7 @@ class FakeCore:
         self.exposure = 100.0
         self.roi: tuple[int, ...] = (0, 0, *FRAME_SHAPE)
         self.threads: list[str] = []
+        self.properties = {"Gain": "0", "Photon Flux": "1", "CameraName": "fake"}
         self.sequences = sequences
         self.sequencing = False
         self.fault: Exception | None = None
@@ -113,6 +115,18 @@ class FakeCore:
         self.popped_a_frame.set()
         return frame
 
+    def getDevicePropertyNames(self, label: str) -> tuple[str, ...]:
+        return tuple(self.properties)
+
+    def isPropertyReadOnly(self, label: str, name: str) -> bool:
+        return name == "CameraName"
+
+    def getProperty(self, label: str, name: str) -> str:
+        return self.properties[name]
+
+    def setProperty(self, label: str, name: str, value: str) -> None:
+        self.properties[name] = str(value)
+
     def getExposure(self) -> float:
         self.threads.append(threading.current_thread().name)
         return self.exposure
@@ -145,7 +159,7 @@ async def until(
 async def controller() -> AsyncGenerator[tuple[MMCameraController, FakeCore], None]:
     """Return a controller on a fake camera, brought up as ``FastCS`` does."""
     core = FakeCore()
-    controller = MMCameraController(core, DATA_KEY)  # type: ignore[arg-type]
+    controller = MMCameraController(core, LABEL, DATA_KEY)  # type: ignore[arg-type]
     await controller.initialise()
     controller.post_initialise()
     yield controller, core
@@ -276,7 +290,7 @@ async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(
 async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None:
     """The camera still gives frames when it takes no sequence."""
     core = FakeCore(sequences=False)
-    camera = MMCameraController(core, DATA_KEY)  # type: ignore[arg-type]
+    camera = MMCameraController(core, LABEL, DATA_KEY)  # type: ignore[arg-type]
     await camera.initialise()
     camera.post_initialise()
 
@@ -390,3 +404,18 @@ async def test_the_uc2_devices_are_built_from_what_the_service_serves(
 
     described = await laser.intensity.describe()
     assert described["laser-intensity"]["limits"]["display"] == {"low": 0, "high": 1023}
+
+
+async def test_the_camera_publishes_the_properties_it_lets_one_write(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """Read-only properties are left out, and a PV name takes no spaces."""
+    camera, core = controller
+    properties = camera.sub_controllers["properties"]
+
+    assert set(properties.attributes) == {"Gain", "Photon_Flux"}
+
+    await properties.attributes["Photon_Flux"].put("7")
+
+    assert core.properties["Photon Flux"] == "7"
+    assert properties.attributes["Photon_Flux"].get() == "7"
