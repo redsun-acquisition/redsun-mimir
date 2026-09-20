@@ -24,7 +24,18 @@ class NapariApplication:
     throughout rather than only where the viewer sits.
 
     The stylesheet is read from napari's settings once, as the session starts.
+
+    Parameters
+    ----------
+    font_size :
+        Point size every widget of the session is drawn at. ``None`` takes
+        napari's own setting, 12 pt by default, which is larger than what a
+        platform gives a Qt application and shows on every widget the session
+        draws beside the viewer.
     """
+
+    def __init__(self, font_size: int | None = None) -> None:
+        self._font_size = font_size
 
     def create_application(self, argv: list[str]) -> QApplication:
         """Return napari's application, creating it if it does not exist.
@@ -40,4 +51,4 @@ class NapariApplication:
 
     def configure_application(self, app: QApplication) -> None:
         """Put napari's stylesheet on *app*."""
-        app.setStyleSheet(stylesheet())
+        app.setStyleSheet(stylesheet(self._font_size))

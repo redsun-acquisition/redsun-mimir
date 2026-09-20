@@ -11,6 +11,16 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- `NapariApplication(font_size=...)` and `stylesheet(font_size=...)`
+  (`redsun_mimir.hooks`, `redsun_mimir.utils.napari`) - the point size the
+  session's widgets are drawn at. Left out, napari's own setting is used, 12 pt
+  by default, which is what every widget beside the viewer is styled with when
+  the sheet reaches the whole application.
+
+  ```python
+  _napari_app = NapariApplication(font_size=9)
+  ```
+
 - A directory control in `AcquisitionView`: a read-only field showing where a
   run writes and a Browse button. The choice travels as
   `sig_base_dir_request`, reaches `AcquisitionPresenter.set_base_dir`, and is
