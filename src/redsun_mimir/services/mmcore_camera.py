@@ -19,6 +19,7 @@ import asyncio
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
@@ -49,6 +50,18 @@ LOOPBACK: Final = "127.0.0.1"
 
 #: What a line of this process's own logging looks like.
 LOG_FORMAT: Final = "{level} {message}"
+
+#: Seconds the grabbing thread waits when the camera has no frame ready.
+EMPTY_POLL: Final = 0.001
+
+#: What ``State`` reads while the camera takes no frames.
+IDLE: Final = "idle"
+
+#: What ``State`` reads while the camera takes frames.
+ACQUIRING: Final = "acquiring"
+
+#: What ``State`` reads once grabbing stopped on an error.
+FAULTED: Final = "faulted"
 
 
 @dataclass
@@ -156,6 +169,8 @@ class MMCameraController(Controller):
     data_key = AttrRW(String())
     num_capture = AttrRW(Int())
     captured = AttrR(Int())
+    state = AttrR(String())
+    last_error = AttrR(String())
 
     def __init__(self, core: CMMCorePlus, data_key: str) -> None:
         super().__init__(ios=[CoreIO(core)])
@@ -170,6 +185,8 @@ class MMCameraController(Controller):
         self._loop: asyncio.AbstractEventLoop | None = None
         self._grabbing = threading.Event()
         self._grabber: asyncio.Task[None] | None = None
+        self._sequencing = False
+        self._error: str | None = None
 
         self.acquire.add_on_update_callback(self._on_acquire)
         self.capture.add_on_update_callback(self._on_capture)
@@ -178,6 +195,8 @@ class MMCameraController(Controller):
         """Declare the frame buffer, whose shape and dtype the camera decides."""
         self._loop = asyncio.get_running_loop()
         frame = await asyncio.to_thread(self.grab_once)
+        if frame is None:
+            raise RuntimeError("the camera gave no frame to size the buffer from")
         self.buffer = AttrR(Waveform(frame.dtype, shape=frame.shape))
         await self.pixel_dtype.update(frame.dtype.name)
         await self.data_key.update(self._default_data_key)
@@ -195,6 +214,7 @@ class MMCameraController(Controller):
         newer than the move it just made, so the count is of frames the
         camera took, and a tick with no new frame publishes nothing.
         """
+        await self._publish_state()
         grabbed = self._grabbed
         frame = self._latest
         if frame is None or grabbed == self._published:
@@ -205,14 +225,40 @@ class MMCameraController(Controller):
         if self.captured.get() != self._written:
             await self.captured.update(self._written)
 
+    async def reconnect(self) -> None:
+        """Forget the last error and grab again if the camera should be."""
+        self._error = None
+        await super().reconnect()
+        if self.acquire.get():
+            self._start_grabbing()
+
+    async def _publish_state(self) -> None:
+        """Report what the camera is doing and what stopped it, if anything."""
+        error = self._error
+        if error is not None and self.last_error.get() != error:
+            await self.last_error.update(error)
+        if error is not None:
+            state = FAULTED
+        elif self._grabbing.is_set():
+            state = ACQUIRING
+        else:
+            state = IDLE
+        if self.state.get() != state:
+            await self.state.update(state)
+
     async def _on_acquire(self, acquiring: bool) -> None:
         """Start or stop the thread grabbing frames."""
         if acquiring:
-            if self._grabber is None:
-                self._grabbing.set()
-                self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
+            self._start_grabbing()
         else:
             await self._stop_grabbing()
+
+    def _start_grabbing(self) -> None:
+        """Put the grabbing thread to work, unless it already is."""
+        if self._grabber is not None and not self._grabber.done():
+            return
+        self._grabbing.set()
+        self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
 
     async def _on_capture(self, capturing: bool) -> None:
         """Open the store frames are written to, or finish the one open."""
@@ -247,17 +293,28 @@ class MMCameraController(Controller):
             self._store.close()
             self._store = None
 
-    def grab_once(self) -> NDArray[Any]:
+    def take_frame(self) -> NDArray[Any] | None:
+        """Return the camera's next frame, or ``None`` while it has none.
+
+        A running sequence fills Micro-Manager's circular buffer, and a frame
+        is taken from there; without one, each call exposes the camera itself.
+        """
+        if not self._sequencing:
+            return self._core.snap()
+        if self._core.getRemainingImageCount() < 1:
+            return None
+        return self._core.popNextImage()
+
+    def grab_once(self) -> NDArray[Any] | None:
         """Take one frame, and write it if a capture window wants it.
 
         Runs in the grabbing thread. The store is opened and closed on the
         event loop, so this only ever appends to one: on the last frame of a
         bounded window it hands the closing back through ``_end_capture``.
-
-        ``snap`` rather than Micro-Manager's sequence API, which some adapters
-        do not drive correctly alongside other devices.
         """
-        frame = self._core.snap()
+        frame = self.take_frame()
+        if frame is None:
+            return None
         self._latest = frame
         self._grabbed += 1
 
@@ -274,9 +331,38 @@ class MMCameraController(Controller):
         return frame
 
     def _grab_loop(self) -> None:
-        """Take frames until asked to stop."""
-        while self._grabbing.is_set():
-            self.grab_once()
+        """Take frames until asked to stop, or until the camera fails."""
+        try:
+            self._start_sequence()
+            while self._grabbing.is_set():
+                if self.grab_once() is None:
+                    time.sleep(EMPTY_POLL)
+        except Exception as error:  # noqa: BLE001
+            self._error = f"{type(error).__name__}: {error}"
+            self._grabbing.clear()
+        finally:
+            self._stop_sequence()
+
+    def _start_sequence(self) -> None:
+        """Ask the camera for a continuous sequence, and note whether it took.
+
+        An adapter that refuses one leaves ``take_frame`` exposing per frame,
+        which is slower but works everywhere.
+        """
+        try:
+            self._core.startContinuousSequenceAcquisition(0)
+        except Exception as error:  # noqa: BLE001
+            logger.warning(f"Camera refused a sequence, exposing per frame: {error}")
+            self._sequencing = False
+            return
+        self._sequencing = True
+
+    def _stop_sequence(self) -> None:
+        """End the sequence the camera is running, if it is running one."""
+        if not self._sequencing:
+            return
+        self._sequencing = False
+        self._core.stopSequenceAcquisition()
 
 
 def build_controller(

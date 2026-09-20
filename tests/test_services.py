@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from queue import Queue
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -15,7 +16,7 @@ from redsun_mimir.services.mmcore_camera import MMCameraController
 from .conftest import CAMERA_PREFIX, needs_mm_adapters
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Sequence
+    from collections.abc import AsyncGenerator, Callable, Sequence
     from pathlib import Path
 
     from numpy.typing import NDArray
@@ -34,15 +35,43 @@ class FakeCore:
     tell one from the next.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, sequences: bool = True) -> None:
         self.snapped = 0
+        self.popped = 0
         self.exposure = 100.0
         self.roi: tuple[int, ...] = (0, 0, *FRAME_SHAPE)
         self.threads: list[str] = []
+        self.sequences = sequences
+        self.sequencing = False
+        self.fault: Exception | None = None
+        self._buffer: Queue[NDArray[Any]] = Queue()
+
+    def produce(self, frames: int = 1) -> None:
+        """Put *frames* into the circular buffer, as the camera would."""
+        for _ in range(frames):
+            self._buffer.put(np.full(FRAME_SHAPE, self.popped + 1, dtype=np.uint8))
 
     def snap(self) -> NDArray[Any]:
         self.snapped += 1
         return np.full(FRAME_SHAPE, self.snapped, dtype=np.uint8)
+
+    def startContinuousSequenceAcquisition(self, interval: float = 0) -> None:
+        if not self.sequences:
+            raise RuntimeError("this adapter takes no sequence")
+        self.sequencing = True
+
+    def stopSequenceAcquisition(self) -> None:
+        self.sequencing = False
+
+    def getRemainingImageCount(self) -> int:
+        if self.fault is not None:
+            raise self.fault
+        return self._buffer.qsize()
+
+    def popNextImage(self) -> NDArray[Any]:
+        frame = self._buffer.get_nowait()
+        self.popped += 1
+        return frame
 
     def getExposure(self) -> float:
         self.threads.append(threading.current_thread().name)
@@ -57,6 +86,19 @@ class FakeCore:
 
     def setROI(self, *roi: int) -> None:
         self.roi = tuple(roi)
+
+
+async def until(
+    predicate: Callable[[], bool], camera: MMCameraController, timeout: float = 5.0
+) -> None:
+    """Publish ticks until *predicate* holds, or fail the test."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        await camera.publish_frame()
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"timed out after {timeout} s")
 
 
 @pytest.fixture
@@ -166,3 +208,64 @@ async def test_a_setting_is_applied_off_the_event_loop(
     assert camera.exposure.get() == 25.0
     assert core.threads
     assert threading.current_thread().name not in core.threads
+
+
+async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """A camera that takes a sequence is read through its circular buffer."""
+    camera, core = controller
+    snapped = core.snapped
+
+    await camera.acquire.put(True)
+    core.produce(2)
+
+    await until(lambda: camera.frame_count.get() == 3, camera)
+
+    assert core.sequencing
+    assert core.popped == 2
+    assert core.snapped == snapped
+    assert camera.state.get() == "acquiring"
+
+    await camera.acquire.put(False)
+    await camera.publish_frame()
+    assert camera.state.get() == "idle"
+    assert core.sequencing is False
+
+
+async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None:
+    """The camera still gives frames when it takes no sequence."""
+    core = FakeCore(sequences=False)
+    camera = MMCameraController(core, DATA_KEY)  # type: ignore[arg-type]
+    await camera.initialise()
+    camera.post_initialise()
+
+    await camera.acquire.put(True)
+    try:
+        await until(lambda: core.snapped > 1, camera)
+    finally:
+        await camera.disconnect()
+
+    assert core.popped == 0
+    assert camera.frame_count.get() > 1
+
+
+async def test_a_camera_that_fails_says_so_and_can_be_restarted(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """Grabbing stops on a fault, and ``reconnect`` puts it back to work."""
+    camera, core = controller
+    core.fault = RuntimeError("camera unplugged")
+
+    await camera.acquire.put(True)
+    await until(lambda: camera.state.get() == "faulted", camera)
+
+    assert camera.last_error.get() == "RuntimeError: camera unplugged"
+
+    core.fault = None
+    await camera.reconnect()
+    core.produce(1)
+
+    await until(lambda: core.popped == 1, camera)
+    assert camera.state.get() == "acquiring"
+    assert camera.last_error.get() == "RuntimeError: camera unplugged"
