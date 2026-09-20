@@ -9,9 +9,6 @@ The process owns its own ``CMMCorePlus``, so no Micro-Manager call is left on
 the session's event loop.
 """
 
-# ``fastcs`` ships no py.typed, so every class taken from it is ``Any`` here,
-# and subclassing one is an error a stub would fix
-# mypy: disable-error-code="misc"
 from __future__ import annotations
 
 import argparse

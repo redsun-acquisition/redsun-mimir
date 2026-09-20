@@ -8,9 +8,6 @@ The process owns the serial port: every axis and every laser of the board is
 commanded from here, under one lock, which is what the port itself requires.
 """
 
-# ``fastcs`` ships no py.typed, so every class taken from it is ``Any`` here,
-# and subclassing one is an error a stub would fix
-# mypy: disable-error-code="misc"
 from __future__ import annotations
 
 import argparse
@@ -28,7 +25,7 @@ from fastcs.logging import logger
 from serial import Serial, serial_for_url
 
 from ._process import controller_id, identity_arguments, plain_logging, serve
-from ._uc2_serial import AXIS_ID, CONVERSION, move_axis, set_laser
+from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, set_laser
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -88,7 +85,7 @@ class SerialIO(AttributeIO[Any, SerialRef]):
                 self._serial,
                 self._lock,
                 AXIS_ID[ref.axis],
-                CONVERSION[UNITS],
+                UM_TO_NM,
                 float(value),
             )
         else:

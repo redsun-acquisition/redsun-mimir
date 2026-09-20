@@ -11,9 +11,6 @@ several of them.
 
 from __future__ import annotations
 
-# ``fastcs`` ships no py.typed, so every class taken from it is ``Any`` here,
-# and subclassing one or taking its decorator is an error a stub would fix
-# mypy: disable-error-code="misc, untyped-decorator"
 import argparse
 import asyncio
 import re

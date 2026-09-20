@@ -20,18 +20,14 @@ if TYPE_CHECKING:
     from serial import Serial
 
 
-NM_TO_NM: Final[int] = 1
+#: Nanometres in the micrometre a position is commanded in.
 UM_TO_NM: Final[int] = 1_000
-MM_TO_NM: Final[int] = 1_000_000
 
+#: Nanometres one step of the motor covers.
 MOTOR_STEP: Final[int] = 320
 
+#: The stepper each axis is wired to.
 AXIS_ID: Final[dict[str, int]] = {"x": 1, "y": 2, "z": 3}
-CONVERSION: Final[dict[str, int]] = {
-    "nm": NM_TO_NM,
-    "um": UM_TO_NM,
-    "mm": MM_TO_NM,
-}
 
 
 def clean(raw: bytes) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 from ophyd_async.core import (
@@ -22,7 +22,6 @@ from ophyd_async.core import (
 from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
 
-from redsun_mimir.device._logics import DEFAULT_TIMEOUT
 from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -34,6 +33,9 @@ if TYPE_CHECKING:
 
 #: What a capture window writes, as the documents name it.
 MIMETYPE = "application/x-zarr"
+
+#: Seconds ``trigger`` waits for a frame taken after it was called.
+DEFAULT_TIMEOUT: Final = 5.0
 
 #: Milliseconds per second, the units a camera takes its exposure in.
 MILLISECONDS = 1000.0

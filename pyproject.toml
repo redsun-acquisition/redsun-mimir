@@ -128,6 +128,12 @@ strict = true
 warn_unreachable = true
 warn_no_return = true
 
+# fastcs ships no py.typed, so every class a service takes from it is Any:
+# subclassing one, or taking its decorator, is an error a stub would fix
+[[tool.mypy.overrides]]
+module = "redsun_mimir.services.*"
+disable_error_code = ["misc", "untyped-decorator"]
+
 
 [tool.pytest.ini_options]
 minversion = "6.0"

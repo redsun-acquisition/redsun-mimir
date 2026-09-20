@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
-import numpy as np
 from bluesky.protocols import (
     Collectable,
     Flyable,
@@ -19,16 +18,9 @@ from ophyd_async.core import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    import numpy as np
     from bluesky.protocols import Descriptor, Reading
     from ophyd_async.core import AsyncStatus, SignalR, SignalRW
-
-T = TypeVar("T", int, float)
-
-#: One frame, of shape (height, width).
-Array2D = np.ndarray
-
-#: A region of interest, as four integers: (x, y, width, height).
-ROIType = np.ndarray
 
 
 class LayerSpec(TypedDict):
@@ -146,22 +138,21 @@ class HasAsyncShutdown(Protocol):
 
 
 @runtime_checkable
-class BufferDataProtocol(Protocol):
-    """Protocol for devices that provide a continuously updated data buffer."""
-
-    buffer: SignalR[Array2D]
-    """Readable signal providing access to the current data buffer."""
-
-
 @runtime_checkable
-class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Protocol):
+class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models."""
+
+    buffer: SignalR[np.ndarray]
+    """Readable signal providing access to the current data buffer.
+
+    One frame, of shape (height, width).
+    """
 
     exposure: SignalRW[float]
     """Signal for exposure time."""
 
-    roi: SignalRW[ROIType]
-    """Signal for setting region of interest (ROI)."""
+    roi: SignalRW[np.ndarray]
+    """Region of interest, as four integers: (x, y, width, height)."""
 
     pixel_dtype: SignalR[str]
     """Signal carrying the pixel data type."""
@@ -180,13 +171,10 @@ class ReadableFlyer(
 
 
 __all__ = [
-    "Array2D",
-    "BufferDataProtocol",
     "DetectorProtocol",
     "HasAsyncShutdown",
     "LayerSpec",
     "LightProtocol",
     "MotorProtocol",
-    "ROIType",
     "ReadableFlyer",
 ]
