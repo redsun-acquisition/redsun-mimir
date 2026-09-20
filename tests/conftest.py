@@ -33,6 +33,15 @@ from redsun_mimir.services.mmcore_stage import READY as STAGE_READY
 from redsun_mimir.services.uc2_controller import READY as UC2_READY
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
+    class ServiceFactory(Protocol):
+        """Launches one service for the duration of a test."""
+
+        def __call__(
+            self, name: str, prefix: str, module: str, ready: str, *args: str
+        ) -> Service: ...
+
     import asyncio
     from collections.abc import AsyncGenerator, Generator, Iterator
     from pathlib import Path
@@ -70,10 +79,10 @@ needs_mm_adapters = pytest.mark.skipif(
 #: A napari viewer needs a real OpenGL context - ``QT_QPA_PLATFORM=offscreen``
 #: cannot provide one and construction dies inside PyOpenGL. Opt in on a machine
 #: with a display.
-needs_opengl = pytest.mark.skipif(
-    not os.environ.get("MIMIR_TEST_OPENGL"),
-    reason="napari needs a real OpenGL context; set MIMIR_TEST_OPENGL=1 to run",
-)
+HAS_OPENGL = bool(os.environ.get("MIMIR_TEST_OPENGL"))
+NO_OPENGL_REASON = "napari needs a real OpenGL context; set MIMIR_TEST_OPENGL=1 to run"
+
+needs_opengl = pytest.mark.skipif(not HAS_OPENGL, reason=NO_OPENGL_REASON)
 
 
 class FakeAxis(StandardReadable, StandardMovable[float]):
@@ -177,8 +186,8 @@ async def motor_stage() -> FakeXYStage:
 
 
 @pytest.fixture
-def camera_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
-    """Launch the camera service on the demo adapter, and stop it after.
+def service(monkeypatch: pytest.MonkeyPatch) -> Iterator[ServiceFactory]:
+    """Return a factory launching one service, stopped when the test ends.
 
     Each test gets its own transport object: the one a session holds adds the
     loopback to this process's address list once, and the list is cleared here
@@ -186,56 +195,70 @@ def camera_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
     """
     monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
     monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
-    service = Service(
+    started: list[Service] = []
+
+    def launch(name: str, prefix: str, module: str, ready: str, *args: str) -> Service:
+        running = Service(
+            name,
+            prefix=prefix,
+            module=module,
+            args=list(args),
+            ready=ready,
+            transport=PV_ACCESS,
+            stop_timeout=10,
+        )
+        running.start()
+        started.append(running)
+        return running
+
+    yield launch
+    for running in started:
+        running.stop()
+
+
+@pytest.fixture
+def camera_service(service: ServiceFactory) -> Service:
+    """Launch the camera service on the demo adapter."""
+    return service(
         "camera1",
-        prefix=CAMERA_PREFIX,
-        module="redsun_mimir.services.mmcore_camera",
-        args=["--adapter", "DemoCamera", "--device", "DCam"],
-        ready=READY,
-        transport=PV_ACCESS,
-        stop_timeout=10,
+        CAMERA_PREFIX,
+        "redsun_mimir.services.mmcore_camera",
+        READY,
+        "--adapter",
+        "DemoCamera",
+        "--device",
+        "DCam",
     )
-    service.start()
-    yield service
-    service.stop()
 
 
 @pytest.fixture
-def stage_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
-    """Launch the stage service on the demo XY stage, and stop it after."""
-    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
-    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
-    service = Service(
+def stage_service(service: ServiceFactory) -> Service:
+    """Launch the stage service on the demo XY stage."""
+    return service(
         "XY",
-        prefix=STAGE_PREFIX,
-        module="redsun_mimir.services.mmcore_stage",
-        args=["--adapter", "DemoCamera", "--device", "DXYStage", "--axes", "x,y"],
-        ready=STAGE_READY,
-        transport=PV_ACCESS,
-        stop_timeout=10,
+        STAGE_PREFIX,
+        "redsun_mimir.services.mmcore_stage",
+        STAGE_READY,
+        "--adapter",
+        "DemoCamera",
+        "--device",
+        "DXYStage",
+        "--axes",
+        "x,y",
     )
-    service.start()
-    yield service
-    service.stop()
 
 
 @pytest.fixture
-def uc2_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
+def uc2_service(service: ServiceFactory) -> Service:
     """Launch the UC2 service on a serial port that answers nothing."""
-    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
-    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
-    service = Service(
+    return service(
         "uc2",
-        prefix=UC2_PREFIX,
-        module="redsun_mimir.services.uc2_controller",
-        args=["--port", "loop://"],
-        ready=UC2_READY,
-        transport=PV_ACCESS,
-        stop_timeout=10,
+        UC2_PREFIX,
+        "redsun_mimir.services.uc2_controller",
+        UC2_READY,
+        "--port",
+        "loop://",
     )
-    service.start()
-    yield service
-    service.stop()
 
 
 @pytest.fixture

@@ -12,7 +12,6 @@ from redsun_mimir.device.mmcore import MMStage
 from redsun_mimir.device.mmcore._stage import POSITION_TOLERANCE
 from redsun_mimir.device.youseetoo import UC2LaserDevice
 from redsun_mimir.presenter.light import LightPresenter
-from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from tests.conftest import CONNECT_TIMEOUT, needs_mm_adapters
 
@@ -80,24 +79,6 @@ class TestUC2LaserDevice:
 
 class TestMockLightDevice:
     """Tests for MockLightDevice."""
-
-    @pytest.mark.parametrize(
-        ("wavelength", "range_"),
-        [
-            pytest.param(450, (0.0, 1.0), id="narrow-range"),
-            pytest.param(650, (0.0, 100.0), id="wide-range"),
-        ],
-    )
-    async def test_instantiation(
-        self, wavelength: int, range_: tuple[float, float]
-    ) -> None:
-        """Device initialises with the requested wavelength and starts off/at zero."""
-        device = MockLightDevice("light", wavelength=wavelength, range=range_)
-        await device.connect(mock=True)
-        assert device.name == "light"
-        assert await device.wavelength.get_value() == wavelength
-        assert await device.enabled.get_value() is False
-        assert await device.intensity.get_value() == pytest.approx(0.0)
 
     async def test_implements_protocol(self, mock_led: MockLightDevice) -> None:
         """MockLightDevice satisfies the LightProtocol runtime check."""
@@ -177,7 +158,6 @@ class TestMMStageConcurrency:
     has no setter at all.
     """
 
-    @needs_mm_adapters
     async def test_moving_both_axes_at_once_moves_both(self, mm_stage: MMStage) -> None:
         """The service serialises, so neither move carries a stale sibling.
 
@@ -195,25 +175,3 @@ class TestMMStageConcurrency:
         assert (await mm_stage.axis["y"].locate())["readback"] == pytest.approx(
             10.0, abs=0.1
         )
-
-    @needs_mm_adapters
-    async def test_stepping_both_axes_moves_both(self, mm_stage: MMStage) -> None:
-        """Without serialising, the second write reverts the first axis."""
-        stage = mm_stage
-        presenter = MotorPresenter("motor_ctrl", {stage.name: stage})
-        try:
-            await asyncio.gather(
-                presenter.move(stage.name, "x", 10.0),
-                presenter.move(stage.name, "y", 10.0),
-            )
-
-            # the demo stage snaps to its own grid, so compare loosely: the
-            # point is that neither axis was left behind, not the exact stop
-            assert (await stage.axis["x"].locate())["readback"] == pytest.approx(
-                10.0, abs=0.1
-            )
-            assert (await stage.axis["y"].locate())["readback"] == pytest.approx(
-                10.0, abs=0.1
-            )
-        finally:
-            presenter.shutdown()

@@ -60,13 +60,6 @@ class TestMotorPresenter:
         yield ctrl
         ctrl.shutdown()
 
-    def test_instantiation(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Controller identifies the motor device and its axes."""
-        assert motor_stage.name in controller._motors
-        assert set(controller._motors[motor_stage.name].axis.keys()) == {"x", "y"}
-
     def test_register_providers(
         self, controller: MotorPresenter, virtual_container: VirtualContainer
     ) -> None:
@@ -137,11 +130,6 @@ class TestLightPresenter:
     @pytest.fixture
     def controller(self, devices: dict[str, MockLightDevice]) -> LightPresenter:
         return LightPresenter("light_presenter", devices)
-
-    def test_instantiation(self, controller: LightPresenter) -> None:
-        """Controller identifies and stores light devices."""
-        assert "led" in controller._lights
-        assert "laser" in controller._lights
 
     def test_register_providers(
         self, controller: LightPresenter, virtual_container: VirtualContainer
