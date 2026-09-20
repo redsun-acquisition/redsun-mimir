@@ -5,9 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from redsun.containers import declare_hook, declare_presenter, declare_view
-from redsun.presenter.builtins import StoragePresenter
 from redsun.qt import QtAppContainer
-from redsun.view.qt.builtins import StorageView
 
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
@@ -48,7 +46,6 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     create_application = declare_hook(_napari_app)
     configure_application = declare_hook(_napari_app)
 
-    storage_ctrl = declare_presenter(StoragePresenter, from_config="storage_ctrl")
     median_ctrl = declare_presenter(MedianPresenter, from_config="median_ctrl")
     det_ctrl = declare_presenter(DetectorPresenter, from_config="det_ctrl")
     acq_ctrl = declare_presenter(AcquisitionPresenter, from_config="acq_ctrl")
@@ -60,7 +57,6 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     det_widget = declare_view(DetectorView, from_config="det_widget")
     light_widget = declare_view(LightView, from_config="light_widget")
     motor_widget = declare_view(MotorView, from_config="motor_widget")
-    storage_widget = declare_view(StorageView, from_config="storage_widget")
 
     def wire(self) -> None:
         """Connect the presenters to the views."""
@@ -72,6 +68,5 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
             self,
             self.acq_ctrl,
             self.acq_widget,
-            storage=self.storage_ctrl,
             median=self.median_ctrl,
         )

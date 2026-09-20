@@ -4,12 +4,11 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from redsun.aio import run_coro
-from redsun.device.protocols import HasAsyncShutdown
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.virtual import slot
 
-from redsun_mimir.protocols import LightProtocol
+from redsun_mimir.protocols import HasAsyncShutdown, LightProtocol
 from redsun_mimir.providers import LIGHT_CONFIGURATION, LIGHT_DESCRIPTION
 
 if TYPE_CHECKING:

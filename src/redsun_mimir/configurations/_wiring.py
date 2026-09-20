@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from redsun.containers import AppContainer
-    from redsun.presenter.builtins import StoragePresenter
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -71,13 +70,13 @@ def wire_acquisition(
     app: AppContainer,
     ctrl: AcquisitionPresenter,
     view: AcquisitionView,
-    storage: StoragePresenter | None = None,
     median: MedianPresenter | None = None,
 ) -> None:
     """Connect run control, and the plan lifecycle to whoever tracks it.
 
-    *storage* and *median* are optional because not every container declares
-    them; when present they learn the plan name from the same signal.
+    The session's path provider takes the plan name, so files written during a
+    run are named after it. *median* is optional because not every container
+    declares it.
     """
     app.connect(view.sig_launch_plan_request, ctrl.launch_plan)
     app.connect(view.sig_stop_plan_request, ctrl.stop_plan)
@@ -86,8 +85,8 @@ def wire_acquisition(
     app.connect(ctrl.sig_plan_done, view.on_plan_done)
     app.connect(ctrl.sig_action_done, view.on_action_done)
 
+    app.connect(ctrl.sig_pre_launch_notify, app.path_provider.set_plan)
+    app.connect(ctrl.sig_plan_done, app.path_provider.reset_plan)
+
     if median is not None:
         app.connect(ctrl.sig_pre_launch_notify, median.clear_medians)
-    if storage is not None:
-        app.connect(ctrl.sig_pre_launch_notify, storage.set_plan)
-        app.connect(ctrl.sig_plan_done, storage.reset_plan)

@@ -20,8 +20,6 @@ from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
 from qtpy.QtWidgets import QApplication
 from redsun.aio import get_shared_loop
-from redsun.storage import BaseStorage, SessionPathProvider, clear_registry
-from redsun.storage.backends._memory import MemoryIO
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
@@ -30,7 +28,6 @@ from redsun_mimir.device.mmcore import MMDemoCamera
 if TYPE_CHECKING:
     import asyncio
     from collections.abc import AsyncGenerator, Generator
-    from pathlib import Path
 
     from qtpy.QtCore import QCoreApplication
 
@@ -138,13 +135,6 @@ def _reset_mmcore() -> Generator[None, None, None]:
     Core.instance().reset()
 
 
-@pytest.fixture(autouse=True)
-def _clear_storage_registry() -> Generator[None, None, None]:
-    """Clear redsun's process-wide storage registry after each test."""
-    yield
-    clear_registry()
-
-
 @pytest.fixture
 def virtual_container() -> VirtualContainer:
     """Fresh VirtualContainer for each test."""
@@ -160,13 +150,9 @@ async def motor_stage() -> FakeXYStage:
 
 
 @pytest.fixture
-async def mm_camera(tmp_path: Path) -> AsyncGenerator[MMDemoCamera, None]:
-    """Return a connected ``MMDemoCamera`` (demo adapter) backed by an in-memory store."""
-    storage = BaseStorage(
-        io=MemoryIO(),
-        path_provider=SessionPathProvider(base_dir=tmp_path, session="test"),
-    )
-    device = MMDemoCamera("camera1", storage=storage)
+async def mm_camera() -> AsyncGenerator[MMDemoCamera, None]:
+    """Return a connected ``MMDemoCamera`` on the demo adapter."""
+    device = MMDemoCamera("camera1")
     await device.connect(mock=False)
     yield device
 

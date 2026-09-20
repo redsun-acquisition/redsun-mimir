@@ -35,7 +35,6 @@ pytestmark = pytest.mark.qt
 
 #: Declared by `MimirApp`, so every session has them whatever its hardware.
 _SHARED_PRESENTERS = {
-    "storage_ctrl",
     "median_ctrl",
     "det_ctrl",
     "acq_ctrl",
@@ -48,7 +47,6 @@ _SHARED_VIEWS = {
     "det_widget",
     "light_widget",
     "motor_widget",
-    "storage_widget",
 }
 
 _CONTAINERS = [
@@ -181,8 +179,8 @@ _ACQUISITION_LINKS = {
     ("acq_ctrl.sig_plan_done", "acq_widget.on_plan_done"),
     ("acq_ctrl.sig_action_done", "acq_widget.on_action_done"),
     ("acq_ctrl.sig_pre_launch_notify", "median_ctrl.clear_medians"),
-    ("acq_ctrl.sig_pre_launch_notify", "storage_ctrl.set_plan"),
-    ("acq_ctrl.sig_plan_done", "storage_ctrl.reset_plan"),
+    ("acq_ctrl.sig_pre_launch_notify", "path_provider.set_plan"),
+    ("acq_ctrl.sig_plan_done", "path_provider.reset_plan"),
 }
 _FULL_LINKS = (
     _DETECTOR_LINKS
@@ -239,9 +237,6 @@ _SUBSCRIPTIONS = [
             ("XY-axis-x", "motor_widget.update_setpoint"),
             ("XY-axis-y", "motor_widget.update_setpoint"),
             ("Z-axis-z", "motor_widget.update_setpoint"),
-            # the storage view follows the session path provider, whose soft
-            # signal carries no name, hence the empty source
-            ("", "storage_widget.update_base_dir"),
         },
         id="simulation",
         marks=needs_opengl,

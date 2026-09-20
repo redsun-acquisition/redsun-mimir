@@ -114,6 +114,15 @@ class LightProtocol(AsyncConfigurable, Protocol):
 
 
 @runtime_checkable
+class HasAsyncShutdown(Protocol):
+    """A device releasing what it holds asynchronously."""
+
+    async def shutdown(self) -> None:
+        """Release the device's resources."""
+        ...
+
+
+@runtime_checkable
 class BufferDataProtocol(Protocol):
     """Protocol for devices that provide a continuously updated data buffer."""
 
@@ -151,6 +160,7 @@ __all__ = [
     "Array2D",
     "BufferDataProtocol",
     "DetectorProtocol",
+    "HasAsyncShutdown",
     "LayerSpec",
     "LightProtocol",
     "MotorProtocol",

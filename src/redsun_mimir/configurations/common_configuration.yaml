@@ -5,7 +5,6 @@ session: redsun-mimir
 frontend: pyqt
 
 presenters:
-  storage_ctrl: {}
   median_ctrl: {}
   det_ctrl:
     timeout: 2.0
@@ -21,4 +20,3 @@ views:
   acq_widget: {}
   img_widget: {}
   det_widget: {}
-  storage_widget: {}
