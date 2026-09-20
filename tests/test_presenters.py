@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -13,8 +14,7 @@ import pytest
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import RunEngine
-from redsun.storage import BaseStorage, SessionPathProvider
-from redsun.storage.backends._memory import MemoryIO
+from redsun.storage.writers import zarr
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
@@ -38,10 +38,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from bluesky.utils import MsgGenerator
-    from event_model.documents import Event, EventDescriptor, RunStop
+    from event_model.documents import (
+        Event,
+        EventDescriptor,
+        RunStop,
+        StreamResource,
+    )
     from ophyd_async.core import SignalRW
 
-    from redsun_mimir.device.mmcore import MMDemoCamera
+    from redsun_mimir.device.mmcore import MMCamera
 
 
 class TestMotorPresenter:
@@ -194,46 +199,43 @@ class TestLightPresenter:
 class _MedianSource:
     """Minimal stand-in for a device MedianPresenter can track.
 
-    Only ``buffer`` (a named signal) and ``storage`` are inspected.
+    Only ``buffer``, a named signal, is inspected.
     """
 
     buffer: SignalRW[np.ndarray]
-    storage: BaseStorage
 
 
 class TestMedianPresenter:
     """Tests for the document-driven MedianPresenter."""
 
-    def test_instantiation_tracks_only_buffered_storage_devices(
+    def test_instantiation_tracks_only_buffered_devices(
         self, motor_stage: FakeXYStage
     ) -> None:
-        """Only devices exposing both `buffer` and `storage` are tracked."""
+        """Only devices exposing a `buffer` are tracked."""
         buf = soft_signal_rw(
             np.ndarray, initial_value=np.zeros((2, 2)), name="cam-buffer"
         )
-        storage = BaseStorage(
-            io=MemoryIO(), path_provider=SessionPathProvider(session="s")
-        )
         devices: dict[str, Any] = {
-            "cam": _MedianSource(buffer=buf, storage=storage),
+            "cam": _MedianSource(buffer=buf),
             "motor": motor_stage,
         }
         presenter = MedianPresenter("median_presenter", devices)
-        assert "cam-buffer" in presenter._storages
-        assert len(presenter._storages) == 1
+        assert presenter._sources == {"cam-buffer"}
 
     async def test_document_flow_computes_writes_and_emits_median(
         self, tmp_path: Path
     ) -> None:
-        """descriptor->events->stop produces the median, emits it once, writes one frame."""
-        io = MemoryIO()
-        storage = BaseStorage(
-            io=io,
-            path_provider=SessionPathProvider(base_dir=tmp_path, session="median"),
-        )
+        """descriptor->events->stop produces the median, emits it once, writes it.
+
+        The store is the one an acquisition wrote, which the presenter learns
+        from that run's ``StreamResource``; the median lands beside the frames
+        as a key of its own.
+        """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
+        store = tmp_path / "acquisition.zarr"
+        uri = zarr.write(f"file://{store.as_posix()}", data_key="cam", data=frames[0])
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
-        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf, storage=storage)}
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
 
         received: list[dict[str, Any]] = []
@@ -250,8 +252,10 @@ class TestMedianPresenter:
                 yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
             yield from bps.close_run()
 
+        presenter.stream_resource(
+            cast("StreamResource", {"data_key": "cam", "uri": uri})
+        )
         engine(plan()).result(timeout=30)
-        run_coro(storage.close())
 
         expected = np.median(np.stack(frames), axis=0).astype("uint16")
         np.testing.assert_array_equal(presenter.medians["cam-buffer"], expected)
@@ -260,10 +264,8 @@ class TestMedianPresenter:
         emitted_reading = next(iter(received[0].values()))
         np.testing.assert_array_equal(emitted_reading["value"], expected)
 
-        assert len(io.stores) == 1
-        written = io.stores[0].arrays["cam_median"]
-        assert len(written) == 1
-        np.testing.assert_array_equal(written[0], expected)
+        written = json.loads((store / "cam_median" / "zarr.json").read_text())
+        assert written["shape"] == [1, 4, 4]
 
     async def test_live_frames_are_divided_by_the_cached_median(
         self, tmp_path: Path
@@ -273,16 +275,12 @@ class TestMedianPresenter:
         This is the whole point of the presenter: cache the background stack,
         reduce it to a median, then divide every subsequent live frame by it.
         """
-        storage = BaseStorage(
-            io=MemoryIO(),
-            path_provider=SessionPathProvider(base_dir=tmp_path, session="median"),
-        )
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
-        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf, storage=storage)}
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
 
         filtered: list[dict[str, Any]] = []
@@ -357,16 +355,12 @@ class TestMedianPresenter:
         median out, then every monitored live frame divided by it - against a
         real RunEngine rather than hand-built documents.
         """
-        storage = BaseStorage(
-            io=MemoryIO(),
-            path_provider=SessionPathProvider(base_dir=tmp_path, session="live"),
-        )
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
-        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf, storage=storage)}
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
 
         filtered: list[dict[str, Any]] = []
@@ -405,15 +399,12 @@ class TestMedianPresenter:
 
     async def test_live_frames_without_a_median_are_not_emitted(self) -> None:
         """Before any scan there is no background to divide by."""
-        storage = BaseStorage(
-            io=MemoryIO(), path_provider=SessionPathProvider(session="s")
-        )
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
-        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf, storage=storage)}
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
 
         filtered: list[dict[str, Any]] = []
@@ -445,18 +436,13 @@ class TestMedianPresenter:
 
     async def test_descriptor_ignores_unrelated_sources(self, tmp_path: Path) -> None:
         """A descriptor whose data_keys do not include a tracked buffer is ignored."""
-        io = MemoryIO()
-        storage = BaseStorage(
-            io=io,
-            path_provider=SessionPathProvider(base_dir=tmp_path, session="median"),
-        )
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
         other = soft_signal_rw(float, initial_value=0.0, name="other-signal")
-        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf, storage=storage)}
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
 
         received: list[dict[str, Any]] = []
@@ -475,7 +461,6 @@ class TestMedianPresenter:
 
         assert received == []
         assert presenter.medians == {}
-        assert len(io.stores) == 0
 
 
 class TestDetectorPresenter:
@@ -483,12 +468,12 @@ class TestDetectorPresenter:
 
     @pytest.fixture
     def controller(
-        self, mm_camera: MMDemoCamera
+        self, mm_camera: MMCamera
     ) -> Generator[DetectorPresenter, None, None]:
         yield DetectorPresenter("det_ctrl", {mm_camera.name: mm_camera})
 
     def test_instantiation(
-        self, controller: DetectorPresenter, mm_camera: MMDemoCamera
+        self, controller: DetectorPresenter, mm_camera: MMCamera
     ) -> None:
         """Controller identifies the detector device and its buffer key."""
         assert mm_camera.name in controller.detectors
@@ -503,7 +488,7 @@ class TestDetectorPresenter:
         assert "camera1" in specs
 
     def test_live_events_are_forwarded_raw(
-        self, controller: DetectorPresenter, mm_camera: MMDemoCamera
+        self, controller: DetectorPresenter, mm_camera: MMCamera
     ) -> None:
         """Frames arrive as Event documents and are forwarded unmodified.
 
@@ -548,7 +533,7 @@ class TestDetectorPresenter:
         assert received == []
 
     async def test_set_exposure_emits_new_configuration(
-        self, controller: DetectorPresenter, mm_camera: MMDemoCamera
+        self, controller: DetectorPresenter, mm_camera: MMCamera
     ) -> None:
         """set() applies the setting and emits sig_new_configuration."""
         received: list[tuple[str, str, Any]] = []
@@ -566,9 +551,7 @@ class TestAcquisitionPresenter:
     """Tests for AcquisitionPresenter."""
 
     @pytest.fixture
-    def devices(
-        self, mm_camera: MMDemoCamera, motor_stage: FakeXYStage
-    ) -> dict[str, Any]:
+    def devices(self, mm_camera: MMCamera, motor_stage: FakeXYStage) -> dict[str, Any]:
         return {mm_camera.name: mm_camera, motor_stage.name: motor_stage}
 
     @pytest.fixture
@@ -639,7 +622,7 @@ class TestAcquisitionPresenter:
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,
         controller: AcquisitionPresenter,
-        mm_camera: MMDemoCamera,
+        mm_camera: MMCamera,
         motor_stage: FakeXYStage,
     ) -> None:
         """launch_plan() resolves UI values into real devices and fires sig_pre_launch_notify.

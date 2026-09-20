@@ -361,12 +361,15 @@ class AcquisitionPresenter(Presenter, Loggable):
         for axis, direction in ((x, step), (y, step), (x, -step), (y, -step)):
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis.name} by {direction} steps.")
+                yield from bps.mvr(axis, direction)
+                # a detector taking frames continuously has one ready from
+                # before the move; triggering waits for the one taken after it
+                for det in detectors:
+                    yield from bps.trigger(det, wait=True)
                 yield from bps.create(name=MEDIAN_SCAN_STREAM)
                 for det in detectors:
                     yield from bps.read(det.buffer)
                 yield from bps.save()
-                yield from bps.mvr(axis, direction)
-                yield from bps.sleep(0.05)
         yield from bps.close_run()
 
     @continous(togglable=True)

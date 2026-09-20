@@ -7,7 +7,7 @@ from event_model import DocumentRouter
 from psygnal import SignalGroup
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage import StoreStateError, StreamSpec
+from redsun.storage.writers import WriterError, zarr
 from redsun.virtual import Signal, slot
 
 from redsun_mimir.streams import MEDIAN_SCAN_STREAM
@@ -17,9 +17,8 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
     from bluesky.protocols import Reading
-    from event_model.documents import Event, EventDescriptor, RunStop
+    from event_model.documents import Event, EventDescriptor, RunStop, StreamResource
     from ophyd_async.core import Device
-    from redsun.storage import BaseStorage, FrameSink
     from redsun.virtual import VirtualContainer
 
 _MEDIAN_SUFFIX = "_median"
@@ -55,8 +54,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     [`DocumentRouter`][event_model.DocumentRouter]:
 
     - frames on the `MEDIAN_SCAN_STREAM` are **cached**; when that run stops
-      the median is computed, published on ``frames.median`` and written to
-      the detector's store through a capacity-1 sink;
+      the median is computed, published on ``frames.median`` and added to the
+      store the acquisition wrote, under ``<detector>_median``;
     - frames on any other stream - in practice `LIVE_VIEW_STREAM`, produced
       by ``bps.monitor`` on the detector's buffer signal - are **divided** by
       the cached median and published on ``frames.filtered`` as their
@@ -69,8 +68,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     name : str
         Identity key of the presenter.
     devices : Mapping[str, Device]
-        Available devices. Those exposing both a ``buffer`` signal and a
-        ``storage`` are tracked; anything else is ignored.
+        Available devices. Those exposing a ``buffer`` signal are tracked;
+        anything else is ignored.
 
     Attributes
     ----------
@@ -91,12 +90,15 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         # publisher of either member rather than the group
         self.frames = FrameSignals(instance=self)
 
-        #: buffer data key -> storage the median is written to
-        self._storages: dict[str, BaseStorage] = {
-            device.buffer.name: device.storage
+        #: data keys of the buffers whose frames this presenter takes
+        self._sources: set[str] = {
+            device.buffer.name
             for device in devices.values()
-            if hasattr(device, "buffer") and hasattr(device, "storage")
+            if hasattr(device, "buffer")
         }
+
+        #: detector data key -> store the run wrote, from its StreamResource
+        self._stores: dict[str, str] = {}
 
         #: latest median per source data key
         self.medians: dict[str, npt.NDArray[Any]] = {}
@@ -107,8 +109,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._live_streams: dict[str, list[str]] = {}
         # (run uid, source) -> accumulated scan frames
         self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
-        # (run uid, source) -> sink the median is written through
-        self._sinks: dict[tuple[str, str], FrameSink] = {}
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register this presenter as a signal owner and document callback."""
@@ -124,7 +124,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Route a stream to the accumulate or the correct path."""
-        sources = [key for key in doc["data_keys"] if key in self._storages]
+        sources = [key for key in doc["data_keys"] if key in self._sources]
         if not sources:
             return
 
@@ -132,42 +132,11 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             self._live_streams[doc["uid"]] = sources
             return
 
-        run = doc["run_start"]
-        self._scan_streams[doc["uid"]] = (run, sources)
-        for source in sources:
-            spec = self._spec_for(source, doc["data_keys"][source])
-            if spec is None:
-                continue
-            storage = self._storages[source]
-            try:
-                storage.register(spec)
-            except StoreStateError:
-                # register is only legal before the backend opens; a store
-                # already opened by a write burst cannot take a new key, so
-                # the median is still computed and shown, just not written
-                self.logger.warning(
-                    f"Store for {source!r} is already open; the median will not "
-                    "be written. Run the scan before streaming to disk."
-                )
-                continue
-            self._sinks[(run, source)] = storage.sink(spec.data_key)
+        self._scan_streams[doc["uid"]] = (doc["run_start"], sources)
 
-    def _spec_for(self, source: str, data_key: Mapping[str, Any]) -> StreamSpec | None:
-        """Build the median `StreamSpec` from the source's data key."""
-        raw_shape = data_key.get("shape") or []
-        dims = [int(dim) for dim in raw_shape if dim is not None]
-        if len(dims) != 2:
-            self.logger.warning(
-                f"Cannot derive a median stream for {source!r}: "
-                f"expected a 2D shape, got {raw_shape!r}."
-            )
-            return None
-        return StreamSpec(
-            data_key=f"{_base_name(source)}{_MEDIAN_SUFFIX}",
-            shape=(dims[0], dims[1]),
-            dtype=np.dtype(data_key.get("dtype_numpy", "<u2")).name,
-            capacity=1,
-        )
+    def stream_resource(self, doc: StreamResource) -> None:
+        """Remember the store an acquisition wrote, to add the median to it."""
+        self._stores[doc["data_key"]] = doc["uri"]
 
     def event(self, doc: Event) -> Event:
         """Cache scan frames; correct live frames against the median."""
@@ -241,12 +210,26 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 }
             )
 
-            sink = self._sinks.pop((run, source), None)
-            if sink is not None:
-                # put_nowait is the sync face: safe from a callback thread
-                sink.put_nowait(median)
-                sink.close()
+            self._write(source, median)
 
         for uid, (candidate, _) in list(self._scan_streams.items()):
             if candidate == run:
                 del self._scan_streams[uid]
+
+    def _write(self, source: str, median: npt.NDArray[Any]) -> None:
+        """Add the median to the store its detector wrote, if there is one."""
+        detector = _base_name(source)
+        uri = self._stores.get(detector)
+        if uri is None:
+            # a run that wrote nothing has no store to add a key to; the
+            # median is still computed and published
+            return
+        try:
+            zarr.write(
+                uri,
+                data_key=f"{detector}{_MEDIAN_SUFFIX}",
+                data=median,
+                metadata={"derived_from": detector},
+            )
+        except WriterError as error:
+            self.logger.error(f"Median for {detector!r} not written: {error}")

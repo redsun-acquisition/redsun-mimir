@@ -42,7 +42,7 @@ UNLISTED: frozenset[str] = frozenset(
 )
 
 
-def _manifest() -> dict[str, dict[str, str]]:
+def _manifest() -> dict[str, dict[str, Any]]:
     text = (files("redsun_mimir") / "redsun.yaml").read_text(encoding="utf-8")
     return yaml.safe_load(text)  # type: ignore[no-any-return]
 
@@ -79,7 +79,7 @@ def test_manifest_has_expected_sections() -> None:
 
 
 def test_a_service_entry_names_the_readiness_line_its_module_prints() -> None:
-    entry = _manifest()["services"]["mmcore-camera"]
+    entry: dict[str, str] = _manifest()["services"]["mmcore-camera"]
     module = importlib.import_module(entry["module"])
     assert entry["ready"] == module.READY
 

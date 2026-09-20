@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from ophyd_async.core import (
@@ -42,7 +42,7 @@ class ServiceTriggerLogic(DetectorTriggerLogic):
 
     camera: MMCamera
 
-    def config_sigs(self) -> set[SignalR]:
+    def config_sigs(self) -> set[SignalR[Any]]:
         """Return the settings that describe how the frames were taken."""
         return {self.camera.exposure, self.camera.roi, self.camera.pixel_dtype}
 
@@ -180,7 +180,7 @@ class MMCamera(StandardDetector, Loggable):
         )
 
     @AsyncStatus.wrap
-    async def trigger(self) -> None:
+    async def trigger(self) -> None:  # type: ignore[override]
         """Wait for a frame taken after this call.
 
         The camera takes frames continuously, so the one already published

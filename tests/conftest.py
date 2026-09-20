@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from functools import cached_property
@@ -38,6 +39,12 @@ if TYPE_CHECKING:
 
 #: PV prefix the camera service serves under while the tests run.
 CAMERA_PREFIX = "MIMIR-TESTCAM:"
+
+# p4p logs a subscription's keyword arguments as ``_log.debug("Subscription(%s)",
+# kws)``; ``logging`` reads that single dict as a mapping and raises
+# ``TypeError: not all arguments converted during string formatting`` wherever a
+# handler formats the record, which fails the monitor the record came from
+logging.getLogger("p4p.client.raw").setLevel(logging.INFO)
 
 
 #: Micro-Manager device adapters are downloaded, not pip-installed, and their

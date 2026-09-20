@@ -11,6 +11,9 @@ several of them.
 
 from __future__ import annotations
 
+# ``fastcs`` ships no py.typed, so every class taken from it is ``Any`` here,
+# and subclassing one or taking its decorator is an error a stub would fix
+# mypy: disable-error-code="misc, untyped-decorator"
 import argparse
 import asyncio
 import os
@@ -63,7 +66,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         self._core = core
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
-        """Apply *value* to the camera."""
+        """Apply *value* to the camera, and read back what it took."""
         match attr.io_ref.setting:
             case "exposure":
                 self._core.setExposure(float(value))
@@ -71,6 +74,10 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 self._core.setROI(*(int(item) for item in value))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
+        if isinstance(attr, AttrR):
+            # without this the readback carries the old value until the next
+            # scan, and a client that reads straight after writing sees it
+            await self.update(attr)
 
     async def update(self, attr: AttrR[Any, CoreRef]) -> None:
         """Read the camera's own value of the setting into *attr*."""
@@ -89,9 +96,10 @@ class FrameStore:
     def __init__(self, uri: str, data_key: str, frame: NDArray[Any]) -> None:
         import acquire_zarr as az
 
+        # a store with an output key and no downsampling is a plain Zarr array,
+        # which is what a median written beside these frames needs
         array = az.ArraySettings()
         array.output_key = data_key
-        array.is_ngff = False
         array.data_type = getattr(az.DataType, frame.dtype.name.upper())
         array.dimensions = [
             az.Dimension(
