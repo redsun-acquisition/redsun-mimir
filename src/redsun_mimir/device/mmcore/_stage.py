@@ -1,55 +1,85 @@
 from __future__ import annotations
 
-from ophyd_async.core import DeviceMap, StandardMovable, StandardReadable
-from pymmcore_plus import CMMCorePlus as Core
+from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING
+from typing import Annotated as A
+
+import numpy as np
+from ophyd_async.core import (
+    MovableLogic,
+    SignalRW,
+    StandardMovable,
+    StandardReadable,
+    StandardReadableFormat,
+    set_and_wait_for_other_value,
+)
+from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
 
-from ._backend import MMAxis
-from ._common import MMAdapterInfo
+from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
+
+if TYPE_CHECKING:
+    from typing import Final
+
+    from ophyd_async.core import TimeoutCalculator
+
+#: Where the stage's axes sit under the service's prefix.
+#: ``fastcs`` names a PV path after its controller, in title case.
+STAGE_GROUP = "Stage"
+
+#: A Micro-Manager stage settles on its own grid rather than exactly where it
+#: was sent: the demo XY stage lands within 0.006 um of any request, and
+#: exposes no step-size property to derive this from. `MovableLogic.move`
+#: waits for equality by default, which would never be satisfied.
+POSITION_TOLERANCE: Final[float] = 0.01
 
 
-class MMDemoXYStage(StandardReadable, Loggable):
-    """Demo stage device."""
+@dataclass
+class MMAxisLogic(MovableLogic[float]):
+    """Move logic for one axis of a Micro-Manager stage."""
 
-    axis: DeviceMap[StandardMovable[float]]
+    tolerance: float = POSITION_TOLERANCE
 
-    def __init__(self, name: str, *, units: str = "um") -> None:
-        adapter_info = MMAdapterInfo(
-            adapter="DemoCamera",
-            device="DXYStage",
+    async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
+        """Write the setpoint and wait for the readback to land within tolerance."""
+        await set_and_wait_for_other_value(
+            self.setpoint,
+            new_position,
+            self.readback,
+            lambda value: bool(np.isclose(value, new_position, atol=self.tolerance)),
+            timeout=timeout(),
         )
-        self.core = Core.instance()
-        self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
-        self.core.initializeDevice(name)
-        # the signals live *only* in the map: assigning them to the device
-        # first would parent them here, and a Device cannot be re-parented
-        # into the DeviceMap afterwards. Readables are taken from the map's
-        # values so readings are keyed "<device>-axis-<name>", which is what
-        # redsun's parse_map_key(key, "axis") splits.
-        self.axis = DeviceMap(
-            {
-                "x": MMAxis(self.core, name, "x", units),
-                "y": MMAxis(self.core, name, "y", units),
-            }
+
+
+class MMAxis(StandardReadable, StandardMovable[float]):
+    """One axis of a Micro-Manager stage, moved through its service."""
+
+    position: A[SignalRW[float], StandardReadableFormat.HINTED_SIGNAL]
+
+    @cached_property
+    def movable_logic(self) -> MovableLogic[float]:
+        """Setpoint and readback of this axis, which are one signal."""
+        return MMAxisLogic(setpoint=self.position, readback=self.position)
+
+
+class MMStage(StandardReadable, Loggable):
+    """A Micro-Manager stage, reached through the service that owns it.
+
+    The axes the service serves are the ones the stage has: the adapter, the
+    device and the axis names belong to the service's declaration.
+
+    Parameters
+    ----------
+    prefix :
+        PV prefix of the service, ending in ``:``. A device declared with
+        ``service=`` receives it from that service.
+    """
+
+    axis: A[ReadableDeviceMap[MMAxis], StandardReadableFormat.CHILD]
+
+    def __init__(self, prefix: str, *, name: str = "") -> None:
+        super().__init__(
+            name=name,
+            connector=fastcs_connector(f"{prefix}{STAGE_GROUP}:", self),
         )
-        self.add_readables(list(self.axis.values()))
-        super().__init__(name)
-
-
-class MMDemoZStage(StandardReadable):
-    """Demo stage device."""
-
-    axis: DeviceMap[StandardMovable[float]]
-
-    def __init__(self, name: str, *, units: str = "um") -> None:
-        adapter_info = MMAdapterInfo(
-            adapter="DemoCamera",
-            device="DStage",
-        )
-        self.core = Core.instance()
-        self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
-        self.core.initializeDevice(name)
-        # see MMDemoXYStage for why the signals live only in the map
-        self.axis = DeviceMap({"z": MMAxis(self.core, name, "z", units)})
-        self.add_readables(list(self.axis.values()))
-        super().__init__(name)

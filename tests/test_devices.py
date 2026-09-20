@@ -7,99 +7,49 @@ import asyncio
 import pytest
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMDemoXYStage, MMDemoZStage
-from redsun_mimir.device.mmcore._backend import POSITION_TOLERANCE
+from redsun_mimir.device.mmcore import MMStage
+from redsun_mimir.device.mmcore._stage import POSITION_TOLERANCE
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from tests.conftest import needs_mm_adapters
 
 
-class TestMMDemoStage:
-    """Tests for the Micro-Manager demo stages.
+class TestMMStage:
+    """The stage as a session sees it: through the service that owns it.
 
-    The axis signals live only inside the ``axis`` ``DeviceMap`` - binding
-    them as attributes first would parent them to the stage, and ophyd-async
-    refuses to re-parent a ``Device`` into the map. Readings must therefore
-    be keyed ``<device>-axis-<name>``, which is what redsun's
-    ``parse_map_key(key, "axis")`` (used by ``MotorView``) splits.
+    The axes come from the served PVI tree and live only inside the ``axis``
+    map, so readings are keyed ``<device>-axis-<name>``, which is what
+    redsun's ``parse_map_key(key, "axis")`` (used by ``MotorView``) splits.
     """
 
-    @pytest.mark.parametrize(
-        ("cls", "expected_axes"),
-        [
-            pytest.param(MMDemoXYStage, {"x", "y"}, id="xy-stage"),
-            pytest.param(MMDemoZStage, {"z"}, id="z-stage"),
-        ],
-    )
-    async def test_axes_are_exposed_and_readable(
-        self,
-        cls: type[MMDemoXYStage | MMDemoZStage],
-        expected_axes: set[str],
-    ) -> None:
-        device = cls("stage")
-        await device.connect(mock=True)
+    @needs_mm_adapters
+    async def test_axes_are_exposed_and_readable(self, mm_stage: MMStage) -> None:
+        """The stage takes its axes from what the service serves."""
+        assert set(mm_stage.axis) == {"x", "y"}
+        assert isinstance(mm_stage, MotorProtocol)
 
-        assert set(device.axis.keys()) == expected_axes
-        assert isinstance(device, MotorProtocol)
+        readings = await mm_stage.read()
+        assert set(readings) == {"XY-axis-x", "XY-axis-y"}
+        assert set(await mm_stage.describe()) == set(readings)
+        assert mm_stage.axis["x"].parent is mm_stage.axis
 
-        readings = await device.read()
-        assert set(readings) == {f"stage-axis-{axis}" for axis in expected_axes}
-        assert set(await device.describe()) == set(readings)
+    @needs_mm_adapters
+    async def test_set_waits_for_the_axis_to_arrive(self, mm_stage: MMStage) -> None:
+        """``set`` completes once the stage has travelled, within tolerance.
 
-    async def test_axis_signals_are_not_bound_as_attributes(self) -> None:
-        """Binding the signals on the device too would break construction."""
-        device = MMDemoXYStage("stage")
-        await device.connect(mock=True)
-
-        assert not hasattr(device, "x")
-        assert device.axis["x"].parent is device.axis
-
-    async def test_set_waits_for_the_axis_to_arrive(self) -> None:
-        """``set`` completes only once the stage has actually travelled.
-
-        The Micro-Manager demo stage simulates motion, so a set that returned
-        immediately would leave the axis in transit - and a scan reading a
-        frame straight after the move would capture the wrong position.
-        Note the signals are callable-backed soft signals: ``mock=True`` does
-        not isolate them, this really drives the demo adapter.
+        The demo stage simulates motion and settles on its own grid, landing
+        within ~0.006 um of any request. `MovableLogic`'s default waits for
+        the readback to equal the setpoint exactly, which would never happen;
+        `MMAxisLogic` waits within `POSITION_TOLERANCE`, so without that
+        override this test hangs rather than fails.
         """
-        device = MMDemoXYStage("stage")
-        await device.connect(mock=True)
+        await asyncio.wait_for(mm_stage.axis["x"].set(10.0), timeout=10.0)
 
-        await device.axis["x"].set(12.5)
-        assert (await device.axis["x"].locate())["readback"] == pytest.approx(
-            12.5, abs=0.05
+        location = await mm_stage.axis["x"].locate()
+        assert location["readback"] == pytest.approx(10.0, abs=POSITION_TOLERANCE)
+        assert (await mm_stage.read())["XY-axis-x"]["value"] == pytest.approx(
+            10.0, abs=POSITION_TOLERANCE
         )
-
-    @needs_mm_adapters
-    async def test_quantised_move_completes(self) -> None:
-        """A stage that settles off-target still finishes the move.
-
-        The demo stage lands within ~0.006 um of any request. `MovableLogic`'s
-        default waits for the readback to equal the setpoint *exactly*, which
-        would never happen; `MMAxisLogic` waits within `POSITION_TOLERANCE`.
-        Without that override this test hangs rather than fails.
-        """
-        device = MMDemoXYStage("stage")
-        await device.connect(mock=True)
-
-        await asyncio.wait_for(device.axis["x"].set(10.0), timeout=10.0)
-
-        location = await device.axis["x"].locate()
-        assert location["readback"] != location["setpoint"]
-        assert location["readback"] == pytest.approx(10.0, abs=POSITION_TOLERANCE)
-
-    @needs_mm_adapters
-    async def test_locate_separates_setpoint_from_readback(self) -> None:
-        """The stage can be queried, so the two differ by the settling error."""
-        device = MMDemoXYStage("stage")
-        await device.connect(mock=True)
-
-        await device.axis["x"].set(10.0)
-
-        location = await device.axis["x"].locate()
-        assert location["setpoint"] == pytest.approx(10.0)
-        assert location["readback"] == pytest.approx(10.0, abs=POSITION_TOLERANCE)
 
 
 class TestMockLightDevice:
@@ -192,23 +142,43 @@ class TestMockLightDevice:
 
 
 @needs_mm_adapters
-class TestMMDemoStageConcurrency:
+class TestMMStageConcurrency:
     """A Micro-Manager XY stage writes both coordinates on every set.
 
-    ``mm_position_signal``'s setter reads the pair and writes the pair, so two
-    sets in flight on sibling axes each carry the other's pre-move value. Only
-    a real stage reproduces this: the soft-signal double has no setter at all.
+    The service reads the pair and writes the pair, so two moves in flight on
+    sibling axes each carry the other's pre-move value unless the service
+    serialises them. Only a real stage reproduces this: a soft-signal double
+    has no setter at all.
     """
 
-    async def test_stepping_both_axes_moves_both(self) -> None:
-        """Without a per-device lock the second write reverts the first axis."""
-        stage = MMDemoXYStage("xystage")
-        await stage.connect()
-        presenter = MotorPresenter("motor_ctrl", {"xystage": stage})
+    @needs_mm_adapters
+    async def test_moving_both_axes_at_once_moves_both(self, mm_stage: MMStage) -> None:
+        """The service serialises, so neither move carries a stale sibling.
+
+        Without that, a move whose sibling reverts it never reaches its
+        setpoint and the wait never returns, so this is bounded.
+        """
+        await asyncio.wait_for(
+            asyncio.gather(mm_stage.axis["x"].set(10.0), mm_stage.axis["y"].set(10.0)),
+            timeout=30.0,
+        )
+
+        assert (await mm_stage.axis["x"].locate())["readback"] == pytest.approx(
+            10.0, abs=0.1
+        )
+        assert (await mm_stage.axis["y"].locate())["readback"] == pytest.approx(
+            10.0, abs=0.1
+        )
+
+    @needs_mm_adapters
+    async def test_stepping_both_axes_moves_both(self, mm_stage: MMStage) -> None:
+        """Without serialising, the second write reverts the first axis."""
+        stage = mm_stage
+        presenter = MotorPresenter("motor_ctrl", {stage.name: stage})
         try:
             await asyncio.gather(
-                presenter.move("xystage", "x", 10.0),
-                presenter.move("xystage", "y", 10.0),
+                presenter.move(stage.name, "x", 10.0),
+                presenter.move(stage.name, "y", 10.0),
             )
 
             # the demo stage snaps to its own grid, so compare loosely: the

@@ -1,8 +1,8 @@
 from ._camera import MMCamera
-from ._stage import MMDemoXYStage, MMDemoZStage
+from ._stage import MMAxis, MMStage
 
 __all__ = [
+    "MMAxis",
     "MMCamera",
-    "MMDemoXYStage",
-    "MMDemoZStage",
+    "MMStage",
 ]

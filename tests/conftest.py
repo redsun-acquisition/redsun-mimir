@@ -27,8 +27,9 @@ from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMCamera
+from redsun_mimir.device.mmcore import MMCamera, MMStage
 from redsun_mimir.services.mmcore_camera import READY
+from redsun_mimir.services.mmcore_stage import READY as STAGE_READY
 
 if TYPE_CHECKING:
     import asyncio
@@ -39,6 +40,9 @@ if TYPE_CHECKING:
 
 #: PV prefix the camera service serves under while the tests run.
 CAMERA_PREFIX = "MIMIR-TESTCAM:"
+
+#: PV prefix the stage service serves under while the tests run.
+STAGE_PREFIX = "MIMIR-TESTXY:"
 
 # p4p logs a subscription's keyword arguments as ``_log.debug("Subscription(%s)",
 # kws)``; ``logging`` reads that single dict as a mapping and raises
@@ -186,6 +190,33 @@ def camera_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
     service.start()
     yield service
     service.stop()
+
+
+@pytest.fixture
+def stage_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
+    """Launch the stage service on the demo XY stage, and stop it after."""
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
+    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
+    service = Service(
+        "XY",
+        prefix=STAGE_PREFIX,
+        module="redsun_mimir.services.mmcore_stage",
+        args=["--adapter", "DemoCamera", "--device", "DXYStage", "--axes", "x,y"],
+        ready=STAGE_READY,
+        transport=PV_ACCESS,
+        stop_timeout=10,
+    )
+    service.start()
+    yield service
+    service.stop()
+
+
+@pytest.fixture
+async def mm_stage(stage_service: Service) -> AsyncGenerator[MMStage, None]:
+    """Return an ``MMStage`` connected to the stage service."""
+    device = MMStage(stage_service.prefix, name="XY")
+    await device.connect()
+    yield device
 
 
 @pytest.fixture

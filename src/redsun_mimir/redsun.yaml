@@ -5,8 +5,7 @@ devices:
 
   # mmcore devices
   mmcore-camera: redsun_mimir.device.mmcore:MMCamera
-  mmcore-demo-xy-stage: redsun_mimir.device.mmcore:MMDemoXYStage
-  mmcore-demo-z-stage: redsun_mimir.device.mmcore:MMDemoZStage
+  mmcore-stage: redsun_mimir.device.mmcore:MMStage
 
   # mock devices
   mock-light: redsun_mimir.device:MockLightDevice
@@ -15,6 +14,9 @@ services:
   mmcore-camera:
     module: redsun_mimir.services.mmcore_camera
     ready: mmcore camera ready
+  mmcore-stage:
+    module: redsun_mimir.services.mmcore_stage
+    ready: mmcore stage ready
   youseetoo-controller:
     module: redsun_mimir.services.uc2_controller
     ready: uc2 controller ready

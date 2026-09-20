@@ -17,8 +17,10 @@ from ophyd_async.core import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import AsyncStatus, DeviceMap, SignalR, SignalRW
+    from ophyd_async.core import AsyncStatus, SignalR, SignalRW
 
 T = TypeVar("T", int, float)
 
@@ -43,12 +45,19 @@ class LayerSpec(TypedDict):
 class MotorProtocol(AsyncReadable, Protocol):
     """Protocol for individual motor axes."""
 
-    axis: DeviceMap[StandardMovable[float]]
-    """Map of axis names to movable axes.
+    @property
+    def axis(self) -> Mapping[str, StandardMovable[float]]:
+        """Map of axis names to movable axes.
 
-    ``locate`` reports the commanded setpoint and the measured readback
-    separately; a controller that cannot be queried reports them as equal.
-    """
+        Read-only, and a `Mapping` rather than a `DeviceMap`: a protocol's
+        mutable attribute is invariant, so a device holding a map of its own
+        axis class would not match, while a read-only member is covariant in
+        both the mapping and the axis type.
+
+        ``locate`` reports the commanded setpoint and the measured readback
+        separately; a controller that cannot be queried reports them as equal.
+        """
+        ...
 
 
 @runtime_checkable

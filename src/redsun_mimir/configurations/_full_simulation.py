@@ -15,14 +15,14 @@ _CONFIG = Path(__file__).parent / "full_configuration.yaml"
 def build_simulation_container() -> QtAppContainer:
     """Return the simulation container, unbuilt, so it can be inspected."""
     from redsun_mimir.device import MockLightDevice
-    from redsun_mimir.device.mmcore import MMCamera, MMDemoXYStage, MMDemoZStage
+    from redsun_mimir.device.mmcore import MMCamera, MMStage
 
     from ._base import MimirApp
 
     class MimirSimulator(MimirApp, config=_CONFIG):
         mmcamera = declare_device(MMCamera, service="camera1_ioc")
-        XY = declare_device(MMDemoXYStage, from_config="xy-motor")
-        Z = declare_device(MMDemoZStage, from_config="z-motor")
+        XY = declare_device(MMStage, service="xy_stage")
+        Z = declare_device(MMStage, service="z_stage")
         laser = declare_device(MockLightDevice, from_config="laser")
         led = declare_device(MockLightDevice, from_config="led")
 
