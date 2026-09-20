@@ -69,9 +69,10 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         """Apply *value* to the camera, and read back what it took."""
         match attr.io_ref.setting:
             case "exposure":
-                self._core.setExposure(float(value))
+                await asyncio.to_thread(self._core.setExposure, float(value))
             case "roi":
-                self._core.setROI(*(int(item) for item in value))
+                roi = tuple(int(item) for item in value)
+                await asyncio.to_thread(lambda: self._core.setROI(*roi))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
         if isinstance(attr, AttrR):
@@ -83,9 +84,10 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         """Read the camera's own value of the setting into *attr*."""
         match attr.io_ref.setting:
             case "exposure":
-                await attr.update(self._core.getExposure())
+                await attr.update(await asyncio.to_thread(self._core.getExposure))
             case "roi":
-                await attr.update(np.asarray(self._core.getROI(), dtype=np.int32))
+                roi = await asyncio.to_thread(self._core.getROI)
+                await attr.update(np.asarray(roi, dtype=np.int32))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
 
@@ -160,9 +162,12 @@ class MMCameraController(Controller):
         self._core = core
         self._default_data_key = data_key
         self._latest: NDArray[Any] | None = None
+        self._grabbed = 0
         self._published = 0
         self._written = 0
+        self._window_full = False
         self._store: FrameStore | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._grabbing = threading.Event()
         self._grabber: asyncio.Task[None] | None = None
 
@@ -171,8 +176,8 @@ class MMCameraController(Controller):
 
     async def initialise(self) -> None:
         """Declare the frame buffer, whose shape and dtype the camera decides."""
-        frame = await asyncio.to_thread(self._core.snap)
-        self._latest = frame
+        self._loop = asyncio.get_running_loop()
+        frame = await asyncio.to_thread(self.grab_once)
         self.buffer = AttrR(Waveform(frame.dtype, shape=frame.shape))
         await self.pixel_dtype.update(frame.dtype.name)
         await self.data_key.update(self._default_data_key)
@@ -187,19 +192,18 @@ class MMCameraController(Controller):
         """Publish the latest frame and what the capture has written.
 
         A client waits for ``FrameCount`` to advance to know its frame is
-        newer than the move it just made, so the count is of frames
-        published here, not of frames the camera took.
+        newer than the move it just made, so the count is of frames the
+        camera took, and a tick with no new frame publishes nothing.
         """
+        grabbed = self._grabbed
         frame = self._latest
-        if frame is None:
+        if frame is None or grabbed == self._published:
             return
-        self._published += 1
+        self._published = grabbed
         await self.buffer.update(frame)
-        await self.frame_count.update(self._published)
+        await self.frame_count.update(grabbed)
         if self.captured.get() != self._written:
             await self.captured.update(self._written)
-        if self._store is None and self.capture.get():
-            await self.capture.update(False)
 
     async def _on_acquire(self, acquiring: bool) -> None:
         """Start or stop the thread grabbing frames."""
@@ -221,7 +225,14 @@ class MMCameraController(Controller):
         if frame is None:
             raise RuntimeError("the camera has taken no frame to size the store from")
         self._written = 0
+        self._window_full = False
         self._store = FrameStore(self.file_path.get(), self.data_key.get(), frame)
+
+    async def _end_capture(self) -> None:
+        """Finish a window that has written every frame it was asked for."""
+        self._close_store()
+        await self.captured.update(self._written)
+        await self.capture.update(False)
 
     async def _stop_grabbing(self) -> None:
         """Ask the grabbing thread to end, and wait for it."""
@@ -236,23 +247,36 @@ class MMCameraController(Controller):
             self._store.close()
             self._store = None
 
-    def _grab_loop(self) -> None:
-        """Take frames until asked to stop, writing each one a capture wants.
+    def grab_once(self) -> NDArray[Any]:
+        """Take one frame, and write it if a capture window wants it.
+
+        Runs in the grabbing thread. The store is opened and closed on the
+        event loop, so this only ever appends to one: on the last frame of a
+        bounded window it hands the closing back through ``_end_capture``.
 
         ``snap`` rather than Micro-Manager's sequence API, which some adapters
         do not drive correctly alongside other devices.
         """
+        frame = self._core.snap()
+        self._latest = frame
+        self._grabbed += 1
+
+        store = self._store
+        if store is None or self._window_full:
+            return frame
+        store.append(frame)
+        self._written += 1
+        wanted = self.num_capture.get()
+        if wanted and self._written >= wanted:
+            self._window_full = True
+            if self._loop is not None:
+                asyncio.run_coroutine_threadsafe(self._end_capture(), self._loop)
+        return frame
+
+    def _grab_loop(self) -> None:
+        """Take frames until asked to stop."""
         while self._grabbing.is_set():
-            frame = self._core.snap()
-            self._latest = frame
-            store = self._store
-            if store is None:
-                continue
-            store.append(frame)
-            self._written += 1
-            wanted = self.num_capture.get()
-            if wanted and self._written >= wanted:
-                self._close_store()
+            self.grab_once()
 
 
 def build_controller(
