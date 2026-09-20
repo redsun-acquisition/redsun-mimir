@@ -142,7 +142,7 @@ class MMCameraController(Controller):
     acquire = AttrRW(Bool())
     frame_count = AttrR(Int())
     capture = AttrRW(Bool())
-    file_uri = AttrRW(String())
+    file_path = AttrRW(String())
     data_key = AttrRW(String())
     num_capture = AttrRW(Int())
     captured = AttrR(Int())
@@ -213,7 +213,7 @@ class MMCameraController(Controller):
         if frame is None:
             raise RuntimeError("the camera has taken no frame to size the store from")
         self._written = 0
-        self._store = FrameStore(self.file_uri.get(), self.data_key.get(), frame)
+        self._store = FrameStore(self.file_path.get(), self.data_key.get(), frame)
 
     async def _stop_grabbing(self) -> None:
         """Ask the grabbing thread to end, and wait for it."""

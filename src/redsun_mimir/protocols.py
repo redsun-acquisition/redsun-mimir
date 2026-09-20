@@ -22,11 +22,11 @@ if TYPE_CHECKING:
 
 T = TypeVar("T", int, float)
 
-Array2D = np.ndarray[tuple[int, int], Any]
-#: A 2D array type, with shape (height, width).
+#: One frame, of shape (height, width).
+Array2D = np.ndarray
 
-ROIType = np.ndarray[tuple[int, int, int, int], Any]
-#: A region of interest (ROI) type, represented as an array of four integers: (x, y, width, height).
+#: A region of interest, as four integers: (x, y, width, height).
+ROIType = np.ndarray
 
 
 class LayerSpec(TypedDict):
@@ -140,8 +140,8 @@ class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Pr
     roi: SignalRW[ROIType]
     """Signal for setting region of interest (ROI)."""
 
-    pixel_dtype: SignalRW[str]
-    """Signal for setting pixel data type."""
+    pixel_dtype: SignalR[str]
+    """Signal carrying the pixel data type."""
 
 
 @runtime_checkable

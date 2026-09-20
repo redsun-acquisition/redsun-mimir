@@ -6,37 +6,16 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-from redsun.services import Service
-from redsun.services._transports import PV_ACCESS
 
-from redsun_mimir.services.mmcore_camera import READY
-
-from .conftest import needs_mm_adapters
+from .conftest import CAMERA_PREFIX, needs_mm_adapters
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
-PREFIX = "MIMIR-TESTCAM"
+    from redsun.services import Service
+
+PREFIX = CAMERA_PREFIX.rstrip(":")
 CAPTURED_FRAMES = 4
-
-
-@pytest.fixture
-def camera_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
-    """Launch the camera service on the demo adapter, and stop it after."""
-    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
-    service = Service(
-        "camera1",
-        prefix=f"{PREFIX}:",
-        module="redsun_mimir.services.mmcore_camera",
-        args=["--adapter", "DemoCamera", "--device", "DCam"],
-        ready=READY,
-        transport=PV_ACCESS,
-        stop_timeout=10,
-    )
-    service.start()
-    yield service
-    service.stop()
 
 
 @needs_mm_adapters
@@ -56,7 +35,7 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
         client.get(f"{PREFIX}:PVI", timeout=30.0)
         client.put(f"{PREFIX}:Exposure", 25.0, timeout=10.0)
         client.put(f"{PREFIX}:Acquire", True, timeout=10.0)
-        client.put(f"{PREFIX}:FileUri", str(store), timeout=10.0)
+        client.put(f"{PREFIX}:FilePath", str(store), timeout=10.0)
         client.put(f"{PREFIX}:NumCapture", CAPTURED_FRAMES, timeout=10.0)
         client.put(f"{PREFIX}:Capture", True, timeout=10.0)
 

@@ -29,8 +29,9 @@ if TYPE_CHECKING:
 
 #: Configuration properties a view may change, each named after the signal
 #: that carries it on a detector. A whitelist, so a stray port name cannot
-#: reach an arbitrary attribute.
-_CONFIGURABLE = frozenset({"roi", "exposure", "pixel_dtype"})
+#: reach an arbitrary attribute. ``pixel_dtype`` is not among them: the
+#: camera reports it, nobody sets it.
+_CONFIGURABLE = frozenset({"roi", "exposure"})
 
 
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):

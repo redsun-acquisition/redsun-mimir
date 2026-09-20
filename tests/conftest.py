@@ -20,16 +20,24 @@ from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
 from qtpy.QtWidgets import QApplication
 from redsun.aio import get_shared_loop
+from redsun.path_provider import SessionPathProvider
+from redsun.services import Service
+from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
 from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
-from redsun_mimir.device.mmcore import MMDemoCamera
+from redsun_mimir.device.mmcore import MMCamera
+from redsun_mimir.services.mmcore_camera import READY
 
 if TYPE_CHECKING:
     import asyncio
-    from collections.abc import AsyncGenerator, Generator
+    from collections.abc import AsyncGenerator, Generator, Iterator
+    from pathlib import Path
 
     from qtpy.QtCore import QCoreApplication
+
+#: PV prefix the camera service serves under while the tests run.
+CAMERA_PREFIX = "MIMIR-TESTCAM:"
 
 
 #: Micro-Manager device adapters are downloaded, not pip-installed, and their
@@ -150,10 +158,40 @@ async def motor_stage() -> FakeXYStage:
 
 
 @pytest.fixture
-async def mm_camera() -> AsyncGenerator[MMDemoCamera, None]:
-    """Return a connected ``MMDemoCamera`` on the demo adapter."""
-    device = MMDemoCamera("camera1")
-    await device.connect(mock=False)
+def camera_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
+    """Launch the camera service on the demo adapter, and stop it after.
+
+    Each test gets its own transport object: the one a session holds adds the
+    loopback to this process's address list once, and the list is cleared here
+    between tests.
+    """
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
+    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
+    service = Service(
+        "camera1",
+        prefix=CAMERA_PREFIX,
+        module="redsun_mimir.services.mmcore_camera",
+        args=["--adapter", "DemoCamera", "--device", "DCam"],
+        ready=READY,
+        transport=PV_ACCESS,
+        stop_timeout=10,
+    )
+    service.start()
+    yield service
+    service.stop()
+
+
+@pytest.fixture
+async def mm_camera(
+    camera_service: Service, tmp_path: Path
+) -> AsyncGenerator[MMCamera, None]:
+    """Return an ``MMCamera`` connected to the camera service."""
+    device = MMCamera(
+        camera_service.prefix,
+        path_provider=SessionPathProvider(base_dir=tmp_path, session="test"),
+        name="camera1",
+    )
+    await device.connect()
     yield device
 
 

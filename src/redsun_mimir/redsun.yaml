@@ -5,8 +5,7 @@ devices:
   uc2-laser: redsun_mimir.device.youseetoo:UC2LaserDevice
 
   # mmcore devices
-  mmcore-demo-camera: redsun_mimir.device.mmcore:MMDemoCamera
-  mmcore-daheng-camera: redsun_mimir.device.mmcore:MMDahengCamera
+  mmcore-camera: redsun_mimir.device.mmcore:MMCamera
   mmcore-demo-xy-stage: redsun_mimir.device.mmcore:MMDemoXYStage
   mmcore-demo-z-stage: redsun_mimir.device.mmcore:MMDemoZStage
 
