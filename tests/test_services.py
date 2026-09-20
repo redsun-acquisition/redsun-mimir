@@ -12,17 +12,15 @@ import msgspec
 import numpy as np
 import pytest
 from redsun.services import Service
-from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
 
 from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
 from redsun_mimir.services.mmcore_camera import MMCameraController
-from redsun_mimir.services.uc2_controller import READY as UC2_READY
 from redsun_mimir.services.uc2_controller import UC2Controller
 
 from .conftest import CAMERA_PREFIX, needs_mm_adapters
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
+    from collections.abc import AsyncGenerator, Callable, Sequence
     from pathlib import Path
 
     from numpy.typing import NDArray
@@ -33,7 +31,6 @@ TIMEOUT = 30.0
 DATA_KEY = "cam"
 LABEL = "cam"
 FRAME_SHAPE = (4, 4)
-UC2_PREFIX = "MIMIR-TEST-UC2:"
 
 
 class FakeBoard:
@@ -342,25 +339,6 @@ async def board() -> AsyncGenerator[tuple[UC2Controller, FakeBoard], None]:
     await controller.disconnect()
 
 
-@pytest.fixture
-def uc2_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
-    """Launch the UC2 service on a serial port that answers nothing."""
-    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
-    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
-    service = Service(
-        "uc2",
-        prefix=UC2_PREFIX,
-        module="redsun_mimir.services.uc2_controller",
-        args=["--port", "loop://"],
-        ready=UC2_READY,
-        transport=PV_ACCESS,
-        stop_timeout=10,
-    )
-    service.start()
-    yield service
-    service.stop()
-
-
 async def test_an_axis_is_commanded_and_echoes_what_it_took(
     board: tuple[UC2Controller, FakeBoard],
 ) -> None:
@@ -419,3 +397,23 @@ async def test_the_camera_publishes_the_properties_it_lets_one_write(
 
     assert core.properties["Photon Flux"] == "7"
     assert properties.attributes["Photon_Flux"].get() == "7"
+
+
+async def test_a_fault_mid_capture_ends_the_window(
+    controller: tuple[MMCameraController, FakeCore], tmp_path: Path
+) -> None:
+    """A client waits for ``Capture`` to fall, and no frame will end it now."""
+    camera, core = controller
+    await camera.file_path.put(str(tmp_path / "interrupted.zarr"))
+    await camera.num_capture.put(10)
+    await camera.capture.put(True)
+
+    core.fault = RuntimeError("camera unplugged")
+    await camera.acquire.put(True)
+    assert await asyncio.to_thread(camera.wait_until_idle, TIMEOUT)
+    await asyncio.sleep(0.05)
+
+    await camera.publish_frame()
+
+    assert camera.capture.get() is False
+    assert camera.state.get() == "faulted"

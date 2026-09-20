@@ -47,7 +47,11 @@ class MMAxisLogic(MovableLogic[float]):
             self.setpoint,
             new_position,
             self.readback,
-            lambda value: bool(np.isclose(value, new_position, atol=self.tolerance)),
+            # rtol defaults to 1e-5, which would widen the tolerance with the
+            # distance travelled
+            lambda value: bool(
+                np.isclose(value, new_position, atol=self.tolerance, rtol=0)
+            ),
             timeout=timeout(),
         )
 

@@ -75,6 +75,11 @@ async def announce_when_reachable(prefix: str, ready: str) -> None:
                 await asyncio.wait_for(client.get(f"{prefix}:PVI"), timeout=1.0)
             except TimeoutError:
                 continue
+            except Exception as error:  # noqa: BLE001
+                # the session waits for the line this prints, so a failure
+                # here would otherwise show up only as its own timeout
+                logger.warning(f"Readiness check failed, retrying: {error}")
+                continue
             break
     print(ready, flush=True)
 
@@ -85,8 +90,8 @@ async def serve(controller: Controller, prefix: str, ready: str) -> None:
     ``FastCS.run`` installs signal handlers POSIX only and watches no input,
     so the serving task is cancelled here instead.
     """
-    control_system = FastCS(controller, [EpicsPVATransport()])
     controller.set_path([prefix])
+    control_system = FastCS(controller, [EpicsPVATransport()])
     serving = asyncio.ensure_future(control_system.serve(interactive=False))
     announcing = asyncio.ensure_future(announce_when_reachable(prefix, ready))
 

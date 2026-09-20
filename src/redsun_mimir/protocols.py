@@ -80,16 +80,30 @@ class LightProtocol(AsyncConfigurable, Protocol):
         A binary source refuses intensity changes.
     """
 
-    intensity: SignalRW[int | float]
-    """Light source intensity."""
-    wavelength: SignalR[int]
-    """Light source wavelength."""
+    @property
+    def intensity(self) -> SignalRW[Any]:
+        """Light source intensity.
 
-    enabled: SignalRW[bool]
-    """Current on/off state of the light source."""
+        Read-only here, as `MotorProtocol.axis` is: a protocol's mutable
+        attribute is invariant, so a device whose intensity is an ``int``
+        would not match one declared ``int | float``.
+        """
+        ...
 
-    binary: SignalR[bool]
-    """Whether the source is on/off only, ignoring ``intensity``."""
+    @property
+    def wavelength(self) -> SignalR[int]:
+        """Light source wavelength."""
+        ...
+
+    @property
+    def enabled(self) -> SignalRW[bool]:
+        """Current on/off state of the light source."""
+        ...
+
+    @property
+    def binary(self) -> SignalR[bool]:
+        """Whether the source is on/off only, ignoring ``intensity``."""
+        ...
 
     async def read(self) -> dict[str, Reading[Any]]:
         """Read the current state of the light source.

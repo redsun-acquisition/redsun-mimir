@@ -30,6 +30,7 @@ from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCamera, MMStage
 from redsun_mimir.services.mmcore_camera import READY
 from redsun_mimir.services.mmcore_stage import READY as STAGE_READY
+from redsun_mimir.services.uc2_controller import READY as UC2_READY
 
 if TYPE_CHECKING:
     import asyncio
@@ -43,6 +44,9 @@ CAMERA_PREFIX = "MIMIR-TESTCAM:"
 
 #: PV prefix the stage service serves under while the tests run.
 STAGE_PREFIX = "MIMIR-TESTXY:"
+
+#: PV prefix the YouSeeToo service serves under while the tests run.
+UC2_PREFIX = "MIMIR-TEST-UC2:"
 
 #: Seconds a device may take to connect. A service of its own has to start
 #: first, and several of them do while the whole suite runs.
@@ -207,6 +211,25 @@ def stage_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
         module="redsun_mimir.services.mmcore_stage",
         args=["--adapter", "DemoCamera", "--device", "DXYStage", "--axes", "x,y"],
         ready=STAGE_READY,
+        transport=PV_ACCESS,
+        stop_timeout=10,
+    )
+    service.start()
+    yield service
+    service.stop()
+
+
+@pytest.fixture
+def uc2_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
+    """Launch the UC2 service on a serial port that answers nothing."""
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
+    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
+    service = Service(
+        "uc2",
+        prefix=UC2_PREFIX,
+        module="redsun_mimir.services.uc2_controller",
+        args=["--port", "loop://"],
+        ready=UC2_READY,
         transport=PV_ACCESS,
         stop_timeout=10,
     )

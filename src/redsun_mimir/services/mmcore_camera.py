@@ -222,6 +222,7 @@ class MMCameraController(Controller):
         self._written = 0
         self._window_full = False
         self._store: FrameStore | None = None
+        self._writing = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._grabbing = threading.Event()
         self._stopped = threading.Event()
@@ -374,10 +375,16 @@ class MMCameraController(Controller):
             self._grabber = None
 
     def _close_store(self) -> None:
-        """Finish the capture's store, if one is open."""
-        if self._store is not None:
-            self._store.close()
-            self._store = None
+        """Finish the capture's store, if one is open.
+
+        Under the lock the grabbing thread appends beneath: a store closed
+        between its check and its append would be written to after the stream
+        behind it is finished.
+        """
+        with self._writing:
+            if self._store is not None:
+                self._store.close()
+                self._store = None
 
     def take_frame(self) -> NDArray[Any] | None:
         """Return the camera's next frame, or ``None`` while it has none.
@@ -404,17 +411,22 @@ class MMCameraController(Controller):
         self._latest = frame
         self._grabbed += 1
 
-        store = self._store
-        if store is None or self._window_full:
-            return frame
-        store.append(frame)
-        self._written += 1
-        wanted = self.num_capture.get()
-        if wanted and self._written >= wanted:
-            self._window_full = True
-            if self._loop is not None:
-                asyncio.run_coroutine_threadsafe(self._end_capture(), self._loop)
+        with self._writing:
+            store = self._store
+            if store is None or self._window_full:
+                return frame
+            store.append(frame)
+            self._written += 1
+            wanted = self.num_capture.get()
+            if wanted and self._written >= wanted:
+                self._window_full = True
+                self._finish_window()
         return frame
+
+    def _finish_window(self) -> None:
+        """Ask the event loop to close the window this thread has filled."""
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(self._end_capture(), self._loop)
 
     def _grab_loop(self) -> None:
         """Take frames until asked to stop, or until the camera fails."""
@@ -426,6 +438,9 @@ class MMCameraController(Controller):
         except Exception as error:  # noqa: BLE001
             self._error = f"{type(error).__name__}: {error}"
             self._grabbing.clear()
+            # a client waits for Capture to fall to know its window is over,
+            # and no frame will arrive to end it now
+            self._finish_window()
         finally:
             self._stop_sequence()
             self._stopped.set()

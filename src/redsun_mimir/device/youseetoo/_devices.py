@@ -82,6 +82,8 @@ class UC2LaserDevice(StandardReadable, Loggable):
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
             self.enabled = soft_signal_rw(bool, initial_value=False)
+            # the board takes an intensity, so the light presenter may set one
+            self.binary, _ = soft_signal_r_and_setter(bool, initial_value=False)
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:

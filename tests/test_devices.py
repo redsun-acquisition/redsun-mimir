@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import pytest
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMStage
 from redsun_mimir.device.mmcore._stage import POSITION_TOLERANCE
+from redsun_mimir.device.youseetoo import UC2LaserDevice
+from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
-from tests.conftest import needs_mm_adapters
+from tests.conftest import CONNECT_TIMEOUT, needs_mm_adapters
+
+if TYPE_CHECKING:
+    from redsun.services import Service
 
 
 class TestMMStage:
@@ -50,6 +56,26 @@ class TestMMStage:
         assert (await mm_stage.read())["XY-axis-x"]["value"] == pytest.approx(
             10.0, abs=POSITION_TOLERANCE
         )
+
+
+class TestUC2LaserDevice:
+    """The UC2 laser as the light presenter sees it."""
+
+    async def test_the_laser_satisfies_the_light_protocol(
+        self, uc2_service: Service
+    ) -> None:
+        """Without every member, the presenter drops the device in silence."""
+        laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
+        await laser.connect(timeout=CONNECT_TIMEOUT)
+
+        assert isinstance(laser, LightProtocol)
+        assert await laser.binary.get_value() is False
+
+        presenter = LightPresenter("light_ctrl", {laser.name: laser})
+        try:
+            assert f"{laser.name}-intensity" in presenter.device_description()
+        finally:
+            presenter.shutdown()
 
 
 class TestMockLightDevice:
