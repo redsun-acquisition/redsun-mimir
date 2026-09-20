@@ -70,7 +70,7 @@ class UC2Serial(StandardReadable, Loggable):
     _lock: ClassVar[Lock] = Lock()
 
     def __init__(
-        self, name: str, /, port: str, bauderate: int = 115200, timeout: float = 3.0
+        self, name: str, *, port: str, bauderate: int = 115200, timeout: float = 3.0
     ) -> None:
         if bauderate not in BaudeRate.__members__.values():
             self.logger.error(
@@ -147,7 +147,7 @@ class UC2LaserDevice(StandardReadable, Loggable):
     wavelength: SignalR[int]
     enabled: SignalRW[bool]
 
-    def __init__(self, name: str, /, wavelength: int = 0, units: str = "mW") -> None:
+    def __init__(self, name: str, *, wavelength: int = 0, units: str = "mW") -> None:
         def _callback(future: Future[Serial]) -> None:
             self._serial = future.result()
             self.logger.debug("Serial port ready.")

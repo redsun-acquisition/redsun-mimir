@@ -30,7 +30,7 @@ class MockLightDevice(StandardReadable, Loggable):
     def __init__(
         self,
         name: str,
-        /,
+        *,
         wavelength: int = 0,
         binary: bool = False,
         range: tuple[float, float] = (0.0, 200.0),
