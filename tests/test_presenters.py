@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -549,6 +550,38 @@ class TestAcquisitionPresenter:
         ctrl = AcquisitionPresenter("acq_ctrl", devices)
         yield ctrl
         ctrl.shutdown()
+
+    def test_a_directory_request_is_announced_when_no_plan_runs(
+        self, controller: AcquisitionPresenter
+    ) -> None:
+        """The session's path provider learns where a run writes from here."""
+        announced: list[str] = []
+        controller.sig_base_dir_changed.connect(announced.append)
+
+        controller.set_base_dir("D:/mimir-data")
+
+        assert announced == ["D:/mimir-data"]
+
+    def test_a_directory_request_during_a_plan_is_refused(
+        self, controller: AcquisitionPresenter
+    ) -> None:
+        """A run's files belong under one root, so the change waits for it.
+
+        The path provider refuses such a change itself, raising into whatever
+        emitted it; this keeps the request from reaching it at all.
+        """
+        announced: list[str] = []
+        controller.sig_base_dir_changed.connect(announced.append)
+        running: Future[None] = Future()
+        controller.futures.add(running)
+        try:
+            controller.set_base_dir("D:/mimir-data")
+        finally:
+            # the presenter reads this set to know a plan is in flight, and
+            # its own shutdown reads it too
+            controller.futures.discard(running)
+
+        assert announced == []
 
     def test_registered_callbacks_are_subscribed_by_default(
         self,

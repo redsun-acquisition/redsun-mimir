@@ -165,6 +165,9 @@ _ACQUISITION_LINKS = {
     ("acq_ctrl.sig_pre_launch_notify", "median_ctrl.clear_medians"),
     ("acq_ctrl.sig_pre_launch_notify", "path_provider.set_plan"),
     ("acq_ctrl.sig_plan_done", "path_provider.reset_plan"),
+    ("acq_widget.sig_base_dir_request", "acq_ctrl.set_base_dir"),
+    ("acq_ctrl.sig_base_dir_changed", "acq_widget.on_base_dir_changed"),
+    ("acq_ctrl.sig_base_dir_changed", "path_provider.set_base_dir"),
 }
 _FULL_LINKS = (
     _DETECTOR_LINKS

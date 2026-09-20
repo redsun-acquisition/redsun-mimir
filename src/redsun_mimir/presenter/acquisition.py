@@ -133,6 +133,9 @@ class AcquisitionPresenter(Presenter, Loggable):
         carrying the name of the plan to be launched as a `str`.
         Useful to notify other presenters to prepare
         for the upcoming plan launch (e.g., to set up storage paths).
+    sig_base_dir_changed : Signal[str]
+        Emitted when a request to change where a run writes is accepted.
+        Carries the new directory (``str``).
     sig_plan_done : Signal[None]
         Emitted when a non-togglable plan completes.
     sig_action_done : Signal[str]
@@ -142,6 +145,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     sig_pre_launch_notify = Signal(str)
     sig_plan_done = Signal()
+    sig_base_dir_changed = Signal(str)
     sig_action_done = Signal(str)
 
     def __init__(
@@ -519,6 +523,20 @@ class AcquisitionPresenter(Presenter, Loggable):
             fut = self.engine.resume()
             self.futures.add(fut)
             fut.add_done_callback(self._discard_future)
+
+    @slot
+    def set_base_dir(self, base_dir: str) -> None:
+        """Announce *base_dir* as where the devices of a run write.
+
+        Refused while a plan runs: the files of one run belong under one root,
+        which is what the session's path provider refuses to split.
+        """
+        if self.futures:
+            self.logger.warning(
+                f"A plan is running; {base_dir!r} takes effect between runs only"
+            )
+            return
+        self.sig_base_dir_changed.emit(base_dir)
 
     @slot
     def stop_plan(self) -> None:

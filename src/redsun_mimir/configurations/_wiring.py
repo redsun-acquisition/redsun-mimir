@@ -75,7 +75,8 @@ def wire_acquisition(
     """Connect run control, and the plan lifecycle to whoever tracks it.
 
     The session's path provider takes the plan name, so files written during a
-    run are named after it. *median* is optional because not every container
+    run are named after it, and the directory those files go under, which the
+    view lets a user choose between runs. *median* is optional because not every container
     declares it.
     """
     app.connect(view.sig_launch_plan_request, ctrl.launch_plan)
@@ -85,8 +86,12 @@ def wire_acquisition(
     app.connect(ctrl.sig_plan_done, view.on_plan_done)
     app.connect(ctrl.sig_action_done, view.on_action_done)
 
+    app.connect(view.sig_base_dir_request, ctrl.set_base_dir)
+    app.connect(ctrl.sig_base_dir_changed, view.on_base_dir_changed)
+
     app.connect(ctrl.sig_pre_launch_notify, app.path_provider.set_plan)
     app.connect(ctrl.sig_plan_done, app.path_provider.reset_plan)
+    app.connect(ctrl.sig_base_dir_changed, app.path_provider.set_base_dir)
 
     if median is not None:
         app.connect(ctrl.sig_pre_launch_notify, median.clear_medians)

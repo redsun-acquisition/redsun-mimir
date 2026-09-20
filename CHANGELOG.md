@@ -11,6 +11,13 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- A directory control in `AcquisitionView`: a read-only field showing where a
+  run writes and a Browse button. The choice travels as
+  `sig_base_dir_request`, reaches `AcquisitionPresenter.set_base_dir`, and is
+  announced as `sig_base_dir_changed` to the session's path provider and back
+  to the view. A request made while a plan runs is logged and dropped, since
+  one run's files belong under one root.
+
 - `NapariApplication` (`redsun_mimir.hooks`) - a container hook that runs the
   session on napari's application and applies napari's stylesheet to it, so a
   window embedding a napari viewer is styled throughout. It serves

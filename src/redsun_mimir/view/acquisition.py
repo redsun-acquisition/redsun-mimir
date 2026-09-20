@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 from qtpy import QtCore
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
+from redsun.path_provider import PATH_PROVIDER
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
@@ -43,12 +44,16 @@ class AcquisitionView(QtView, Loggable):
     sig_action_request : Signal[str, bool]
         Emitted when the user triggers an action button.
         Carries the action name (``str``) and toggle state (``bool``).
+    sig_base_dir_request : Signal[str]
+        Emitted when the user picks the directory a run writes under.
+        Carries the chosen path (``str``).
     """
 
     sig_launch_plan_request = Signal(str, object)
     sig_stop_plan_request = Signal()
     sig_pause_resume_request = Signal(bool)
     sig_action_request = Signal(str, bool)
+    sig_base_dir_request = Signal(str)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -88,6 +93,19 @@ class AcquisitionView(QtView, Loggable):
         self.top_bar_layout.addWidget(self.info_btn)
         self.root_layout.addLayout(self.top_bar_layout)
 
+        self.base_dir_label = QtW.QLineEdit(self)
+        self.base_dir_label.setReadOnly(True)
+        self.base_dir_label.setToolTip("Where the devices of a run write")
+
+        self.base_dir_btn = QtW.QPushButton("Browse...", self)
+        self.base_dir_btn.setFixedHeight(32)
+        self.base_dir_btn.clicked.connect(self._on_base_dir_clicked)
+
+        self.base_dir_layout = QtW.QHBoxLayout()
+        self.base_dir_layout.addWidget(self.base_dir_label)
+        self.base_dir_layout.addWidget(self.base_dir_btn)
+        self.root_layout.addLayout(self.base_dir_layout)
+
         self.stack_widget = QtW.QStackedWidget(self)
         self.root_layout.addWidget(self.stack_widget)
 
@@ -103,8 +121,22 @@ class AcquisitionView(QtView, Loggable):
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the plan controls from the acquisition presenter's specs."""
+        """Build the plan controls, and show where a run writes."""
+        self.base_dir_label.setText(str(container.require(PATH_PROVIDER).base_dir))
         self.setup_ui(container.require(PLAN_SPECS))
+
+    def _on_base_dir_clicked(self) -> None:
+        """Ask for a directory, and request it as the one a run writes under."""
+        chosen = QtW.QFileDialog.getExistingDirectory(
+            self, "Directory for acquired data", self.base_dir_label.text()
+        )
+        if chosen:
+            self.sig_base_dir_request.emit(chosen)
+
+    @slot
+    def on_base_dir_changed(self, base_dir: str) -> None:
+        """Show the directory a run writes under."""
+        self.base_dir_label.setText(base_dir)
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
         """Build the UI for the acquisition plans.
