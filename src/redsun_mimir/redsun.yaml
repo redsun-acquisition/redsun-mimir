@@ -13,6 +13,11 @@ devices:
   # mock devices
   mock-light: redsun_mimir.device:MockLightDevice
 
+services:
+  mmcore-camera:
+    module: redsun_mimir.services.mmcore_camera
+    ready: mmcore camera ready
+
 presenters:
   acquisition: redsun_mimir.presenter.acquisition:AcquisitionPresenter
   motor: redsun_mimir.presenter.motor:MotorPresenter
