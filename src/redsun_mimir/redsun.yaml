@@ -1,6 +1,5 @@
 devices:
   # youseetoo (UC2) devices
-  uc2-serial: redsun_mimir.device.youseetoo:UC2Serial
   uc2-motor: redsun_mimir.device.youseetoo:UC2MotorDevice
   uc2-laser: redsun_mimir.device.youseetoo:UC2LaserDevice
 
@@ -16,6 +15,9 @@ services:
   mmcore-camera:
     module: redsun_mimir.services.mmcore_camera
     ready: mmcore camera ready
+  youseetoo-controller:
+    module: redsun_mimir.services.uc2_controller
+    ready: uc2 controller ready
 
 presenters:
   acquisition: redsun_mimir.presenter.acquisition:AcquisitionPresenter

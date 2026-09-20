@@ -5,12 +5,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from ophyd_async.core import soft_signal_r_and_setter, soft_signal_rw
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMDemoXYStage, MMDemoZStage
 from redsun_mimir.device.mmcore._backend import POSITION_TOLERANCE
-from redsun_mimir.device.youseetoo._backend import UC2AxisLogic
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
 from tests.conftest import needs_mm_adapters
@@ -223,24 +221,3 @@ class TestMMDemoStageConcurrency:
             )
         finally:
             presenter.shutdown()
-
-
-class TestUC2AxisLogic:
-    """The YouSeeToo controller cannot be queried, so its readback is an echo.
-
-    Exercised through the logic alone: the serial exchange needs hardware, the
-    echo semantics do not.
-    """
-
-    async def test_move_adopts_the_commanded_value_as_readback(self) -> None:
-        """``locate`` reports setpoint and readback equal, and says so."""
-        setpoint = soft_signal_rw(float, 0.0)
-        readback, readback_set = soft_signal_r_and_setter(float, 0.0)
-        logic = UC2AxisLogic(
-            setpoint=setpoint, readback=readback, readback_set=readback_set
-        )
-
-        await logic.move(7.0, lambda: None)
-
-        assert await readback.get_value() == pytest.approx(7.0)
-        assert await setpoint.get_value() == pytest.approx(7.0)

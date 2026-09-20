@@ -1,4 +1,4 @@
-"""The camera service: its controller, and the process a session launches."""
+"""The services: their controllers, and the processes a session launches."""
 
 from __future__ import annotations
 
@@ -8,24 +8,62 @@ import time
 from queue import Queue
 from typing import TYPE_CHECKING, Any
 
+import msgspec
 import numpy as np
 import pytest
+from redsun.services import Service
+from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
 
+from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
 from redsun_mimir.services.mmcore_camera import MMCameraController
+from redsun_mimir.services.uc2_controller import READY as UC2_READY
+from redsun_mimir.services.uc2_controller import UC2Controller
 
 from .conftest import CAMERA_PREFIX, needs_mm_adapters
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Sequence
+    from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
     from pathlib import Path
 
     from numpy.typing import NDArray
-    from redsun.services import Service
 
 PREFIX = CAMERA_PREFIX.rstrip(":")
 CAPTURED_FRAMES = 4
+TIMEOUT = 30.0
 DATA_KEY = "cam"
 FRAME_SHAPE = (4, 4)
+UC2_PREFIX = "MIMIR-TEST-UC2:"
+
+
+class FakeBoard:
+    """A YouSeeToo board that acknowledges whatever it is sent.
+
+    The real one answers a move with an acknowledgement and then a stepper
+    report, and a laser command with an acknowledgement alone.
+    """
+
+    def __init__(self) -> None:
+        self.written: list[bytes] = []
+        self.is_open = True
+        self._answers: list[bytes] = []
+
+    def reset_input_buffer(self) -> None:
+        pass
+
+    def write(self, packet: bytes) -> int:
+        self.written.append(packet)
+        request = msgspec.json.decode(packet)
+        qid = request["qid"]
+        self._answers.append(b'{"success": 1, "qid": %d}--' % qid)
+        if "motor" in request:
+            self._answers.append(b'{"steppers": [], "qid": %d}--' % qid)
+        return len(packet)
+
+    def read_until(self, expected: bytes = b"") -> bytes:
+        return self._answers.pop(0) if self._answers else b""
+
+    def close(self) -> None:
+        self.is_open = False
 
 
 class FakeCore:
@@ -44,6 +82,7 @@ class FakeCore:
         self.sequences = sequences
         self.sequencing = False
         self.fault: Exception | None = None
+        self.popped_a_frame = threading.Event()
         self._buffer: Queue[NDArray[Any]] = Queue()
 
     def produce(self, frames: int = 1) -> None:
@@ -71,6 +110,7 @@ class FakeCore:
     def popNextImage(self) -> NDArray[Any]:
         frame = self._buffer.get_nowait()
         self.popped += 1
+        self.popped_a_frame.set()
         return frame
 
     def getExposure(self) -> float:
@@ -89,7 +129,7 @@ class FakeCore:
 
 
 async def until(
-    predicate: Callable[[], bool], camera: MMCameraController, timeout: float = 5.0
+    predicate: Callable[[], bool], camera: MMCameraController, timeout: float = TIMEOUT
 ) -> None:
     """Publish ticks until *predicate* holds, or fail the test."""
     deadline = time.monotonic() + timeout
@@ -258,14 +298,95 @@ async def test_a_camera_that_fails_says_so_and_can_be_restarted(
     core.fault = RuntimeError("camera unplugged")
 
     await camera.acquire.put(True)
-    await until(lambda: camera.state.get() == "faulted", camera)
+    assert await asyncio.to_thread(camera.wait_until_idle, TIMEOUT)
+    await camera.publish_frame()
 
+    assert camera.state.get() == "faulted"
     assert camera.last_error.get() == "RuntimeError: camera unplugged"
 
     core.fault = None
+    core.popped_a_frame.clear()
     await camera.reconnect()
     core.produce(1)
 
-    await until(lambda: core.popped == 1, camera)
+    assert await asyncio.to_thread(core.popped_a_frame.wait, TIMEOUT)
+    await camera.publish_frame()
+
+    assert core.popped == 1
     assert camera.state.get() == "acquiring"
     assert camera.last_error.get() == "RuntimeError: camera unplugged"
+
+
+@pytest.fixture
+async def board() -> AsyncGenerator[tuple[UC2Controller, FakeBoard], None]:
+    """Return a UC2 controller on a board that answers, brought up as ``FastCS`` does."""
+    serial = FakeBoard()
+    controller = UC2Controller(serial)
+    await controller.initialise()
+    controller.post_initialise()
+    yield controller, serial
+    await controller.disconnect()
+
+
+@pytest.fixture
+def uc2_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[Service]:
+    """Launch the UC2 service on a serial port that answers nothing."""
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
+    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
+    service = Service(
+        "uc2",
+        prefix=UC2_PREFIX,
+        module="redsun_mimir.services.uc2_controller",
+        args=["--port", "loop://"],
+        ready=UC2_READY,
+        transport=PV_ACCESS,
+        stop_timeout=10,
+    )
+    service.start()
+    yield service
+    service.stop()
+
+
+async def test_an_axis_is_commanded_and_echoes_what_it_took(
+    board: tuple[UC2Controller, FakeBoard],
+) -> None:
+    """The board reports nothing, so the readback is the commanded value."""
+    controller, serial = board
+    axis = controller.sub_controllers["stage"].sub_controllers["axis"]
+
+    await axis.sub_controllers["y"].position.put(12.5)
+
+    assert axis.sub_controllers["y"].position.get() == 12.5
+    command = msgspec.json.decode(serial.written[-1])
+    assert command["motor"]["steppers"][0]["stepperid"] == 2
+    assert command["motor"]["steppers"][0]["position"] == int(12.5 * 1000 / 320)
+
+
+async def test_a_laser_is_commanded_in_its_own_counts(
+    board: tuple[UC2Controller, FakeBoard],
+) -> None:
+    """Intensity travels as the board's integer, and is read back."""
+    controller, serial = board
+
+    await controller.sub_controllers["laser1"].intensity.put(500)
+
+    assert controller.sub_controllers["laser1"].intensity.get() == 500
+    command = msgspec.json.decode(serial.written[-1])
+    assert command["LASERval"] == 500
+    assert command["LASERid"] == 1
+
+
+async def test_the_uc2_devices_are_built_from_what_the_service_serves(
+    uc2_service: Service,
+) -> None:
+    """The stage takes its axes from PVI, and the laser its limits."""
+    stage = UC2MotorDevice(uc2_service.prefix, name="stage")
+    laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
+    await stage.connect()
+    await laser.connect()
+
+    assert set(stage.axis) == {"x", "y", "z"}
+    assert set(await stage.read()) == {"stage-axis-x", "stage-axis-y", "stage-axis-z"}
+
+    described = await laser.intensity.describe()
+    assert described["laser-intensity"]["limits"]["display"] == {"low": 0, "high": 1023}

@@ -144,7 +144,9 @@ class LightView(QtView, Loggable):
             low: int | float | None = None
             high: int | float | None = None
             if limits is not None:
-                ctrl = limits.get("control", None)
+                # a soft signal carries control limits, a PV its display
+                # ones, and either sizes the slider
+                ctrl = limits.get("control", None) or limits.get("display", None)
                 if (
                     ctrl is not None
                     and ctrl["low"] is not None

@@ -73,7 +73,7 @@ _CONTAINERS = [
         pytest.param(
             build_uc2_container,
             "uc2_full_configuration.yaml",
-            {"serial", "iscat", "stage", "laser"},
+            {"iscat", "stage", "laser"},
             id="uc2",
         ),
     ],

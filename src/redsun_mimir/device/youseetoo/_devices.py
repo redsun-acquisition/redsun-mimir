@@ -1,232 +1,100 @@
 from __future__ import annotations
 
-import time
-from concurrent.futures import Future
-from enum import IntEnum
-from threading import Lock
-from typing import TYPE_CHECKING
+from functools import cached_property
+from typing import Annotated as A
 
 from ophyd_async.core import (
     AsyncStatus,
-    DeviceMap,
+    MovableLogic,
+    SignalRW,
     StandardMovable,
     StandardReadable,
     StandardReadableFormat,
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
-from redsun.aio import run_coro
+from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
-from serial import Serial
 
-from ._backend import UC2Axis, uc2_laser_signal
+from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
 
-if TYPE_CHECKING:
-    from typing import ClassVar
+#: Where the board's stage sits under the service's prefix.
+#: ``fastcs`` names a PV path after its controller, in title case.
+STAGE_GROUP = "Stage"
 
-    from ophyd_async.core import SignalR, SignalRW
+#: Where a board's laser sits under the service's prefix.
+LASER_GROUP = "Laser1"
 
 
-class BaudeRate(IntEnum):
-    """Baud rates for serial communication.
+class UC2Axis(StandardReadable, StandardMovable[float]):
+    """One axis of a YouSeeToo stage, commanded through its service.
 
-    It is used for validating the input value from
-    the configuration file.
+    The board reports no position of its own, so the readback the service
+    serves is the value it last acknowledged.
     """
 
-    BR4800 = 4800
-    BR9600 = 9600
-    BR19200 = 19200
-    BR38400 = 38400
-    BR57600 = 57600
-    BR115200 = 115200
-    BR230400 = 230400
-    BR460800 = 460800
-    BR921600 = 921600
+    position: A[SignalRW[float], StandardReadableFormat.HINTED_SIGNAL]
+
+    @cached_property
+    def movable_logic(self) -> MovableLogic[float]:
+        """Setpoint and echoed readback of this axis, which are one signal."""
+        return MovableLogic(setpoint=self.position, readback=self.position)
 
 
-class UC2Serial(StandardReadable, Loggable):
-    """Mimir interface for serial communication.
-
-    Opens the serial port and makes it available to other device models via
-    the class-level [`get`][redsun_mimir.device.youseetoo.UC2Serial.get]
-    classmethod.
+class UC2MotorDevice(StandardReadable, Loggable):
+    """A YouSeeToo stage, reached through the service that owns its board.
 
     Parameters
     ----------
-    name :
-        Identity key of the device.
-    port :
-        Serial port to open (e.g. ``"COM3"`` or ``"/dev/ttyUSB0"``).
-    bauderate :
-        Baud rate for serial communication.
-    timeout :
-        Read timeout in seconds. Defaults to ``3.0``.
+    prefix :
+        PV prefix of the service, ending in ``:``. A device declared with
+        ``service=`` receives it from that service.
     """
 
-    # Shared across all instances and device classes that need serial access
-    _serial: ClassVar[Serial | None] = None
-    _futures: ClassVar[set[Future[Serial]]] = set()
-    _lock: ClassVar[Lock] = Lock()
+    axis: A[ReadableDeviceMap[UC2Axis], StandardReadableFormat.CHILD]
 
-    def __init__(
-        self, name: str, *, port: str, bauderate: int = 115200, timeout: float = 3.0
-    ) -> None:
-        if bauderate not in BaudeRate.__members__.values():
-            self.logger.error(
-                f"Invalid baud rate {bauderate}. "
-                f"Valid values are: {list(BaudeRate.__members__.values())}"
-                f"Setting to default value {BaudeRate.BR115200.value}."
-            )
-            bauderate = BaudeRate.BR115200.value
-
-        try:
-            UC2Serial._serial = Serial(
-                port=port,
-                baudrate=bauderate,
-                timeout=timeout,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to open serial port: {e}") from e
-
-        self._instance_serial = UC2Serial._serial
-        if len(UC2Serial._futures) > 0:
-            for future in UC2Serial._futures:
-                future.set_result(self._instance_serial)
-            UC2Serial._futures.clear()
-
-        # Hard reset to ensure the device is ready
-        self._instance_serial.dtr = False
-        self._instance_serial.rts = True
-        time.sleep(0.5)
-        self._instance_serial.dtr = False
-        self._instance_serial.rts = False
-        time.sleep(2.0)
-        reset_bytes = self._instance_serial.read_until(expected=b"{'setup': 'done'}")
-        if reset_bytes is not None:
-            response = reset_bytes.decode(errors="ignore").strip()
-            self.logger.info("Serial reset response")
-            for line in response.splitlines():
-                self.logger.info(line)
-
-        super().__init__(name=name)
-
-    async def shutdown(self) -> None:
-        """Close the serial port."""
-        if self._instance_serial.is_open:
-            self._instance_serial.close()
-
-    @classmethod
-    def get(cls) -> Serial | Future[Serial]:
-        """Return the shared serial object.
-
-        Returns
-        -------
-        Serial | Future[Serial]
-            The open serial port if already initialised, or a
-            [`Future`][concurrent.futures.Future] that resolves once
-            [`UC2Serial`][redsun_mimir.device.youseetoo.UC2Serial]
-            is built.
-        """
-        if cls._serial is None:
-            future: Future[Serial] = Future()
-            cls._futures.add(future)
-            return future
-        return cls._serial
-
-    @classmethod
-    def get_lock(cls) -> Lock:
-        """Return the class-level lock for synchronizing serial access."""
-        return cls._lock
+    def __init__(self, prefix: str, *, name: str = "") -> None:
+        super().__init__(
+            name=name,
+            connector=fastcs_connector(f"{prefix}{STAGE_GROUP}:", self),
+        )
 
 
 class UC2LaserDevice(StandardReadable, Loggable):
-    """Interface for UC2 laser source."""
+    """A YouSeeToo laser, reached through the service that owns its board.
 
-    intensity: SignalRW[int]
-    wavelength: SignalR[int]
-    enabled: SignalRW[bool]
+    Parameters
+    ----------
+    prefix :
+        PV prefix of the service, ending in ``:``.
+    wavelength :
+        Wavelength of the laser, in nm. The board does not report it.
+    """
 
-    def __init__(self, name: str, *, wavelength: int = 0, units: str = "mW") -> None:
-        def _callback(future: Future[Serial]) -> None:
-            self._serial = future.result()
-            self.logger.debug("Serial port ready.")
+    intensity: A[SignalRW[int], StandardReadableFormat.HINTED_SIGNAL]
 
-        serial_or_future: Serial | Future[Serial] = UC2Serial.get()
-        if isinstance(serial_or_future, Future):
-            serial_or_future.add_done_callback(_callback)
-        else:
-            self._serial = serial_or_future
-            self.logger.debug("Serial port ready.")
-
-        lock = UC2Serial.get_lock()
-
-        with self.add_children_as_readables():
-            self.intensity = uc2_laser_signal(
-                self._serial, laser_id=1, units=units, range=(0, 1023), lock=lock
-            )
-
+    def __init__(self, prefix: str, *, wavelength: int = 0, name: str = "") -> None:
+        self._current_intensity = 0
+        super().__init__(
+            name=name,
+            connector=fastcs_connector(f"{prefix}{LASER_GROUP}:", self),
+        )
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
             self.enabled = soft_signal_rw(bool, initial_value=False)
-        self._current_intensity = 0
-        super().__init__(name)
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:
-        """Trigger the laser to apply the current settings."""
+        """Turn the laser off, keeping its intensity, or back on."""
         enabled = await self.enabled.get_value()
         if enabled:
-            # laser currently active; stash the current value
-            # and set to 0
             self._current_intensity = await self.intensity.get_value()
             await self.intensity.set(0)
         else:
-            # laser currently inactive; restore the stashed value
             await self.intensity.set(self._current_intensity)
         await self.enabled.set(not enabled)
 
     async def shutdown(self) -> None:
+        """Leave the laser off."""
         await self.intensity.set(0)
         await self.enabled.set(False)
-
-
-class UC2MotorDevice(StandardReadable, Loggable):
-    """UC2 motor device."""
-
-    axis: DeviceMap[StandardMovable[float]]
-
-    def __init__(self, name: str) -> None:
-        def _callback(future: Future[Serial]) -> None:
-            self._serial = future.result()
-            self.logger.debug("Serial port ready.")
-
-        serial_or_future: Serial | Future[Serial] = UC2Serial.get()
-        if isinstance(serial_or_future, Future):
-            serial_or_future.add_done_callback(_callback)
-        else:
-            self._serial = serial_or_future
-            self.logger.debug("Serial port ready.")
-
-        lock = UC2Serial.get_lock()
-
-        # the signals live *only* in the map: assigning them to the device
-        # first would parent them here, and a Device cannot be re-parented
-        # into the DeviceMap afterwards. Readables come from the map's values
-        # so readings are keyed "<device>-axis-<name>" (parse_map_key).
-        self.axis = DeviceMap(
-            {
-                axis: UC2Axis(self._serial, axis, units="um", lock=lock)
-                for axis in ("x", "y", "z")
-            }
-        )
-        self.add_readables(list(self.axis.values()))
-        super().__init__(name)
-        run_coro(self._set_zero())
-
-    async def shutdown(self) -> None: ...
-
-    async def _set_zero(self) -> None:
-        """Set all axes to zero."""
-        for movable in self.axis.values():
-            await movable.set(0)

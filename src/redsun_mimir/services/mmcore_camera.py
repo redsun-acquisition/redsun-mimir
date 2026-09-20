@@ -16,7 +16,6 @@ from __future__ import annotations
 # mypy: disable-error-code="misc, untyped-decorator"
 import argparse
 import asyncio
-import os
 import sys
 import threading
 import time
@@ -25,13 +24,13 @@ from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
-from fastcs.control_system import FastCS
 from fastcs.controllers import Controller
 from fastcs.datatypes import Bool, Float, Int, String, Waveform
 from fastcs.logging import logger
 from fastcs.methods import scan
-from fastcs.transports.epics.pva.transport import EpicsPVATransport
 from pymmcore_plus import CMMCorePlus
+
+from ._process import controller_id, identity_arguments, plain_logging, serve
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -44,12 +43,6 @@ LIVE_PERIOD: Final = 0.1
 
 #: Milliseconds, the exposure a camera starts on.
 DEFAULT_EXPOSURE: Final = 100.0
-
-#: Where the readiness check looks for the camera it just served.
-LOOPBACK: Final = "127.0.0.1"
-
-#: What a line of this process's own logging looks like.
-LOG_FORMAT: Final = "{level} {message}"
 
 #: Seconds the grabbing thread waits when the camera has no frame ready.
 EMPTY_POLL: Final = 0.001
@@ -184,6 +177,8 @@ class MMCameraController(Controller):
         self._store: FrameStore | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._grabbing = threading.Event()
+        self._stopped = threading.Event()
+        self._stopped.set()
         self._grabber: asyncio.Task[None] | None = None
         self._sequencing = False
         self._error: str | None = None
@@ -253,11 +248,20 @@ class MMCameraController(Controller):
         else:
             await self._stop_grabbing()
 
+    def wait_until_idle(self, timeout: float | None = None) -> bool:
+        """Block until no thread is grabbing, and say whether one still is.
+
+        The thread ends when ``Acquire`` is cleared and when the camera
+        fails, so this is what tells a caller a fault has been recorded.
+        """
+        return self._stopped.wait(timeout)
+
     def _start_grabbing(self) -> None:
         """Put the grabbing thread to work, unless it already is."""
         if self._grabber is not None and not self._grabber.done():
             return
         self._grabbing.set()
+        self._stopped.clear()
         self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
 
     async def _on_capture(self, capturing: bool) -> None:
@@ -342,6 +346,7 @@ class MMCameraController(Controller):
             self._grabbing.clear()
         finally:
             self._stop_sequence()
+            self._stopped.set()
 
     def _start_sequence(self) -> None:
         """Ask the camera for a continuous sequence, and note whether it took.
@@ -378,65 +383,19 @@ def build_controller(
     return MMCameraController(core, data_key)
 
 
-async def announce_when_reachable(prefix: str) -> None:
-    """Print the readiness line once the camera's PVI record answers.
-
-    The session tells its own process where to search, not this one, so the
-    check looks on the interface the camera serves.
-    """
-    from p4p.client.asyncio import Context
-
-    with Context("pva", conf={"EPICS_PVA_ADDR_LIST": LOOPBACK}) as client:
-        while True:
-            try:
-                await asyncio.wait_for(client.get(f"{prefix}:PVI"), timeout=1.0)
-            except TimeoutError:
-                continue
-            break
-    print(READY, flush=True)
-
-
-async def serve(controller: MMCameraController, prefix: str) -> None:
-    """Serve the camera until this process's standard input closes."""
-    control_system = FastCS(controller, [EpicsPVATransport()])
-    controller.set_path([prefix])
-    serving = asyncio.ensure_future(control_system.serve(interactive=False))
-    announcing = asyncio.ensure_future(announce_when_reachable(prefix))
-
-    await asyncio.to_thread(sys.stdin.read)
-
-    announcing.cancel()
-    serving.cancel()
-    await asyncio.gather(serving, announcing, return_exceptions=True)
-
-
 def main(argv: list[str] | None = None) -> int:
     """Run the service, taking its identity from the session that launched it."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adapter", required=True, help="Micro-Manager adapter")
     parser.add_argument("--device", required=True, help="device of that adapter")
-    parser.add_argument(
-        "--prefix",
-        default=os.environ.get("REDSUN_SERVICE_PREFIX", ""),
-        help="PV prefix, REDSUN_SERVICE_PREFIX unless given",
-    )
-    parser.add_argument(
-        "--name",
-        default=os.environ.get("REDSUN_SERVICE_NAME", "camera"),
-        help="name of this service, REDSUN_SERVICE_NAME unless given",
-    )
+    identity_arguments(parser, "camera")
     options = parser.parse_args(argv)
 
-    # the session reads this process's output line by line, and the colours
-    # FastCS writes by default would reach its log file as escape sequences
-    logger.remove()
-    logger.add(sys.stdout, colorize=False, level="INFO", format=LOG_FORMAT)
-
-    prefix = options.prefix.rstrip(":") or options.name
+    plain_logging()
     controller = build_controller(
         options.adapter, options.device, options.name, options.name
     )
-    asyncio.run(serve(controller, prefix))
+    asyncio.run(serve(controller, controller_id(options), READY))
     return 0
 
 
