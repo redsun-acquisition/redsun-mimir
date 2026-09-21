@@ -235,9 +235,14 @@ class ImageView(QtView, Loggable):
         Only the ``<detector>-roi`` setting is this view's to show; any other
         *key* is ignored.
         """
-        if key != f"{detector}-roi" or detector not in self.viewer_model.layers:
+        if key == f"{detector}-roi":
+            self.set_roi_box(detector, Roi.parse(str(value)))
+
+    @slot
+    def set_roi_box(self, detector: str, roi: Roi) -> None:
+        """Put the box on *detector*'s layer over *roi*, without announcing it."""
+        if detector not in self.viewer_model.layers:
             return
-        roi = Roi.parse(str(value))
         box = self.viewer_model.layers[detector]._overlays[ROI_BOX]
         with box.events.bounds.blocked():
             box.bounds = ((roi.y, roi.x), (roi.y + roi.height, roi.x + roi.width))

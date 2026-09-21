@@ -159,49 +159,78 @@ class TestDetectorViewRoi:
         )
         return view
 
-    def test_confirm_sends_the_drawn_region_unchanged(self, view: DetectorView) -> None:
+    def test_ok_sends_the_drawn_region_unchanged(self, view: DetectorView) -> None:
         sent: list[tuple[str, str, Any]] = []
         view.sig_property_changed.connect(lambda *args: sent.append(args))
         panel = view.settings_controls["cam"].roi_panel
         assert panel is not None
-        assert not panel.confirm_button.isEnabled()
+        panel.select_button.click()
+        assert not panel.ok_button.isEnabled()
 
         view.on_roi_drawn("cam", Roi(1, 1, 3, 2))
-        assert panel.confirm_button.isEnabled()
-        panel.confirm_button.click()
+        assert panel.pending == Roi(1, 1, 3, 2)
+        assert panel.ok_button.isEnabled()
+        panel.ok_button.click()
 
         assert sent == [("cam", "roi", "1,1,3,2")]
+        assert not panel.select_button.isChecked()
 
-    def test_select_roi_asks_the_image_for_a_box(self, view: DetectorView) -> None:
+    def test_select_roi_opens_the_editor_and_asks_the_image_for_a_box(
+        self, view: DetectorView
+    ) -> None:
         asked: list[tuple[str, bool]] = []
         view.sig_roi_selection.connect(lambda *args: asked.append(args))
         panel = view.settings_controls["cam"].roi_panel
         assert panel is not None
+        assert panel.editor.isHidden()
 
         panel.select_button.click()
+        assert not panel.editor.isHidden()
         panel.select_button.click()
+        assert panel.editor.isHidden()
 
         assert asked == [("cam", True), ("cam", False)]
 
-    def test_clear_sends_the_whole_sensor(self, view: DetectorView) -> None:
+    def test_an_edit_reaches_the_image_and_stays_inside_the_sensor(
+        self, view: DetectorView
+    ) -> None:
+        """The box follows the spin boxes; a corner moved in shrinks what fits."""
+        edited: list[tuple[str, Roi]] = []
+        view.sig_roi_edited.connect(lambda *args: edited.append(args))
+        panel = view.settings_controls["cam"].roi_panel
+        assert panel is not None
+        panel.select_button.click()
+
+        panel.x_box.setValue(4)
+
+        assert edited == [("cam", Roi(4, 0, 2, 4))]
+        assert panel.width_box.maximum() == 2
+
+    def test_full_then_ok_sends_the_whole_sensor(self, view: DetectorView) -> None:
         sent: list[tuple[str, str, Any]] = []
         view.sig_property_changed.connect(lambda *args: sent.append(args))
+        panel = view.settings_controls["cam"].roi_panel
+        assert panel is not None
+        view.on_new_configuration("cam", "cam-roi", "1,1,3,2")
+        panel.select_button.click()
 
-        view.settings_controls["cam"].roi_panel.clear_button.click()  # type: ignore[union-attr]
+        panel.full_button.click()
+        panel.ok_button.click()
 
         assert sent == [("cam", "roi", "0,0,6,4")]
 
-    def test_an_applied_region_is_shown_and_needs_no_confirming(
+    def test_an_applied_region_is_shown_and_needs_no_ok(
         self, view: DetectorView
     ) -> None:
         panel = view.settings_controls["cam"].roi_panel
         assert panel is not None
+        panel.select_button.click()
         view.on_roi_drawn("cam", Roi(1, 1, 3, 2))
 
         view.on_new_configuration("cam", "cam-roi", "1,1,3,2")
 
         assert panel.applied == Roi(1, 1, 3, 2)
-        assert not panel.confirm_button.isEnabled()
+        assert not panel.ok_button.isEnabled()
         assert panel.label.text() == "1,1,3,2"
 
 
@@ -238,6 +267,18 @@ class TestImageViewRoi:
         assert box.visible
         view.set_roi_selection("cam", False)
         assert not box.visible
+
+    def test_the_box_follows_an_edit_in_the_panel(self, view: ImageView) -> None:
+        drawn: list[tuple[str, Roi]] = []
+        view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
+
+        view.set_roi_box("cam", Roi(2, 1, 3, 2))
+
+        assert view.viewer_model.layers["cam"]._overlays[ROI_BOX].bounds == (
+            (1, 2),
+            (3, 5),
+        )
+        assert drawn == []
 
     def test_the_box_follows_the_roi_the_camera_reads(self, view: ImageView) -> None:
         drawn: list[tuple[str, Roi]] = []

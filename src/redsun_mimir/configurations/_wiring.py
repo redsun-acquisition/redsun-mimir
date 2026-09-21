@@ -45,6 +45,7 @@ def wire_detector(
     app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
     app.connect(image.sig_roi_drawn, view.on_roi_drawn)
     app.connect(view.sig_roi_selection, image.set_roi_selection)
+    app.connect(view.sig_roi_edited, image.set_roi_box)
 
 
 def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> None:

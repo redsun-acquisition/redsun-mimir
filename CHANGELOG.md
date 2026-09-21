@@ -21,13 +21,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   camera; `ImageView.on_new_configuration`, wired to the detector presenter,
   moves the box to the region the camera reads once a ROI is applied.
 - A ROI panel under each detector's settings in `DetectorView`: the region the
-  camera reads, the one drawn on its image, Select ROI, Confirm and Clear.
-  Select ROI shows the box on the image through `DetectorView.sig_roi_selection`,
-  wired to `ImageView.set_roi_selection`; the box is hidden and inert otherwise.
-  Confirm sends the drawn region and Clear the whole sensor, each as a `roi`
-  property change through `sig_property_changed`; nothing reaches the camera
-  while the box is dragged. The drawn region arrives on `on_roi_drawn`, wired
-  from `ImageView.sig_roi_drawn`.
+  camera reads and Select ROI, which opens an editor of four spin boxes, `x`
+  and `y` over `width` and `height`, with Full and OK. Select ROI shows the box
+  on the image through `DetectorView.sig_roi_selection`, wired to
+  `ImageView.set_roi_selection`; the box is hidden and inert otherwise. The
+  box and the spin boxes show one region: a drag arrives on `on_roi_drawn`,
+  wired from `ImageView.sig_roi_drawn`, and an edit leaves on
+  `DetectorView.sig_roi_edited`, wired to `ImageView.set_roi_box`. OK sends the
+  region as a `roi` property change through `sig_property_changed` and closes
+  the editor; nothing reaches the camera before that.
 - A `roi` change asked for while a plan runs is applied between two of its
   messages. `AcquisitionPresenter.register_providers` provides the engine's
   `Deferrals` under `redsun.engine.DEFERRALS` and

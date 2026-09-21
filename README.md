@@ -213,6 +213,8 @@ wiring:
     to: det_widget.on_roi_drawn
   - from: det_widget.sig_roi_selection
     to: img_widget.set_roi_selection
+  - from: det_widget.sig_roi_edited
+    to: img_widget.set_roi_box
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
   - from: light_widget.sig_toggle_light_request
@@ -258,9 +260,9 @@ when a plan is what moved it.
 
 - Live data capture.
 - Region of interest chosen on the image: Select ROI in a detector's settings
-  shows a box over its layer to drag, Confirm applies it, and Clear brings
-  the whole sensor back. A change asked for during a plan lands between
-  two of its messages.
+  opens an editor and shows a box over its layer. Drag the box or type the
+  numbers, each follows the other; Full fills in the whole sensor, OK applies.
+  A change asked for during a plan lands between two of its messages.
 - Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
 - Every capture and every scan is a run of its own, nested in the live plan's run, with the run it serves and the scan it follows named on its start document.
 - The session's log records in a view of their own, from `redsun`.
