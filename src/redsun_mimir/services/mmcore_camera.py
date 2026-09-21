@@ -28,7 +28,7 @@ from fastcs.logging import logger
 from fastcs.methods import scan
 from pymmcore_plus import CMMCorePlus
 
-from redsun_mimir.roi import Roi
+from redsun_mimir.common import Roi
 
 from ._process import controller_id, identity_arguments, serve, session_logging
 

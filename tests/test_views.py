@@ -13,6 +13,7 @@ from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
 from redsun.presenter.plan_spec import create_plan_spec
 from redsun.virtual import ProviderKey, VirtualContainer
 
+from redsun_mimir.common import Roi
 from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
@@ -24,7 +25,6 @@ from redsun_mimir.providers import (
     MOTOR_READINGS,
     PLAN_SPECS,
 )
-from redsun_mimir.roi import Roi
 from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView

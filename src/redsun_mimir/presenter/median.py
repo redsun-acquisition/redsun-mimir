@@ -10,7 +10,7 @@ from redsun.presenter import Presenter
 from redsun.virtual import Signal, slot
 from redsun.writers import Writer, WriterError
 
-from redsun_mimir.streams import MEDIAN_SCAN_STREAM
+from redsun_mimir.common import MEDIAN_SCAN_STREAM
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

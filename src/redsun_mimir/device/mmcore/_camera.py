@@ -22,8 +22,8 @@ from ophyd_async.core import (
 from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
 
+from redsun_mimir.common import Roi
 from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
-from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

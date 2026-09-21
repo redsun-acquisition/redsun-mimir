@@ -16,8 +16,8 @@ from redsun.view import ViewPosition
 from redsun.view.qt import QtView
 from redsun.virtual import Signal, slot
 
+from redsun_mimir.common import Roi
 from redsun_mimir.providers import DETECTOR_LAYER_SPECS
-from redsun_mimir.roi import Roi
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,

@@ -123,7 +123,7 @@ Dates are specified in the format `DD-MM-YYYY`.
   beside `derived_from` and `stream`.
 - A camera's `roi` is text, `"x,y,width,height"`, on the service and on
   `MMCamera`, and `DetectorProtocol.roi` is a `SignalRW[str]`; `Roi` in
-  `redsun_mimir.roi` reads and writes the form. A client can put a string over
+  `redsun_mimir.common` reads and writes the form. A client can put a string over
   PVAccess, where the array the setting was served as was refused, so the
   region was not writable from a session at all.
 

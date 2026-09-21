@@ -20,6 +20,7 @@ from redsun.engine.actions import SRLatch
 from redsun.virtual import VirtualContainer
 from redsun.writers._base import root_attributes
 
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
@@ -34,8 +35,6 @@ from redsun_mimir.providers import (
     MOTOR_READBACKS,
     MOTOR_READINGS,
 )
-from redsun_mimir.roi import Roi
-from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from tests.conftest import FakeDetector, FakeXYStage
 
 if TYPE_CHECKING:

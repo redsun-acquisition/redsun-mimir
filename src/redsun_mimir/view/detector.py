@@ -12,8 +12,8 @@ from redsun.view.qt import QtView
 from redsun.view.qt.treeview import DescriptorTreeView
 from redsun.virtual import Signal, slot
 
+from redsun_mimir.common import Roi
 from redsun_mimir.providers import DETECTOR_DESCRIPTORS, DETECTOR_READINGS
-from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer

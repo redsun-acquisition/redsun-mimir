@@ -23,12 +23,12 @@ from redsun.presenter.plan_spec import (
 )
 from redsun.virtual import Signal, slot
 
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from redsun_mimir.protocols import (  # noqa: TC001
     MotorProtocol,
     ReadableFlyer,
 )
 from redsun_mimir.providers import PLAN_SPECS
-from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
