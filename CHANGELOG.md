@@ -22,6 +22,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   property change through `sig_property_changed`; nothing reaches the camera
   while the box is dragged. The drawn region arrives on `on_roi_drawn`, wired
   from `ImageView.sig_roi_drawn`.
+- `DetectorPresenter.on_plan_started` and `on_plan_done`, wired from the
+  acquisition presenter: a `roi` change asked for while a plan runs is logged
+  and left for after the run, since one applied inside a point would put
+  frames of two shapes in one event stream.
 - `sensor_size` on the camera service (`redsun_mimir.services.mmcore_camera`)
   and on `MMCamera` (`redsun_mimir.device.mmcore`): the whole sensor as
   `(width, height)`, read once while nothing crops the camera. Part of the

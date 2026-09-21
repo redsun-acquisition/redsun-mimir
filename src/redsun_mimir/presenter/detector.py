@@ -111,6 +111,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         #: each detector's ROI as last reported, kept by subscription so a
         #: frame is forwarded with the region it was taken with
         self._rois: dict[str, Roi] = {}
+        self._plan_running = False
         run_coro(self._follow_rois())
 
     async def _follow_rois(self) -> None:
@@ -156,6 +157,16 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         if readings:
             self.sig_new_data.emit(readings)
         return doc
+
+    @slot
+    def on_plan_started(self, plan_name: str) -> None:
+        """Hold ROI changes until the plan announced here ends."""
+        self._plan_running = True
+
+    @slot
+    def on_plan_done(self) -> None:
+        """Let ROI changes through again."""
+        self._plan_running = False
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
@@ -211,6 +222,14 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         obj = self._settables.get(detector, {}).get(property)
         if obj is None:
             self.logger.error(f"Unknown property {property!r} for {detector!r}")
+            return
+        if property == "roi" and self._plan_running:
+            # a ROI applied inside a point would put frames of two shapes in
+            # one event stream; until a change can wait for the next quiet
+            # moment, it waits for the run to end
+            self.logger.warning(
+                f"A plan is running; the ROI of {detector!r} changes between runs only"
+            )
             return
 
         try:

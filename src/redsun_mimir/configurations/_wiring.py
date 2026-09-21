@@ -38,13 +38,21 @@ def wire_detector(
     ctrl: DetectorPresenter,
     view: DetectorView,
     image: ImageView,
+    acquisition: AcquisitionPresenter | None = None,
 ) -> None:
-    """Connect the detector presenter, its settings view, and the viewer."""
+    """Connect the detector presenter, its settings view, and the viewer.
+
+    *acquisition* tells the presenter when a plan runs, during which a ROI
+    change is refused; optional because not every container declares one.
+    """
     app.connect(ctrl.sig_new_data, image.update_layers)
     app.connect(view.sig_property_changed, ctrl.set)
     app.connect(ctrl.sig_new_configuration, view.on_new_configuration)
     app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
     app.connect(image.sig_roi_drawn, view.on_roi_drawn)
+    if acquisition is not None:
+        app.connect(acquisition.sig_pre_launch_notify, ctrl.on_plan_started)
+        app.connect(acquisition.sig_plan_done, ctrl.on_plan_done)
 
 
 def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> None:
