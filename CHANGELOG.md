@@ -151,6 +151,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- A second capture window in one session completes: the camera service starts
+  `Captured` over when it is handed a store, and `MMCamera` waits for that
+  before it describes the window. The count carried over from the last window,
+  so the second was waited on for twice its frames and timed out.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

@@ -116,6 +116,9 @@ class ServiceDataLogic(DetectorDataLogic):
             self.camera.file_path.set(str(store)),
             self.camera.data_key.set(datakey_name),
         )
+        # the service starts its count over when it is handed a store, and
+        # what is counted from here is what this window writes
+        await wait_for_value(self.camera.captured, 0, timeout=DEFAULT_TIMEOUT)
         shape, dtype = await frame_shape_and_dtype(self.camera)
 
         return StreamResourceDataProvider(

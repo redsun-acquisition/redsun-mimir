@@ -248,6 +248,30 @@ async def test_a_bounded_window_closes_where_its_last_frame_is_written(
     assert (store / DATA_KEY / "zarr.json").exists()
 
 
+async def test_a_second_window_counts_from_zero(
+    controller: tuple[MMCameraController, FakeCore], tmp_path: Path
+) -> None:
+    """Naming a store starts ``Captured`` over, so a client can wait on it."""
+    camera, _ = controller
+    await camera.file_path.put(str(tmp_path / "first.zarr"))
+    await camera.num_capture.put(2)
+    await camera.capture.put(True)
+    camera.grab_once()
+    camera.grab_once()
+    await asyncio.sleep(0.05)
+    assert camera.captured.get() == 2
+
+    await camera.file_path.put(str(tmp_path / "second.zarr"))
+
+    assert camera.captured.get() == 0
+    await camera.capture.put(True)
+    camera.grab_once()
+    camera.grab_once()
+    await asyncio.sleep(0.05)
+    assert camera.captured.get() == 2
+    assert (tmp_path / "second.zarr" / DATA_KEY / "zarr.json").exists()
+
+
 async def test_a_setting_is_applied_off_the_event_loop(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:

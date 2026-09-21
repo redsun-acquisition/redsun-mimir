@@ -230,6 +230,7 @@ class MMCameraController(Controller):
 
         self.acquire.add_on_update_callback(self._on_acquire)
         self.capture.add_on_update_callback(self._on_capture)
+        self.file_path.add_on_update_callback(self._on_file_path)
 
     async def initialise(self) -> None:
         """Declare the frame buffer, whose shape and dtype the camera decides."""
@@ -343,6 +344,17 @@ class MMCameraController(Controller):
         self._grabbing.set()
         self._stopped.clear()
         self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
+
+    async def _on_file_path(self, path: str) -> None:
+        """Start the count over: a client names the store before it opens a window.
+
+        A client reads ``Captured`` as it prepares and waits for it to grow
+        past that; left at the last window's total, the next window would be
+        waited on for twice its frames.
+        """
+        with self._writing:
+            self._written = 0
+        await self.captured.update(0)
 
     async def _on_capture(self, capturing: bool) -> None:
         """Open the store frames are written to, or finish the one open."""

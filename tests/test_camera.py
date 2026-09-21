@@ -65,7 +65,8 @@ def test_fly_scan_lifecycle(
     """Stage, prepare, kickoff, collect, unstage, and the store that results.
 
     Each document batch reports frames the service has already written, so the
-    frames the stream datums account for are the frames on disk.
+    frames the stream datums account for are the frames on disk. The plan runs
+    twice: the second window counts its own frames, not the first's as well.
     """
     docs: dict[str, list[Any]] = defaultdict(list)
     bluesky_re.subscribe(lambda name, doc: docs[name].append(doc))
@@ -83,20 +84,21 @@ def test_fly_scan_lifecycle(
         )
 
     bluesky_re(fly_plan())
+    bluesky_re(fly_plan())
 
     assert_emitted(
         docs,
-        start=1,
-        descriptor=1,
-        stream_resource=1,
+        start=2,
+        descriptor=2,
+        stream_resource=2,
         stream_datum=len(docs["stream_datum"]),
-        stop=1,
+        stop=2,
     )
     written = sum(
         datum["indices"]["stop"] - datum["indices"]["start"]
         for datum in docs["stream_datum"]
     )
-    assert written == FRAMES
+    assert written == 2 * FRAMES
 
     store = Path(url2pathname(urlparse(docs["stream_resource"][0]["uri"]).path))
     assert (store / "cam" / "zarr.json").exists()
