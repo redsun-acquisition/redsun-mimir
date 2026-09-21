@@ -110,8 +110,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
         #: latest median per source data key
         self.medians: dict[str, npt.NDArray[Any]] = {}
-        #: the stack each median came from, until a store takes it
-        self._stacks: dict[str, npt.NDArray[Any]] = {}
+        #: the scan run and the stack each median came from, until a store takes it
+        self._stacks: dict[str, tuple[str, npt.NDArray[Any]]] = {}
 
         # descriptor uid -> (run uid, sources) for the accumulating scan stream
         self._scan_streams: dict[str, tuple[str, list[str]]] = {}
@@ -163,9 +163,9 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
         A scan may run before the stream that writes the frames it corrects.
         """
-        for source, stack in self._stacks.items():
+        for source, (scan_run, stack) in self._stacks.items():
             if _base_name(source) == doc["data_key"]:
-                self._write(source, stack)
+                self._write(source, scan_run, stack)
 
     def event(self, doc: Event) -> Event:
         """Cache scan frames; correct live frames against the median."""
@@ -226,7 +226,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             stack = np.stack(frames, axis=0)
             median = np.median(stack, axis=0).astype(stack.dtype)
             self.medians[source] = median
-            self._stacks[source] = stack
+            self._stacks[source] = (run, stack)
             self.logger.debug(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
@@ -240,20 +240,24 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 }
             )
 
-            self._write(source, stack)
+            self._write(source, run, stack)
 
         for uid, (candidate, _) in list(self._scan_streams.items()):
             if candidate == run:
                 del self._scan_streams[uid]
 
-    def _write(self, source: str, stack: npt.NDArray[Any]) -> None:
-        """Write the scan stack into the store its detector's run names, if one has."""
+    def _write(self, source: str, scan_run: str, stack: npt.NDArray[Any]) -> None:
+        """Write the stack of *scan_run* into the store its detector's run names, if one has."""
         detector = _base_name(source)
         try:
             self._writer.write(
                 f"{detector}{_SCAN_SUFFIX}",
                 stack,
-                metadata={"derived_from": detector, "stream": MEDIAN_SCAN_STREAM},
+                metadata={
+                    "derived_from": detector,
+                    "stream": MEDIAN_SCAN_STREAM,
+                    "scan_run": scan_run,
+                },
             )
         except WriterError as error:
             # a run that named no store yet is the usual case, a scan before

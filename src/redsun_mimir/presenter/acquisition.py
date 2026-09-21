@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
-from bluesky.preprocessors import set_run_key_wrapper
+from bluesky.preprocessors import set_run_key_decorator
 from bluesky.utils import MsgGenerator, RequestAbort
 from ophyd_async.core import TriggerInfo
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 #: Run key isolating the background scan from the enclosing live run, so the
 #: median presenter sees a start/descriptor/event/stop cycle of its own.
 _MEDIAN_RUN_KEY = "median_scan"
+_CAPTURE_RUN_KEY = "capture"
 
 
 @dataclass
@@ -243,8 +244,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         end of the run.
 
         If the "stream" action is triggered, the plan will fly the detectors to disk for
-        ``stream_frames`` frames. If a scan was previously performed, the computed median
-        frame will also be written to disk.
+        ``stream_frames`` frames, as a run of its own nested in this one. Its start
+        document names this run as ``parent`` and the last scan's run as
+        ``median_scan``, and the ``MedianPresenter`` writes that scan's stack into
+        the store the capture names.
 
         Parameters
         ----------
@@ -279,10 +282,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         live_stream = "live_stream"
         stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
 
-        live_stream_declared = False
         restage = True
+        scan_run: str | None = None
 
-        yield from bps.open_run()
+        parent = yield from bps.open_run()
 
         # every live frame travels as an Event document so MedianPresenter
         # can divide it by the background median and publish the result
@@ -291,14 +294,12 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             if restage:
+                # preparing starts the live view and hands each detector the
+                # store its next capture writes; the capture declares it
                 yield from bps.stage_all(*detectors)
                 yield from prepare_and_declare(
-                    detectors,
-                    stream_prepare_info,
-                    live_stream,
-                    declare=not live_stream_declared,
+                    detectors, stream_prepare_info, live_stream, declare=False
                 )
-                live_stream_declared = True
                 restage = False
 
             name, event = yield from rps.wait_for_actions(
@@ -306,30 +307,36 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                yield from self.square_scan(detectors, motor, step, scan_frames // 4)
+                scan_run = yield from self.square_scan(
+                    detectors, motor, step, scan_frames // 4, parent=parent
+                )
 
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
-                yield from bps.kickoff_all(*detectors, wait=True)
-                yield from teardown_acquisition(detectors, live_stream)
+                yield from self.capture(
+                    detectors, live_stream, parent=parent, median_scan=scan_run
+                )
                 restage = True
                 self.logger.debug("Writing complete")
 
             self.clear_and_notify(name, event)
 
+    @set_run_key_decorator(_MEDIAN_RUN_KEY)  # type: ignore[untyped-decorator]
     def square_scan(
         self,
         detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
-    ) -> MsgGenerator[None]:
+        *,
+        parent: str | None = None,
+    ) -> MsgGenerator[str]:
         """Collect a background stack by moving the motor in a square.
 
         The stack is emitted as Event documents in a **nested run**, which
         gives [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter] a
-        natural boundary: it accumulates the frames and computes - and
-        writes - the median when that run stops.
+        natural boundary: it accumulates the frames and computes the median
+        when that run stops. Returns the run's uid.
 
         Scan sequence is x -> y -> -x -> -y, with *frames_per_side* frames
         collected along each side.
@@ -344,26 +351,18 @@ class AcquisitionPresenter(Presenter, Loggable):
             The step size for motor movement.
         frames_per_side : int
             The number of frames to collect for each side of the square.
+        parent : str, optional
+            The uid of the run this scan serves, recorded on its start
+            document.
         """
-        yield from set_run_key_wrapper(
-            self._square_scan_run(detectors, motor, step, frames_per_side),
-            _MEDIAN_RUN_KEY,
-        )
-
-    def _square_scan_run(
-        self,
-        detectors: Sequence[ReadableFlyer],
-        motor: MotorProtocol,
-        step: float,
-        frames_per_side: int,
-    ) -> MsgGenerator[None]:
-        """Emit the square-scan stack as its own run."""
         # TODO: handle the case of failure in motor movement or detector gracefully;
         # probably best to wrap any exception in try-except.
         x = motor.axis["x"]
         y = motor.axis["y"]
 
-        yield from bps.open_run(md={"purpose": MEDIAN_SCAN_STREAM})
+        uid: str = yield from bps.open_run(
+            md={"purpose": MEDIAN_SCAN_STREAM, "parent": parent}
+        )
         for axis, direction in ((x, step), (y, step), (x, -step), (y, -step)):
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis.name} by {direction} steps.")
@@ -377,6 +376,32 @@ class AcquisitionPresenter(Presenter, Loggable):
                     yield from bps.read(det.buffer)
                 yield from bps.save()
         yield from bps.close_run()
+        return uid
+
+    @set_run_key_decorator(_CAPTURE_RUN_KEY)  # type: ignore[untyped-decorator]
+    def capture(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        stream_name: str,
+        *,
+        parent: str,
+        median_scan: str | None,
+    ) -> MsgGenerator[str]:
+        """Fly the prepared detectors to disk as a run of their own, and return its uid.
+
+        The run's start document names *parent*, the run it serves, and
+        *median_scan*, the scan whose stack goes into the store this capture
+        names. The detectors are left unstaged: the caller prepares them
+        again for the next capture.
+        """
+        uid: str = yield from bps.open_run(
+            md={"purpose": "capture", "parent": parent, "median_scan": median_scan}
+        )
+        yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+        yield from bps.kickoff_all(*detectors, wait=True)
+        yield from teardown_acquisition(detectors, stream_name)
+        yield from bps.close_run()
+        return uid
 
     @continous(togglable=True)
     def live_stream(
