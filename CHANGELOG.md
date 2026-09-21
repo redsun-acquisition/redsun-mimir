@@ -141,8 +141,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `MedianPresenter` writes the scan's stack of frames with a
   `redsun.writers.Writer` into the store the acquisition's `StreamResource`
-  names, under `<detector>_scan`, with `derived_from`, `stream` and the
-  run's `redsun` provenance on the key. The median is computed from that
+  names, under `<detector>_scan`, with `derived_from`, `stream`, `scan_run`,
+  `positions` and the run's `redsun` provenance on the key. `positions`
+  holds every reading of the scan's events beside the frames, one list per
+  key aligned with the stack: the motor's axes, which `square_scan` reads
+  into each frame's event. The median is computed from that
   stack at the scan's stop, kept in memory for the live correction and
   dropped when the plan ends. The presenter forwards every document to the
   writer, `stop` after its own dispatch, and `shutdown` closes a store a run

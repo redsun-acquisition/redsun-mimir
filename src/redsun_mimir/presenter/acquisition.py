@@ -331,6 +331,9 @@ class AcquisitionPresenter(Presenter, Loggable):
                 yield from bps.create(name=MEDIAN_SCAN_STREAM)
                 for det in detectors:
                     yield from bps.read(det.buffer)
+                # the axes go in the same event, so each frame carries the
+                # position it was taken at
+                yield from bps.read(motor)
                 yield from bps.save()
         yield from bps.close_run()
         return uid

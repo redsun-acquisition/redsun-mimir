@@ -22,9 +22,21 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 _MEDIAN_SUFFIX = "_median"
+
+#: Every reading of a scan's events beside the frames, one list per key.
+Positions = dict[str, list[Any]]
 _SCAN_SUFFIX = "_scan"
 _FILTERED_SUFFIX = "_filtered"
 _BUFFER_SUFFIX = "-buffer"
+
+
+def plain(value: Any) -> Any:
+    """Return *value* as a builtin, so a store's JSON metadata can hold it."""
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
 
 
 def _base_name(source: str) -> str:
@@ -101,8 +113,9 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
         #: latest median per source data key
         self.medians: dict[str, npt.NDArray[Any]] = {}
-        #: the scan run and the stack each median came from, until a store takes it
-        self._stacks: dict[str, tuple[str, npt.NDArray[Any]]] = {}
+        #: the scan run, the stack and the positions each median came from,
+        #: until a store takes them
+        self._stacks: dict[str, tuple[str, npt.NDArray[Any], Positions]] = {}
 
         # descriptor uid -> (run uid, sources) for the accumulating scan stream
         self._scan_streams: dict[str, tuple[str, list[str]]] = {}
@@ -110,6 +123,8 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._live_streams: dict[str, list[str]] = {}
         # (run uid, source) -> accumulated scan frames
         self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
+        # run uid -> every other reading of its scan events, one list per key
+        self._positions: dict[str, Positions] = {}
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register this presenter as a signal owner and document callback."""
@@ -154,19 +169,21 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     def stream_resource(self, doc: StreamResource) -> None:
         """Write any stack scanned before its store was named."""
-        for source, (scan_run, stack) in self._stacks.items():
+        for source, (scan_run, stack, positions) in self._stacks.items():
             if _base_name(source) == doc["data_key"]:
-                self._write(source, scan_run, stack)
+                self._write(source, scan_run, stack, positions)
 
     def event(self, doc: Event) -> Event:
         """Cache scan frames; correct live frames against the median."""
         scan = self._scan_streams.get(doc["descriptor"])
         if scan is not None:
             run, sources = scan
-            for source in sources:
-                if source in doc["data"]:
-                    self._frames.setdefault((run, source), []).append(
-                        np.asarray(doc["data"][source])
+            for key, value in doc["data"].items():
+                if key in sources:
+                    self._frames.setdefault((run, key), []).append(np.asarray(value))
+                elif key not in self._sources:
+                    self._positions.setdefault(run, {}).setdefault(key, []).append(
+                        plain(value)
                     )
             return doc
 
@@ -207,6 +224,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     def stop(self, doc: RunStop) -> None:
         """Publish the median of every source of this run and write its stack."""
         run = doc["run_start"]
+        positions = self._positions.pop(run, {})
         for (candidate, source), frames in list(self._frames.items()):
             if candidate != run:
                 continue
@@ -217,7 +235,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             stack = np.stack(frames, axis=0)
             median = np.median(stack, axis=0).astype(stack.dtype)
             self.medians[source] = median
-            self._stacks[source] = (run, stack)
+            self._stacks[source] = (run, stack, positions)
             self.logger.debug(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
@@ -231,16 +249,24 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 }
             )
 
-            self._write(source, run, stack)
+            self._write(source, run, stack, positions)
 
         for uid, (candidate, _) in list(self._scan_streams.items()):
             if candidate == run:
                 del self._scan_streams[uid]
 
-    def _write(self, source: str, scan_run: str, stack: npt.NDArray[Any]) -> None:
+    def _write(
+        self,
+        source: str,
+        scan_run: str,
+        stack: npt.NDArray[Any],
+        positions: Positions,
+    ) -> None:
         """Write the stack of *scan_run* into the store its detector's run names.
 
-        Logged and skipped while no run has named one.
+        *positions* go with it under ``positions``, one list per reading key,
+        aligned with the stack. Logged and skipped while no run has named a
+        store.
         """
         detector = _base_name(source)
         try:
@@ -251,6 +277,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                     "derived_from": detector,
                     "stream": MEDIAN_SCAN_STREAM,
                     "scan_run": scan_run,
+                    "positions": positions,
                 },
             )
         except WriterError as error:

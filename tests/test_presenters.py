@@ -310,23 +310,35 @@ class TestMedianPresenter:
         return uid
 
     @staticmethod
-    def scan(buf: SignalRW[np.ndarray], frames: list[np.ndarray]) -> MsgGenerator[None]:
-        """Run a square scan: the frames on the median stream, then its stop."""
+    def scan(
+        buf: SignalRW[np.ndarray],
+        frames: list[np.ndarray],
+        motor: FakeXYStage | None = None,
+    ) -> MsgGenerator[None]:
+        """Run a square scan: the frames on the median stream, then its stop.
+
+        With *motor*, its ``x`` axis steps by 5 before each frame and both axes
+        are read into the frame's event.
+        """
+        readables: list[Any] = [buf] if motor is None else [buf, motor]
         yield from bps.open_run()
-        yield from bps.declare_stream(buf, name=MEDIAN_SCAN_STREAM)
+        yield from bps.declare_stream(*readables, name=MEDIAN_SCAN_STREAM)
         for frame in frames:
+            if motor is not None:
+                yield from bps.mvr(motor.axis["x"], 5.0)
             yield from bps.abs_set(buf, frame, wait=True)
-            yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
+            yield from bps.trigger_and_read(readables, name=MEDIAN_SCAN_STREAM)
         yield from bps.close_run()
 
     async def test_document_flow_computes_writes_and_emits_median(
-        self, tmp_path: Path
+        self, tmp_path: Path, motor_stage: FakeXYStage
     ) -> None:
         """descriptor->events->stop produces the median, emits it once, writes it.
 
         The scan and the capture are runs nested in the live plan's; the store
         is the one the capture names, and the scan's stack lands in it as a key
-        of its own once the capture stops, naming the scan it came from.
+        of its own once the capture stops, naming the scan it came from and
+        carrying the axis positions each frame was taken at.
         """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
@@ -339,7 +351,9 @@ class TestMedianPresenter:
         engine.subscribe(presenter)
 
         presenter("start", {"uid": "outer", "time": 0.0})
-        scan_run = self.scan_uid(engine(self.scan(buf, frames)).result(timeout=30))
+        scan_run = self.scan_uid(
+            engine(self.scan(buf, frames, motor_stage)).result(timeout=30)
+        )
         self.capture(presenter, store, scan_run)
 
         expected = np.median(np.stack(frames), axis=0).astype("uint16")
@@ -352,6 +366,10 @@ class TestMedianPresenter:
         assert root_attributes(store / "cam_scan")["derived_from"] == "cam"
         assert root_attributes(store / "cam_scan")["stream"] == MEDIAN_SCAN_STREAM
         assert root_attributes(store / "cam_scan")["scan_run"] == scan_run
+        assert root_attributes(store / "cam_scan")["positions"] == {
+            "xystage-axis-x": [5.0, 10.0, 15.0],
+            "xystage-axis-y": [0.0, 0.0, 0.0],
+        }
         assert root_attributes(store / "cam_scan")["redsun"]["run_start"] == "capture"
 
     async def test_a_capture_before_the_scan_gets_no_stack(
