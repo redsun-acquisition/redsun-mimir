@@ -30,7 +30,7 @@ from pymmcore_plus import CMMCorePlus
 
 from redsun_mimir.roi import Roi
 
-from ._process import controller_id, identity_arguments, plain_logging, serve
+from ._process import controller_id, identity_arguments, serve, session_logging
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -572,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "camera")
     options = parser.parse_args(argv)
 
-    plain_logging()
+    session_logging()
     controller = build_controller(
         options.adapter, options.device, options.name, options.name
     )

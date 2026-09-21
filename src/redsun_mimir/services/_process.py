@@ -23,19 +23,16 @@ if TYPE_CHECKING:
 #: Where the readiness check looks for the controller it just served.
 LOOPBACK: Final = "127.0.0.1"
 
-#: What a line of a service's own logging looks like.
-LOG_FORMAT: Final = "{level} {message}"
 
+def session_logging() -> None:
+    """Log as JSON lines the session rebuilds into records of its own.
 
-def plain_logging() -> None:
-    """Log without colour.
-
-    The session reads a service's output line by line into its own log file,
-    where the escape sequences ``fastcs`` writes by default would land as
-    text.
+    The session reads a service's output line by line. A serialized
+    ``loguru`` record keeps its level, time, logger name and traceback
+    there, where a plain line would be DEBUG text.
     """
     logger.remove()
-    logger.add(sys.stdout, colorize=False, level="INFO", format=LOG_FORMAT)
+    logger.add(sys.stdout, serialize=True, level="INFO")
 
 
 def identity_arguments(parser: argparse.ArgumentParser, default_name: str) -> None:

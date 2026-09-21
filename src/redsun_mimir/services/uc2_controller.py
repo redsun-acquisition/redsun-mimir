@@ -24,7 +24,7 @@ from fastcs.datatypes import Float, Int
 from fastcs.logging import logger
 from serial import Serial, serial_for_url
 
-from ._process import controller_id, identity_arguments, plain_logging, serve
+from ._process import controller_id, identity_arguments, serve, session_logging
 from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, set_laser
 
 if TYPE_CHECKING:
@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "uc2")
     options = parser.parse_args(argv)
 
-    plain_logging()
+    session_logging()
     controller = UC2Controller(
         open_board(options.port, options.baudrate, options.timeout)
     )

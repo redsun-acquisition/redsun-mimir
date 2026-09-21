@@ -11,6 +11,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- The three services log serialized `loguru` records to their standard
+  output (`redsun_mimir.services`), so the session rebuilds each with its
+  level, time and logger name under `redsun.service.<name>.<logger>` rather
+  than reading it as DEBUG text.
+
 - A selection box on each detector layer of `ImageView`, shown on request and
   dragged by its handles to choose a region of the sensor. Dragging announces the box on
   `ImageView.sig_roi_drawn` as a `Roi` and changes nothing on the camera;

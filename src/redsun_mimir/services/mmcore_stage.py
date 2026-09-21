@@ -22,7 +22,7 @@ from fastcs.controllers import Controller
 from fastcs.datatypes import Float
 from pymmcore_plus import CMMCorePlus
 
-from ._process import controller_id, identity_arguments, plain_logging, serve
+from ._process import controller_id, identity_arguments, serve, session_logging
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "stage")
     options = parser.parse_args(argv)
 
-    plain_logging()
+    session_logging()
     axes = [axis.strip() for axis in str(options.axes).split(",") if axis.strip()]
     controller: Any = build_controller(
         options.adapter, options.device, options.name, axes
