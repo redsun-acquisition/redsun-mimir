@@ -230,6 +230,7 @@ class MMCameraController(Controller):
         io_ref=CoreRef(setting="roi", update_period=1.0),
     )
     pixel_dtype = AttrR(String())
+    sensor_size = AttrR(Waveform(np.int32, shape=(2,)))
     acquire = AttrRW(Bool())
     frame_count = AttrR(Int())
     capture = AttrRW(Bool())
@@ -267,13 +268,23 @@ class MMCameraController(Controller):
         self.file_path.add_on_update_callback(self._on_file_path)
 
     async def initialise(self) -> None:
-        """Declare the frame buffer, whose shape and dtype the camera decides."""
+        """Declare the frame buffer, whose shape and dtype the camera decides.
+
+        The sensor size is read here too, while no ROI crops the camera: it
+        is what a ROI is expressed against, and never changes after.
+        """
         self._loop = asyncio.get_running_loop()
         frame = await asyncio.to_thread(self.grab_once)
         if frame is None:
             raise RuntimeError("the camera gave no frame to size the buffer from")
         self.buffer = AttrR(Waveform(frame.dtype, shape=frame.shape))
         await self.pixel_dtype.update(frame.dtype.name)
+        await self.sensor_size.update(
+            np.array(
+                [self._core.getImageWidth(), self._core.getImageHeight()],
+                dtype=np.int32,
+            )
+        )
         await self.data_key.update(self._default_data_key)
         self.add_sub_controller(PROPERTY_GROUP, await self._build_properties())
 

@@ -52,7 +52,12 @@ class ServiceTriggerLogic(DetectorTriggerLogic):
 
     def config_sigs(self) -> set[SignalR[Any]]:
         """Return the settings that describe how the frames were taken."""
-        return {self.camera.exposure, self.camera.roi, self.camera.pixel_dtype}
+        return {
+            self.camera.exposure,
+            self.camera.roi,
+            self.camera.pixel_dtype,
+            self.camera.sensor_size,
+        }
 
     async def prepare_internal(
         self, num: int, livetime: float, deadtime: float
@@ -184,12 +189,13 @@ class MMCamera(StandardDetector, Loggable):
     """
 
     # the filler reads these annotations at runtime to build the signals, so
-    # the types they name are imported at runtime too. The three settings a
-    # reading is described by are registered by the trigger logic, since a
-    # detector is not a StandardReadable and cannot carry the annotation
+    # the types they name are imported at runtime too. The settings a reading
+    # is described by are registered by the trigger logic, since a detector is
+    # not a StandardReadable and cannot carry the annotation
     exposure: SignalRW[float]
     roi: SignalRW[np.ndarray]
     pixel_dtype: SignalR[str]
+    sensor_size: SignalR[np.ndarray]
     buffer: SignalR[np.ndarray]
     acquire: SignalRW[bool]
     frame_count: SignalR[int]

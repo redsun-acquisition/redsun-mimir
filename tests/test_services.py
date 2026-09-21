@@ -30,7 +30,7 @@ CAPTURED_FRAMES = 4
 TIMEOUT = 30.0
 DATA_KEY = "cam"
 LABEL = "cam"
-FRAME_SHAPE = (4, 4)
+FRAME_SHAPE = (4, 6)
 
 
 class FakeBoard:
@@ -75,7 +75,7 @@ class FakeCore:
         self.snapped = 0
         self.popped = 0
         self.exposure = 100.0
-        self.roi: tuple[int, ...] = (0, 0, *FRAME_SHAPE)
+        self.roi: tuple[int, ...] = (0, 0, FRAME_SHAPE[1], FRAME_SHAPE[0])
         self.threads: list[str] = []
         self.properties = {"Gain": "0", "Photon Flux": "1", "CameraName": "fake"}
         self.sequences = sequences
@@ -143,6 +143,12 @@ class FakeCore:
         if self.sequencing:
             raise RuntimeError("Cannot set ROI while a sequence runs")
         self.roi = tuple(roi)
+
+    def getImageWidth(self) -> int:
+        return self.roi[2]
+
+    def getImageHeight(self) -> int:
+        return self.roi[3]
 
 
 async def until(
@@ -345,6 +351,14 @@ async def test_a_setting_is_applied_off_the_event_loop(
     assert camera.exposure.get() == 25.0
     assert core.threads
     assert threading.current_thread().name not in core.threads
+
+
+async def test_the_sensor_size_is_reported_as_width_and_height(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    camera, _ = controller
+
+    assert camera.sensor_size.get().tolist() == [FRAME_SHAPE[1], FRAME_SHAPE[0]]
 
 
 async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(

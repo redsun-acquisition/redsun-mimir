@@ -116,6 +116,7 @@ async def test_the_camera_carries_its_properties_into_its_configuration(
     described = await mm_camera.describe_configuration()
 
     assert f"{mm_camera.name}-exposure" in described
+    assert f"{mm_camera.name}-sensor_size" in described
     assert f"{mm_camera.name}-properties-Binning" in described
 
     await mm_camera.properties["Binning"].set("2")

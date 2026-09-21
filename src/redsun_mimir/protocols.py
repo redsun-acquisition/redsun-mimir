@@ -157,6 +157,12 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     pixel_dtype: SignalR[str]
     """Signal carrying the pixel data type."""
 
+    sensor_size: SignalR[np.ndarray]
+    """The whole sensor, as two integers: (width, height).
+
+    What ``roi`` is expressed against; it does not change with the ROI.
+    """
+
 
 @runtime_checkable
 class ReadableFlyer(

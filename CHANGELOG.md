@@ -11,6 +11,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- `sensor_size` on the camera service (`redsun_mimir.services.mmcore_camera`)
+  and on `MMCamera` (`redsun_mimir.device.mmcore`): the whole sensor as
+  `(width, height)`, read once while nothing crops the camera. Part of the
+  camera's configuration, and a member of `DetectorProtocol`
+  (`redsun_mimir.protocols`).
 - `NapariApplication(font_size=...)` and `stylesheet(font_size=...)`
   (`redsun_mimir.hooks`, `redsun_mimir.utils.napari`) - the point size the
   session's widgets are drawn at. Left out, napari's own setting is used, 12 pt
