@@ -40,6 +40,9 @@ DEFAULT_TIMEOUT: Final = 5.0
 #: Milliseconds per second, the units a camera takes its exposure in.
 MILLISECONDS = 1000.0
 
+#: What the service reports as its state once grabbing stopped on an error.
+FAULTED: Final = "faulted"
+
 
 @dataclass
 class ServiceTriggerLogic(DetectorTriggerLogic):
@@ -90,7 +93,20 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
         makes the count the documents report the count of frames on disk.
         """
         if await self.camera.num_capture.get_value():
-            await wait_for_value(self.camera.capture, False, timeout=None)
+            closed = asyncio.ensure_future(
+                wait_for_value(self.camera.capture, False, timeout=None)
+            )
+            faulted = asyncio.ensure_future(
+                wait_for_value(self.camera.state, FAULTED, timeout=None)
+            )
+            try:
+                await asyncio.wait(
+                    [closed, faulted], return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                closed.cancel()
+                faulted.cancel()
+            await self.camera.faulted()
         else:
             await self.camera.capture.set(False)
 
@@ -182,6 +198,8 @@ class MMCamera(StandardDetector, Loggable):
     data_key: SignalRW[str]
     num_capture: SignalRW[int]
     captured: SignalR[int]
+    state: SignalR[str]
+    last_error: SignalR[str]
     properties: ReadableDeviceMap[SignalRW[str]]
 
     def __init__(
@@ -208,6 +226,17 @@ class MMCamera(StandardDetector, Loggable):
         )
         return {**settings, **properties}
 
+    async def faulted(self) -> None:
+        """Raise with the camera's own words if it has stopped on a fault.
+
+        A fault ends the grabbing thread, so a wait for its next frame or its
+        last one would only time out; this is what names the cause instead.
+        """
+        if await self.state.get_value() == FAULTED:
+            raise RuntimeError(
+                f"{self.name} stopped: {await self.last_error.get_value()}"
+            )
+
     @AsyncStatus.wrap
     async def trigger(self) -> None:  # type: ignore[override]
         """Wait for a frame taken after this call.
@@ -216,6 +245,11 @@ class MMCamera(StandardDetector, Loggable):
         may predate the move a plan just made; this waits for the next.
         """
         seen = await self.frame_count.get_value()
-        await wait_for_value(
-            self.frame_count, lambda count: count > seen, timeout=DEFAULT_TIMEOUT
-        )
+        await self.faulted()
+        try:
+            await wait_for_value(
+                self.frame_count, lambda count: count > seen, timeout=DEFAULT_TIMEOUT
+            )
+        except TimeoutError:
+            await self.faulted()
+            raise

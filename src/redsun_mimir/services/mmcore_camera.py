@@ -375,6 +375,9 @@ class MMCameraController(Controller):
         """Put the grabbing thread to work, unless it already is."""
         if self._grabber is not None and not self._grabber.done():
             return
+        # a fault is what stopped the last thread; starting another is the
+        # request to try again, and its state reads so at once
+        self._error = None
         self._grabbing.set()
         self._stopped.clear()
         self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))

@@ -314,6 +314,26 @@ async def test_a_setting_refused_mid_sequence_pauses_it(
     await camera.acquire.put(False)
 
 
+async def test_a_fault_is_forgotten_once_grabbing_restarts(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """Toggling ``Acquire`` after a fault puts the camera back to work."""
+    camera, core = controller
+    core.fault = RuntimeError("camera unplugged")
+    await camera.acquire.put(True)
+    assert await asyncio.to_thread(camera.wait_until_idle, TIMEOUT)
+    await camera.publish_frame()
+    assert camera.state.get() == "faulted"
+    core.fault = None
+
+    await camera.acquire.put(False)
+    await camera.acquire.put(True)
+    await camera.publish_frame()
+
+    assert camera.state.get() == "acquiring"
+    await camera.acquire.put(False)
+
+
 async def test_a_setting_is_applied_off_the_event_loop(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:

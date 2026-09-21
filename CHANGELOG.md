@@ -183,6 +183,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `UC2LaserDevice.trigger` keeps an intensity set while the laser read off.
   Turning the laser on restored the intensity saved at the last off, so a
   slider moved before the button dimmed the laser to that value.
+- `MMCamera` reads the service's `state` and `last_error`, and a `trigger` or a
+  window's completion on a faulted camera raises with the camera's own error
+  rather than timing out. The service forgets a fault when grabbing restarts,
+  so `Acquire` toggled after one no longer reads `faulted` for good.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.
