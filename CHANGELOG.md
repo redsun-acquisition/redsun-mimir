@@ -142,11 +142,14 @@ Dates are specified in the format `DD-MM-YYYY`.
   `describe_configuration`, keyed as the view names it, rather than `exposure`
   and `roi` alone.
 
-- `MedianPresenter` writes the median with a `redsun.writers.Writer` into the
-  store the acquisition's `StreamResource` names, under `<detector>_median`,
-  with `derived_from` and the run's `redsun` provenance on the key. The
-  presenter forwards every document to the writer, `stop` after its own
-  dispatch, and `shutdown` closes a store a run left open.
+- `MedianPresenter` writes the scan's stack of frames with a
+  `redsun.writers.Writer` into the store the acquisition's `StreamResource`
+  names, under `<detector>_scan`, with `derived_from`, `stream` and the
+  run's `redsun` provenance on the key. The median is computed from that
+  stack at the scan's stop, kept in memory for the live correction and
+  dropped when the plan ends. The presenter forwards every document to the
+  writer, `stop` after its own dispatch, and `shutdown` closes a store a run
+  left open.
 
 - The detector view sizes an intensity slider from a signal's display limits
   when it carries no control ones.
@@ -220,10 +223,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   the grabbing thread, which exposes only while no sequence runs.
 - `DetectorPresenter.set` logs a write the device refuses, rather than raising
   out of the slot and leaving the view's pending edit unanswered.
-- `MedianPresenter` writes a median into the store the run around the scan
-  names, whether that store is named before the scan or after it. A scan
-  before the stream, the order the plan documents, wrote no median, and a
-  later plan wrote its median into the previous plan's store.
+- `MedianPresenter` writes the scan's stack into the store the run around
+  the scan names, whether that store is named before the scan or after it. A
+  scan before the stream, the order the plan documents, wrote nothing, and a
+  later plan wrote into the previous plan's store.
 - `UC2LaserDevice.trigger` keeps an intensity set while the laser read off.
   Turning the laser on restored the intensity saved at the last off, so a
   slider moved before the button dimmed the laser to that value.

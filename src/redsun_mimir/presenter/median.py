@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
 _MEDIAN_SUFFIX = "_median"
+_SCAN_SUFFIX = "_scan"
 _FILTERED_SUFFIX = "_filtered"
 _BUFFER_SUFFIX = "-buffer"
 
@@ -54,9 +55,9 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     [`DocumentRouter`][event_model.DocumentRouter]:
 
     - frames on the `MEDIAN_SCAN_STREAM` are **cached**; when that run stops
-      the median is computed, published on ``frames.median`` and written by a
-      `Writer` into the store the acquisition names, under
-      ``<detector>_median``, as soon as a run has named one;
+      the median is computed and published on ``frames.median``, and the
+      stack itself is written by a `Writer` into the store the acquisition
+      names, under ``<detector>_scan``, as soon as a run has named one;
     - frames on any other stream - in practice `LIVE_VIEW_STREAM`, produced
       by ``bps.monitor`` on the detector's buffer signal - are **divided** by
       the cached median and published on ``frames.filtered`` as their
@@ -64,7 +65,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     All state is keyed by run, so concurrent or nested runs never mix. Every
     document reaches the writer before this presenter acts on it, except
-    ``stop``, which reaches it after, so the median written there still
+    ``stop``, which reaches it after, so the stack written there still
     finds its run open.
 
     Parameters
@@ -101,14 +102,16 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             if hasattr(device, "buffer")
         }
 
-        #: writes each detector's median into the store its run names
+        #: writes each detector's scan stack into the store its run names
         self._writer = Writer()
         for source in self._sources:
             detector = _base_name(source)
-            self._writer.derive(f"{detector}{_MEDIAN_SUFFIX}", source=detector)
+            self._writer.derive(f"{detector}{_SCAN_SUFFIX}", source=detector)
 
         #: latest median per source data key
         self.medians: dict[str, npt.NDArray[Any]] = {}
+        #: the stack each median came from, until a store takes it
+        self._stacks: dict[str, npt.NDArray[Any]] = {}
 
         # descriptor uid -> (run uid, sources) for the accumulating scan stream
         self._scan_streams: dict[str, tuple[str, list[str]]] = {}
@@ -133,10 +136,11 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     @slot
     def clear_medians(self, plan_name: str) -> None:
-        """Forget every cached median: a new plan means a new background."""
+        """Forget every cached median and stack: a new plan means a new background."""
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
         self.medians.clear()
+        self._stacks.clear()
 
     def shutdown(self) -> None:
         """Close what the writer left open, so every store stays readable."""
@@ -155,13 +159,13 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._scan_streams[doc["uid"]] = (doc["run_start"], sources)
 
     def stream_resource(self, doc: StreamResource) -> None:
-        """Write a median computed before its store was named.
+        """Write a stack scanned before its store was named.
 
         A scan may run before the stream that writes the frames it corrects.
         """
-        for source, median in self.medians.items():
+        for source, stack in self._stacks.items():
             if _base_name(source) == doc["data_key"]:
-                self._write(source, median)
+                self._write(source, stack)
 
     def event(self, doc: Event) -> Event:
         """Cache scan frames; correct live frames against the median."""
@@ -210,7 +214,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             self.frames.filtered.emit(filtered)
 
     def stop(self, doc: RunStop) -> None:
-        """Compute, publish and write the median for every source of this run."""
+        """Compute and publish the median of every source of this run, and write its stack."""
         run = doc["run_start"]
         for (candidate, source), frames in list(self._frames.items()):
             if candidate != run:
@@ -222,6 +226,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             stack = np.stack(frames, axis=0)
             median = np.median(stack, axis=0).astype(stack.dtype)
             self.medians[source] = median
+            self._stacks[source] = stack
             self.logger.debug(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
@@ -235,22 +240,22 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 }
             )
 
-            self._write(source, median)
+            self._write(source, stack)
 
         for uid, (candidate, _) in list(self._scan_streams.items()):
             if candidate == run:
                 del self._scan_streams[uid]
 
-    def _write(self, source: str, median: npt.NDArray[Any]) -> None:
-        """Write the median into the store its detector's run names, if one has."""
+    def _write(self, source: str, stack: npt.NDArray[Any]) -> None:
+        """Write the scan stack into the store its detector's run names, if one has."""
         detector = _base_name(source)
         try:
             self._writer.write(
-                f"{detector}{_MEDIAN_SUFFIX}",
-                median,
-                metadata={"derived_from": detector},
+                f"{detector}{_SCAN_SUFFIX}",
+                stack,
+                metadata={"derived_from": detector, "stream": MEDIAN_SCAN_STREAM},
             )
         except WriterError as error:
             # a run that named no store yet is the usual case, a scan before
-            # the stream; the median is kept and written once one is named
-            self.logger.debug(f"Median for {detector!r} not written: {error}")
+            # the stream; the stack is kept and written once one is named
+            self.logger.debug(f"Scan stack for {detector!r} not written: {error}")

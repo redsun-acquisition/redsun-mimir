@@ -299,8 +299,8 @@ class TestMedianPresenter:
         """descriptor->events->stop produces the median, emits it once, writes it.
 
         The scan is a run nested in the live plan's; the store is the one that
-        outer run's ``StreamResource`` names, and the median lands in it as a
-        key of its own once the outer run stops.
+        outer run's ``StreamResource`` names, and the scan's stack lands in it
+        as a key of its own once the outer run stops.
         """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
@@ -330,12 +330,13 @@ class TestMedianPresenter:
         assert len(received) == 1
         emitted_reading = next(iter(received[0].values()))
         np.testing.assert_array_equal(emitted_reading["value"], expected)
-        written = json.loads((store / "cam_median" / "zarr.json").read_text())
-        assert written["shape"] == [1, 4, 4]
-        assert root_attributes(store / "cam_median")["derived_from"] == "cam"
-        assert root_attributes(store / "cam_median")["redsun"]["run_start"] == "outer"
+        written = json.loads((store / "cam_scan" / "zarr.json").read_text())
+        assert written["shape"] == [3, 4, 4]
+        assert root_attributes(store / "cam_scan")["derived_from"] == "cam"
+        assert root_attributes(store / "cam_scan")["stream"] == MEDIAN_SCAN_STREAM
+        assert root_attributes(store / "cam_scan")["redsun"]["run_start"] == "outer"
 
-    async def test_a_store_named_after_the_scan_receives_the_median(
+    async def test_a_store_named_after_the_scan_receives_its_stack(
         self, tmp_path: Path
     ) -> None:
         """A scan before the stream is the documented order of the plan."""
@@ -361,8 +362,8 @@ class TestMedianPresenter:
             },
         )
 
-        written = json.loads((store / "cam_median" / "zarr.json").read_text())
-        assert written["shape"] == [1, 4, 4]
+        written = json.loads((store / "cam_scan" / "zarr.json").read_text())
+        assert written["shape"] == [3, 4, 4]
 
     async def test_shutdown_closes_a_store_the_run_left_open(
         self, tmp_path: Path
@@ -380,9 +381,11 @@ class TestMedianPresenter:
 
         presenter.shutdown()
 
-        assert json.loads((store / "cam_median" / "zarr.json").read_text())[
-            "shape"
-        ] == [1, 4, 4]
+        assert json.loads((store / "cam_scan" / "zarr.json").read_text())["shape"] == [
+            3,
+            4,
+            4,
+        ]
 
     async def test_live_frames_are_divided_by_the_cached_median(
         self, tmp_path: Path
