@@ -24,15 +24,17 @@ from redsun_mimir.providers import (
     MOTOR_READINGS,
     PLAN_SPECS,
 )
+from redsun_mimir.roi import Roi
 from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
-from redsun_mimir.view.image import ImageView, place
+from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
 
 from .conftest import needs_opengl
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from bluesky.protocols import Reading
@@ -121,6 +123,60 @@ def test_a_frame_lands_in_its_rectangle(
         assert canvas[y : y + height, x : x + width].all()
     else:
         assert not canvas.any()
+
+
+@pytest.mark.parametrize(
+    ("bounds", "expected"),
+    [
+        (((0, 0), (4, 6)), Roi(0, 0, 6, 4)),
+        (((1.2, 1.6), (3.4, 4.5)), Roi(2, 1, 2, 2)),
+        (((3.4, 4.5), (1.2, 1.6)), Roi(2, 1, 2, 2)),
+        (((-2, -3), (9, 9)), Roi(0, 0, 6, 4)),
+        (((2, 2), (2, 2)), Roi(2, 2, 1, 1)),
+        (((5, 7), (5, 7)), Roi(5, 3, 1, 1)),
+    ],
+    ids=["whole", "rounded", "reversed", "clamped", "collapsed", "outside"],
+)
+def test_a_box_becomes_a_roi_on_the_sensor(
+    bounds: tuple[tuple[float, float], tuple[float, float]], expected: Roi
+) -> None:
+    """Corners are (y, x); the ROI is whole pixels inside a 6 by 4 sensor."""
+    assert roi_from_bounds(bounds, (4, 6)) == expected
+
+
+@needs_opengl
+class TestImageViewRoi:
+    """Tests for the selection box on a detector's layer."""
+
+    @pytest.fixture
+    def view(self, qapp: QCoreApplication) -> Iterator[ImageView]:
+        view = ImageView("image_view")
+        view.setup_layers({"cam": {"shape": (4, 6), "dtype": "uint8"}})
+        try:
+            yield view
+        finally:
+            view.close()
+
+    def test_dragging_the_box_announces_a_roi_and_changes_nothing_else(
+        self, view: ImageView
+    ) -> None:
+        drawn: list[tuple[str, Roi]] = []
+        view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
+
+        view.viewer_model.layers["cam"]._overlays[ROI_BOX].bounds = ((1, 1), (3, 4))
+
+        assert drawn == [("cam", Roi(1, 1, 3, 2))]
+
+    def test_the_box_follows_the_roi_the_camera_reads(self, view: ImageView) -> None:
+        drawn: list[tuple[str, Roi]] = []
+        view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
+
+        view.on_new_configuration("cam", "exposure", 5.0)
+        view.on_new_configuration("cam", "roi", "2,1,3,2")
+
+        box = view.viewer_model.layers["cam"]._overlays[ROI_BOX]
+        assert box.bounds == ((1, 2), (3, 5))
+        assert drawn == []
 
 
 class TestAcquisitionView:

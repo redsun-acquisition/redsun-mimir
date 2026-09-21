@@ -43,6 +43,7 @@ def wire_detector(
     app.connect(ctrl.sig_new_data, image.update_layers)
     app.connect(view.sig_property_changed, ctrl.set)
     app.connect(ctrl.sig_new_configuration, view.on_new_configuration)
+    app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
 
 
 def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> None:

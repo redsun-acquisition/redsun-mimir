@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,9 +14,15 @@ from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
-from redsun.virtual import slot
+from redsun.virtual import Signal, slot
 
 from redsun_mimir.providers import DETECTOR_LAYER_SPECS
+from redsun_mimir.roi import Roi
+from redsun_mimir.utils.napari import (
+    ROIInteractionBoxOverlay,
+    highlight_roi_box_handles,
+    resize_selection_box,
+)
 
 if TYPE_CHECKING:
     from typing import Any
@@ -25,7 +32,28 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
     from redsun_mimir.protocols import LayerSpec
-    from redsun_mimir.roi import Roi
+
+#: The key a detector layer's selection box is kept under, which the mouse
+#: callbacks in ``utils.napari`` look it up by.
+ROI_BOX = "roi_box"
+
+
+def roi_from_bounds(
+    bounds: tuple[tuple[float, float], tuple[float, float]], sensor: tuple[int, int]
+) -> Roi:
+    """Turn a selection box, two corners in layer pixels, into a ROI on the sensor.
+
+    Corners are ``(y, x)``, as napari keeps them; *sensor* is ``(height,
+    width)``. The rectangle is rounded to whole pixels, clamped to the sensor
+    and at least one pixel wide and high.
+    """
+    height, width = sensor
+    (y0, x0), (y1, x1) = bounds
+    left = min(max(round(min(x0, x1)), 0), width - 1)
+    top = min(max(round(min(y0, y1)), 0), height - 1)
+    right = min(max(round(max(x0, x1)), left + 1), width)
+    bottom = min(max(round(max(y0, y1)), top + 1), height)
+    return Roi(left, top, right - left, bottom - top)
 
 
 def place(canvas: NDArray[Any], frame: NDArray[Any], origin: tuple[int, int]) -> bool:
@@ -63,11 +91,24 @@ class ImageView(QtView, Loggable):
     it is built under, so a session that wants napari's theme puts napari's QSS
     on the application.
 
+    Each detector layer carries a selection box the user drags by its handles
+    to choose a region of the sensor. Dragging changes nothing on the camera:
+    the box is announced on ``sig_roi_drawn`` and applied by whoever confirms
+    it; once applied, the box follows the region the camera reads.
+
     Parameters
     ----------
     name :
         Identity key of the view.
+
+    Attributes
+    ----------
+    sig_roi_drawn : Signal[str, Roi]
+        Emitted as the selection box on a detector's layer is dragged, with
+        the detector's name and the box as a `Roi` in sensor pixels.
     """
+
+    sig_roi_drawn = Signal(str, object)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -93,6 +134,8 @@ class ImageView(QtView, Loggable):
         self.viewer_model.grid.enabled = True
         #: where a detector's frame lands on its layer, from its ROI
         self._origins: dict[str, tuple[int, int]] = {}
+        #: each detector layer's size, (height, width), which a box is clamped to
+        self._sensors: dict[str, tuple[int, int]] = {}
 
         register_qt_types()
 
@@ -159,12 +202,44 @@ class ImageView(QtView, Loggable):
         self.setup_layers(container.require(DETECTOR_LAYER_SPECS))
 
     def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
-        """Create an empty, sensor-sized image layer for each detector."""
+        """Create an empty, sensor-sized image layer for each detector, with its box.
+
+        The box starts over the whole sensor, which is what an uncropped
+        camera reads out.
+        """
         for name, spec in specs.items():
             self.logger.debug(f"Creating layer for {name} with spec {spec}")
             buffer = np.zeros(spec["shape"], dtype=np.dtype(spec["dtype"]))
-            self.viewer_model.add_image(buffer, name=name)
+            layer = self.viewer_model.add_image(buffer, name=name)
             self._origins[name] = (0, 0)
+            self._sensors[name] = spec["shape"]
+            box = ROIInteractionBoxOverlay(
+                bounds=((0, 0), spec["shape"]), handles=True, visible=True
+            )
+            layer._overlays[ROI_BOX] = box
+            layer.mouse_drag_callbacks.append(resize_selection_box)
+            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
+            box.events.bounds.connect(partial(self._on_box_drawn, name))
+
+    def _on_box_drawn(self, detector: str, event: object = None) -> None:
+        """Announce where the box on *detector*'s layer now stands."""
+        box = self.viewer_model.layers[detector]._overlays[ROI_BOX]
+        self.sig_roi_drawn.emit(
+            detector, roi_from_bounds(box.bounds, self._sensors[detector])
+        )
+
+    @slot
+    def on_new_configuration(self, detector: str, property: str, value: object) -> None:
+        """Put the box over the region the camera reads, once a ROI is applied.
+
+        Any other setting is not this view's to show.
+        """
+        if property != "roi" or detector not in self.viewer_model.layers:
+            return
+        roi = Roi.parse(str(value))
+        box = self.viewer_model.layers[detector]._overlays[ROI_BOX]
+        with box.events.bounds.blocked():
+            box.bounds = ((roi.y, roi.x), (roi.y + roi.height, roi.x + roi.width))
 
     @slot
     def update_layers(self, data: dict[str, Reading[Any]]) -> None:

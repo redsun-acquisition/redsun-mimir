@@ -11,6 +11,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- A selection box on each detector layer of `ImageView`, dragged by its
+  handles to choose a region of the sensor. Dragging announces the box on
+  `ImageView.sig_roi_drawn` as a `Roi` and changes nothing on the camera;
+  `ImageView.on_new_configuration`, wired to the detector presenter, puts the
+  box over the region the camera reads once a ROI is applied.
 - `sensor_size` on the camera service (`redsun_mimir.services.mmcore_camera`)
   and on `MMCamera` (`redsun_mimir.device.mmcore`): the whole sensor as
   `(width, height)`, read once while nothing crops the camera. Part of the
