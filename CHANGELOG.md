@@ -11,6 +11,13 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
+- `pixel_dtype` is writable, on the service and as `SignalRW[str]` on
+  `MMCamera` and `DetectorProtocol`: a numpy dtype name the camera reads out
+  in, `uint8`, `uint16` or `uint32`, mapped to Micro-Manager's `PixelType`
+  by `PIXEL_TYPES` in `redsun_mimir.services.mmcore_camera` and limited to
+  the values the camera allows. A name it cannot take is refused. `PixelType`
+  is never published as a property.
+
 - The three services (`redsun_mimir.services`) log serialized `loguru`
   records to their standard output; the session rebuilds each under
   `redsun.service.<name>.<logger>` with its level, time and logger name.
@@ -202,9 +209,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 ### Fixed
 
 - The camera service publishes a frame with the dtype the camera now gives,
-  retyping `buffer` and updating `pixel_dtype` when a property such as
-  `PixelType` changed it; a frame of a new dtype was cast to the first
-  frame's. `ImageView` retypes a layer to the frame it receives.
+  retyping `buffer` when `pixel_dtype` changed it; a frame of a new dtype
+  was cast to the first frame's. `ImageView` retypes a layer to the frame it
+  receives.
 
 - `DetectorPresenter` knows its writable settings from construction. They
   were collected on the first ROI update, so a `set` or a settings tree built

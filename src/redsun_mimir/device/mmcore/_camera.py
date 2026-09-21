@@ -196,7 +196,7 @@ class MMCamera(StandardDetector, Loggable):
     # not a StandardReadable and cannot carry the annotation
     exposure: SignalRW[float]
     roi: SignalRW[str]
-    pixel_dtype: SignalR[str]
+    pixel_dtype: SignalRW[str]
     sensor_size: SignalR[np.ndarray]
     buffer: SignalR[np.ndarray]
     acquire: SignalRW[bool]

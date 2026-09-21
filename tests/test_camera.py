@@ -8,7 +8,6 @@ document stream and the store that comes out of it.
 from __future__ import annotations
 
 import asyncio
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -143,17 +142,14 @@ async def test_the_camera_carries_its_properties_into_its_configuration(
 
 
 @needs_mm_adapters
-async def test_a_pixel_type_change_reaches_the_frames_and_the_dtype(
-    mm_camera: MMCamera,
-) -> None:
-    """The buffer carries the new dtype and ``pixel_dtype`` says which."""
+async def test_a_pixel_dtype_change_reaches_the_frames(mm_camera: MMCamera) -> None:
+    """The buffer carries the new dtype, and a dtype the camera lacks is refused."""
     assert (await mm_camera.buffer.get_value()).dtype == np.uint8
 
-    await mm_camera.properties["PixelType"].set("16bit")
+    await mm_camera.pixel_dtype.set("uint16")
 
-    deadline = time.monotonic() + 10.0
-    while (await mm_camera.buffer.get_value()).dtype != np.uint16:
-        assert time.monotonic() < deadline, "no 16-bit frame arrived"
-        await asyncio.sleep(0.05)
     assert await mm_camera.pixel_dtype.get_value() == "uint16"
+    assert (await mm_camera.buffer.get_value()).dtype == np.uint16
     assert (await frame_shape_and_dtype(mm_camera))[1] == "uint16"
+    with pytest.raises(Exception, match="float16"):
+        await mm_camera.pixel_dtype.set("float16")

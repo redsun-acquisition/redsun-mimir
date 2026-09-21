@@ -674,8 +674,8 @@ class TestDetectorPresenter:
         controller.register_providers(virtual_container)
         described = virtual_container.require(DETECTOR_DESCRIPTORS)
 
-        assert described["camera1-pixel_dtype"]["source"].endswith(":readonly")
         assert described["camera1-sensor_size"]["source"].endswith(":readonly")
+        assert not described["camera1-pixel_dtype"]["source"].endswith(":readonly")
         assert not described["camera1-exposure"]["source"].endswith(":readonly")
         assert not described["camera1-roi"]["source"].endswith(":readonly")
 

@@ -39,6 +39,10 @@ if TYPE_CHECKING:
 #: Printed once a client can reach the camera's PVs.
 READY: Final = "mmcore camera ready"
 
+#: Micro-Manager's ``PixelType`` for each numpy dtype a camera reads out in.
+#: Colour types are left out: a frame of one is not a 2D array.
+PIXEL_TYPES: Final = {"uint8": "8bit", "uint16": "16bit", "uint32": "32bit"}
+
 #: Seconds between two frames published on ``Buffer``.
 LIVE_PERIOD: Final = 0.1
 
@@ -83,20 +87,30 @@ class CoreIO(AttributeIO[Any, CoreRef]):
     """Reads and writes camera settings through Micro-Manager.
 
     *without_sequence* runs a callable with no sequence acquisition running,
-    for the settings Micro-Manager refuses during one.
+    for the settings Micro-Manager refuses during one. *layout_changed* is
+    handed a frame snapped after a setting that changes what frames look
+    like.
     """
 
     def __init__(
         self,
         core: CMMCorePlus,
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
+        layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__()
         self._core = core
         self._without_sequence = without_sequence
+        self._layout_changed = layout_changed
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
-        """Apply *value* to the camera, and read back what it took."""
+        """Apply *value* to the camera, and read back what it took.
+
+        Raises
+        ------
+        ValueError
+            For a pixel dtype the camera does not read out in.
+        """
         match attr.io_ref.setting:
             case "exposure":
                 await asyncio.to_thread(self._core.setExposure, float(value))
@@ -105,6 +119,8 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 await asyncio.to_thread(
                     self._without_sequence, lambda: self._core.setROI(*roi)
                 )
+            case "pixel_dtype":
+                await self._set_pixel_dtype(str(value))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
         if isinstance(attr, AttrR):
@@ -120,8 +136,48 @@ class CoreIO(AttributeIO[Any, CoreRef]):
             case "roi":
                 roi = await asyncio.to_thread(self._core.getROI)
                 await attr.update(str(Roi(*roi)))
+            case "pixel_dtype":
+                dtype = await asyncio.to_thread(self._pixel_dtype)
+                if dtype is not None:
+                    await attr.update(dtype)
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
+
+    def pixel_dtypes(self) -> dict[str, str]:
+        """Return the dtypes the camera reads out in, each with its ``PixelType``."""
+        label = self._core.getCameraDevice()
+        if not self._core.hasProperty(label, "PixelType"):
+            return {}
+        allowed = set(self._core.getAllowedPropertyValues(label, "PixelType"))
+        return {
+            dtype: pixel for dtype, pixel in PIXEL_TYPES.items() if pixel in allowed
+        }
+
+    def _pixel_dtype(self) -> str | None:
+        """Return the dtype of the camera's ``PixelType``, ``None`` for one not mapped."""
+        label = self._core.getCameraDevice()
+        if not self._core.hasProperty(label, "PixelType"):
+            return None
+        pixel = self._core.getProperty(label, "PixelType")
+        return next((d for d, p in PIXEL_TYPES.items() if p == pixel), None)
+
+    async def _set_pixel_dtype(self, dtype: str) -> None:
+        supported = await asyncio.to_thread(self.pixel_dtypes)
+        if dtype not in supported:
+            raise ValueError(
+                f"{dtype!r} is not a pixel dtype this camera reads out in; "
+                f"one of {sorted(supported)}"
+            )
+        label = self._core.getCameraDevice()
+        snapped: list[NDArray[Any]] = []
+
+        def apply() -> None:
+            self._core.setProperty(label, "PixelType", supported[dtype])
+            snapped.append(self._core.snap())
+
+        await asyncio.to_thread(self._without_sequence, apply)
+        if self._layout_changed is not None:
+            await self._layout_changed(snapped[0])
 
 
 @dataclass
@@ -234,7 +290,9 @@ class MMCameraController(Controller):
     # text, "x,y,width,height": a client can put a string over PVAccess, and
     # not the array a waveform is served as
     roi = AttrRW(String(), io_ref=CoreRef(setting="roi", update_period=1.0))
-    pixel_dtype = AttrR(String())
+    pixel_dtype = AttrRW(
+        String(), io_ref=CoreRef(setting="pixel_dtype", update_period=1.0)
+    )
     sensor_size = AttrR(Waveform(np.int32, shape=(2,)))
     acquire = AttrRW(Bool())
     frame_count = AttrR(Int())
@@ -256,7 +314,12 @@ class MMCameraController(Controller):
         self._property_io = PropertyIO(
             core, label, self._without_sequence, self.publish_layout
         )
-        super().__init__(ios=[CoreIO(core, self._without_sequence), self._property_io])
+        super().__init__(
+            ios=[
+                CoreIO(core, self._without_sequence, self.publish_layout),
+                self._property_io,
+            ]
+        )
         self._core = core
         self._label = label
         self._default_data_key = data_key
@@ -326,7 +389,8 @@ class MMCameraController(Controller):
             names = [name for name in names if name in self._properties]
         properties = Controller(ios=[self._property_io])
         for name in names:
-            if read_only[name]:
+            # PixelType is pixel_dtype, in numpy's names
+            if read_only[name] or name == "PixelType":
                 continue
             # a PV name takes no spaces or brackets, and Micro-Manager's do
             # ("Photon Conversion Factor"): the attribute is named for the PV,

@@ -166,7 +166,7 @@ services:
     plugin_name: redsun-mimir
     plugin_id: mmcore-camera
     prefix: "MIMIR-CAM1:"
-    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning,PixelType"]
+    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
 ```
 
 `--properties` names the camera's own properties to publish beside `exposure`

@@ -77,7 +77,12 @@ class FakeCore:
         self.exposure = 100.0
         self.roi: tuple[int, ...] = (0, 0, FRAME_SHAPE[1], FRAME_SHAPE[0])
         self.threads: list[str] = []
-        self.properties = {"Gain": "0", "Photon Flux": "1", "CameraName": "fake"}
+        self.properties = {
+            "Gain": "0",
+            "Photon Flux": "1",
+            "CameraName": "fake",
+            "PixelType": "8bit",
+        }
         self.sequences = sequences
         self.sequencing = False
         self.fault: Exception | None = None
@@ -93,7 +98,22 @@ class FakeCore:
         if self.sequencing:
             raise RuntimeError("cannot expose while a sequence acquisition runs")
         self.snapped += 1
-        return np.full(FRAME_SHAPE, self.snapped, dtype=np.uint8)
+        return np.full(FRAME_SHAPE, self.snapped, dtype=self.dtype)
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return np.dtype(
+            {"8bit": "uint8", "16bit": "uint16"}[self.properties["PixelType"]]
+        )
+
+    def getCameraDevice(self) -> str:
+        return LABEL
+
+    def hasProperty(self, label: str, name: str) -> bool:
+        return name in self.properties
+
+    def getAllowedPropertyValues(self, label: str, name: str) -> tuple[str, ...]:
+        return ("8bit", "16bit") if name == "PixelType" else ()
 
     def startContinuousSequenceAcquisition(self, interval: float = 0) -> None:
         if not self.sequences:
@@ -498,6 +518,24 @@ async def test_the_camera_publishes_the_properties_it_lets_one_write(
 
     assert core.properties["Photon Flux"] == "7"
     assert properties.attributes["Photon_Flux"].get() == "7"
+
+
+async def test_pixel_dtype_maps_to_the_pixel_type_the_camera_supports(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """A dtype the camera reads out in sets ``PixelType`` and retypes the buffer."""
+    camera, core = controller
+    assert camera.pixel_dtype.get() == "uint8"
+
+    await camera.pixel_dtype.put("uint16")
+
+    assert core.properties["PixelType"] == "16bit"
+    assert camera.pixel_dtype.get() == "uint16"
+    assert camera.buffer.datatype.array_dtype == np.uint16
+    assert camera.buffer.get().dtype == np.uint16
+    with pytest.raises(ValueError, match="one of \\['uint16', 'uint8'\\]"):
+        await camera.pixel_dtype.put("float16")
+    assert "PixelType" not in camera.sub_controllers["properties"].attributes
 
 
 async def test_the_camera_publishes_only_the_properties_chosen() -> None:

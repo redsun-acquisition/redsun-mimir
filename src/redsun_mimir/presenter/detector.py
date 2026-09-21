@@ -39,7 +39,11 @@ def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
 
     A key is the signal's data key without the device name prefix.
     """
-    signals: list[SignalRW[Any]] = [detector.exposure, detector.roi]
+    signals: list[SignalRW[Any]] = [
+        detector.exposure,
+        detector.roi,
+        detector.pixel_dtype,
+    ]
     properties: Mapping[str, SignalRW[str]] = getattr(detector, "properties", {})
     signals.extend(properties.values())
     return {signal.name.removeprefix(f"{detector.name}-"): signal for signal in signals}
