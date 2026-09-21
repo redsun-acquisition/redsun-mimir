@@ -41,15 +41,11 @@ Dates are specified in the format `DD-MM-YYYY`.
   `(width, height)`, read once while nothing crops the camera. Part of the
   camera's configuration, and a member of `DetectorProtocol`
   (`redsun_mimir.protocols`).
-- `NapariApplication(font_size=...)` and `stylesheet(font_size=...)`
-  (`redsun_mimir.hooks`, `redsun_mimir.utils.napari`) - the point size the
-  session's widgets are drawn at. Left out, napari's own setting is used, 12 pt
-  by default, which is what every widget beside the viewer is styled with when
-  the sheet reaches the whole application.
-
-  ```python
-  _napari_app = NapariApplication(font_size=9)
-  ```
+- `FONT_SIZE` (`redsun_mimir.hooks`) - the point size every widget of a
+  session is drawn at, 9. `NapariApplication` applies napari's stylesheet at
+  that size; `stylesheet(font_size=...)` (`redsun_mimir.utils.napari`) takes
+  the size to ask for, napari's own setting when left out.
+- `redsun`'s log view in both sessions, declared as `logs` on `MimirApp`.
 
 - A directory control in `AcquisitionView`: a read-only field showing where a
   run writes and a Browse button. The choice travels as

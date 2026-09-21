@@ -6,6 +6,7 @@ from pathlib import Path
 
 from redsun.containers import declare_hook, declare_presenter, declare_view
 from redsun.qt import QtAppContainer
+from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
@@ -57,6 +58,7 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     det_widget = declare_view(DetectorView, from_config="det_widget")
     light_widget = declare_view(LightView, from_config="light_widget")
     motor_widget = declare_view(MotorView, from_config="motor_widget")
+    logs = declare_view(LogView)
 
     def wire(self) -> None:
         """Connect the presenters to the views."""

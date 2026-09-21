@@ -47,6 +47,7 @@ _SHARED_VIEWS = {
     "det_widget",
     "light_widget",
     "motor_widget",
+    "logs",
 }
 
 _SIMULATION_DEVICES = {"mmcamera", "XY", "Z", "laser", "led"}

@@ -13,7 +13,7 @@ from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
 from redsun.presenter.plan_spec import create_plan_spec
 from redsun.virtual import ProviderKey, VirtualContainer
 
-from redsun_mimir.hooks import NapariApplication
+from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.providers import (
@@ -554,20 +554,5 @@ class TestNapariApplication:
 
         hook.configure_application(app)
 
-        assert app.styleSheet() == stylesheet()
-
-    def test_a_font_size_it_is_given_reaches_the_application(
-        self, qapp: QCoreApplication
-    ) -> None:
-        """Every widget of a session is styled by this sheet, not just the viewer.
-
-        napari's own size is larger than what a platform gives a Qt
-        application, so a session may ask for its own.
-        """
-        app = cast("QApplication", qapp)
-
-        NapariApplication(font_size=9).configure_application(app)
-
-        assert "font-size: 9pt" in app.styleSheet()
-        assert app.styleSheet() == stylesheet(9)
-        assert app.styleSheet() != stylesheet()
+        assert app.styleSheet() == stylesheet(FONT_SIZE)
+        assert f"font-size: {FONT_SIZE}pt" in app.styleSheet()
