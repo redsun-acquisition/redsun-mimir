@@ -90,6 +90,8 @@ class FakeCore:
             self._buffer.put(np.full(FRAME_SHAPE, self.popped + 1, dtype=np.uint8))
 
     def snap(self) -> NDArray[Any]:
+        if self.sequencing:
+            raise RuntimeError("cannot expose while a sequence acquisition runs")
         self.snapped += 1
         return np.full(FRAME_SHAPE, self.snapped, dtype=np.uint8)
 
@@ -122,6 +124,8 @@ class FakeCore:
         return self.properties[name]
 
     def setProperty(self, label: str, name: str, value: str) -> None:
+        if self.sequencing:
+            raise RuntimeError("Cannot set property while a sequence runs")
         self.properties[name] = str(value)
 
     def getExposure(self) -> float:
@@ -136,6 +140,8 @@ class FakeCore:
         return self.roi
 
     def setROI(self, *roi: int) -> None:
+        if self.sequencing:
+            raise RuntimeError("Cannot set ROI while a sequence runs")
         self.roi = tuple(roi)
 
 
@@ -286,6 +292,26 @@ async def test_closing_an_unbounded_window_publishes_what_it_wrote(
     await camera.capture.put(False)
 
     assert camera.captured.get() == 3
+
+
+@pytest.mark.parametrize("setting", ["roi", "property"])
+async def test_a_setting_refused_mid_sequence_pauses_it(
+    controller: tuple[MMCameraController, FakeCore], setting: str
+) -> None:
+    """Micro-Manager refuses some writes during a sequence; the sequence resumes."""
+    camera, core = controller
+    await camera.acquire.put(True)
+    await until(lambda: core.sequencing, camera)
+
+    if setting == "roi":
+        await camera.roi.put(np.array([1, 1, 2, 2]))
+        assert core.roi == (1, 1, 2, 2)
+    else:
+        await camera.sub_controllers["properties"].attributes["Gain"].put("3")
+        assert core.properties["Gain"] == "3"
+
+    assert core.sequencing
+    await camera.acquire.put(False)
 
 
 async def test_a_setting_is_applied_off_the_event_loop(

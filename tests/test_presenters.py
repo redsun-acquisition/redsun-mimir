@@ -555,6 +555,23 @@ class TestDetectorPresenter:
 
         assert received == []
 
+    async def test_a_refused_setting_is_logged_and_not_announced(
+        self,
+        controller: DetectorPresenter,
+        mm_camera: MMCamera,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A write the device refuses reaches the log, not the caller's slot."""
+        received: list[tuple[str, str, Any]] = []
+        controller.sig_new_configuration.connect(
+            lambda d, k, v: received.append((d, k, v))
+        )
+
+        await controller.set(mm_camera.name, "exposure", "not a number")
+
+        assert received == []
+        assert "Failed to set" in caplog.text
+
     async def test_set_exposure_emits_new_configuration(
         self, controller: DetectorPresenter, mm_camera: MMCamera
     ) -> None:

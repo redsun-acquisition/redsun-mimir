@@ -179,10 +179,10 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             self.logger.error(f"Unknown property {property!r} for {detector!r}")
             return
 
-        status = obj.set(value)
-        await status
-        if not status.success:
-            self.logger.error(f"Failed to set {obj} to {value!r}: {status.exception()}")
+        try:
+            await obj.set(value)
+        except Exception as error:  # noqa: BLE001 - the view is told, the loop goes on
+            self.logger.error(f"Failed to set {obj.name} to {value!r}: {error}")
             return
         new_reading = await obj.read()
         self.sig_new_configuration.emit(

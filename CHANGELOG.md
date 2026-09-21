@@ -170,6 +170,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `AcquisitionPresenter.launch_plan` resets the action latches of the last
   launch. A stream stopped while its window wrote left its latch set, and the
   next launch started writing with no click.
+- A camera property Micro-Manager refuses during a sequence acquisition,
+  binning and pixel type among them, is written with the sequence paused around
+  it, as a `roi` is; the sequence resumes after. The pause is ordered against
+  the grabbing thread, which exposes only while no sequence runs.
+- `DetectorPresenter.set` logs a write the device refuses, rather than raising
+  out of the slot and leaving the view's pending edit unanswered.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

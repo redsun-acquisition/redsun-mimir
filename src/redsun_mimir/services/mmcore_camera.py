@@ -31,6 +31,8 @@ from pymmcore_plus import CMMCorePlus
 from ._process import controller_id, identity_arguments, plain_logging, serve
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from numpy.typing import NDArray
 
 #: Printed once a client can reach the camera's PVs.
@@ -71,12 +73,29 @@ class CoreRef(AttributeIORef):
     setting: str = ""
 
 
-class CoreIO(AttributeIO[Any, CoreRef]):
-    """Reads and writes camera settings through Micro-Manager."""
+def as_is(apply: Callable[[], None]) -> None:
+    """Run *apply* as it is, for a camera nothing sequences."""
+    apply()
 
-    def __init__(self, core: CMMCorePlus) -> None:
+
+class CoreIO(AttributeIO[Any, CoreRef]):
+    """Reads and writes camera settings through Micro-Manager.
+
+    Parameters
+    ----------
+    without_sequence :
+        Runs the callable it is given with no sequence acquisition running,
+        for the settings Micro-Manager refuses while one does.
+    """
+
+    def __init__(
+        self,
+        core: CMMCorePlus,
+        without_sequence: Callable[[Callable[[], None]], None] = as_is,
+    ) -> None:
         super().__init__()
         self._core = core
+        self._without_sequence = without_sequence
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
         """Apply *value* to the camera, and read back what it took."""
@@ -85,7 +104,9 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 await asyncio.to_thread(self._core.setExposure, float(value))
             case "roi":
                 roi = tuple(int(item) for item in value)
-                await asyncio.to_thread(lambda: self._core.setROI(*roi))
+                await asyncio.to_thread(
+                    self._without_sequence, lambda: self._core.setROI(*roi)
+                )
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
         if isinstance(attr, AttrR):
@@ -119,15 +140,27 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
     them; a client that wants a number parses what it reads.
     """
 
-    def __init__(self, core: CMMCorePlus, label: str) -> None:
+    def __init__(
+        self,
+        core: CMMCorePlus,
+        label: str,
+        without_sequence: Callable[[Callable[[], None]], None] = as_is,
+    ) -> None:
         super().__init__()
         self._core = core
         self._label = label
+        self._without_sequence = without_sequence
 
     async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
-        """Write the property, and read back what the camera made of it."""
+        """Write the property, and read back what the camera made of it.
+
+        Some properties, binning and pixel type among them, are refused
+        while a sequence runs; every write pauses it, which costs nothing
+        when there is none.
+        """
         await asyncio.to_thread(
-            self._core.setProperty, self._label, attr.io_ref.property, value
+            self._without_sequence,
+            lambda: self._core.setProperty(self._label, attr.io_ref.property, value),
         )
         if isinstance(attr, AttrR):
             await self.update(attr)
@@ -208,8 +241,8 @@ class MMCameraController(Controller):
     last_error = AttrR(String())
 
     def __init__(self, core: CMMCorePlus, label: str, data_key: str) -> None:
-        self._property_io = PropertyIO(core, label)
-        super().__init__(ios=[CoreIO(core), self._property_io])
+        self._property_io = PropertyIO(core, label, self._without_sequence)
+        super().__init__(ios=[CoreIO(core, self._without_sequence), self._property_io])
         self._core = core
         self._label = label
         self._default_data_key = data_key
@@ -226,6 +259,7 @@ class MMCameraController(Controller):
         self._stopped.set()
         self._grabber: asyncio.Task[None] | None = None
         self._sequencing = False
+        self._sequence_lock = threading.Lock()
         self._error: str | None = None
 
         self.acquire.add_on_update_callback(self._on_acquire)
@@ -445,7 +479,8 @@ class MMCameraController(Controller):
     def _grab_loop(self) -> None:
         """Take frames until asked to stop, or until the camera fails."""
         try:
-            self._start_sequence()
+            with self._sequence_lock:
+                self._start_sequence()
             while self._grabbing.is_set():
                 if self.grab_once() is None:
                     time.sleep(EMPTY_POLL)
@@ -456,8 +491,26 @@ class MMCameraController(Controller):
             # and no frame will arrive to end it now
             self._finish_window()
         finally:
-            self._stop_sequence()
+            with self._sequence_lock:
+                self._stop_sequence()
             self._stopped.set()
+
+    def _without_sequence(self, apply: Callable[[], None]) -> None:
+        """Run *apply* with no sequence running, and resume one that was.
+
+        The grabbing thread exposes per frame meanwhile, so it loses
+        nothing. The lock keeps this from restarting a sequence the grab
+        loop is ending.
+        """
+        with self._sequence_lock:
+            was_sequencing = self._sequencing
+            if was_sequencing:
+                self._stop_sequence()
+            try:
+                apply()
+            finally:
+                if was_sequencing:
+                    self._start_sequence()
 
     def _start_sequence(self) -> None:
         """Ask the camera for a continuous sequence, and note whether it took.
@@ -465,20 +518,22 @@ class MMCameraController(Controller):
         An adapter that refuses one leaves ``take_frame`` exposing per frame,
         which is slower but works everywhere.
         """
+        # the flag leads the camera on the way up and trails it on the way
+        # down: the grabbing thread exposes only while the flag is clear,
+        # and Micro-Manager refuses an exposure during a sequence
+        self._sequencing = True
         try:
             self._core.startContinuousSequenceAcquisition(0)
         except Exception as error:  # noqa: BLE001
             logger.warning(f"Camera refused a sequence, exposing per frame: {error}")
             self._sequencing = False
-            return
-        self._sequencing = True
 
     def _stop_sequence(self) -> None:
         """End the sequence the camera is running, if it is running one."""
         if not self._sequencing:
             return
-        self._sequencing = False
         self._core.stopSequenceAcquisition()
+        self._sequencing = False
 
 
 def build_controller(
