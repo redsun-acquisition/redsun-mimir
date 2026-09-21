@@ -29,6 +29,7 @@ from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.providers import (
+    DETECTOR_DESCRIPTORS,
     DETECTOR_LAYER_SPECS,
     LIGHT_CONFIGURATION,
     MOTOR_DESCRIPTION,
@@ -665,6 +666,18 @@ class TestDetectorPresenter:
         controller.register_providers(virtual_container)
         specs = virtual_container.require(DETECTOR_LAYER_SPECS)
         assert "camera1" in specs
+
+    def test_a_setting_the_presenter_cannot_write_is_described_read_only(
+        self, controller: DetectorPresenter, virtual_container: VirtualContainer
+    ) -> None:
+        """The settings tree greys a source ending in ``:readonly``."""
+        controller.register_providers(virtual_container)
+        described = virtual_container.require(DETECTOR_DESCRIPTORS)
+
+        assert described["camera1-pixel_dtype"]["source"].endswith(":readonly")
+        assert described["camera1-sensor_size"]["source"].endswith(":readonly")
+        assert not described["camera1-exposure"]["source"].endswith(":readonly")
+        assert not described["camera1-roi"]["source"].endswith(":readonly")
 
     def test_live_events_are_forwarded_raw(
         self, controller: DetectorPresenter, mm_camera: MMCamera

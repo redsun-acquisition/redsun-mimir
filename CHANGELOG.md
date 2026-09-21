@@ -201,6 +201,13 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `DetectorPresenter` knows its writable settings from construction. They
+  were collected on the first ROI update, so a `set` or a settings tree built
+  before it found none.
+- `DetectorPresenter.devices_description` marks a setting it cannot write,
+  `pixel_dtype` and `sensor_size`, with `:readonly` on its source, so the
+  settings tree shows it as a label. An edit there was refused with
+  `Unknown property`.
 - A Micro-Manager stage move whose readback settles one reporting step from
   its target completes, and one that never settles raises after
   `MOVE_TIMEOUT` (10 s) instead of waiting forever. The service reports

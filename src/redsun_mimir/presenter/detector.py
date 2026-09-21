@@ -95,6 +95,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         self._detector_of = {
             detector.buffer.name: name for name, detector in self.detectors.items()
         }
+        # the camera's properties come from its service, so they exist only
+        # once it has connected, which the build does before presenters
+        self._settables = {
+            name: _settable_signals(detector)
+            for name, detector in self.detectors.items()
+        }
         #: each detector's ROI as last reported, kept by subscription so a
         #: frame is forwarded with the region it was taken with
         self._rois: dict[str, Roi] = {}
@@ -124,12 +130,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
 
     def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
         self._rois[detector] = Roi.parse(next(iter(reading.values()))["value"])
-        # the camera's properties come from its service, so they exist only
-        # once it has connected, which the build does before presenters
-        self._settables = {
-            name: _settable_signals(detector)
-            for name, detector in self.detectors.items()
-        }
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Remember which streams carry a tracked detector's buffer."""
@@ -189,10 +189,21 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         return result
 
     def devices_description(self) -> dict[str, Descriptor]:
-        """Return the configuration descriptors of every detector."""
+        """Return the configuration descriptors of every detector.
+
+        A setting this presenter cannot write has ``:readonly`` appended to
+        its source, which the settings tree shows as a label.
+        """
         result: dict[str, Descriptor] = {}
-        for device in self.detectors.values():
-            result.update(run_coro(device.describe_configuration()))
+        for name, device in self.detectors.items():
+            settable = {f"{name}-{key}" for key in self._settables.get(name, {})}
+            for key, descriptor in run_coro(device.describe_configuration()).items():
+                if key not in settable:
+                    descriptor = {
+                        **descriptor,
+                        "source": f"{descriptor['source']}:readonly",
+                    }
+                result[key] = descriptor
         return result
 
     @slot
