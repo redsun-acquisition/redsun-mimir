@@ -111,10 +111,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
-- `AcquisitionPresenter.live_median_scan` runs each capture as a run of its
-  own, nested in the plan's, through `AcquisitionPresenter.capture`: the
+- `AcquisitionPresenter.live_median_scan` and `live_stream` run each capture
+  as a run of its own, nested in the plan's, through
+  `AcquisitionPresenter.capture`: the
   start document carries `purpose: capture`, `parent`, the plan's run, and
-  `median_scan`, the uid of the last scan or `null`. The capture declares its
+  `median_scan`, the uid of the last scan or `null` (always `null` from
+  `live_stream`). The capture declares its
   stream, so its descriptor and `stream_resource` name the store that capture
   writes. `square_scan` returns the scan run's uid and its start document
   carries `parent` too. The stack `MedianPresenter` writes carries `scan_run`

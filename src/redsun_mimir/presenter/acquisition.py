@@ -385,20 +385,24 @@ class AcquisitionPresenter(Presenter, Loggable):
         stream_name: str,
         *,
         parent: str,
-        median_scan: str | None,
+        median_scan: str | None = None,
+        until_reset: bool = False,
     ) -> MsgGenerator[str]:
         """Fly the prepared detectors to disk as a run of their own, and return its uid.
 
         The run's start document names *parent*, the run it serves, and
         *median_scan*, the scan whose stack goes into the store this capture
-        names. The detectors are left unstaged: the caller prepares them
-        again for the next capture.
+        names. With *until_reset* the window stays open until the action that
+        opened it is toggled off. The detectors are left unstaged: the caller
+        prepares them again for the next capture.
         """
         uid: str = yield from bps.open_run(
             md={"purpose": "capture", "parent": parent, "median_scan": median_scan}
         )
         yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
         yield from bps.kickoff_all(*detectors, wait=True)
+        if until_reset:
+            yield from rps.wait_for_actions(self.action_map, wait_for="reset")
         yield from teardown_acquisition(detectors, stream_name)
         yield from bps.close_run()
         return uid
@@ -416,8 +420,9 @@ class AcquisitionPresenter(Presenter, Loggable):
         """Perform live data collection and optionally store data to disk.
 
         Provides an optional `stream` action that, when triggered from the UI,
-        starts streaming the acquired data to a Zarr store on disk on the
-        specified path, for a given number of `frames`.
+        streams the acquired data to a Zarr store on disk for a given number
+        of `frames`, as a run of its own nested in this one whose start
+        document names this run as ``parent``.
 
         While streaming is active, live visualization continues as normal.
 
@@ -435,13 +440,12 @@ class AcquisitionPresenter(Presenter, Loggable):
             the `frames` parameter.
             Default is False (only `frames` number of images will be streamed).
         """
-        streams_declared = False
         stream_name = "live_stream"
         trigger_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         self.action_map.update(**stream_action.event_map)
 
-        yield from bps.open_run()
+        parent = yield from bps.open_run()
 
         # live visualization travels as Event documents, so the viewer sees
         # frames through the same document sequence as everything else
@@ -449,26 +453,19 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.monitor(det.buffer, name=LIVE_VIEW_STREAM)
 
         while True:
+            # preparing starts the live view and hands each detector the
+            # store its next capture writes; the capture declares it
             yield from bps.stage_all(*detectors)
             yield from prepare_and_declare(
-                detectors,
-                trigger_info,
-                stream_name,
-                declare=not streams_declared,
+                detectors, trigger_info, stream_name, declare=False
             )
-            streams_declared = True
             name, current_action = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
             self.logger.debug("Start writing")
-            # kickoff opens the write window: frames were already reaching
-            # viewers from prepare onwards, they now also reach storage
-            yield from bps.kickoff_all(*detectors, wait=True)
-            if write_forever:
-                name, current_action = yield from rps.wait_for_actions(
-                    self.action_map, wait_for="reset"
-                )
-            yield from teardown_acquisition(detectors, stream_name)
+            yield from self.capture(
+                detectors, stream_name, parent=parent, until_reset=write_forever
+            )
             self.logger.debug("Writing complete")
             self.clear_and_notify(name, current_action)
 
