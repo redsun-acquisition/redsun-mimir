@@ -16,6 +16,12 @@ Dates are specified in the format `DD-MM-YYYY`.
   `ImageView.sig_roi_drawn` as a `Roi` and changes nothing on the camera;
   `ImageView.on_new_configuration`, wired to the detector presenter, puts the
   box over the region the camera reads once a ROI is applied.
+- A ROI panel under each detector's settings in `DetectorView`: the region the
+  camera reads, the one drawn on its image beside it, and Confirm and Clear.
+  Confirm sends the drawn region and Clear the whole sensor, each as a `roi`
+  property change through `sig_property_changed`; nothing reaches the camera
+  while the box is dragged. The drawn region arrives on `on_roi_drawn`, wired
+  from `ImageView.sig_roi_drawn`.
 - `sensor_size` on the camera service (`redsun_mimir.services.mmcore_camera`)
   and on `MMCamera` (`redsun_mimir.device.mmcore`): the whole sensor as
   `(width, height)`, read once while nothing crops the camera. Part of the

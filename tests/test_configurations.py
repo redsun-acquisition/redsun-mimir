@@ -151,6 +151,7 @@ _DETECTOR_LINKS = {
     ("det_widget.sig_property_changed", "det_ctrl.set"),
     ("det_ctrl.sig_new_configuration", "det_widget.on_new_configuration"),
     ("det_ctrl.sig_new_configuration", "img_widget.on_new_configuration"),
+    ("img_widget.sig_roi_drawn", "det_widget.on_roi_drawn"),
 }
 _MEDIAN_LINKS = {
     ("median_ctrl.median", "img_widget.update_layers"),

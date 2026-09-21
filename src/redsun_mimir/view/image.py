@@ -229,12 +229,13 @@ class ImageView(QtView, Loggable):
         )
 
     @slot
-    def on_new_configuration(self, detector: str, property: str, value: object) -> None:
+    def on_new_configuration(self, detector: str, key: str, value: object) -> None:
         """Put the box over the region the camera reads, once a ROI is applied.
 
-        Any other setting is not this view's to show.
+        *key* is the setting's data key, ``<detector>-roi`` for the one this
+        view shows; any other setting is not this view's to show.
         """
-        if property != "roi" or detector not in self.viewer_model.layers:
+        if key != f"{detector}-roi" or detector not in self.viewer_model.layers:
             return
         roi = Roi.parse(str(value))
         box = self.viewer_model.layers[detector]._overlays[ROI_BOX]

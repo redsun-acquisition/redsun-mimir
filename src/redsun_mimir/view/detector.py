@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor, Reading  # noqa: TC002
@@ -12,9 +13,84 @@ from redsun.view.qt.treeview import DescriptorTreeView
 from redsun.virtual import Signal, slot
 
 from redsun_mimir.providers import DETECTOR_DESCRIPTORS, DETECTOR_READINGS
+from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
+
+
+class RoiPanel(QtWidgets.QWidget):
+    """The region a detector reads, and the one drawn on its image but not yet applied.
+
+    Confirm applies the drawn region; Clear applies the whole sensor. Neither
+    changes the camera by itself: both emit ``sig_roi_requested`` with the
+    region, as ``"x,y,width,height"``.
+
+    Parameters
+    ----------
+    sensor :
+        The whole sensor, ``(width, height)``.
+    applied :
+        The region the camera reads now.
+    """
+
+    sig_roi_requested = Signal(str)
+
+    def __init__(
+        self,
+        sensor: tuple[int, int],
+        applied: Roi,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent=parent)
+        self.sensor = sensor
+        self.applied = applied
+        self.pending: Roi | None = None
+
+        self.label = QtWidgets.QLabel(self)
+        self.confirm_button = QtWidgets.QPushButton("Confirm", self)
+        self.confirm_button.setToolTip("Read out the region drawn on the image")
+        self.confirm_button.setEnabled(False)
+        self.clear_button = QtWidgets.QPushButton("Clear", self)
+        self.clear_button.setToolTip("Read out the whole sensor")
+        self.confirm_button.clicked.connect(self._on_confirm)
+        self.clear_button.clicked.connect(self._on_clear)
+
+        layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QtWidgets.QLabel("ROI", self))
+        layout.addWidget(self.label, 1)
+        layout.addWidget(self.confirm_button)
+        layout.addWidget(self.clear_button)
+        self.setLayout(layout)
+        self._show()
+
+    def draw(self, roi: Roi) -> None:
+        """Show *roi* as the region drawn, awaiting confirmation."""
+        self.pending = roi
+        self.confirm_button.setEnabled(roi != self.applied)
+        self._show()
+
+    def apply(self, roi: Roi) -> None:
+        """Show *roi* as the region the camera now reads."""
+        self.applied = roi
+        self.pending = None
+        self.confirm_button.setEnabled(False)
+        self._show()
+
+    def _show(self) -> None:
+        text = str(self.applied)
+        if self.pending is not None and self.pending != self.applied:
+            text = f"{text}  ->  {self.pending}"
+        self.label.setText(text)
+
+    def _on_confirm(self) -> None:
+        if self.pending is not None:
+            self.sig_roi_requested.emit(str(self.pending))
+
+    def _on_clear(self) -> None:
+        width, height = self.sensor
+        self.sig_roi_requested.emit(str(Roi(0, 0, width, height)))
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
@@ -41,7 +117,21 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self.tree_view = DescriptorTreeView(descriptors, readings, parent=self)
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.tree_view)
+        self.roi_panel = self._roi_panel(readings)
+        if self.roi_panel is not None:
+            layout.addWidget(self.roi_panel)
         self.setLayout(layout)
+
+    def _roi_panel(self, readings: dict[str, Reading[Any]]) -> RoiPanel | None:
+        """Build the ROI panel for a detector reporting a sensor size and a ROI."""
+        sensor = next(
+            (r for k, r in readings.items() if k.endswith("-sensor_size")), None
+        )
+        roi = next((r for k, r in readings.items() if k.endswith("-roi")), None)
+        if sensor is None or roi is None:
+            return None
+        width, height = (int(item) for item in sensor["value"])
+        return RoiPanel((width, height), Roi.parse(str(roi["value"])), self)
 
 
 class DetectorView(QtView, Loggable):
@@ -54,7 +144,10 @@ class DetectorView(QtView, Loggable):
 
     Image visualisation is handled independently by
     [`ImageView`][redsun_mimir.view.ImageView]; the two views share only
-    the virtual bus and do not hold references to each other.
+    the virtual bus and do not hold references to each other. The region
+    drawn there reaches this view's ROI panel over the bus, and only Confirm
+    or Clear sends a region to the camera, as a property change like any
+    other.
 
     Parameters
     ----------
@@ -135,8 +228,19 @@ class DetectorView(QtView, Loggable):
 
             widget = SettingsControlWidget(dev_descriptors, dev_readings, self)
             widget.tree_view.sig_property_changed.connect(self.sig_property_changed)
+            if widget.roi_panel is not None:
+                widget.roi_panel.sig_roi_requested.connect(
+                    partial(self.sig_property_changed.emit, device_label, "roi")
+                )
             self.settings_controls[device_label] = widget
             self.settings_tab_widget.addTab(widget, device_label)
+
+    @slot
+    def on_roi_drawn(self, detector: str, roi: Roi) -> None:
+        """Show the region drawn on *detector*'s image, for the user to confirm."""
+        widget = self.settings_controls.get(detector)
+        if widget is not None and widget.roi_panel is not None:
+            widget.roi_panel.draw(roi)
 
     @slot
     def on_new_configuration(self, detector: str, key: str, value: Any) -> None:
@@ -161,3 +265,5 @@ class DetectorView(QtView, Loggable):
             self.logger.warning(f"No settings panel for detector {detector!r}")
             return
         widget.tree_view.confirm_change(key, True)
+        if key == f"{detector}-roi" and widget.roi_panel is not None:
+            widget.roi_panel.apply(Roi.parse(str(value)))

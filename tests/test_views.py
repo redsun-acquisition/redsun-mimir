@@ -27,6 +27,7 @@ from redsun_mimir.providers import (
 from redsun_mimir.roi import Roi
 from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
+from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 
     from redsun_mimir.device._mocks import MockLightDevice
 
-    from .conftest import FakeXYStage
+    from .conftest import FakeDetector, FakeXYStage
 
 pytestmark = pytest.mark.qt
 
@@ -144,6 +145,55 @@ def test_a_box_becomes_a_roi_on_the_sensor(
     assert roi_from_bounds(bounds, (4, 6)) == expected
 
 
+class TestDetectorViewRoi:
+    """Tests for the ROI panel: what the user confirms is what the camera gets."""
+
+    @pytest.fixture
+    async def view(
+        self, qapp: QApplication, fake_detector: FakeDetector
+    ) -> DetectorView:
+        view = DetectorView("det_widget")
+        view.setup_ui(
+            await fake_detector.describe_configuration(),
+            await fake_detector.read_configuration(),
+        )
+        return view
+
+    def test_confirm_sends_the_drawn_region_unchanged(self, view: DetectorView) -> None:
+        sent: list[tuple[str, str, Any]] = []
+        view.sig_property_changed.connect(lambda *args: sent.append(args))
+        panel = view.settings_controls["cam"].roi_panel
+        assert panel is not None
+        assert not panel.confirm_button.isEnabled()
+
+        view.on_roi_drawn("cam", Roi(1, 1, 3, 2))
+        assert panel.confirm_button.isEnabled()
+        panel.confirm_button.click()
+
+        assert sent == [("cam", "roi", "1,1,3,2")]
+
+    def test_clear_sends_the_whole_sensor(self, view: DetectorView) -> None:
+        sent: list[tuple[str, str, Any]] = []
+        view.sig_property_changed.connect(lambda *args: sent.append(args))
+
+        view.settings_controls["cam"].roi_panel.clear_button.click()  # type: ignore[union-attr]
+
+        assert sent == [("cam", "roi", "0,0,6,4")]
+
+    def test_an_applied_region_is_shown_and_needs_no_confirming(
+        self, view: DetectorView
+    ) -> None:
+        panel = view.settings_controls["cam"].roi_panel
+        assert panel is not None
+        view.on_roi_drawn("cam", Roi(1, 1, 3, 2))
+
+        view.on_new_configuration("cam", "cam-roi", "1,1,3,2")
+
+        assert panel.applied == Roi(1, 1, 3, 2)
+        assert not panel.confirm_button.isEnabled()
+        assert panel.label.text() == "1,1,3,2"
+
+
 @needs_opengl
 class TestImageViewRoi:
     """Tests for the selection box on a detector's layer."""
@@ -171,8 +221,8 @@ class TestImageViewRoi:
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
 
-        view.on_new_configuration("cam", "exposure", 5.0)
-        view.on_new_configuration("cam", "roi", "2,1,3,2")
+        view.on_new_configuration("cam", "cam-exposure", 5.0)
+        view.on_new_configuration("cam", "cam-roi", "2,1,3,2")
 
         box = view.viewer_model.layers["cam"]._overlays[ROI_BOX]
         assert box.bounds == ((1, 2), (3, 5))
