@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from bluesky.protocols import Descriptor  # noqa: TC002
@@ -75,7 +76,10 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         Carries the detector name (``str``), the canonical key of the
         changed setting (``str``) and its new value (``object``).
     sig_new_data : Signal[dict[str, Reading[Any]]]
-        Emitted for every live frame carried by an Event document.
+        Emitted for every live frame carried by an Event document. Beside
+        the ``<detector>-buffer`` reading travels ``<detector>-roi``, the
+        region the frame was taken with, so a viewer knows where on the
+        sensor it belongs.
     """
 
     sig_new_configuration = Signal(str, str, object)
@@ -100,6 +104,26 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         self._buffer_keys = {
             detector.buffer.name for detector in self.detectors.values()
         }
+        self._detector_of = {
+            detector.buffer.name: name for name, detector in self.detectors.items()
+        }
+        #: each detector's ROI as last reported, kept by subscription so a
+        #: frame is forwarded with the region it was taken with
+        self._rois: dict[str, Any] = {}
+        run_coro(self._follow_rois())
+
+    async def _follow_rois(self) -> None:
+        """Read every ROI once, then follow it, from the loop a subscription is made on.
+
+        The read is what makes the first frame placeable: a subscription
+        reports its first value whenever the transport gets to it.
+        """
+        for name, detector in self.detectors.items():
+            self._rois[name] = await detector.roi.get_value()
+            detector.roi.subscribe(partial(self._remember_roi, name))
+
+    def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
+        self._rois[detector] = next(iter(reading.values()))["value"]
         # the camera's properties come from its service, so they exist only
         # once it has connected, which the build does before presenters
         self._settables = {
@@ -118,11 +142,16 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         keys = self._live_streams.get(doc["descriptor"])
         if keys is None:
             return doc
-        readings: dict[str, Reading[Any]] = {
-            key: {"value": doc["data"][key], "timestamp": doc["time"]}
-            for key in keys
-            if key in doc["data"]
-        }
+        readings: dict[str, Reading[Any]] = {}
+        for key in keys:
+            if key not in doc["data"]:
+                continue
+            detector = self._detector_of[key]
+            readings[f"{detector}-roi"] = {
+                "value": self._rois.get(detector),
+                "timestamp": doc["time"],
+            }
+            readings[key] = {"value": doc["data"][key], "timestamp": doc["time"]}
         if readings:
             self.sig_new_data.emit(readings)
         return doc
@@ -139,12 +168,16 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         container.register_callbacks(self)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
-        """Get the layer specifications for all detector devices."""
+        """Get the layer specifications for all detector devices.
+
+        A layer is the size of the sensor, whatever the ROI: a cropped frame
+        is drawn into the rectangle its ROI names.
+        """
         specs: dict[str, LayerSpec] = {}
         for device in self.detectors.values():
-            roi = run_coro(device.roi.get_value())
+            width, height = run_coro(device.sensor_size.get_value())
             dtype = run_coro(device.pixel_dtype.get_value())
-            specs[device.name] = {"shape": roi[2:], "dtype": dtype}
+            specs[device.name] = {"shape": (int(height), int(width)), "dtype": dtype}
         return specs
 
     def devices_configuration(self) -> dict[str, Reading[Any]]:

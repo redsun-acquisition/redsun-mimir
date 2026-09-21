@@ -25,6 +25,7 @@ from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
+from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.providers import (
     DETECTOR_LAYER_SPECS,
     LIGHT_CONFIGURATION,
@@ -33,7 +34,7 @@ from redsun_mimir.providers import (
     MOTOR_READINGS,
 )
 from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
-from tests.conftest import FakeXYStage
+from tests.conftest import FakeDetector, FakeXYStage
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -183,6 +184,11 @@ class TestLightPresenter:
         devices: dict[str, Any] = {"motor": motor_stage}
         ctrl = LightPresenter("light_presenter", devices)
         assert "motor" not in ctrl._lights
+
+
+async def set_roi(detector: DetectorProtocol, roi: list[int]) -> None:
+    """Crop *detector* to *roi*, given as ``x, y, width, height``."""
+    await detector.roi.set(np.array(roi))
 
 
 class FakeFuture:
@@ -583,6 +589,51 @@ class TestDetectorPresenter:
 
         assert len(received) == 1
         np.testing.assert_array_equal(received[0][key]["value"], frame)
+        np.testing.assert_array_equal(
+            received[0][f"{mm_camera.name}-roi"]["value"],
+            run_coro(mm_camera.roi.get_value()),
+        )
+
+    def test_a_frame_is_forwarded_with_the_roi_it_was_taken_with(
+        self, fake_detector: FakeDetector
+    ) -> None:
+        """A cropped frame is placed by its ROI, so the two travel together."""
+        presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
+        received: list[dict[str, Any]] = []
+        presenter.sig_new_data.connect(received.append)
+        presenter.descriptor(
+            cast(
+                "EventDescriptor",
+                {
+                    "uid": "desc-1",
+                    "run_start": "run-1",
+                    "data_keys": {"cam-buffer": {}},
+                },
+            )
+        )
+        event = cast(
+            "Event",
+            {
+                "descriptor": "desc-1",
+                "time": 0.0,
+                "data": {"cam-buffer": np.zeros((2, 3))},
+            },
+        )
+
+        run_coro(set_roi(fake_detector, [1, 1, 3, 2]))
+        presenter.event(event)
+
+        assert received[-1]["cam-roi"]["value"].tolist() == [1, 1, 3, 2]
+        assert list(received[-1]) == ["cam-roi", "cam-buffer"]
+
+    def test_a_layer_is_the_size_of_the_sensor_whatever_the_roi(
+        self, fake_detector: FakeDetector
+    ) -> None:
+        run_coro(set_roi(fake_detector, [1, 1, 3, 2]))
+
+        specs = DetectorPresenter("det_ctrl", {"cam": fake_detector}).layer_specs()
+
+        assert specs["cam"]["shape"] == (4, 6)
 
     def test_events_from_unknown_streams_are_ignored(
         self, controller: DetectorPresenter

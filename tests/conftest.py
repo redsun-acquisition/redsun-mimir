@@ -8,12 +8,14 @@ import sys
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 from ophyd_async.core import (
     DeviceMap,
     MovableLogic,
     StandardMovable,
     StandardReadable,
+    StandardReadableFormat,
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
@@ -175,6 +177,36 @@ def _reset_mmcore() -> Generator[None, None, None]:
 def virtual_container() -> VirtualContainer:
     """Fresh VirtualContainer for each test."""
     return VirtualContainer()
+
+
+class FakeDetector(StandardReadable):
+    """A ``DetectorProtocol`` double on soft signals, its sensor 6 wide and 4 high.
+
+    For the presenter and view layers, which read a detector's settings and
+    place its frames but never take one. Non-square, so a width taken for a
+    height shows.
+    """
+
+    def __init__(self, name: str, /) -> None:
+        with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
+            self.exposure = soft_signal_rw(float, initial_value=10.0)
+            self.roi = soft_signal_rw(np.ndarray, initial_value=np.array([0, 0, 6, 4]))
+            self.pixel_dtype, _ = soft_signal_r_and_setter(str, initial_value="uint8")
+            self.sensor_size, _ = soft_signal_r_and_setter(
+                np.ndarray, initial_value=np.array([6, 4])
+            )
+        self.buffer, _ = soft_signal_r_and_setter(
+            np.ndarray, initial_value=np.zeros((4, 6), dtype=np.uint8)
+        )
+        super().__init__(name)
+
+
+@pytest.fixture
+async def fake_detector() -> FakeDetector:
+    """Return a connected ``FakeDetector``."""
+    device = FakeDetector("cam")
+    await device.connect(mock=True)
+    return device
 
 
 @pytest.fixture

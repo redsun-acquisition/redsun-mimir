@@ -90,6 +90,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- A detector's layer in `ImageView` is the size of the sensor, from the
+  camera's `sensor_size`, and stays that size: a frame taken with a ROI is
+  drawn into the rectangle the ROI names. `DetectorPresenter.sig_new_data`
+  carries `<detector>-roi` beside `<detector>-buffer` for that. The layer was
+  sized from the ROI, as `(width, height)` against a frame's `(height, width)`.
+
 - `MMCamera` (`redsun_mimir.device.mmcore`) takes the prefix of its service
   and builds its signals from PVI. It reports what the service wrote through
   `StreamResource`/`StreamDatum`, and `describe_configuration` carries the

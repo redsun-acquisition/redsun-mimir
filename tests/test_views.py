@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+import numpy as np
 import pytest
 from bluesky.utils import MsgGenerator
 from napari.settings import get_settings
@@ -25,7 +26,7 @@ from redsun_mimir.providers import (
 )
 from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
-from redsun_mimir.view.image import ImageView
+from redsun_mimir.view.image import ImageView, place
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
 
@@ -92,6 +93,34 @@ async def _build_light_view(
     widget.register_providers(container)
     widget.inject_dependencies(container)
     return container
+
+
+@pytest.mark.parametrize(
+    ("frame_shape", "origin", "fits"),
+    [
+        ((2, 3), (1, 1), True),
+        ((4, 6), (0, 0), True),
+        ((2, 3), (4, 1), False),
+        ((5, 6), (0, 0), False),
+    ],
+    ids=["inside", "whole", "past-the-edge", "too-tall"],
+)
+def test_a_frame_lands_in_its_rectangle(
+    frame_shape: tuple[int, int], origin: tuple[int, int], fits: bool
+) -> None:
+    """The canvas keeps the sensor's size; a frame that does not fit is refused."""
+    canvas = np.zeros((4, 6), dtype=np.uint8)
+    frame = np.ones(frame_shape, dtype=np.uint8)
+
+    assert place(canvas, frame, origin) is fits
+
+    x, y = origin
+    height, width = frame_shape
+    if fits:
+        assert canvas.sum() == height * width
+        assert canvas[y : y + height, x : x + width].all()
+    else:
+        assert not canvas.any()
 
 
 class TestAcquisitionView:
