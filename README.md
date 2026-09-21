@@ -207,6 +207,14 @@ wiring:
     to: det_ctrl.set
   - from: det_ctrl.sig_new_configuration
     to: det_widget.on_new_configuration
+  - from: det_ctrl.sig_new_configuration
+    to: img_widget.on_new_configuration
+  - from: img_widget.sig_roi_drawn
+    to: det_widget.on_roi_drawn
+  - from: acq_ctrl.sig_pre_launch_notify
+    to: det_ctrl.on_plan_started
+  - from: acq_ctrl.sig_plan_done
+    to: det_ctrl.on_plan_done
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
   - from: light_widget.sig_toggle_light_request
@@ -245,6 +253,9 @@ when a plan is what moved it.
 ## Features
 
 - Live data capture.
+- Region of interest chosen on the image: a box dragged over a detector's
+  layer, applied with Confirm in that detector's settings, the whole sensor
+  back with Clear. A change waits for a running plan to end.
 - Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).
 - Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.
