@@ -19,7 +19,7 @@ from redsun_mimir.providers import (
 from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor
@@ -111,6 +111,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         #: each detector's ROI as last reported, kept by subscription so a
         #: frame is forwarded with the region it was taken with
         self._rois: dict[str, Roi] = {}
+        self._roi_callbacks: dict[str, Callable[[dict[str, Reading[Any]]], None]] = {}
         self._plan_running = False
         run_coro(self._follow_rois())
 
@@ -122,7 +123,17 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         """
         for name, detector in self.detectors.items():
             self._rois[name] = Roi.parse(await detector.roi.get_value())
-            detector.roi.subscribe(partial(self._remember_roi, name))
+            self._roi_callbacks[name] = partial(self._remember_roi, name)
+            detector.roi.subscribe(self._roi_callbacks[name])
+
+    async def _unfollow_rois(self) -> None:
+        for name, callback in self._roi_callbacks.items():
+            self.detectors[name].roi.clear_sub(callback)
+        self._roi_callbacks.clear()
+
+    def shutdown(self) -> None:
+        """Stop following the ROIs, so no subscription outlives the loop."""
+        run_coro(self._unfollow_rois())
 
     def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
         self._rois[detector] = Roi.parse(next(iter(reading.values()))["value"])

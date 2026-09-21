@@ -172,6 +172,17 @@ class TestDetectorViewRoi:
 
         assert sent == [("cam", "roi", "1,1,3,2")]
 
+    def test_select_roi_asks_the_image_for_a_box(self, view: DetectorView) -> None:
+        asked: list[tuple[str, bool]] = []
+        view.sig_roi_selection.connect(lambda *args: asked.append(args))
+        panel = view.settings_controls["cam"].roi_panel
+        assert panel is not None
+
+        panel.select_button.click()
+        panel.select_button.click()
+
+        assert asked == [("cam", True), ("cam", False)]
+
     def test_clear_sends_the_whole_sensor(self, view: DetectorView) -> None:
         sent: list[tuple[str, str, Any]] = []
         view.sig_property_changed.connect(lambda *args: sent.append(args))
@@ -216,6 +227,17 @@ class TestImageViewRoi:
         view.viewer_model.layers["cam"]._overlays[ROI_BOX].bounds = ((1, 1), (3, 4))
 
         assert drawn == [("cam", Roi(1, 1, 3, 2))]
+
+    def test_the_box_is_hidden_until_a_selection_is_asked_for(
+        self, view: ImageView
+    ) -> None:
+        box = view.viewer_model.layers["cam"]._overlays[ROI_BOX]
+        assert not box.visible
+
+        view.set_roi_selection("cam", True)
+        assert box.visible
+        view.set_roi_selection("cam", False)
+        assert not box.visible
 
     def test_the_box_follows_the_roi_the_camera_reads(self, view: ImageView) -> None:
         drawn: list[tuple[str, Roi]] = []

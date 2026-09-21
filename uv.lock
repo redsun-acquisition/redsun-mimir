@@ -4337,8 +4337,7 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.13.0rc4"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../redsun" }
 dependencies = [
     { name = "bluesky" },
     { name = "culsans" },
@@ -4348,10 +4347,6 @@ dependencies = [
     { name = "psygnal" },
     { name = "pyyaml" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/bd/223263f79970cfa6f92f2537b6ce06db0e4c1f65c005bcd47ac45434aa3f/redsun-0.13.0rc4.tar.gz", hash = "sha256:9cb4ab68ef3a468f320fb7d9be94fd121fbe6a8da505bf1721bb05521f3710c7", size = 94180, upload-time = "2026-09-21T05:07:10.919Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/2b/aa8eaadc79f54f7c282e70e767bb98550888ffdb3a88ad98a408fe1b836c/redsun-0.13.0rc4-py3-none-any.whl", hash = "sha256:d1820877e72b707e48f30de7f664f8580397d0d9196bc94da446138723b0ab15", size = 115761, upload-time = "2026-09-21T05:07:09.531Z" },
 ]
 
 [package.optional-dependencies]
@@ -4368,6 +4363,85 @@ pyside = [
 zarr = [
     { name = "ome-writers", extra = ["acquire-zarr"] },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "bluesky", specifier = ">=1.15.1" },
+    { name = "culsans", specifier = ">=0.11.0" },
+    { name = "dependency-injector", specifier = ">=4.49.1" },
+    { name = "magicgui", marker = "extra == 'pyqt'", specifier = ">=0.10.2" },
+    { name = "magicgui", marker = "extra == 'pyside'", specifier = ">=0.10.2" },
+    { name = "magicgui", marker = "extra == 'qt-common'", specifier = ">=0.10.2" },
+    { name = "ome-tiled", extras = ["bluesky"], marker = "python_full_version < '3.14' and extra == 'tiled'", specifier = ">=0.2.0" },
+    { name = "ome-writers", extras = ["acquire-zarr"], marker = "extra == 'zarr'", specifier = ">=0.3.2" },
+    { name = "ophyd-async", specifier = ">=0.21.2" },
+    { name = "platformdirs", specifier = ">=4.11.0" },
+    { name = "psygnal", specifier = ">=0.15.1" },
+    { name = "pyqt6", marker = "extra == 'pyqt'", specifier = ">=6.11.0" },
+    { name = "pyside6", marker = "extra == 'pyside'", specifier = ">=6.11.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "qtpy", marker = "extra == 'pyqt'", specifier = ">=2.4.3" },
+    { name = "qtpy", marker = "extra == 'pyside'", specifier = ">=2.4.3" },
+    { name = "qtpy", marker = "extra == 'qt-common'", specifier = ">=2.4.3" },
+    { name = "tiled", extras = ["client", "server"], marker = "python_full_version < '3.14' and extra == 'tiled'", specifier = ">=0.2.18" },
+    { name = "typing-extensions", specifier = ">=4.16.0" },
+]
+provides-extras = ["pyqt", "pyside", "qt-common", "tiled", "zarr"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "caproto", specifier = ">=1.3.0" },
+    { name = "coverage", specifier = ">=7.16.1" },
+    { name = "griffe-fieldz", specifier = ">=0.4.0" },
+    { name = "magicgui", specifier = ">=0.10.2" },
+    { name = "mypy", specifier = ">=2.3.1" },
+    { name = "ome-tiled", extras = ["bluesky"], marker = "python_full_version < '3.14'", specifier = ">=0.2.0" },
+    { name = "ome-writers", extras = ["acquire-zarr"], specifier = ">=0.3.2" },
+    { name = "ophyd-async", extras = ["ca"], specifier = ">=0.21.2" },
+    { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
+    { name = "p4p", specifier = ">=4.2.2" },
+    { name = "prek", specifier = ">=0.5.0" },
+    { name = "pyqt6", specifier = ">=6.11.0" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-env", specifier = ">=1.1.5" },
+    { name = "qtpy", specifier = ">=2.4.3" },
+    { name = "ruff", specifier = ">=0.16.5" },
+    { name = "tiled", extras = ["client", "server"], marker = "python_full_version < '3.14'", specifier = ">=0.2.18" },
+    { name = "tox-uv-bare", specifier = ">=1.36.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+]
+docs = [
+    { name = "mkdocstrings-python", specifier = ">=2.0.7" },
+    { name = "zensical", specifier = ">=0.0.61" },
+]
+epics = [
+    { name = "caproto", specifier = ">=1.3.0" },
+    { name = "ophyd-async", extras = ["ca"], specifier = ">=0.21.2" },
+]
+pva = [
+    { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
+    { name = "p4p", specifier = ">=4.2.2" },
+]
+pyqt = [
+    { name = "magicgui", specifier = ">=0.10.2" },
+    { name = "pyqt6", specifier = ">=6.11.0" },
+    { name = "qtpy", specifier = ">=2.4.3" },
+]
+pyside = [
+    { name = "magicgui", specifier = ">=0.10.2" },
+    { name = "pyside6", specifier = ">=6.11.0" },
+    { name = "qtpy", specifier = ">=2.4.3" },
+]
+qt-common = [
+    { name = "magicgui", specifier = ">=0.10.2" },
+    { name = "qtpy", specifier = ">=2.4.3" },
+]
+tiled = [
+    { name = "ome-tiled", extras = ["bluesky"], marker = "python_full_version < '3.14'", specifier = ">=0.2.0" },
+    { name = "tiled", extras = ["client", "server"], marker = "python_full_version < '3.14'", specifier = ">=0.2.18" },
+]
+zarr = [{ name = "ome-writers", extras = ["acquire-zarr"], specifier = ">=0.3.2" }]
 
 [[package]]
 name = "redsun-mimir"
@@ -4440,10 +4514,10 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
-    { name = "redsun", extras = ["zarr"], specifier = ">=0.13.0rc4" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", editable = "../redsun" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", editable = "../redsun" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", editable = "../redsun" },
+    { name = "redsun", extras = ["zarr"], editable = "../redsun" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 
@@ -4459,13 +4533,13 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-env", specifier = ">=1.1.5" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "redsun", extras = ["pyqt"], editable = "../redsun" },
     { name = "redsun-mimir", extras = ["pyqt"] },
     { name = "ruff", specifier = ">=0.16.5" },
 ]
 pyqt = [
     { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.0" },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "redsun", extras = ["pyqt"], editable = "../redsun" },
 ]
 sim = [
     { name = "pymmcore-plus", specifier = ">=0.18.1" },

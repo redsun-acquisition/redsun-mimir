@@ -105,7 +105,8 @@ class ImageView(QtView, Loggable):
     ----------
     sig_roi_drawn : Signal[str, Roi]
         Emitted as the selection box on a detector's layer is dragged, with
-        the detector's name and the box as a `Roi` in sensor pixels.
+        the detector's name and the box as a `Roi` in sensor pixels. The box
+        is hidden, and cannot be dragged, until `set_roi_selection` shows it.
     """
 
     sig_roi_drawn = Signal(str, object)
@@ -205,7 +206,7 @@ class ImageView(QtView, Loggable):
         """Create an empty, sensor-sized image layer for each detector, with its box.
 
         The box starts over the whole sensor, which is what an uncropped
-        camera reads out.
+        camera reads out, and hidden until a selection is asked for.
         """
         for name, spec in specs.items():
             self.logger.debug(f"Creating layer for {name} with spec {spec}")
@@ -214,7 +215,7 @@ class ImageView(QtView, Loggable):
             self._origins[name] = (0, 0)
             self._sensors[name] = spec["shape"]
             box = ROIInteractionBoxOverlay(
-                bounds=((0, 0), spec["shape"]), handles=True, visible=True
+                bounds=((0, 0), spec["shape"]), handles=True, visible=False
             )
             layer._overlays[ROI_BOX] = box
             layer.mouse_drag_callbacks.append(resize_selection_box)
@@ -227,6 +228,12 @@ class ImageView(QtView, Loggable):
         self.sig_roi_drawn.emit(
             detector, roi_from_bounds(box.bounds, self._sensors[detector])
         )
+
+    @slot
+    def set_roi_selection(self, detector: str, enabled: bool) -> None:
+        """Show the box on *detector*'s layer and let it be dragged, or hide it."""
+        if detector in self.viewer_model.layers:
+            self.viewer_model.layers[detector]._overlays[ROI_BOX].visible = enabled
 
     @slot
     def on_new_configuration(self, detector: str, key: str, value: object) -> None:

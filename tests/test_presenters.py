@@ -626,6 +626,38 @@ class TestDetectorPresenter:
         assert received[-1]["cam-roi"]["value"] == Roi(1, 1, 3, 2)
         assert list(received[-1]) == ["cam-roi", "cam-buffer"]
 
+    def test_shutdown_stops_following_the_rois(
+        self, fake_detector: FakeDetector
+    ) -> None:
+        """No subscription outlives the presenter, so none is left pending."""
+        presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
+        received: list[dict[str, Any]] = []
+        presenter.sig_new_data.connect(received.append)
+        presenter.descriptor(
+            cast(
+                "EventDescriptor",
+                {
+                    "uid": "desc-1",
+                    "run_start": "run-1",
+                    "data_keys": {"cam-buffer": {}},
+                },
+            )
+        )
+        event = cast(
+            "Event",
+            {
+                "descriptor": "desc-1",
+                "time": 0.0,
+                "data": {"cam-buffer": np.zeros((2, 3))},
+            },
+        )
+
+        presenter.shutdown()
+        run_coro(set_roi(fake_detector, (1, 1, 3, 2)))
+        presenter.event(event)
+
+        assert received[-1]["cam-roi"]["value"] == Roi(0, 0, 6, 4)
+
     def test_a_layer_is_the_size_of_the_sensor_whatever_the_roi(
         self, fake_detector: FakeDetector
     ) -> None:

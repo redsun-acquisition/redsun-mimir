@@ -253,9 +253,9 @@ when a plan is what moved it.
 ## Features
 
 - Live data capture.
-- Region of interest chosen on the image: a box dragged over a detector's
-  layer, applied with Confirm in that detector's settings, the whole sensor
-  back with Clear. A change waits for a running plan to end.
+- Region of interest chosen on the image: Select ROI in a detector's settings
+  shows a box over its layer to drag, Confirm applies it, and Clear brings
+  the whole sensor back. A change waits for a running plan to end.
 - Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).
 - Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.

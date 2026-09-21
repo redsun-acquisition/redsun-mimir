@@ -50,6 +50,7 @@ def wire_detector(
     app.connect(ctrl.sig_new_configuration, view.on_new_configuration)
     app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
     app.connect(image.sig_roi_drawn, view.on_roi_drawn)
+    app.connect(view.sig_roi_selection, image.set_roi_selection)
     if acquisition is not None:
         app.connect(acquisition.sig_pre_launch_notify, ctrl.on_plan_started)
         app.connect(acquisition.sig_plan_done, ctrl.on_plan_done)

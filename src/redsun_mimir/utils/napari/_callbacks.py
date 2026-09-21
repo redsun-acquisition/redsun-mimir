@@ -64,7 +64,7 @@ def resize_selection_box(layer: Image, event: NapariMouseEvent) -> Iterator[None
     None
         This is a generator function that handles mouse dragging.
     """
-    if len(event.dims_displayed) != 2:
+    if len(event.dims_displayed) != 2 or not layer._overlays["roi_box"].visible:
         return
 
     # Get the selected handle
@@ -130,7 +130,7 @@ def highlight_roi_box_handles(layer: Image, event: NapariMouseEvent) -> None:
     event: NapariMouseEvent
         The event triggered by mouse movement.
     """
-    if len(event.dims_displayed) != 2:
+    if len(event.dims_displayed) != 2 or not layer._overlays["roi_box"].visible:
         return
 
     # we work in data space so we're axis aligned which simplifies calculation

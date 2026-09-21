@@ -22,9 +22,10 @@ if TYPE_CHECKING:
 class RoiPanel(QtWidgets.QWidget):
     """The region a detector reads, and the one drawn on its image but not yet applied.
 
-    Confirm applies the drawn region; Clear applies the whole sensor. Neither
-    changes the camera by itself: both emit ``sig_roi_requested`` with the
-    region, as ``"x,y,width,height"``.
+    Select ROI shows the box on the image for the user to drag, announced on
+    ``sig_selection_toggled``. Confirm applies the drawn region; Clear applies
+    the whole sensor. Neither changes the camera by itself: both emit
+    ``sig_roi_requested`` with the region, as ``"x,y,width,height"``.
 
     Parameters
     ----------
@@ -35,6 +36,7 @@ class RoiPanel(QtWidgets.QWidget):
     """
 
     sig_roi_requested = Signal(str)
+    sig_selection_toggled = Signal(bool)
 
     def __init__(
         self,
@@ -48,6 +50,10 @@ class RoiPanel(QtWidgets.QWidget):
         self.pending: Roi | None = None
 
         self.label = QtWidgets.QLabel(self)
+        self.select_button = QtWidgets.QPushButton("Select ROI", self)
+        self.select_button.setToolTip("Show a box on the image to drag over the region")
+        self.select_button.setCheckable(True)
+        self.select_button.toggled.connect(self.sig_selection_toggled.emit)
         self.confirm_button = QtWidgets.QPushButton("Confirm", self)
         self.confirm_button.setToolTip("Read out the region drawn on the image")
         self.confirm_button.setEnabled(False)
@@ -60,6 +66,7 @@ class RoiPanel(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(QtWidgets.QLabel("ROI", self))
         layout.addWidget(self.label, 1)
+        layout.addWidget(self.select_button)
         layout.addWidget(self.confirm_button)
         layout.addWidget(self.clear_button)
         self.setLayout(layout)
@@ -161,9 +168,13 @@ class DetectorView(QtView, Loggable):
         - str: The detector name.
         - str: The property name.
         - Any: The new value of the property.
+    sig_roi_selection : Signal[str, bool]
+        Emitted when the user asks to select a region on a detector's image,
+        or stops: the detector name, and whether the box is wanted.
     """
 
     sig_property_changed = Signal(str, str, object)
+    sig_roi_selection = Signal(str, bool)
 
     @property
     def view_position(self) -> ViewPosition:
@@ -231,6 +242,9 @@ class DetectorView(QtView, Loggable):
             if widget.roi_panel is not None:
                 widget.roi_panel.sig_roi_requested.connect(
                     partial(self.sig_property_changed.emit, device_label, "roi")
+                )
+                widget.roi_panel.sig_selection_toggled.connect(
+                    partial(self.sig_roi_selection.emit, device_label)
                 )
             self.settings_controls[device_label] = widget
             self.settings_tab_widget.addTab(widget, device_label)
