@@ -201,6 +201,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- The camera service publishes a frame with the dtype the camera now gives,
+  retyping `buffer` and updating `pixel_dtype` when a property such as
+  `PixelType` changed it; a frame of a new dtype was cast to the first
+  frame's. `ImageView` retypes a layer to the frame it receives.
+
 - `DetectorPresenter` knows its writable settings from construction. They
   were collected on the first ROI update, so a `set` or a settings tree built
   before it found none.

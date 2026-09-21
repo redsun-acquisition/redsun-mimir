@@ -32,7 +32,7 @@ from redsun_mimir.common import Roi
 from ._process import controller_id, identity_arguments, serve, session_logging
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
     from numpy.typing import NDArray
 
@@ -143,24 +143,33 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
         core: CMMCorePlus,
         label: str,
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
+        layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__()
         self._core = core
         self._label = label
         self._without_sequence = without_sequence
+        self._layout_changed = layout_changed
 
     async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
         """Write the property, and read back what the camera made of it.
 
         Every write pauses a running sequence, since some properties,
-        binning and pixel type among them, are refused during one.
+        binning and pixel type among them, are refused during one. A frame
+        is snapped while it is paused and handed to *layout_changed*, since a
+        property may change what the camera's frames look like.
         """
-        await asyncio.to_thread(
-            self._without_sequence,
-            lambda: self._core.setProperty(self._label, attr.io_ref.property, value),
-        )
+        snapped: list[NDArray[Any]] = []
+
+        def apply() -> None:
+            self._core.setProperty(self._label, attr.io_ref.property, value)
+            snapped.append(self._core.snap())
+
+        await asyncio.to_thread(self._without_sequence, apply)
         if isinstance(attr, AttrR):
             await self.update(attr)
+        if self._layout_changed is not None:
+            await self._layout_changed(snapped[0])
 
     async def update(self, attr: AttrR[str, PropertyRef]) -> None:
         """Read the camera's own value of the property."""
@@ -244,7 +253,9 @@ class MMCameraController(Controller):
         data_key: str,
         properties: Iterable[str] | None = None,
     ) -> None:
-        self._property_io = PropertyIO(core, label, self._without_sequence)
+        self._property_io = PropertyIO(
+            core, label, self._without_sequence, self.publish_layout
+        )
         super().__init__(ios=[CoreIO(core, self._without_sequence), self._property_io])
         self._core = core
         self._label = label
@@ -353,10 +364,28 @@ class MMCameraController(Controller):
         if frame is None or grabbed == self._published:
             return
         self._published = grabbed
+        await self.follow_layout(frame)
         await self.buffer.update(frame)
         await self.frame_count.update(grabbed)
         if self.captured.get() != self._written:
             await self.captured.update(self._written)
+
+    async def follow_layout(self, frame: NDArray[Any]) -> None:
+        """Retype ``buffer`` and ``pixel_dtype`` to *frame* when its dtype is new.
+
+        The declared dtype would otherwise cast every frame to the first
+        frame's.
+        """
+        if frame.dtype != self.buffer.datatype.array_dtype:
+            self.buffer.update_datatype(
+                Waveform(frame.dtype, shape=self.buffer.datatype.shape)
+            )
+            await self.pixel_dtype.update(frame.dtype.name)
+
+    async def publish_layout(self, frame: NDArray[Any]) -> None:
+        """Retype to *frame* and publish it, so a client sees a property's effect at once."""
+        await self.follow_layout(frame)
+        await self.buffer.update(frame)
 
     async def reconnect(self) -> None:
         """Forget the last error and grab again if the camera should be."""

@@ -261,7 +261,7 @@ def camera_service(service: ServiceFactory) -> Service:
         "--device",
         "DCam",
         "--properties",
-        "Binning",
+        "Binning,PixelType",
     )
 
 

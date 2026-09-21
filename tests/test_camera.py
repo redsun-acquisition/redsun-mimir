@@ -8,6 +8,7 @@ document stream and the store that comes out of it.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,6 +17,7 @@ from urllib.request import url2pathname
 
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
+import numpy as np
 import pytest
 from bluesky.run_engine import RunEngine as BlueskyRunEngine
 from ophyd_async.core import TriggerInfo
@@ -138,3 +140,20 @@ async def test_the_camera_carries_its_properties_into_its_configuration(
     assert await mm_camera.properties["Binning"].get_value() == "2"
     readings = await mm_camera.read_configuration()
     assert readings[f"{mm_camera.name}-properties-Binning"]["value"] == "2"
+
+
+@needs_mm_adapters
+async def test_a_pixel_type_change_reaches_the_frames_and_the_dtype(
+    mm_camera: MMCamera,
+) -> None:
+    """The buffer carries the new dtype and ``pixel_dtype`` says which."""
+    assert (await mm_camera.buffer.get_value()).dtype == np.uint8
+
+    await mm_camera.properties["PixelType"].set("16bit")
+
+    deadline = time.monotonic() + 10.0
+    while (await mm_camera.buffer.get_value()).dtype != np.uint16:
+        assert time.monotonic() < deadline, "no 16-bit frame arrived"
+        await asyncio.sleep(0.05)
+    assert await mm_camera.pixel_dtype.get_value() == "uint16"
+    assert (await frame_shape_and_dtype(mm_camera))[1] == "uint16"

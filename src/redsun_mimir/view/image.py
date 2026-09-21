@@ -253,7 +253,8 @@ class ImageView(QtView, Loggable):
 
         A detector's frame is drawn into the rectangle of its layer its ROI
         names, read from the reading beside it; the layer keeps the sensor's
-        size. Any other reading replaces its layer's data.
+        size and takes the frame's dtype. Any other reading replaces its
+        layer's data.
         """
         for key, reading in data.items():
             if key.endswith("-roi"):
@@ -267,6 +268,8 @@ class ImageView(QtView, Loggable):
                 self.viewer_model.add_image(img, name=name)
                 continue
             layer = self.viewer_model.layers[name]
+            if layer.data.dtype != img.dtype:
+                layer.data = np.zeros(layer.data.shape, dtype=img.dtype)
             origin = self._origins.get(name)
             if origin is not None and place(layer.data, img, origin):
                 layer.refresh()

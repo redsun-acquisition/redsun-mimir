@@ -267,6 +267,24 @@ class TestImageViewRoi:
         view.set_roi_selection("cam", False)
         assert not box.visible
 
+    def test_a_frame_of_a_new_dtype_retypes_its_layer(self, view: ImageView) -> None:
+        """A pixel type change must not be cast into the old layer."""
+        layer = view.viewer_model.layers["cam"]
+        assert layer.data.dtype == np.uint8
+
+        view.update_layers(
+            {
+                "cam-roi": {"value": Roi(0, 0, 6, 4), "timestamp": 0.0},
+                "cam-buffer": {
+                    "value": np.full((4, 6), 1000, dtype=np.uint16),
+                    "timestamp": 0.0,
+                },
+            }
+        )
+
+        assert layer.data.dtype == np.uint16
+        assert layer.data[0, 0] == 1000
+
     def test_the_box_follows_an_edit_in_the_panel(self, view: ImageView) -> None:
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
