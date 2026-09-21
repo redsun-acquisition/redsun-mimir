@@ -27,9 +27,8 @@ LOOPBACK: Final = "127.0.0.1"
 def session_logging() -> None:
     """Log as JSON lines the session rebuilds into records of its own.
 
-    The session reads a service's output line by line. A serialized
-    ``loguru`` record keeps its level, time, logger name and traceback
-    there, where a plain line would be DEBUG text.
+    A serialized ``loguru`` record keeps its level, time, logger name and
+    traceback; a plain line would arrive as DEBUG text.
     """
     logger.remove()
     logger.add(sys.stdout, serialize=True, level="INFO")
@@ -52,8 +51,7 @@ def identity_arguments(parser: argparse.ArgumentParser, default_name: str) -> No
 def controller_id(options: argparse.Namespace) -> str:
     """Return the id the controller is served under.
 
-    A PVA id takes no colon, while the prefix a client device is given ends in
-    one, so the id is the prefix without it.
+    The prefix without its trailing colon, which a PVA id takes none of.
     """
     return str(options.prefix).rstrip(":") or str(options.name)
 
@@ -61,8 +59,8 @@ def controller_id(options: argparse.Namespace) -> str:
 async def announce_when_reachable(prefix: str, ready: str) -> None:
     """Print *ready* once the controller's PVI record answers.
 
-    The session tells its own process where to search, not this one, so the
-    check looks on the interface the controller is served on.
+    The check looks on the loopback interface, since the session's search
+    list is set on its own process, not this one.
     """
     from p4p.client.asyncio import Context
 

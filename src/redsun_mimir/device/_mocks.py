@@ -23,15 +23,12 @@ SIGNAL_TIMEOUT: Final = 5.0
 
 
 class BoundedSoftSignalBackend(SoftSignalBackend[SignalDatatypeT]):
-    """SoftSignalBackend that exposes control limits in its DataKey.
+    """A ``SoftSignalBackend`` reporting control limits in its ``DataKey``.
 
-    ``limits`` is the one piece of metadata ophyd-async's soft backend cannot
-    express (``make_metadata`` covers only units and precision), so this
-    subclass stays even for signals that are otherwise plain callables - the
-    light view sizes its slider from ``limits.control``.
-
-    ``getter``/``setter``/``poll_period`` are forwarded untouched, so a
-    bounded signal can be hardware-backed like any other soft signal.
+    The soft backend's ``make_metadata`` covers only units and precision,
+    and the light view sizes its slider from ``limits.control``. *getter*,
+    *setter* and *poll_period* are forwarded, so a bounded signal can be
+    hardware-backed like any other soft signal.
     """
 
     def __init__(
@@ -58,7 +55,7 @@ class BoundedSoftSignalBackend(SoftSignalBackend[SignalDatatypeT]):
         self._high: float = high
 
     async def get_datakey(self, source: str) -> DataKey:
-        """Get the data key for this signal, including control limits."""
+        """Return the data key, with control limits."""
         dk = await super().get_datakey(source)
         # inject control limits into the DataKey
         limits: Limits = {"control": {"low": self._low, "high": self._high}}
@@ -78,10 +75,10 @@ def bounded_soft_signal_rw(
     setter: Setter[SignalDatatypeT] | None = None,
     poll_period: float | None = None,
 ) -> SignalRW[SignalDatatypeT]:
-    """Create a bounded soft signal with control limits in its DataKey.
+    """Return a soft signal with control limits in its ``DataKey``.
 
-    Pass *getter*/*setter* to back the signal with a hardware call; leave
-    them out for a purely in-memory bounded value.
+    *getter* and *setter* back it with a hardware call; without them the
+    value lives in memory.
     """
     backend = BoundedSoftSignalBackend(
         low,
@@ -97,18 +94,16 @@ def bounded_soft_signal_rw(
 
 
 class MockLightDevice(StandardReadable, Loggable):
-    """Mock light source for simulation and testing purposes.
+    """Mock light source for simulation and tests.
 
     Parameters
     ----------
-    name : str
-        Device name.
-    wavelength : int, optional
-        Wavelength of the light source in nanometers. Defaults to ``0``.
-    binary : bool, optional
-        Mark the source as on/off only. Defaults to ``False``.
-    range : tuple[float, float], optional
-        Bounds of ``intensity`` in mW. Ignored when *binary*.
+    wavelength :
+        In nanometres.
+    binary :
+        Mark the source as on/off only.
+    range :
+        Bounds of ``intensity`` in mW, ignored when *binary*.
     """
 
     def __init__(
@@ -138,7 +133,7 @@ class MockLightDevice(StandardReadable, Loggable):
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:
-        """Toggle the activation status of the light source."""
+        """Toggle the light source on or off."""
         current = await self.enabled.get_value()
         await self.enabled.set(not current)
         self.logger.debug(

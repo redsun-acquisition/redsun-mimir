@@ -1,9 +1,8 @@
 """Connections shared by the example containers.
 
-Each helper takes the components it connects rather than the container, so
-every port is checked against the class that declares it. Passing the
-container instead would type each component as ``Any`` and lose exactly the
-check these declarations exist for.
+Each helper takes the components it connects, not the container, so every
+port is checked against the class declaring it; through the container each
+component would be ``Any``.
 """
 
 from __future__ import annotations
@@ -57,8 +56,8 @@ def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> N
 def wire_motor(app: AppContainer, ctrl: MotorPresenter, view: MotorView) -> None:
     """Connect stage step requests.
 
-    The return path is not a connection: the view subscribes to the axis
-    readbacks itself, so it also follows moves this presenter never made.
+    There is no return path: the view subscribes to the axis readbacks
+    itself, so it follows moves the presenter never made.
     """
     app.connect(view.sig_motor_move, ctrl.move)
 
@@ -77,10 +76,9 @@ def wire_acquisition(
 ) -> None:
     """Connect run control, and the plan lifecycle to whoever tracks it.
 
-    The session's path provider takes the plan name, so files written during a
-    run are named after it, and the directory those files go under, which the
-    view lets a user choose between runs. *median* is optional because not every container
-    declares it.
+    The session's path provider takes the plan name, which names the files a
+    run writes, and the base directory, which the view lets a user choose
+    between runs. *median* is optional since not every container declares it.
     """
     app.connect(view.sig_launch_plan_request, ctrl.launch_plan)
     app.connect(view.sig_stop_plan_request, ctrl.stop_plan)

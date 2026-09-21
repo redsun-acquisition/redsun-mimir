@@ -30,7 +30,7 @@ class LayerSpec(TypedDict):
     """Shape of the image data (height, width)."""
 
     dtype: str
-    """Data type of the image data, as a string (e.g. 'uint16')."""
+    """Data type of the image data as a string, such as ``'uint16'``."""
 
 
 @runtime_checkable
@@ -39,57 +39,55 @@ class MotorProtocol(AsyncReadable, Protocol):
 
     @property
     def axis(self) -> Mapping[str, StandardMovable[float]]:
-        """Map of axis names to movable axes.
+        """Movable axes by name.
 
-        Read-only, and a `Mapping` rather than a `DeviceMap`: a protocol's
-        mutable attribute is invariant, so a device holding a map of its own
-        axis class would not match, while a read-only member is covariant in
-        both the mapping and the axis type.
+        Read-only and a `Mapping`, not a `DeviceMap`: a mutable protocol
+        attribute is invariant, while a read-only one is covariant in both
+        the mapping and the axis type, so a device holding a map of its own
+        axis class matches.
 
-        ``locate`` reports the commanded setpoint and the measured readback
-        separately; a controller that cannot be queried reports them as equal.
+        ``locate`` reports setpoint and readback separately; a controller
+        that cannot be queried reports them equal.
         """
         ...
 
 
 @runtime_checkable
 class LightProtocol(AsyncConfigurable, Protocol):
-    """Protocol for light source devices.
+    """Protocol for light sources.
 
     Attributes
     ----------
     intensity :
-        Settable signal for the current light intensity.
-        The ``units`` field of its ``Descriptor`` carries the engineering unit.
+        Settable intensity; the ``units`` field of its ``Descriptor`` carries
+        the engineering unit.
     wavelength :
-        Read-only signal for the wavelength in nanometres.
+        Wavelength in nanometres.
     enabled :
-        Read-only signal reflecting the current on/off state.
-        Updated internally each time [`trigger`][redsun_mimir.protocols.LightProtocol.trigger]
-        is called.
+        On/off state, updated by each
+        [`trigger`][redsun_mimir.protocols.LightProtocol.trigger] call.
     binary :
-        Read-only signal marking the source as on/off only.
-        A binary source refuses intensity changes.
+        Marks the source as on/off only; a binary source refuses intensity
+        changes.
     """
 
     @property
     def intensity(self) -> SignalRW[Any]:
         """Light source intensity.
 
-        Read-only here, as `MotorProtocol.axis` is: a protocol's mutable
-        attribute is invariant, so a device whose intensity is an ``int``
-        would not match one declared ``int | float``.
+        Read-only, as `MotorProtocol.axis` is: a mutable protocol attribute
+        is invariant, so an ``int`` intensity would not match ``int | float``.
         """
         ...
 
     @property
     def wavelength(self) -> SignalR[int]:
-        """Light source wavelength."""
+        """Wavelength in nanometres."""
         ...
 
     @property
     def enabled(self) -> SignalRW[bool]:
-        """Current on/off state of the light source."""
+        """Current on/off state."""
         ...
 
     @property
@@ -98,33 +96,15 @@ class LightProtocol(AsyncConfigurable, Protocol):
         ...
 
     async def read(self) -> dict[str, Reading[Any]]:
-        """Read the current state of the light source.
-
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary of signal names to their current values.
-        """
+        """Return the current value of every signal, by name."""
         ...
 
     async def describe(self) -> dict[str, Descriptor]:
-        """Describe the light source signals.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            Dictionary of signal names to their descriptors.
-        """
+        """Return the descriptor of every signal, by name."""
         ...
 
     def trigger(self) -> AsyncStatus[None]:
-        """Toggle the activation status of the light source.
-
-        Returns
-        -------
-        AsyncStatus[None]
-            Status object of the operation.
-        """
+        """Toggle the light source on or off."""
         ...
 
 
@@ -143,25 +123,19 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models."""
 
     buffer: SignalR[np.ndarray]
-    """Readable signal providing access to the current data buffer.
-
-    One frame, of shape (height, width).
-    """
+    """The latest frame, of shape (height, width)."""
 
     exposure: SignalRW[float]
-    """Signal for exposure time."""
+    """Exposure time."""
 
     roi: SignalRW[str]
     """Region of interest, as text: ``"x,y,width,height"``, read with `Roi.parse`."""
 
     pixel_dtype: SignalR[str]
-    """Signal carrying the pixel data type."""
+    """Pixel data type."""
 
     sensor_size: SignalR[np.ndarray]
-    """The whole sensor, as two integers: (width, height).
-
-    What ``roi`` is expressed against; it does not change with the ROI.
-    """
+    """The whole sensor as (width, height): what ``roi`` is expressed against."""
 
 
 @runtime_checkable
@@ -173,7 +147,7 @@ class ReadableFlyer(
     WritesStreamAssets,
     Protocol,
 ):
-    """Protocol for objects that can write to disk."""
+    """Protocol for detectors that fly and write stream assets."""
 
 
 __all__ = [

@@ -47,7 +47,7 @@ FAULTED: Final = "faulted"
 
 @dataclass
 class ServiceTriggerLogic(DetectorTriggerLogic):
-    """Tells the camera service how many frames the next window writes."""
+    """Trigger logic telling the service how many frames the next window writes."""
 
     camera: MMCamera
 
@@ -75,11 +75,11 @@ class ServiceTriggerLogic(DetectorTriggerLogic):
 
 @dataclass
 class ServiceAcquireLogic(DetectorAcquireLogic):
-    """Starts and stops the camera and the window it writes.
+    """Acquire logic starting and stopping the camera and the window it writes.
 
-    The camera takes frames from ``stage`` to ``unstage``, whether or not
-    anything is being written: a viewer watching the buffer needs them, and a
-    read after a move reads the frame that arrived since.
+    The camera takes frames from ``stage`` to ``unstage`` whether or not
+    anything is written: a viewer watches the buffer, and a read after a move
+    wants the frame taken since.
     """
 
     camera: MMCamera
@@ -93,10 +93,10 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
         await self.camera.capture.set(True)
 
     async def wait_for_idle(self) -> None:
-        """Wait for a bounded window to write its last frame, or end an unbounded one.
+        """Wait for a bounded window's last frame, or close an unbounded window.
 
-        Closing an unbounded window here, rather than at unstage, is what
-        makes the count the documents report the count of frames on disk.
+        Closing an unbounded window here rather than at unstage keeps the
+        count the documents report equal to the frames on disk.
         """
         if await self.camera.num_capture.get_value():
             closed = asyncio.ensure_future(
@@ -124,7 +124,7 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
 
 @dataclass
 class ServiceDataLogic(DetectorDataLogic):
-    """Names the store the camera service writes, and reports what it wrote."""
+    """Data logic naming the store the service writes and reporting what it wrote."""
 
     camera: MMCamera
     path_provider: PathProvider
@@ -177,17 +177,17 @@ async def frame_shape_and_dtype(camera: MMCamera) -> tuple[tuple[int, int], str]
 class MMCamera(StandardDetector, Loggable):
     """A Micro-Manager camera, reached through the service that owns it.
 
-    The service publishes PVI, so every signal below is built from its
+    The service publishes PVI, so each signal below is built from its
     annotation and paired by name; the adapter and the device belong to the
-    service's declaration, not to this one.
+    service's declaration.
 
     Parameters
     ----------
     prefix :
-        PV prefix of the service, ending in ``:``. A device declared with
+        PV prefix of the service, ending in ``:``; a device declared with
         ``service=`` receives it from that service.
     path_provider :
-        Where a capture window writes. The session passes its own.
+        Where a capture window writes; the session passes its own.
     """
 
     # the filler reads these annotations at runtime to build the signals, so
@@ -235,10 +235,10 @@ class MMCamera(StandardDetector, Loggable):
         return {**settings, **properties}
 
     async def faulted(self) -> None:
-        """Raise with the camera's own words if it has stopped on a fault.
+        """Raise with the camera's own error if it stopped on a fault.
 
-        A fault ends the grabbing thread, so a wait for its next frame or its
-        last one would only time out; this is what names the cause instead.
+        A fault ends the grabbing thread, so waiting on a frame would only
+        time out; this names the cause instead.
         """
         if await self.state.get_value() == FAULTED:
             raise RuntimeError(
@@ -249,8 +249,8 @@ class MMCamera(StandardDetector, Loggable):
     async def trigger(self) -> None:  # type: ignore[override]
         """Wait for a frame taken after this call.
 
-        The camera takes frames continuously, so the one already published
-        may predate the move a plan just made; this waits for the next.
+        The camera runs continuously, so the frame already published may
+        predate the move a plan just made.
         """
         seen = await self.frame_count.get_value()
         await self.faulted()

@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 
     from redsun_mimir.protocols import LayerSpec
 
-#: The key a detector layer's selection box is kept under, which the mouse
-#: callbacks in ``utils.napari`` look it up by.
+#: The key of a detector layer's selection box, which the mouse callbacks in
+#: ``utils.napari`` look it up by.
 ROI_BOX = "roi_box"
 
 
@@ -76,37 +76,30 @@ def place(canvas: NDArray[Any], frame: NDArray[Any], origin: tuple[int, int]) ->
 class ImageView(QtView, Loggable):
     """View for live image display in a napari viewer.
 
-    Composes a [`napari.components.ViewerModel`][] with a
-    [`napari._qt.qt_viewer.QtViewer`][] embedded directly as a child widget,
-    bypassing napari's full ``Window``/``_QtMainWindow`` stack. The layer
-    controls and layer list panels are extracted from ``QtViewer`` and placed
-    in a dedicated left panel, giving full layout control without the napari
-    menu bar, status bar, or other main-window chrome.
+    A [`napari.components.ViewerModel`][] with a
+    [`napari._qt.qt_viewer.QtViewer`][] embedded as a child widget, bypassing
+    napari's ``Window``/``_QtMainWindow`` stack. The layer controls and layer
+    list are taken out of ``QtViewer`` into a left panel, without napari's
+    menu bar, status bar or other main-window chrome.
 
-    One image layer is created per detector during
-    [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies];
-    layers are updated in real-time as new frames arrive from the presenter.
+    One image layer is created per detector in
+    [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies]
+    and updated as frames arrive from the presenter.
 
-    The widget sets no stylesheet of its own; it is styled by the application
-    it is built under, so a session that wants napari's theme puts napari's QSS
-    on the application.
+    The widget sets no stylesheet of its own: a session that wants napari's
+    theme puts napari's QSS on the application.
 
     Each detector layer carries a selection box the user drags by its handles
     to choose a region of the sensor. Dragging changes nothing on the camera:
     the box is announced on ``sig_roi_drawn`` and applied by whoever confirms
-    it; once applied, the box follows the region the camera reads.
-
-    Parameters
-    ----------
-    name :
-        Identity key of the view.
+    it, after which it follows the region the camera reads.
 
     Attributes
     ----------
     sig_roi_drawn : Signal[str, Roi]
-        Emitted as the selection box on a detector's layer is dragged, with
-        the detector's name and the box as a `Roi` in sensor pixels. The box
-        is hidden, and cannot be dragged, until `set_roi_selection` shows it.
+        Emitted as a detector's selection box is dragged, with the detector's
+        name and the box as a `Roi` in sensor pixels. The box is hidden, and
+        cannot be dragged, until `set_roi_selection` shows it.
     """
 
     sig_roi_drawn = Signal(str, object)
@@ -195,7 +188,7 @@ class ImageView(QtView, Loggable):
         super().closeEvent(event)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register image view signals in the virtual container."""
+        """Register the view's signals with the container."""
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
@@ -205,8 +198,8 @@ class ImageView(QtView, Loggable):
     def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
         """Create an empty, sensor-sized image layer for each detector, with its box.
 
-        The box starts over the whole sensor, which is what an uncropped
-        camera reads out, and hidden until a selection is asked for.
+        The box starts over the whole sensor, as an uncropped camera reads
+        out, and hidden until a selection is asked for.
         """
         for name, spec in specs.items():
             self.logger.debug(f"Creating layer for {name} with spec {spec}")
@@ -239,8 +232,8 @@ class ImageView(QtView, Loggable):
     def on_new_configuration(self, detector: str, key: str, value: object) -> None:
         """Put the box over the region the camera reads, once a ROI is applied.
 
-        *key* is the setting's data key, ``<detector>-roi`` for the one this
-        view shows; any other setting is not this view's to show.
+        Only the ``<detector>-roi`` setting is this view's to show; any other
+        *key* is ignored.
         """
         if key != f"{detector}-roi" or detector not in self.viewer_model.layers:
             return
@@ -251,16 +244,11 @@ class ImageView(QtView, Loggable):
 
     @slot
     def update_layers(self, data: dict[str, Reading[Any]]) -> None:
-        """Push incoming frame data into the corresponding image layers.
+        """Draw incoming frames into their image layers.
 
-        A detector's frame is drawn into the rectangle of its layer that its
-        ROI names, the reading beside it says which; the layer keeps the
-        sensor's size. Any other reading replaces its layer's data.
-
-        Parameters
-        ----------
-        data : dict[str, Reading[Any]]
-            Incoming reading from a detector buffer.
+        A detector's frame is drawn into the rectangle of its layer its ROI
+        names, read from the reading beside it; the layer keeps the sensor's
+        size. Any other reading replaces its layer's data.
         """
         for key, reading in data.items():
             if key.endswith("-roi"):

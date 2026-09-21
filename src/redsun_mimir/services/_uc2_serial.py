@@ -1,9 +1,9 @@
 """The wire protocol of a YouSeeToo (UC2) controller.
 
-The board is write-only over its serial link: it acknowledges a command but
-offers no way to read a position or a laser power back. One port carries every
-axis and every laser, so a command is sent under a lock, and ``pyserial``
-blocks, so a caller keeps these calls off its event loop.
+The board acknowledges a command but reports no position or laser power
+back. One port carries every axis and laser, so a command is sent under a
+lock, and ``pyserial`` blocks, so a caller keeps these calls off its event
+loop.
 """
 
 from __future__ import annotations

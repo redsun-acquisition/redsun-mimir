@@ -21,26 +21,19 @@ if TYPE_CHECKING:
 class MotorView(QtView, Loggable):
     """View for manual motor stage control.
 
-    Builds one control group per motor device using configuration
-    provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
+    One control group per motor, from the configuration
+    [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter] provides.
 
     Parameters
     ----------
-    name : str
-        Identity key of the view.
-    step_size : float, optional
-        Default step size for motor movements,
-        in the engineering unit of the motor
-        (e.g. microns).
-
-        Defaults to ``100.0``.
+    step_size :
+        Default step, in the motor's engineering unit (microns, say).
 
     Attributes
     ----------
     sig_motor_move :
-        Emitted when the user requests a stage movement.
-        Carries motor name (``str``), axis (``str``), and the displacement
-        to apply (``float``), signed by the direction of the button.
+        Emitted when the user asks for a move, with the motor name, the axis
+        and the displacement, signed by the direction of the button.
     """
 
     sig_motor_move = Signal(str, str, float)
@@ -69,15 +62,14 @@ class MotorView(QtView, Loggable):
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Build the UI and register motor view signals in the virtual container."""
+        """Register the view's signals with the container."""
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the per-axis controls, then follow each axis readback.
+        """Build the per-axis controls, then subscribe to each axis readback.
 
-        The subscription is made here rather than in the application's
-        ``wire()`` because subscribing delivers the current reading at once,
-        and the labels it writes to must exist by then.
+        Subscribing delivers the current reading at once, so the labels it
+        writes to must exist first.
         """
         self.setup_ui(
             container.require(MOTOR_READINGS), container.require(MOTOR_DESCRIPTION)
@@ -90,7 +82,7 @@ class MotorView(QtView, Loggable):
         readings: dict[str, Reading[Any]],
         description: dict[str, Descriptor],
     ) -> None:
-        """Create the UI based on the provided readings and description."""
+        """Build one control group per motor, with a row per axis."""
         axis_map: dict[str, list[str]] = {}
         axis_units: dict[str, list[str]] = {}
         for key in readings:
@@ -154,17 +146,7 @@ class MotorView(QtView, Loggable):
             self.main_layout.addWidget(self._groups[name])
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
-        """Move the motor by a step size.
-
-        Parameters
-        ----------
-        motor : ``str``
-            Motor device label (``name``).
-        axis : ``str``
-            Motor axis.
-        direction_up : ``bool``
-            If ``True``, increase motor's position.
-        """
+        """Ask for a move of *axis* by the step in its edit, up or down."""
         # a displacement, never a target computed from the position label: the
         # label only refreshes once a move completes, so two quick clicks would
         # both read the pre-move value and ask for the same absolute position
@@ -175,10 +157,7 @@ class MotorView(QtView, Loggable):
     def update_setpoint(self, reading: Mapping[str, Reading[Any]]) -> None:
         """Write an axis reading into its position label.
 
-        Parameters
-        ----------
-        reading : Mapping[str, Reading[Any]]
-            Reading of a single axis, keyed ``<device>-axis-<name>``.
+        *reading* holds one axis, keyed ``<device>-axis-<name>``.
         """
         for key, value in reading.items():
             motor, _, axis = parse_map_key(key, "axis")
@@ -186,15 +165,7 @@ class MotorView(QtView, Loggable):
             self._labels[f"pos:{motor}:{axis}"].setText(f"{value['value']:.2f} {units}")
 
     def _validate(self, motor: str, axis: str) -> None:
-        """Validate the new step size.
-
-        Parameters
-        ----------
-        motor : str
-            Motor device label.
-        axis : str
-            Motor axis.
-        """
+        """Outline the step edit of *axis* in red when its text is not a number."""
         text = self._line_edits[f"edit:{motor}:{axis}"].text()
         state = self.validator.validate(text, 0)[0]
         if state == QtGui.QRegularExpressionValidator.State.Invalid:

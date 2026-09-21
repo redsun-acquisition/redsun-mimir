@@ -31,15 +31,13 @@ if TYPE_CHECKING:
     from redsun_mimir.protocols import LayerSpec
 
 
-#: Configuration properties a view may change, each named after the signal
-#: that carries it on a detector. A whitelist, so a stray port name cannot
-#: reach an arbitrary attribute. ``pixel_dtype`` is not among them: the
-#: camera reports it, nobody sets it.
+#: The settings a view may change, each named after the signal carrying it, so
+#: a stray port name cannot reach an arbitrary attribute. ``pixel_dtype`` is
+#: not among them: the camera reports it, nobody sets it.
 def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
     """Return the detector's writable settings, keyed as the view names them.
 
-    A key is the signal's data key without the device's own name, which is
-    what a view splits off before it asks for a setting to change.
+    A key is the signal's data key without the device name prefix.
     """
     signals: list[SignalRW[Any]] = [detector.exposure, detector.roi]
     properties: Mapping[str, SignalRW[str]] = getattr(detector, "properties", {})
@@ -50,39 +48,26 @@ def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
 class DetectorPresenter(Presenter, DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
-    Live frames reach this presenter as Event documents - the plan puts each
-    detector's buffer signal under ``bps.monitor`` - rather than through a
-    direct ``subscribe_reading`` on the signal. Going through the document
-    sequence keeps every displayed frame part of the run: it is ordered
-    against the other documents, and any callback that reasons about the run
-    sees it.
-
-    Frames are forwarded **raw**. Background-median correction is
-    [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter]'s
-    responsibility, and it publishes the corrected frames on its own signal
-    so raw and filtered end up as separate viewer layers.
+    Live frames arrive as Event documents, the plan having put each
+    detector's buffer signal under ``bps.monitor``, so every displayed frame
+    is part of the run and ordered against its other documents. Frames are
+    forwarded raw: [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter]
+    publishes the corrected ones on a signal of its own, as a separate layer.
 
     Parameters
     ----------
-    name :
-        Identity key of the presenter.
-    devices :
-        Mapping of device names to device instances.
-    timeout : float | None, keyword-only, optional
-        Timeout in seconds for async configuration calls.
-        Defaults to ``1.0``.
+    timeout : float | None, optional
+        Timeout in seconds for async configuration calls; ``None`` means ``1.0``.
 
     Attributes
     ----------
     sig_new_configuration : Signal[str, str, object]
-        Emitted after a detector setting is successfully applied.
-        Carries the detector name (``str``), the canonical key of the
-        changed setting (``str``) and its new value (``object``).
+        Emitted after a detector setting is applied, with the detector name,
+        the canonical key of the setting and its new value.
     sig_new_data : Signal[dict[str, Reading[Any]]]
-        Emitted for every live frame carried by an Event document. Beside
-        the ``<detector>-buffer`` reading travels ``<detector>-roi``, a `Roi`,
-        the region the frame was taken with, so a viewer knows where on the
-        sensor it belongs.
+        Emitted for every live frame carried by an Event document. Beside the
+        ``<detector>-buffer`` reading travels ``<detector>-roi``, a `Roi`
+        naming the sensor region the frame was taken with.
     """
 
     sig_new_configuration = Signal(str, str, object)
@@ -118,10 +103,10 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         run_coro(self._follow_rois())
 
     async def _follow_rois(self) -> None:
-        """Read every ROI once, then follow it, from the loop a subscription is made on.
+        """Read every ROI once, then subscribe to it, on the subscription's loop.
 
-        The read is what makes the first frame placeable: a subscription
-        reports its first value whenever the transport gets to it.
+        The read places the first frame: a subscription reports its first
+        value only when the transport gets to it.
         """
         for name, detector in self.detectors.items():
             self._rois[name] = Roi.parse(await detector.roi.get_value())
@@ -172,10 +157,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         return doc
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register detector info as providers in the DI container.
-
-        Also registers detector signals in the container.
-        """
+        """Register detector info, signals and callbacks with the container."""
         container.provide(DETECTOR_DESCRIPTORS, self.devices_description())
         container.provide(DETECTOR_READINGS, self.devices_configuration())
         container.provide(DETECTOR_LAYER_SPECS, self.layer_specs())
@@ -187,7 +169,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         self._deferrals = container.try_require(DEFERRALS)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
-        """Get the layer specifications for all detector devices.
+        """Return the layer spec of every detector.
 
         A layer is the size of the sensor, whatever the ROI: a cropped frame
         is drawn into the rectangle its ROI names.
@@ -200,14 +182,14 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         return specs
 
     def devices_configuration(self) -> dict[str, Reading[Any]]:
-        """Get the current configuration readings of all detector devices."""
+        """Return the configuration readings of every detector."""
         result: dict[str, Reading[Any]] = {}
         for device in self.detectors.values():
             result.update(run_coro(device.read_configuration()))
         return result
 
     def devices_description(self) -> dict[str, Descriptor]:
-        """Get the configuration descriptors of all detector devices."""
+        """Return the configuration descriptors of every detector."""
         result: dict[str, Descriptor] = {}
         for device in self.detectors.values():
             result.update(run_coro(device.describe_configuration()))
@@ -215,16 +197,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
 
     @slot
     async def set(self, detector: str, property: str, value: Any) -> None:
-        """Set a detector configuration property and announce the new value.
+        """Set a detector setting and announce the new value.
 
-        Parameters
-        ----------
-        detector : str
-            Bare device name as emitted by the view.
-        property : str
-            Configuration key representing the setting to change.
-        value : object
-            New value for the setting.
+        *detector* is the bare device name and *property* the setting's key
+        as the view names it; an unknown pair is logged and ignored. A ROI
+        change is deferred to between two engine messages when the session
+        has an engine.
         """
         obj = self._settables.get(detector, {}).get(property)
         if obj is None:

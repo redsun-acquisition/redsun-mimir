@@ -1,11 +1,11 @@
 """One YouSeeToo (UC2) board, served over PVAccess.
 
 Run as ``python -m redsun_mimir.services.uc2_controller --port COM4``. The PV
-prefix and the name come from the environment a ``redsun`` session launches it
-with, so the session writes them once.
+prefix and the name come from the environment the ``redsun`` session launches
+it with.
 
-The process owns the serial port: every axis and every laser of the board is
-commanded from here, under one lock, which is what the port itself requires.
+The process owns the serial port: every axis and laser of the board is
+commanded from here, under one lock.
 """
 
 from __future__ import annotations
@@ -67,8 +67,8 @@ class SerialRef(AttributeIORef):
 class SerialIO(AttributeIO[Any, SerialRef]):
     """Commands the board, and echoes back what was commanded.
 
-    The board reports nothing of its own, so the readback of an attribute is
-    the value whose command it acknowledged.
+    The board reports nothing back, so an attribute reads the last value it
+    acknowledged.
     """
 
     def __init__(self, serial: Serial, lock: Lock) -> None:
@@ -120,9 +120,8 @@ class UC2LaserController(Controller):
 class UC2Controller(Controller):
     """The board: a stage holding its axes, and a controller per laser.
 
-    The nesting is what a client device reads: it connects to ``stage`` or to
-    ``laser<n>``, and the axes are the named entries of ``stage``'s ``axis``,
-    which is how ophyd-async fills a ``DeviceMap``.
+    A client device connects to ``stage`` or to ``laser<n>``; the axes are the
+    named entries of ``stage``'s ``axis``, which fills a ``DeviceMap``.
     """
 
     def __init__(
@@ -149,11 +148,10 @@ class UC2Controller(Controller):
 
 
 def open_board(port: str, baudrate: int, timeout: float) -> Serial:
-    """Open the port and restart the board on it.
+    """Open the port and restart the board on it, waiting for its setup to end.
 
-    The board runs its own setup on reset and prints when it is done, so a
-    command sent before that is lost. *port* is anything ``pyserial`` opens by
-    url, a device name such as ``COM4`` included.
+    *port* is anything ``pyserial`` opens by url, a device name such as
+    ``COM4`` included.
     """
     serial = serial_for_url(port, baudrate=baudrate, timeout=timeout)
     serial.dtr = False

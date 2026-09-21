@@ -2,10 +2,9 @@
 
 Run as ``python -m redsun_mimir.services.mmcore_stage --adapter DemoCamera
 --device DXYStage --axes x,y``. The PV prefix and the name come from the
-environment a ``redsun`` session launches it with, so the session writes them
-once.
+environment the ``redsun`` session launches it with.
 
-The process owns its own ``CMMCorePlus``, so no Micro-Manager call is left on
+The process owns its own ``CMMCorePlus``, so no Micro-Manager call runs on
 the session's event loop.
 """
 
@@ -62,9 +61,9 @@ class StageIO(AttributeIO[float, AxisRef]):
     async def send(self, attr: AttrW[float, AxisRef], value: float) -> None:
         """Move the axis, and read back where it stopped.
 
-        One move at a time: a lateral move reads the pair and writes the
-        pair, so a move on the sibling axis in flight would carry a stale
-        value for this one and put it back where it started.
+        One move at a time: a lateral move reads and writes the pair, so a
+        concurrent move on the sibling axis would put this one back where it
+        started.
         """
         async with self._moving:
             await asyncio.to_thread(self._move, attr.io_ref.axis, float(value))
@@ -82,11 +81,7 @@ class StageIO(AttributeIO[float, AxisRef]):
         return float(x if axis == "x" else y)
 
     def _move(self, axis: str, value: float) -> None:
-        """Send the axis on its way and wait for it to arrive.
-
-        A stage travels, so the move blocks until the device reports itself
-        done: a plan's move is finished when the axis really is there.
-        """
+        """Move the axis and block until the device reports it arrived."""
         if axis not in LATERAL:
             self._core.setPosition(self._label, value)
         else:

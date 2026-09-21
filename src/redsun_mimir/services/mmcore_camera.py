@@ -1,12 +1,11 @@
 """One Micro-Manager camera, served over PVAccess.
 
 Run as ``python -m redsun_mimir.services.mmcore_camera --adapter DemoCamera
---device DCam``. The PV prefix and the name come from the environment a
-``redsun`` session launches it with, so the session writes them once.
+--device DCam``. The PV prefix and the name come from the environment the
+``redsun`` session launches it with.
 
-The process owns its own ``CMMCorePlus``: one camera per process, which is
-what lifts Micro-Manager's one-camera-at-a-time limit for a session with
-several of them.
+The process owns its own ``CMMCorePlus``, one camera per process, so a
+session can run several despite Micro-Manager's one-camera limit.
 """
 
 from __future__ import annotations
@@ -83,11 +82,8 @@ def as_is(apply: Callable[[], None]) -> None:
 class CoreIO(AttributeIO[Any, CoreRef]):
     """Reads and writes camera settings through Micro-Manager.
 
-    Parameters
-    ----------
-    without_sequence :
-        Runs the callable it is given with no sequence acquisition running,
-        for the settings Micro-Manager refuses while one does.
+    *without_sequence* runs a callable with no sequence acquisition running,
+    for the settings Micro-Manager refuses during one.
     """
 
     def __init__(
@@ -138,8 +134,8 @@ class PropertyRef(AttributeIORef):
 class PropertyIO(AttributeIO[str, PropertyRef]):
     """Reads and writes one Micro-Manager property of the camera.
 
-    Every property travels as text, which is how Micro-Manager itself holds
-    them; a client that wants a number parses what it reads.
+    Every property travels as text, as Micro-Manager holds it; a client
+    wanting a number parses it.
     """
 
     def __init__(
@@ -156,9 +152,8 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
     async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
         """Write the property, and read back what the camera made of it.
 
-        Some properties, binning and pixel type among them, are refused
-        while a sequence runs; every write pauses it, which costs nothing
-        when there is none.
+        Every write pauses a running sequence, since some properties,
+        binning and pixel type among them, are refused during one.
         """
         await asyncio.to_thread(
             self._without_sequence,
@@ -271,8 +266,8 @@ class MMCameraController(Controller):
     async def initialise(self) -> None:
         """Declare the frame buffer, whose shape and dtype the camera decides.
 
-        The sensor size is read here too, while no ROI crops the camera: it
-        is what a ROI is expressed against, and never changes after.
+        The sensor size is read here too, before any ROI crops the camera,
+        since a ROI is expressed against it.
         """
         self._loop = asyncio.get_running_loop()
         frame = await asyncio.to_thread(self.grab_once)
@@ -290,11 +285,10 @@ class MMCameraController(Controller):
         self.add_sub_controller(PROPERTY_GROUP, await self._build_properties())
 
     async def _build_properties(self) -> Controller:
-        """Publish every property the camera lets a client write.
+        """Publish every writable property of the camera.
 
-        Which properties a camera has is known only once it is loaded, so the
-        attributes are built here rather than declared on the class. Read-only
-        properties are left out: a client can change nothing about them.
+        The attributes are built here rather than declared on the class, since
+        a camera's properties are known only once it is loaded.
         """
         names = await asyncio.to_thread(self._core.getDevicePropertyNames, self._label)
         read_only = await asyncio.to_thread(
@@ -332,9 +326,9 @@ class MMCameraController(Controller):
     async def publish_frame(self) -> None:
         """Publish the latest frame and what the capture has written.
 
-        A client waits for ``FrameCount`` to advance to know its frame is
-        newer than the move it just made, so the count is of frames the
-        camera took, and a tick with no new frame publishes nothing.
+        ``FrameCount`` counts frames the camera took, and a tick with no new
+        frame publishes nothing, so a client can wait on it for a frame newer
+        than its last move.
         """
         await self._publish_state()
         grabbed = self._grabbed
@@ -376,10 +370,10 @@ class MMCameraController(Controller):
             await self._stop_grabbing()
 
     def wait_until_idle(self, timeout: float | None = None) -> bool:
-        """Block until no thread is grabbing, and say whether one still is.
+        """Block until the grabbing thread stops, and return whether it did.
 
-        The thread ends when ``Acquire`` is cleared and when the camera
-        fails, so this is what tells a caller a fault has been recorded.
+        The thread stops when ``Acquire`` is cleared and when the camera
+        fails, so a fault is recorded by the time this returns ``True``.
         """
         return self._stopped.wait(timeout)
 
@@ -395,11 +389,11 @@ class MMCameraController(Controller):
         self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
 
     async def _on_file_path(self, path: str) -> None:
-        """Start the count over: a client names the store before it opens a window.
+        """Reset ``Captured``: a client names the store before it opens a window.
 
-        A client reads ``Captured`` as it prepares and waits for it to grow
-        past that; left at the last window's total, the next window would be
-        waited on for twice its frames.
+        A client waits for ``Captured`` to grow past what it read while
+        preparing; left at the last window's total, the next would be waited
+        on for twice its frames.
         """
         with self._writing:
             self._written = 0
@@ -408,8 +402,7 @@ class MMCameraController(Controller):
     async def _on_capture(self, capturing: bool) -> None:
         """Open the store frames are written to, or finish the one open.
 
-        Closing publishes the count as well: an unbounded window ends here,
-        and a client reads the count once it has.
+        Closing publishes the count too, since an unbounded window ends here.
         """
         if not capturing:
             self._close_store()
@@ -440,9 +433,8 @@ class MMCameraController(Controller):
     def _close_store(self) -> None:
         """Finish the capture's store, if one is open.
 
-        Under the lock the grabbing thread appends beneath: a store closed
-        between its check and its append would be written to after the stream
-        behind it is finished.
+        Held under the lock the grabbing thread appends beneath, so no store
+        is closed between its check and its append.
         """
         with self._writing:
             if self._store is not None:
@@ -452,8 +444,8 @@ class MMCameraController(Controller):
     def take_frame(self) -> NDArray[Any] | None:
         """Return the camera's next frame, or ``None`` while it has none.
 
-        A running sequence fills Micro-Manager's circular buffer, and a frame
-        is taken from there; without one, each call exposes the camera itself.
+        With a sequence running the frame comes from Micro-Manager's circular
+        buffer; without one, each call exposes the camera.
         """
         if not self._sequencing:
             return self._core.snap()
@@ -464,9 +456,9 @@ class MMCameraController(Controller):
     def grab_once(self) -> NDArray[Any] | None:
         """Take one frame, and write it if a capture window wants it.
 
-        Runs in the grabbing thread. The store is opened and closed on the
-        event loop, so this only ever appends to one: on the last frame of a
-        bounded window it hands the closing back through ``_end_capture``.
+        Runs in the grabbing thread and only appends to the store; on the last
+        frame of a bounded window it hands the closing to the event loop
+        through ``_end_capture``.
         """
         frame = self.take_frame()
         if frame is None:
@@ -513,9 +505,8 @@ class MMCameraController(Controller):
     def _without_sequence(self, apply: Callable[[], None]) -> None:
         """Run *apply* with no sequence running, and resume one that was.
 
-        The grabbing thread exposes per frame meanwhile, so it loses
-        nothing. The lock keeps this from restarting a sequence the grab
-        loop is ending.
+        The grabbing thread exposes per frame meanwhile. The lock keeps this
+        from restarting a sequence the grab loop is ending.
         """
         with self._sequence_lock:
             was_sequencing = self._sequencing
@@ -530,8 +521,7 @@ class MMCameraController(Controller):
     def _start_sequence(self) -> None:
         """Ask the camera for a continuous sequence, and note whether it took.
 
-        An adapter that refuses one leaves ``take_frame`` exposing per frame,
-        which is slower but works everywhere.
+        An adapter that refuses one leaves ``take_frame`` exposing per frame.
         """
         # the flag leads the camera on the way up and trails it on the way
         # down: the grabbing thread exposes only while the flag is clear,
@@ -544,7 +534,7 @@ class MMCameraController(Controller):
             self._sequencing = False
 
     def _stop_sequence(self) -> None:
-        """End the sequence the camera is running, if it is running one."""
+        """End the sequence, if the camera is running one."""
         if not self._sequencing:
             return
         self._core.stopSequenceAcquisition()

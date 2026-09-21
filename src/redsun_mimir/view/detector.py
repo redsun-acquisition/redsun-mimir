@@ -23,9 +23,9 @@ class RoiPanel(QtWidgets.QWidget):
     """The region a detector reads, and the one drawn on its image but not yet applied.
 
     Select ROI shows the box on the image for the user to drag, announced on
-    ``sig_selection_toggled``. Confirm applies the drawn region; Clear applies
-    the whole sensor. Neither changes the camera by itself: both emit
-    ``sig_roi_requested`` with the region, as ``"x,y,width,height"``.
+    ``sig_selection_toggled``. Confirm applies the drawn region, Clear the
+    whole sensor; neither changes the camera itself, both emit
+    ``sig_roi_requested`` with the region as ``"x,y,width,height"``.
 
     Parameters
     ----------
@@ -101,16 +101,10 @@ class RoiPanel(QtWidgets.QWidget):
 
 
 class SettingsControlWidget(QtWidgets.QWidget):
-    """Widget for controlling device settings, backed by a descriptor tree view.
+    """Widget for a detector's settings, backed by a descriptor tree view.
 
-    Parameters
-    ----------
-    descriptors : dict[str, Descriptor]
-        Detector output of "describe()".
-    readings : dict[str, Reading[Any]]
-        Detector output of "read()".
-    parent : QtWidgets.QWidget | None, optional
-        Optional parent widget.
+    *descriptors* and *readings* are the detector's ``describe()`` and
+    ``read()`` output.
     """
 
     def __init__(
@@ -144,30 +138,18 @@ class SettingsControlWidget(QtWidgets.QWidget):
 class DetectorView(QtView, Loggable):
     """View for interactive detector settings control.
 
-    Renders per-detector property panels in a tabbed widget and forwards
-    user edits to the
-    [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter]
-    via the virtual bus.
-
-    Image visualisation is handled independently by
-    [`ImageView`][redsun_mimir.view.ImageView]; the two views share only
-    the virtual bus and do not hold references to each other. The region
-    drawn there reaches this view's ROI panel over the bus, and only Confirm
-    or Clear sends a region to the camera, as a property change like any
-    other.
-
-    Parameters
-    ----------
-    name: str
-        Identity key of the view.
+    One property panel per detector in a tabbed widget; edits go to
+    [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter] over the
+    virtual bus. Images are shown by [`ImageView`][redsun_mimir.view.ImageView],
+    which shares only the bus with this view: the region drawn there reaches
+    the ROI panel over it, and only Confirm or Clear sends a region to the
+    camera, as a property change like any other.
 
     Attributes
     ----------
     sig_property_changed : Signal[str, str, Any]
-        Emitted when the user changes a detector property.
-        - str: The detector name.
-        - str: The property name.
-        - Any: The new value of the property.
+        Emitted when the user changes a detector property, with the detector
+        name, the property name and the new value.
     sig_roi_selection : Signal[str, bool]
         Emitted when the user asks to select a region on a detector's image,
         or stops: the detector name, and whether the box is wanted.
@@ -201,7 +183,7 @@ class DetectorView(QtView, Loggable):
         self.logger.info("Initialized")
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register detector view signals in the virtual container."""
+        """Register the view's signals with the container."""
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
@@ -216,14 +198,10 @@ class DetectorView(QtView, Loggable):
         descriptors: dict[str, Descriptor],
         readings: dict[str, Reading[Any]],
     ) -> None:
-        r"""Initialise the settings panels.
+        r"""Build one settings panel per detector.
 
-        Parameters
-        ----------
-        descriptors : dict[str, Descriptor]
-            Flat merged ``describe()`` output from all detectors, keyed identically.
-        readings : dict[str, Reading[Any]]
-            Flat merged ``read()`` output from all detectors, keyed identically.
+        *descriptors* and *readings* are the ``describe()`` and ``read()``
+        output of every detector, merged flat.
         """
         devices: dict[str, dict[str, Descriptor]] = {}
         for key, descriptor in descriptors.items():
@@ -260,19 +238,10 @@ class DetectorView(QtView, Loggable):
     def on_new_configuration(self, detector: str, key: str, value: Any) -> None:
         """Clear the pending edit for *key* once the presenter applied it.
 
-        [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter] only
-        emits ``sig_new_configuration`` after a successful ``set``, so the
-        edit is always confirmed here; failures are logged by the presenter
-        and leave the pending value in place.
-
-        Parameters
-        ----------
-        detector : str
-            Name of the detector that applied the change.
-        key : str
-            Canonical ``name-property`` key of the setting that was applied.
-        value : Any
-            New value read back from the device.
+        Reached only after a successful ``set``: a failure is logged by the
+        presenter and leaves the pending value in place. *key* is the
+        ``name-property`` key of the setting, *value* what the device reads
+        back.
         """
         widget = self.settings_controls.get(detector)
         if widget is None:

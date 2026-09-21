@@ -19,17 +19,18 @@ src/redsun_mimir/
                    #   _uc2_serial.py, _uc2_actions.py - the board's wire protocol
   device/          # ophyd-async devices, clients of those services
                    #   _mocks.py     - mock hardware (no drivers needed, CI-safe)
-                   #   _logics.py    - AxisType + DEFAULT_TIMEOUT
                    #   containers.py - ReadableDeviceMap
-                   #   signals.py
                    #   mmcore/    - camera and stage clients
                    #   youseetoo/ - UC2 motor and laser clients (no CI coverage)
   presenter/       # acquisition, detector, light, median, motor
   view/            # Qt/napari widgets: acquisition, detector, image, light, motor
   configurations/  # runnable example containers (_full_simulation, _full_uc2)
-                   #   + their .yaml session files
+                   #   + their .yaml session files, _base.py (MimirApp), _wiring.py
+  common/          # what every layer shares: Roi, the stream names
   protocols.py     # bundle-local structural protocols
-  utils/napari/    # napari callbacks + overlay helpers
+  providers.py     # provider keys
+  hooks.py         # NapariApplication, FONT_SIZE
+  utils/napari/    # napari callbacks, overlay, stylesheet
 tests/             # flat: conftest.py + test_<subsystem>.py
 pyproject.toml     # all tool config: pytest, ruff, mypy, coverage
 ```
@@ -122,8 +123,8 @@ across components disambiguated by owner:
 Bundle writes acquisition bytes in service owning hardware, not in session:
 camera service writes capture window with `acquire-zarr`, device reports it
 with `StreamResource`/`StreamDatum`. Derived products go through
-`redsun.storage.writers`, which `MedianPresenter` uses to add
-`<detector>_median` to store the acquisition named.
+`redsun.writers.Writer`, which `MedianPresenter` uses to add the scan's stack as
+`<detector>_scan` to store the capture names. Median stays in memory.
 
 Service = process session starts and stops. Declared in `redsun.yaml` under
 `services:`, session file names it, device points at it with `service=`; prefix

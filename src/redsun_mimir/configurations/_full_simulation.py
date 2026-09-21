@@ -30,9 +30,5 @@ def build_simulation_container() -> QtAppContainer:
 
 
 def run_simulation_container() -> None:
-    """Run a local mock example.
-
-    Launches a simulation with the full stack
-    provided by mimir with mock devices.
-    """
+    """Run the full simulation example with mock devices."""
     build_simulation_container().run()

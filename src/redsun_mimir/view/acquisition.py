@@ -21,32 +21,24 @@ if TYPE_CHECKING:
 class AcquisitionView(QtView, Loggable):
     """View for plan selection, parameter input, and run control.
 
-    Displays available plans from
+    Lists the plans of
     [`AcquisitionPresenter`][redsun_mimir.presenter.AcquisitionPresenter],
-    lets the user configure parameters, and provides run/pause/stop controls.
-
-    Parameters
-    ----------
-    name : str
-        Identity key of the view.
+    with their parameters and run, pause and stop controls.
 
     Attributes
     ----------
     sig_launch_plan_request : Signal[str, dict[str, Any]]
-        Emitted when the user starts a plan.
-        Carries the plan name (``str``) and its resolved parameters
-        (``dict[str, Any]``).
+        Emitted when the user starts a plan, with its name and resolved
+        parameters.
     sig_stop_plan_request : Signal
-        Emitted when the user requests plan stop.
+        Emitted when the user stops the plan.
     sig_pause_resume_request : Signal[bool]
-        Emitted when the user toggles pause/resume.
-        Carries ``True`` to pause, ``False`` to resume.
+        Emitted with ``True`` to pause, ``False`` to resume.
     sig_action_request : Signal[str, bool]
-        Emitted when the user triggers an action button.
-        Carries the action name (``str``) and toggle state (``bool``).
+        Emitted when the user triggers an action button, with the action name
+        and its toggle state.
     sig_base_dir_request : Signal[str]
-        Emitted when the user picks the directory a run writes under.
-        Carries the chosen path (``str``).
+        Emitted with the directory the user picked for a run to write under.
     """
 
     sig_launch_plan_request = Signal(str, object)
@@ -118,7 +110,7 @@ class AcquisitionView(QtView, Loggable):
         self.setLayout(self.root_layout)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register acquisition view signals in the virtual container."""
+        """Register the view's signals with the container."""
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
@@ -140,13 +132,7 @@ class AcquisitionView(QtView, Loggable):
         self.base_dir_label.setText(base_dir)
 
     def setup_ui(self, specs: set[PlanSpec]) -> None:
-        """Build the UI for the acquisition plans.
-
-        Parameters
-        ----------
-        specs : set[PlanSpec]
-            The set of available plan specifications.
-        """
+        """Build one control widget per plan, sorted by name."""
         for spec in sorted(specs, key=lambda s: s.name):
             self.plans_combobox.addItem(spec.name)
             plan_widget = create_plan_widget(

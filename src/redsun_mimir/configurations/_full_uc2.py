@@ -28,5 +28,5 @@ def build_uc2_container() -> QtAppContainer:
 
 
 def run_uc2_container() -> None:
-    """Run the full UC2 microscope with pre-shipped configuration."""
+    """Run the UC2 microscope example with its shipped configuration."""
     build_uc2_container().run()

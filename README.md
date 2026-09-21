@@ -211,6 +211,8 @@ wiring:
     to: img_widget.on_new_configuration
   - from: img_widget.sig_roi_drawn
     to: det_widget.on_roi_drawn
+  - from: det_widget.sig_roi_selection
+    to: img_widget.set_roi_selection
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
   - from: light_widget.sig_toggle_light_request
@@ -229,18 +231,24 @@ wiring:
     to: acq_widget.on_plan_done
   - from: acq_ctrl.sig_action_done
     to: acq_widget.on_action_done
+  - from: acq_widget.sig_base_dir_request
+    to: acq_ctrl.set_base_dir
+  - from: acq_ctrl.sig_base_dir_changed
+    to: acq_widget.on_base_dir_changed
   - from: acq_ctrl.sig_pre_launch_notify
     to: median_ctrl.clear_medians
   - from: acq_ctrl.sig_pre_launch_notify
     to: path_provider.set_plan
   - from: acq_ctrl.sig_plan_done
     to: path_provider.reset_plan
+  - from: acq_ctrl.sig_base_dir_changed
+    to: path_provider.set_base_dir
 ```
 
 Component names are the keys used under `devices:`, `presenters:` and `views:`;
-port names are the signal attributes and the names the slots declare. The last
-two rules reach the session's own path provider, which is what names the
-directory a capture is written to.
+port names are the signal attributes and the names the slots declare. The three
+rules reaching `path_provider` go to the session's own path provider, which is
+what names the directory a capture is written to.
 
 There is no rule feeding `motor_widget.update_setpoint`: the motor view
 subscribes to the axis readbacks themselves, so its labels track the stage even
@@ -253,7 +261,9 @@ when a plan is what moved it.
   shows a box over its layer to drag, Confirm applies it, and Clear brings
   the whole sensor back. A change asked for during a plan lands between
   two of its messages.
-- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
+- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
+- Every capture and every scan is a run of its own, nested in the live plan's run, with the run it serves and the scan it follows named on its start document.
+- The session's log records in a view of their own, from `redsun`.
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).
 - Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.
 - Manual control of light source and motor drivers.

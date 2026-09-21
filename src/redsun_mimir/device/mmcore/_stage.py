@@ -28,15 +28,14 @@ if TYPE_CHECKING:
 #: ``fastcs`` names a PV path after its controller, in title case.
 STAGE_GROUP = "Stage"
 
-#: A Micro-Manager stage settles on its own grid rather than exactly where it
-#: was sent: the demo XY stage lands within 0.006 um of any request, and
-#: exposes no step-size property to derive this from. The service then
-#: reports the position to two decimals, so a landing can read a full
-#: 0.01 um from the request. `MovableLogic.move` waits for equality by
-#: default, which would never be satisfied.
+#: A Micro-Manager stage settles on its own grid, not where it was sent: the
+#: demo XY stage lands within 0.006 um of a request and exposes no step size
+#: to derive this from, and the service reports positions to two decimals, so
+#: a landing can read 0.01 um off. `MovableLogic.move` waits for equality by
+#: default, which would never come.
 POSITION_TOLERANCE: Final[float] = 0.02
 
-#: How long a move may take before it is given up as failed.
+#: Seconds a move may take before it is given up as failed.
 MOVE_TIMEOUT: Final[float] = 10.0
 
 
@@ -81,13 +80,13 @@ class MMAxis(StandardReadable, StandardMovable[float]):
 class MMStage(StandardReadable, Loggable):
     """A Micro-Manager stage, reached through the service that owns it.
 
-    The axes the service serves are the ones the stage has: the adapter, the
-    device and the axis names belong to the service's declaration.
+    The stage has the axes the service serves: the adapter, the device and
+    the axis names belong to the service's declaration.
 
     Parameters
     ----------
     prefix :
-        PV prefix of the service, ending in ``:``. A device declared with
+        PV prefix of the service, ending in ``:``; a device declared with
         ``service=`` receives it from that service.
     """
 

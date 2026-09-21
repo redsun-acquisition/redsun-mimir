@@ -28,15 +28,14 @@ _BUFFER_SUFFIX = "-buffer"
 
 
 def _base_name(source: str) -> str:
-    """Strip the buffer suffix off a data key: ``cam-buffer`` -> ``cam``."""
+    """Strip the buffer suffix off a data key, ``cam-buffer`` to ``cam``."""
     return source.removesuffix(_BUFFER_SUFFIX)
 
 
 class FrameSignals(SignalGroup, strict=True):
     """The frame streams a median presenter publishes.
 
-    Grouping them keeps the two payloads the same shape: both carry a
-    ``dict[str, Reading[Any]]`` keyed by the viewer layer the frame belongs to.
+    Both carry a ``dict[str, Reading[Any]]`` keyed by viewer layer.
     """
 
     median = Signal(object)
@@ -44,43 +43,35 @@ class FrameSignals(SignalGroup, strict=True):
 
 
 class MedianPresenter(Presenter, DocumentRouter, Loggable):
-    """Background-median filtering, driven entirely by documents.
+    """Background-median filtering, driven by documents.
 
     A square scan collects a stack of frames off-target; their per-pixel
-    median along the time axis is the static background of the sample. Every
-    subsequent live frame is divided by that median, which flattens out the
-    fixed pattern and leaves the scattering signal.
+    median over time is the static background, and every later live frame
+    is divided by it. Both phases arrive as Event documents, so this
+    presenter is a [`DocumentRouter`][event_model.DocumentRouter]:
 
-    Both phases arrive as Event documents, so this presenter is a
-    [`DocumentRouter`][event_model.DocumentRouter]:
+    - frames on the `MEDIAN_SCAN_STREAM` are cached; when that run stops the
+      median is published on ``frames.median`` and the stack is written under
+      ``<detector>_scan`` into the store the acquisition names, once a run
+      has named one;
+    - frames on any other stream, in practice `LIVE_VIEW_STREAM`, are divided
+      by the cached median and published on ``frames.filtered`` as a layer
+      of their own.
 
-    - frames on the `MEDIAN_SCAN_STREAM` are **cached**; when that run stops
-      the median is computed and published on ``frames.median``, and the
-      stack itself is written by a `Writer` into the store the acquisition
-      names, under ``<detector>_scan``, as soon as a run has named one;
-    - frames on any other stream - in practice `LIVE_VIEW_STREAM`, produced
-      by ``bps.monitor`` on the detector's buffer signal - are **divided** by
-      the cached median and published on ``frames.filtered`` as their
-      own viewer layer, leaving the raw layer untouched.
-
-    All state is keyed by run, so concurrent or nested runs never mix. Every
-    document reaches the writer before this presenter acts on it, except
-    ``stop``, which reaches it after, so the stack written there still
-    finds its run open.
+    State is keyed by run, so nested runs never mix. Every document reaches
+    the writer before this presenter, except ``stop``, which reaches it
+    after, so the stack written there still finds its run open.
 
     Parameters
     ----------
-    name : str
-        Identity key of the presenter.
     devices : Mapping[str, Device]
-        Available devices. Those exposing a ``buffer`` signal are tracked;
-        anything else is ignored.
+        Only those exposing a ``buffer`` signal are tracked.
 
     Attributes
     ----------
     frames : FrameSignals
-        The two frame streams this presenter publishes, ``median`` and
-        ``filtered``. Both carry a ``dict[str, Reading[Any]]``.
+        The ``median`` and ``filtered`` streams, each carrying a
+        ``dict[str, Reading[Any]]``.
     """
 
     def __init__(
@@ -126,7 +117,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         container.register_callbacks(self)
 
     def __call__(self, name: str, doc: dict[str, Any], validate: bool = False) -> Any:
-        """Dispatch *doc* to the writer and to this presenter, ``stop`` last to the writer."""
+        """Dispatch *doc* to the writer, then to this presenter.
+
+        ``stop`` goes to the writer last, so its run is still open here.
+        """
         if name != "stop":
             self._writer(name, doc, validate)
         result = super().__call__(name, doc, validate)
@@ -136,7 +130,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     @slot
     def clear_medians(self, plan_name: str) -> None:
-        """Forget every cached median and stack: a new plan means a new background."""
+        """Forget every cached median and stack before a new plan."""
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
         self.medians.clear()
@@ -147,7 +141,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._writer.shutdown()
 
     def descriptor(self, doc: EventDescriptor) -> None:
-        """Route a stream to the accumulate or the correct path."""
+        """Route a stream to be accumulated or corrected."""
         sources = [key for key in doc["data_keys"] if key in self._sources]
         if not sources:
             return
@@ -159,10 +153,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._scan_streams[doc["uid"]] = (doc["run_start"], sources)
 
     def stream_resource(self, doc: StreamResource) -> None:
-        """Write a stack scanned before its store was named.
-
-        A scan may run before the stream that writes the frames it corrects.
-        """
+        """Write any stack scanned before its store was named."""
         for source, (scan_run, stack) in self._stacks.items():
             if _base_name(source) == doc["data_key"]:
                 self._write(source, scan_run, stack)
@@ -214,7 +205,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             self.frames.filtered.emit(filtered)
 
     def stop(self, doc: RunStop) -> None:
-        """Compute and publish the median of every source of this run, and write its stack."""
+        """Publish the median of every source of this run and write its stack."""
         run = doc["run_start"]
         for (candidate, source), frames in list(self._frames.items()):
             if candidate != run:
@@ -247,7 +238,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 del self._scan_streams[uid]
 
     def _write(self, source: str, scan_run: str, stack: npt.NDArray[Any]) -> None:
-        """Write the stack of *scan_run* into the store its detector's run names, if one has."""
+        """Write the stack of *scan_run* into the store its detector's run names.
+
+        Logged and skipped while no run has named one.
+        """
         detector = _base_name(source)
         try:
             self._writer.write(

@@ -7,15 +7,11 @@ from napari.settings import get_settings
 
 
 def stylesheet(font_size: int | None = None) -> str:
-    """Return napari's QSS for the theme currently in its settings.
+    """Return napari's QSS for the theme in its settings.
 
-    Parameters
-    ----------
-    font_size :
-        Point size the sheet asks for. ``None`` takes napari's own setting,
-        which is what its viewer is drawn with; a session applying the sheet
-        to the whole application may want the platform's size instead, since
-        every widget of its own is styled by it too.
+    *font_size* is in points; ``None`` takes napari's own setting, which its
+    viewer is drawn with. A session styling the whole application may want
+    the platform's size instead, since every widget of its own is styled too.
     """
     settings = get_settings()
     size = settings.appearance.font_size if font_size is None else font_size

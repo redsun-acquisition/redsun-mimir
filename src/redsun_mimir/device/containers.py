@@ -24,9 +24,9 @@ DeviceT = TypeVar("DeviceT", bound=Device)
 class ReadableDeviceMap(DeviceMap[DeviceT], AsyncReadable):
     """A ``DeviceMap`` whose readable entries answer ``read`` and ``describe``.
 
-    The entries are gathered when a verb runs, so a map a connector fills at
-    connect reports what it ends up holding. A plain ``DeviceMap`` implements
-    neither verb, so a ``StandardReadable`` registering one reports nothing.
+    Entries are gathered when a verb runs, so a map a connector fills at
+    connect reports what it holds. A plain ``DeviceMap`` implements neither
+    verb, so a ``StandardReadable`` registering one reports nothing.
     """
 
     def _readable(self) -> list[AsyncReadable]:

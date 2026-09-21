@@ -8,8 +8,8 @@ from typing import NamedTuple
 class Roi(NamedTuple):
     """A rectangle of sensor pixels, ``x, y, width, height`` from the top left.
 
-    Written as text, ``"x,y,width,height"``, on a camera's ``roi`` signal:
-    that is what a client can put over PVAccess, an array being refused.
+    Travels as text, ``"x,y,width,height"``, on a camera's ``roi`` signal,
+    since PVAccess refuses an array from a client.
     """
 
     x: int

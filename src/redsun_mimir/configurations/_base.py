@@ -39,9 +39,9 @@ _napari_app = NapariApplication()
 class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     """Every part of a Mimir session that does not depend on the hardware.
 
-    A session subclasses this, declares its devices and names the file that
-    configures them; the presenters, the views, their configuration and the
-    wiring between them come from here.
+    A session subclasses this, declares its devices and names their
+    configuration file; the presenters, the views, their configuration and
+    their wiring come from here.
     """
 
     create_application = declare_hook(_napari_app)

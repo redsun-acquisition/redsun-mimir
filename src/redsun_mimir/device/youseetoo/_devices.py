@@ -29,8 +29,8 @@ LASER_GROUP = "Laser1"
 class UC2Axis(StandardReadable, StandardMovable[float]):
     """One axis of a YouSeeToo stage, commanded through its service.
 
-    The board reports no position of its own, so the readback the service
-    serves is the value it last acknowledged.
+    The board reports no position, so the readback is the value it last
+    acknowledged.
     """
 
     position: A[SignalRW[float], StandardReadableFormat.HINTED_SIGNAL]
@@ -47,7 +47,7 @@ class UC2MotorDevice(StandardReadable, Loggable):
     Parameters
     ----------
     prefix :
-        PV prefix of the service, ending in ``:``. A device declared with
+        PV prefix of the service, ending in ``:``; a device declared with
         ``service=`` receives it from that service.
     """
 
@@ -68,7 +68,7 @@ class UC2LaserDevice(StandardReadable, Loggable):
     prefix :
         PV prefix of the service, ending in ``:``.
     wavelength :
-        Wavelength of the laser, in nm. The board does not report it.
+        In nm; the board does not report it.
     """
 
     intensity: A[SignalRW[int], StandardReadableFormat.HINTED_SIGNAL]
@@ -87,10 +87,10 @@ class UC2LaserDevice(StandardReadable, Loggable):
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:
-        """Turn the laser off, keeping its intensity, or back on.
+        """Turn the laser off, remembering its intensity, or back on.
 
-        An intensity set while the laser reads off has lit it already, and
-        turning it on keeps that; the saved intensity is for a laser at zero.
+        An intensity set while off has lit the laser already and is kept;
+        the remembered one is restored only from zero.
         """
         enabled = await self.enabled.get_value()
         if enabled:

@@ -24,17 +24,12 @@ class LightPresenter(Presenter, Loggable):
     """Presenter for light source control.
 
     Forwards toggle and intensity requests from
-    [`LightView`][redsun_mimir.view.LightView] to the underlying
-    light devices.
+    [`LightView`][redsun_mimir.view.LightView] to the light devices.
 
     Parameters
     ----------
-    name :
-        Identity key of the presenter.
-    devices :
-        Mapping of device names to device instances.
     timeout :
-        Status wait timeout in seconds. Defaults to ``2.0``.
+        Status wait timeout in seconds; ``None`` means ``2.0``.
     """
 
     def __init__(
@@ -60,13 +55,7 @@ class LightPresenter(Presenter, Loggable):
             self.logger.debug(f"Found devices: {names}")
 
     def device_configuration(self) -> dict[str, Reading[Any]]:
-        """Get the current configuration readings of all light devices.
-
-        Returns
-        -------
-        dict[str, Reading[Any]]
-            Flat mapping of canonical keys to their current readings.
-        """
+        """Return every light's configuration and current readings, by data key."""
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
             result.update(run_coro(light.read_configuration()))
@@ -74,13 +63,7 @@ class LightPresenter(Presenter, Loggable):
         return result
 
     def device_description(self) -> dict[str, Descriptor]:
-        """Get the configuration descriptors of all light devices.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            Flat mapping of canonical keys to their descriptors.
-        """
+        """Return every light's configuration and reading descriptors, by data key."""
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
             result.update(run_coro(light.describe_configuration()))
@@ -88,14 +71,14 @@ class LightPresenter(Presenter, Loggable):
         return result
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register light model info as a provider in the DI container."""
+        """Register the light readings, descriptors and signals with the container."""
         container.provide(LIGHT_CONFIGURATION, self.device_configuration())
         container.provide(LIGHT_DESCRIPTION, self.device_description())
         container.register_signals(self)
 
     @slot
     async def trigger(self, name: str) -> None:
-        """Toggle a light source and log the new state on completion."""
+        """Toggle a light source, serialising requests per light."""
         # toggling reads and flips device state, so two overlapping requests
         # would race; intensity is absolute and needs no such guard
         async with self._locks[name]:
@@ -106,15 +89,7 @@ class LightPresenter(Presenter, Loggable):
 
     @slot
     async def set(self, name: str, intensity: float) -> None:
-        """Set the intensity of a light source, unless it is binary.
-
-        Parameters
-        ----------
-        name : str
-            Name of the light device.
-        intensity : int | float
-            New intensity value.
-        """
+        """Set a light's intensity; a binary light logs a warning instead."""
         light = self._lights[name]
         if await light.binary.get_value():
             self.logger.warning(f"{name!r} is a binary light source; intensity ignored")
@@ -122,7 +97,7 @@ class LightPresenter(Presenter, Loggable):
         await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
 
     def shutdown(self) -> None:
-        """Shutdown the presenter and all light devices."""
+        """Shut down every light device that supports it."""
         for light in self._lights.values():
             if isinstance(light, HasAsyncShutdown):
                 run_coro(light.shutdown())
