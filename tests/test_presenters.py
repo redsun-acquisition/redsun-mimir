@@ -737,6 +737,21 @@ class TestAcquisitionPresenter:
 
         controller.stop_plan()
 
+    def test_a_launch_while_a_plan_runs_is_refused(
+        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+    ) -> None:
+        """A second plan would take the running one's action latches with it."""
+        engine = FakeEngine(FakeFuture())
+        controller.engine = engine  # type: ignore[assignment]
+        running: Future[None] = Future()
+        controller.futures.add(running)
+        try:
+            controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+        finally:
+            controller.futures.discard(running)
+
+        assert engine.plans == []
+
     def test_toggle_action_event_unknown_action_raises(
         self, controller: AcquisitionPresenter
     ) -> None:

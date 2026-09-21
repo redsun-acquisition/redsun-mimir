@@ -457,6 +457,9 @@ class AcquisitionPresenter(Presenter, Loggable):
             The parameter values to pass to the plan.
             Elaborated from the UI inputs.
         """
+        if self.futures:
+            self.logger.warning(f"A plan is running; {plan_name!r} not launched")
+            return
         self.action_map.clear()
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]

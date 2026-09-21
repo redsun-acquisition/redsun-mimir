@@ -163,6 +163,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   the session's path provider forgets the plan once a stream is stopped and a
   later directory change is accepted. `stop_plan` does nothing while the engine
   is idle, rather than raising into the view's Stop button.
+- `AcquisitionView` holds the plan selector on the plan that runs until it is
+  done, and acts on that plan when it ends, whichever is selected meanwhile.
+  `AcquisitionPresenter.launch_plan` refuses a launch while a plan runs, rather
+  than clearing the running plan's action latches.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

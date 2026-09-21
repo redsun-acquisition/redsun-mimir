@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from bluesky.utils import MsgGenerator
 from napari.settings import get_settings
+from redsun.engine.actions import continous
+from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
+from redsun.presenter.plan_spec import create_plan_spec
 from redsun.virtual import ProviderKey, VirtualContainer
 
 from redsun_mimir.hooks import NapariApplication
@@ -17,8 +21,10 @@ from redsun_mimir.providers import (
     MOTOR_DESCRIPTION,
     MOTOR_READBACKS,
     MOTOR_READINGS,
+    PLAN_SPECS,
 )
 from redsun_mimir.utils.napari import stylesheet
+from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.image import ImageView
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.motor import MotorView
@@ -26,6 +32,8 @@ from redsun_mimir.view.motor import MotorView
 from .conftest import needs_opengl
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from bluesky.protocols import Reading
     from qtpy.QtCore import QCoreApplication
     from qtpy.QtWidgets import QApplication
@@ -84,6 +92,58 @@ async def _build_light_view(
     widget.register_providers(container)
     widget.inject_dependencies(container)
     return container
+
+
+class TestAcquisitionView:
+    """Tests for the plan selector and its controls."""
+
+    @pytest.fixture
+    def view(self, qapp: QApplication, tmp_path: Path) -> AcquisitionView:
+        @continous(togglable=True)
+        def stream(frames: int = 1) -> MsgGenerator[None]:
+            yield from ()
+
+        def scan(frames: int = 1) -> MsgGenerator[None]:
+            yield from ()
+
+        view = AcquisitionView("acq_widget")
+        view.inject_dependencies(
+            _make_container(
+                (PATH_PROVIDER, SessionPathProvider(base_dir=tmp_path)),
+                (
+                    PLAN_SPECS,
+                    {create_plan_spec(stream, {}), create_plan_spec(scan, {})},
+                ),
+            )
+        )
+        return view
+
+    def test_the_selector_is_held_on_the_plan_that_runs(
+        self, view: AcquisitionView
+    ) -> None:
+        """Switching plans mid-run would re-enable the wrong page."""
+        view.plans_combobox.setCurrentText("scan")
+        view.plan_widgets["scan"].run_button.click()
+        assert not view.plans_combobox.isEnabled()
+        assert not view.plan_widgets["scan"].group_box.isEnabled()
+
+        view.plans_combobox.setCurrentText("stream")
+        view.on_plan_done()
+
+        assert view.plans_combobox.isEnabled()
+        assert view.plan_widgets["scan"].group_box.isEnabled()
+
+    def test_a_stream_holds_the_selector_until_it_is_done(
+        self, view: AcquisitionView
+    ) -> None:
+        view.plans_combobox.setCurrentText("stream")
+        view.plan_widgets["stream"].run_button.setChecked(True)
+        assert not view.plans_combobox.isEnabled()
+
+        view.plan_widgets["stream"].run_button.setChecked(False)
+        view.on_plan_done()
+
+        assert view.plans_combobox.isEnabled()
 
 
 class TestMotorView:

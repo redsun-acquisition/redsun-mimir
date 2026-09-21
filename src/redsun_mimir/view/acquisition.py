@@ -110,6 +110,7 @@ class AcquisitionView(QtView, Loggable):
         self.root_layout.addWidget(self.stack_widget)
 
         self.plan_widgets: dict[str, PlanWidget] = {}
+        self._running: str | None = None
 
         self.plans_combobox.currentIndexChanged.connect(
             self.stack_widget.setCurrentIndex
@@ -162,19 +163,28 @@ class AcquisitionView(QtView, Loggable):
 
         self.stack_widget.setCurrentIndex(0)
 
+    def _current_plan(self) -> str:
+        """Return the plan running, or the one selected while none runs."""
+        return self._running or self.plans_combobox.currentText()
+
+    def _mark_running(self, plan: str) -> None:
+        """Hold the selector on *plan* until it is done."""
+        self._running = plan
+        self.plans_combobox.setEnabled(False)
+
     def _on_plan_toggled(self, toggled: bool) -> None:
-        plan = self.plans_combobox.currentText()
+        plan = self._current_plan()
         plan_widget = self.plan_widgets[plan]
         plan_widget.toggle(toggled)
         if toggled:
+            self._mark_running(plan)
             self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
         else:
             self.sig_stop_plan_request.emit()
 
     def _on_plan_maybe_paused(self, paused: bool) -> None:
         self.logger.debug(f"Plan pause toggled: {paused}")
-        plan = self.plans_combobox.currentText()
-        self.plan_widgets[plan].pause(paused)
+        self.plan_widgets[self._current_plan()].pause(paused)
         self.sig_pause_resume_request.emit(paused)
 
     def _on_plan_launch(self) -> None:
@@ -182,20 +192,22 @@ class AcquisitionView(QtView, Loggable):
         plan_widget = self.plan_widgets[plan]
         plan_widget.setEnabled(False)
         plan_widget.enable_actions(False)
+        self._mark_running(plan)
         self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
 
     @slot
     def on_plan_done(self) -> None:
-        """Re-enable the current plan's controls now that the run finished."""
-        plan = self.plans_combobox.currentText()
+        """Re-enable the controls of the plan that ran, and free the selector."""
+        plan = self._current_plan()
+        self._running = None
+        self.plans_combobox.setEnabled(True)
         self.plan_widgets[plan].setEnabled(True)
         self.plan_widgets[plan].enable_actions(False)
 
     @slot
     def on_action_done(self, action_name: str) -> None:
         """Restore the button of *action_name* once its event is cleared."""
-        plan = self.plans_combobox.currentText()
-        plan_widget = self.plan_widgets[plan]
+        plan_widget = self.plan_widgets[self._current_plan()]
         action_button = plan_widget.get_action_button(action_name)
         if action_button:
             if action_button.action.togglable:
@@ -209,16 +221,15 @@ class AcquisitionView(QtView, Loggable):
                     plan_widget.actions_group.setEnabled(True)
 
     def _on_action_clicked(self, action_name: str) -> None:
-        plan = self.plans_combobox.currentText()
-        group = self.plan_widgets[plan].actions_group
+        group = self.plan_widgets[self._current_plan()].actions_group
         if group:
             group.setEnabled(False)
         self.sig_action_request.emit(action_name, True)
 
     def _on_action_toggled(self, checked: bool, action_name: str) -> None:
         if not checked:
-            plan = self.plans_combobox.currentText()
-            action_button = self.plan_widgets[plan].get_action_button(action_name)
+            plan_widget = self.plan_widgets[self._current_plan()]
+            action_button = plan_widget.get_action_button(action_name)
             if action_button:
                 action_button.setEnabled(False)
         self.sig_action_request.emit(action_name, checked)
