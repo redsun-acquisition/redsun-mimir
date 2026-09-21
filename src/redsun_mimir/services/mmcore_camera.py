@@ -32,7 +32,7 @@ from redsun_mimir.common import Roi
 from ._process import controller_id, identity_arguments, serve, session_logging
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from numpy.typing import NDArray
 
@@ -237,12 +237,19 @@ class MMCameraController(Controller):
     state = AttrR(String())
     last_error = AttrR(String())
 
-    def __init__(self, core: CMMCorePlus, label: str, data_key: str) -> None:
+    def __init__(
+        self,
+        core: CMMCorePlus,
+        label: str,
+        data_key: str,
+        properties: Iterable[str] | None = None,
+    ) -> None:
         self._property_io = PropertyIO(core, label, self._without_sequence)
         super().__init__(ios=[CoreIO(core, self._without_sequence), self._property_io])
         self._core = core
         self._label = label
         self._default_data_key = data_key
+        self._properties = None if properties is None else set(properties)
         self._latest: NDArray[Any] | None = None
         self._grabbed = 0
         self._published = 0
@@ -285,17 +292,27 @@ class MMCameraController(Controller):
         self.add_sub_controller(PROPERTY_GROUP, await self._build_properties())
 
     async def _build_properties(self) -> Controller:
-        """Publish every writable property of the camera.
+        """Publish the camera's writable properties, all of them or the ones chosen.
 
         The attributes are built here rather than declared on the class, since
-        a camera's properties are known only once it is loaded.
+        a camera's properties are known only once it is loaded. A chosen name
+        the camera does not have, or cannot write, is logged and skipped.
         """
-        names = await asyncio.to_thread(self._core.getDevicePropertyNames, self._label)
+        names: list[str] = list(
+            await asyncio.to_thread(self._core.getDevicePropertyNames, self._label)
+        )
         read_only = await asyncio.to_thread(
             lambda: {
                 name: self._core.isPropertyReadOnly(self._label, name) for name in names
             }
         )
+        if self._properties is not None:
+            for name in self._properties:
+                if name not in names or read_only[name]:
+                    logger.warning(
+                        f"Property {name!r} is not one the camera lets one write"
+                    )
+            names = [name for name in names if name in self._properties]
         properties = Controller(ios=[self._property_io])
         for name in names:
             if read_only[name]:
@@ -542,7 +559,11 @@ class MMCameraController(Controller):
 
 
 def build_controller(
-    adapter: str, device: str, label: str, data_key: str
+    adapter: str,
+    device: str,
+    label: str,
+    data_key: str,
+    properties: Iterable[str] | None = None,
 ) -> MMCameraController:
     """Load the camera into a core of this process's own, and wrap it."""
     core = CMMCorePlus()
@@ -551,7 +572,7 @@ def build_controller(
     core.setCameraDevice(label)
     core.clearROI()
     core.setExposure(DEFAULT_EXPOSURE)
-    return MMCameraController(core, label, data_key)
+    return MMCameraController(core, label, data_key, properties)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -559,12 +580,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adapter", required=True, help="Micro-Manager adapter")
     parser.add_argument("--device", required=True, help="device of that adapter")
+    parser.add_argument(
+        "--properties",
+        default="",
+        help="comma-separated camera properties to publish; none without it",
+    )
     identity_arguments(parser, "camera")
     options = parser.parse_args(argv)
 
     session_logging()
     controller = build_controller(
-        options.adapter, options.device, options.name, options.name
+        options.adapter,
+        options.device,
+        options.name,
+        options.name,
+        [name for name in options.properties.split(",") if name],
     )
     asyncio.run(serve(controller, controller_id(options), READY))
     return 0

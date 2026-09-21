@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class RoiPanel(QtWidgets.QWidget):
-    """The region a detector reads, and an editor for the next one.
+    """An editor for the region a detector reads.
 
     Select ROI opens the editor and shows the box on the image, announced on
     ``sig_selection_toggled``. The editor's spin boxes and the box show one
@@ -53,7 +53,6 @@ class RoiPanel(QtWidgets.QWidget):
         self.applied = applied
         width, height = sensor
 
-        self.label = QtWidgets.QLabel(self)
         self.select_button = QtWidgets.QPushButton("Select ROI", self)
         self.select_button.setToolTip("Show a box on the image to drag over the region")
         self.select_button.setCheckable(True)
@@ -90,16 +89,14 @@ class RoiPanel(QtWidgets.QWidget):
                 grid.addWidget(QtWidgets.QLabel(name, self.editor), row, 2 * column)
                 grid.addWidget(box, row, 2 * column + 1)
         buttons = QtWidgets.QHBoxLayout()
-        buttons.addStretch(1)
-        buttons.addWidget(self.full_button)
-        buttons.addWidget(self.ok_button)
+        buttons.addWidget(self.full_button, 1)
+        buttons.addWidget(self.ok_button, 1)
         grid.addLayout(buttons, 2, 0, 1, 4)
         self.editor.setLayout(grid)
 
         header = QtWidgets.QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(QtWidgets.QLabel("ROI", self))
-        header.addWidget(self.label, 1)
+        header.addWidget(QtWidgets.QLabel("ROI", self), 1)
         header.addWidget(self.select_button)
         layout = QtWidgets.QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -156,7 +153,6 @@ class RoiPanel(QtWidgets.QWidget):
         self.height_box.setMaximum(sensor_height - self.y_box.value())
 
     def _show(self) -> None:
-        self.label.setText(str(self.applied))
         self.ok_button.setEnabled(self.pending != self.applied)
 
     def _on_select(self, checked: bool) -> None:

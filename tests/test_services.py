@@ -500,6 +500,18 @@ async def test_the_camera_publishes_the_properties_it_lets_one_write(
     assert properties.attributes["Photon_Flux"].get() == "7"
 
 
+async def test_the_camera_publishes_only_the_properties_chosen() -> None:
+    """A chosen name the camera lacks, or cannot write, is skipped."""
+    core = FakeCore()
+    camera = MMCameraController(core, LABEL, DATA_KEY, ["Gain", "CameraName", "Nope"])  # type: ignore[arg-type]
+    await camera.initialise()
+    camera.post_initialise()
+    try:
+        assert set(camera.sub_controllers["properties"].attributes) == {"Gain"}
+    finally:
+        await camera.disconnect()
+
+
 async def test_a_fault_mid_capture_ends_the_window(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:

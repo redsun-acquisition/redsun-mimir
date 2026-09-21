@@ -260,6 +260,8 @@ def camera_service(service: ServiceFactory) -> Service:
         "DemoCamera",
         "--device",
         "DCam",
+        "--properties",
+        "Binning",
     )
 
 

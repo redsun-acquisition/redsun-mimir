@@ -231,7 +231,6 @@ class TestDetectorViewRoi:
 
         assert panel.applied == Roi(1, 1, 3, 2)
         assert not panel.ok_button.isEnabled()
-        assert panel.label.text() == "1,1,3,2"
 
 
 @needs_opengl

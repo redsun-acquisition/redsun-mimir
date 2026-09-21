@@ -152,7 +152,7 @@ over PVAccess. The bundle ships three:
 
 | service | what it owns | arguments |
 | --- | --- | --- |
-| `mmcore-camera` | one Micro-Manager camera | `--adapter`, `--device` |
+| `mmcore-camera` | one Micro-Manager camera | `--adapter`, `--device`, `--properties` |
 | `mmcore-stage` | one Micro-Manager stage | `--adapter`, `--device`, `--axes` |
 | `youseetoo-controller` | the openUC2 board's serial port | `--port`, `--baudrate` |
 
@@ -166,8 +166,11 @@ services:
     plugin_name: redsun-mimir
     plugin_id: mmcore-camera
     prefix: "MIMIR-CAM1:"
-    args: ["--adapter", "DemoCamera", "--device", "DCam"]
+    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
 ```
+
+`--properties` names the camera's own properties to publish beside `exposure`
+and `roi`, comma-separated; without it none are.
 
 ```python
 class MimirSimulator(MimirApp, config=_CONFIG):

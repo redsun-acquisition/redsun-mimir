@@ -108,6 +108,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- `redsun_mimir.services.mmcore_camera` publishes the camera's own properties
+  only when named with `--properties`, comma-separated; none without it.
+  `MMCameraController` and `build_controller` take the same list as
+  `properties`, every writable one when left out.
+
 - `AcquisitionPresenter.live_median_scan` and `live_stream` run each capture
   as a run of its own, nested in the plan's, through
   `AcquisitionPresenter.capture`. The capture's start document carries
