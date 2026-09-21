@@ -28,6 +28,8 @@ from fastcs.logging import logger
 from fastcs.methods import scan
 from pymmcore_plus import CMMCorePlus
 
+from redsun_mimir.roi import Roi
+
 from ._process import controller_id, identity_arguments, plain_logging, serve
 
 if TYPE_CHECKING:
@@ -103,7 +105,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
             case "exposure":
                 await asyncio.to_thread(self._core.setExposure, float(value))
             case "roi":
-                roi = tuple(int(item) for item in value)
+                roi = Roi.parse(value)
                 await asyncio.to_thread(
                     self._without_sequence, lambda: self._core.setROI(*roi)
                 )
@@ -121,7 +123,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 await attr.update(await asyncio.to_thread(self._core.getExposure))
             case "roi":
                 roi = await asyncio.to_thread(self._core.getROI)
-                await attr.update(np.asarray(roi, dtype=np.int32))
+                await attr.update(str(Roi(*roi)))
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
 
@@ -225,10 +227,9 @@ class MMCameraController(Controller):
     """A camera's settings, its latest frame, and the capture it writes."""
 
     exposure = AttrRW(Float(), io_ref=CoreRef(setting="exposure", update_period=1.0))
-    roi = AttrRW(
-        Waveform(np.int32, shape=(4,)),
-        io_ref=CoreRef(setting="roi", update_period=1.0),
-    )
+    # text, "x,y,width,height": a client can put a string over PVAccess, and
+    # not the array a waveform is served as
+    roi = AttrRW(String(), io_ref=CoreRef(setting="roi", update_period=1.0))
     pixel_dtype = AttrR(String())
     sensor_size = AttrR(Waveform(np.int32, shape=(2,)))
     acquire = AttrRW(Bool())

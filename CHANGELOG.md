@@ -90,6 +90,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- A camera's `roi` is text, `"x,y,width,height"`, on the service and on
+  `MMCamera`, and `DetectorProtocol.roi` is a `SignalRW[str]`; `Roi` in
+  `redsun_mimir.roi` reads and writes the form. A client can put a string over
+  PVAccess, where the array the setting was served as was refused, so the
+  region was not writable from a session at all.
+
 - A detector's layer in `ImageView` is the size of the sensor, from the
   camera's `sensor_size`, and stays that size: a frame taken with a ROI is
   drawn into the rectangle the ROI names. `DetectorPresenter.sig_new_data`

@@ -190,7 +190,7 @@ class FakeDetector(StandardReadable):
     def __init__(self, name: str, /) -> None:
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.exposure = soft_signal_rw(float, initial_value=10.0)
-            self.roi = soft_signal_rw(np.ndarray, initial_value=np.array([0, 0, 6, 4]))
+            self.roi = soft_signal_rw(str, initial_value="0,0,6,4")
             self.pixel_dtype, _ = soft_signal_r_and_setter(str, initial_value="uint8")
             self.sensor_size, _ = soft_signal_r_and_setter(
                 np.ndarray, initial_value=np.array([6, 4])

@@ -33,6 +33,7 @@ from redsun_mimir.providers import (
     MOTOR_READBACKS,
     MOTOR_READINGS,
 )
+from redsun_mimir.roi import Roi
 from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from tests.conftest import FakeDetector, FakeXYStage
 
@@ -186,9 +187,9 @@ class TestLightPresenter:
         assert "motor" not in ctrl._lights
 
 
-async def set_roi(detector: DetectorProtocol, roi: list[int]) -> None:
+async def set_roi(detector: DetectorProtocol, roi: tuple[int, int, int, int]) -> None:
     """Crop *detector* to *roi*, given as ``x, y, width, height``."""
-    await detector.roi.set(np.array(roi))
+    await detector.roi.set(str(Roi(*roi)))
 
 
 class FakeFuture:
@@ -589,9 +590,8 @@ class TestDetectorPresenter:
 
         assert len(received) == 1
         np.testing.assert_array_equal(received[0][key]["value"], frame)
-        np.testing.assert_array_equal(
-            received[0][f"{mm_camera.name}-roi"]["value"],
-            run_coro(mm_camera.roi.get_value()),
+        assert received[0][f"{mm_camera.name}-roi"]["value"] == Roi.parse(
+            run_coro(mm_camera.roi.get_value())
         )
 
     def test_a_frame_is_forwarded_with_the_roi_it_was_taken_with(
@@ -620,16 +620,16 @@ class TestDetectorPresenter:
             },
         )
 
-        run_coro(set_roi(fake_detector, [1, 1, 3, 2]))
+        run_coro(set_roi(fake_detector, (1, 1, 3, 2)))
         presenter.event(event)
 
-        assert received[-1]["cam-roi"]["value"].tolist() == [1, 1, 3, 2]
+        assert received[-1]["cam-roi"]["value"] == Roi(1, 1, 3, 2)
         assert list(received[-1]) == ["cam-roi", "cam-buffer"]
 
     def test_a_layer_is_the_size_of_the_sensor_whatever_the_roi(
         self, fake_detector: FakeDetector
     ) -> None:
-        run_coro(set_roi(fake_detector, [1, 1, 3, 2]))
+        run_coro(set_roi(fake_detector, (1, 1, 3, 2)))
 
         specs = DetectorPresenter("det_ctrl", {"cam": fake_detector}).layer_specs()
 

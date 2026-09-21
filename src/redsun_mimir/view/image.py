@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from redsun.virtual import VirtualContainer
 
     from redsun_mimir.protocols import LayerSpec
+    from redsun_mimir.roi import Roi
 
 
 def place(canvas: NDArray[Any], frame: NDArray[Any], origin: tuple[int, int]) -> bool:
@@ -180,8 +181,8 @@ class ImageView(QtView, Loggable):
         """
         for key, reading in data.items():
             if key.endswith("-roi"):
-                x, y = (int(item) for item in reading["value"][:2])
-                self._origins[key.removesuffix("-roi")] = (x, y)
+                roi: Roi = reading["value"]
+                self._origins[key.removesuffix("-roi")] = (roi.x, roi.y)
                 continue
             name = key.removesuffix("-buffer")
             img = reading["value"]

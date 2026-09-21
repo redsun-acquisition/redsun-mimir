@@ -23,6 +23,7 @@ from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
 
 from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
+from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -166,10 +167,11 @@ class ServiceDataLogic(DetectorDataLogic):
 
 async def frame_shape_and_dtype(camera: MMCamera) -> tuple[tuple[int, int], str]:
     """Return the ``(height, width)`` and dtype of the frames a camera sends."""
-    roi, dtype = await asyncio.gather(
+    text, dtype = await asyncio.gather(
         camera.roi.get_value(), camera.pixel_dtype.get_value()
     )
-    return (int(roi[3]), int(roi[2])), dtype
+    roi = Roi.parse(text)
+    return (roi.height, roi.width), dtype
 
 
 class MMCamera(StandardDetector, Loggable):
@@ -193,7 +195,7 @@ class MMCamera(StandardDetector, Loggable):
     # is described by are registered by the trigger logic, since a detector is
     # not a StandardReadable and cannot carry the annotation
     exposure: SignalRW[float]
-    roi: SignalRW[np.ndarray]
+    roi: SignalRW[str]
     pixel_dtype: SignalR[str]
     sensor_size: SignalR[np.ndarray]
     buffer: SignalR[np.ndarray]

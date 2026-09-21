@@ -16,6 +16,7 @@ from redsun_mimir.providers import (
     DETECTOR_LAYER_SPECS,
     DETECTOR_READINGS,
 )
+from redsun_mimir.roi import Roi
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -77,8 +78,8 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         changed setting (``str``) and its new value (``object``).
     sig_new_data : Signal[dict[str, Reading[Any]]]
         Emitted for every live frame carried by an Event document. Beside
-        the ``<detector>-buffer`` reading travels ``<detector>-roi``, the
-        region the frame was taken with, so a viewer knows where on the
+        the ``<detector>-buffer`` reading travels ``<detector>-roi``, a `Roi`,
+        the region the frame was taken with, so a viewer knows where on the
         sensor it belongs.
     """
 
@@ -109,7 +110,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         }
         #: each detector's ROI as last reported, kept by subscription so a
         #: frame is forwarded with the region it was taken with
-        self._rois: dict[str, Any] = {}
+        self._rois: dict[str, Roi] = {}
         run_coro(self._follow_rois())
 
     async def _follow_rois(self) -> None:
@@ -119,11 +120,11 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         reports its first value whenever the transport gets to it.
         """
         for name, detector in self.detectors.items():
-            self._rois[name] = await detector.roi.get_value()
+            self._rois[name] = Roi.parse(await detector.roi.get_value())
             detector.roi.subscribe(partial(self._remember_roi, name))
 
     def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
-        self._rois[detector] = next(iter(reading.values()))["value"]
+        self._rois[detector] = Roi.parse(next(iter(reading.values()))["value"])
         # the camera's properties come from its service, so they exist only
         # once it has connected, which the build does before presenters
         self._settables = {

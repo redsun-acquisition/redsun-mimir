@@ -151,8 +151,8 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     exposure: SignalRW[float]
     """Signal for exposure time."""
 
-    roi: SignalRW[np.ndarray]
-    """Region of interest, as four integers: (x, y, width, height)."""
+    roi: SignalRW[str]
+    """Region of interest, as text: ``"x,y,width,height"``, read with `Roi.parse`."""
 
     pixel_dtype: SignalR[str]
     """Signal carrying the pixel data type."""

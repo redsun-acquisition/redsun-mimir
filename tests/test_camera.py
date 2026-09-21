@@ -23,6 +23,7 @@ from ophyd_async.testing import assert_emitted
 from redsun.path_provider import SessionPathProvider
 
 from redsun_mimir.device.mmcore import MMCamera
+from redsun_mimir.device.mmcore._camera import frame_shape_and_dtype
 
 from .conftest import needs_mm_adapters
 
@@ -102,6 +103,19 @@ def test_fly_scan_lifecycle(
 
     store = Path(url2pathname(urlparse(docs["stream_resource"][0]["uri"]).path))
     assert (store / "cam" / "zarr.json").exists()
+
+
+@needs_mm_adapters
+async def test_a_roi_is_written_as_text_and_sizes_the_frames(
+    mm_camera: MMCamera,
+) -> None:
+    """The one form of the setting a client can put over PVAccess."""
+    await mm_camera.roi.set("10,20,100,50")
+
+    assert await mm_camera.roi.get_value() == "10,20,100,50"
+    assert (await frame_shape_and_dtype(mm_camera))[0] == (50, 100)
+
+    await mm_camera.roi.set("0,0,512,512")
 
 
 @needs_mm_adapters

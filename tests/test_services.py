@@ -310,8 +310,9 @@ async def test_a_setting_refused_mid_sequence_pauses_it(
     await until(lambda: core.sequencing, camera)
 
     if setting == "roi":
-        await camera.roi.put(np.array([1, 1, 2, 2]))
+        await camera.roi.put("1,1,2,2")
         assert core.roi == (1, 1, 2, 2)
+        assert camera.roi.get() == "1,1,2,2"
     else:
         await camera.sub_controllers["properties"].attributes["Gain"].put("3")
         assert core.properties["Gain"] == "3"
