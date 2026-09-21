@@ -206,6 +206,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- A Micro-Manager stage move whose readback settles one reporting step from
+  its target completes, and one that never settles raises after
+  `MOVE_TIMEOUT` (10 s) instead of waiting forever. The service reports
+  positions to two decimals, so a relative move starting off that grid could
+  read a full 0.01 um away; `POSITION_TOLERANCE` is 0.02. A square scan of
+  ten steps per side stalled on its ninth step.
 - A second capture window in one session completes: the camera service starts
   `Captured` over when it is handed a store, and `MMCamera` waits for that
   before it describes the window. The count carried over from the last window,

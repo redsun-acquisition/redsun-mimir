@@ -9,7 +9,7 @@ import pytest
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMStage
-from redsun_mimir.device.mmcore._stage import POSITION_TOLERANCE
+from redsun_mimir.device.mmcore._stage import MOVE_TIMEOUT, POSITION_TOLERANCE
 from redsun_mimir.device.youseetoo import UC2LaserDevice
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.protocols import LightProtocol, MotorProtocol
@@ -55,6 +55,22 @@ class TestMMStage:
         assert (await mm_stage.read())["XY-axis-x"]["value"] == pytest.approx(
             10.0, abs=POSITION_TOLERANCE
         )
+
+    async def test_relative_moves_off_the_grid_all_arrive(
+        self, mm_stage: MMStage
+    ) -> None:
+        """Each move starts where the last one read, so the target drifts off the grid.
+
+        The service reports two decimals; the ninth 5 um step from zero reads a
+        full 0.01 um from its target, which a tolerance of 0.01 refuses.
+        """
+        x = mm_stage.axis["x"]
+        for _ in range(12):
+            target = (await x.locate())["readback"] + 5.0
+            await asyncio.wait_for(x.set(target), timeout=MOVE_TIMEOUT + 1)
+            assert (await x.locate())["readback"] == pytest.approx(
+                target, abs=POSITION_TOLERANCE
+            )
 
 
 class TestUC2LaserDevice:

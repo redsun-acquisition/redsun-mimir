@@ -30,9 +30,14 @@ STAGE_GROUP = "Stage"
 
 #: A Micro-Manager stage settles on its own grid rather than exactly where it
 #: was sent: the demo XY stage lands within 0.006 um of any request, and
-#: exposes no step-size property to derive this from. `MovableLogic.move`
-#: waits for equality by default, which would never be satisfied.
-POSITION_TOLERANCE: Final[float] = 0.01
+#: exposes no step-size property to derive this from. The service then
+#: reports the position to two decimals, so a landing can read a full
+#: 0.01 um from the request. `MovableLogic.move` waits for equality by
+#: default, which would never be satisfied.
+POSITION_TOLERANCE: Final[float] = 0.02
+
+#: How long a move may take before it is given up as failed.
+MOVE_TIMEOUT: Final[float] = 10.0
 
 
 @dataclass
@@ -40,6 +45,12 @@ class MMAxisLogic(MovableLogic[float]):
     """Move logic for one axis of a Micro-Manager stage."""
 
     tolerance: float = POSITION_TOLERANCE
+
+    async def calculate_timeout(
+        self, old_position: float, new_position: float
+    ) -> float:
+        """Give every move `MOVE_TIMEOUT`, so a readback that never lands raises."""
+        return MOVE_TIMEOUT
 
     async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
         """Write the setpoint and wait for the readback to land within tolerance."""
