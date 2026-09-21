@@ -290,6 +290,51 @@ class TestMedianPresenter:
         written = json.loads((store / "cam_median" / "zarr.json").read_text())
         assert written["shape"] == [1, 4, 4]
 
+    async def test_a_store_named_after_the_scan_receives_the_median(
+        self, tmp_path: Path
+    ) -> None:
+        """A scan before the stream is the documented order of the plan."""
+        frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
+        store = tmp_path / "acquisition.zarr"
+        uri = zarr.write(f"file://{store.as_posix()}", data_key="cam", data=frames[0])
+        buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
+        presenter = MedianPresenter("median_presenter", devices)
+        engine = RunEngine()
+        engine.subscribe(presenter)
+
+        def plan() -> MsgGenerator[None]:
+            yield from bps.open_run()
+            yield from bps.declare_stream(buf, name=MEDIAN_SCAN_STREAM)
+            for frame in frames:
+                yield from bps.abs_set(buf, frame, wait=True)
+                yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
+            yield from bps.close_run()
+
+        engine(plan()).result(timeout=30)
+        assert not (store / "cam_median").exists()
+
+        presenter.stream_resource(
+            cast("StreamResource", {"data_key": "cam", "uri": uri})
+        )
+
+        written = json.loads((store / "cam_median" / "zarr.json").read_text())
+        assert written["shape"] == [1, 4, 4]
+
+    async def test_a_new_plan_forgets_the_last_store(self, tmp_path: Path) -> None:
+        buf = soft_signal_rw(
+            np.ndarray, initial_value=np.zeros((2, 2)), name="cam-buffer"
+        )
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
+        presenter = MedianPresenter("median_presenter", devices)
+        presenter.stream_resource(
+            cast("StreamResource", {"data_key": "cam", "uri": "file:///gone.zarr"})
+        )
+
+        presenter.clear_medians("live_stream")
+
+        assert presenter._stores == {}
+
     async def test_live_frames_are_divided_by_the_cached_median(
         self, tmp_path: Path
     ) -> None:

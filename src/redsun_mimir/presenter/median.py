@@ -121,6 +121,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
         self.medians.clear()
+        self._stores.clear()
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Route a stream to the accumulate or the correct path."""
@@ -135,8 +136,15 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._scan_streams[doc["uid"]] = (doc["run_start"], sources)
 
     def stream_resource(self, doc: StreamResource) -> None:
-        """Remember the store an acquisition wrote, to add the median to it."""
+        """Remember the store an acquisition wrote, to add the median to it.
+
+        A median computed before the store was named is written now: a scan
+        may run before the stream that writes the frames it corrects.
+        """
         self._stores[doc["data_key"]] = doc["uri"]
+        for source, median in self.medians.items():
+            if _base_name(source) == doc["data_key"]:
+                self._write(source, median)
 
     def event(self, doc: Event) -> Event:
         """Cache scan frames; correct live frames against the median."""

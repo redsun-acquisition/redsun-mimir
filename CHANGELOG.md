@@ -176,6 +176,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   the grabbing thread, which exposes only while no sequence runs.
 - `DetectorPresenter.set` logs a write the device refuses, rather than raising
   out of the slot and leaving the view's pending edit unanswered.
+- `MedianPresenter` writes a median into a store named after the scan that
+  computed it, and forgets the stores of the last plan when a new one starts.
+  A scan before the stream, the order the plan documents, wrote no median, and
+  a later plan wrote its median into the previous plan's store.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.
