@@ -16,8 +16,8 @@ from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import SRLatch
-from redsun.storage.writers import zarr
 from redsun.virtual import VirtualContainer
+from redsun.writers._base import root_attributes
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
@@ -46,7 +46,6 @@ if TYPE_CHECKING:
         Event,
         EventDescriptor,
         RunStop,
-        StreamResource,
     )
     from ophyd_async.core import SignalRW
 
@@ -252,50 +251,89 @@ class TestMedianPresenter:
         presenter = MedianPresenter("median_presenter", devices)
         assert presenter._sources == {"cam-buffer"}
 
+    @staticmethod
+    def name_store(presenter: MedianPresenter, store: Path) -> None:
+        """Send the outer run's capture stream and the store it writes, for ``cam``."""
+        presenter(
+            "descriptor",
+            {
+                "uid": "capture-desc",
+                "run_start": "outer",
+                "name": "live_stream",
+                "data_keys": {
+                    "cam": {
+                        "source": "cam",
+                        "dtype": "array",
+                        "dtype_numpy": "<u2",
+                        "shape": [4, 4],
+                        "external": "STREAM:",
+                    }
+                },
+            },
+        )
+        presenter(
+            "stream_resource",
+            {
+                "uid": "capture-res",
+                "run_start": "outer",
+                "data_key": "cam",
+                "mimetype": "application/x-zarr",
+                "uri": store.as_uri(),
+                "parameters": {},
+            },
+        )
+
+    @staticmethod
+    def scan(buf: SignalRW[np.ndarray], frames: list[np.ndarray]) -> MsgGenerator[None]:
+        """Run a square scan: the frames on the median stream, then its stop."""
+        yield from bps.open_run()
+        yield from bps.declare_stream(buf, name=MEDIAN_SCAN_STREAM)
+        for frame in frames:
+            yield from bps.abs_set(buf, frame, wait=True)
+            yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
+        yield from bps.close_run()
+
     async def test_document_flow_computes_writes_and_emits_median(
         self, tmp_path: Path
     ) -> None:
         """descriptor->events->stop produces the median, emits it once, writes it.
 
-        The store is the one an acquisition wrote, which the presenter learns
-        from that run's ``StreamResource``; the median lands beside the frames
-        as a key of its own.
+        The scan is a run nested in the live plan's; the store is the one that
+        outer run's ``StreamResource`` names, and the median lands in it as a
+        key of its own once the outer run stops.
         """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
-        uri = zarr.write(f"file://{store.as_posix()}", data_key="cam", data=frames[0])
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
-
         received: list[dict[str, Any]] = []
         presenter.frames.median.connect(received.append)
-
         engine = RunEngine()
         engine.subscribe(presenter)
 
-        def plan() -> MsgGenerator[None]:
-            yield from bps.open_run()
-            yield from bps.declare_stream(buf, name=MEDIAN_SCAN_STREAM)
-            for frame in frames:
-                yield from bps.abs_set(buf, frame, wait=True)
-                yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
-            yield from bps.close_run()
-
-        presenter.stream_resource(
-            cast("StreamResource", {"data_key": "cam", "uri": uri})
+        presenter("start", {"uid": "outer", "time": 0.0})
+        self.name_store(presenter, store)
+        engine(self.scan(buf, frames)).result(timeout=30)
+        presenter(
+            "stop",
+            {
+                "uid": "outer-stop",
+                "run_start": "outer",
+                "time": 1.0,
+                "exit_status": "success",
+            },
         )
-        engine(plan()).result(timeout=30)
 
         expected = np.median(np.stack(frames), axis=0).astype("uint16")
         np.testing.assert_array_equal(presenter.medians["cam-buffer"], expected)
-
         assert len(received) == 1
         emitted_reading = next(iter(received[0].values()))
         np.testing.assert_array_equal(emitted_reading["value"], expected)
-
         written = json.loads((store / "cam_median" / "zarr.json").read_text())
         assert written["shape"] == [1, 4, 4]
+        assert root_attributes(store / "cam_median")["derived_from"] == "cam"
+        assert root_attributes(store / "cam_median")["redsun"]["run_start"] == "outer"
 
     async def test_a_store_named_after_the_scan_receives_the_median(
         self, tmp_path: Path
@@ -303,44 +341,48 @@ class TestMedianPresenter:
         """A scan before the stream is the documented order of the plan."""
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
-        uri = zarr.write(f"file://{store.as_posix()}", data_key="cam", data=frames[0])
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
         engine = RunEngine()
         engine.subscribe(presenter)
 
-        def plan() -> MsgGenerator[None]:
-            yield from bps.open_run()
-            yield from bps.declare_stream(buf, name=MEDIAN_SCAN_STREAM)
-            for frame in frames:
-                yield from bps.abs_set(buf, frame, wait=True)
-                yield from bps.trigger_and_read([buf], name=MEDIAN_SCAN_STREAM)
-            yield from bps.close_run()
-
-        engine(plan()).result(timeout=30)
-        assert not (store / "cam_median").exists()
-
-        presenter.stream_resource(
-            cast("StreamResource", {"data_key": "cam", "uri": uri})
+        presenter("start", {"uid": "outer", "time": 0.0})
+        engine(self.scan(buf, frames)).result(timeout=30)
+        assert not store.exists()
+        self.name_store(presenter, store)
+        presenter(
+            "stop",
+            {
+                "uid": "outer-stop",
+                "run_start": "outer",
+                "time": 1.0,
+                "exit_status": "success",
+            },
         )
 
         written = json.loads((store / "cam_median" / "zarr.json").read_text())
         assert written["shape"] == [1, 4, 4]
 
-    async def test_a_new_plan_forgets_the_last_store(self, tmp_path: Path) -> None:
-        buf = soft_signal_rw(
-            np.ndarray, initial_value=np.zeros((2, 2)), name="cam-buffer"
-        )
+    async def test_shutdown_closes_a_store_the_run_left_open(
+        self, tmp_path: Path
+    ) -> None:
+        frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
+        store = tmp_path / "acquisition.zarr"
+        buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
         presenter = MedianPresenter("median_presenter", devices)
-        presenter.stream_resource(
-            cast("StreamResource", {"data_key": "cam", "uri": "file:///gone.zarr"})
-        )
+        engine = RunEngine()
+        engine.subscribe(presenter)
+        presenter("start", {"uid": "outer", "time": 0.0})
+        self.name_store(presenter, store)
+        engine(self.scan(buf, frames)).result(timeout=30)
 
-        presenter.clear_medians("live_stream")
+        presenter.shutdown()
 
-        assert presenter._stores == {}
+        assert json.loads((store / "cam_median" / "zarr.json").read_text())[
+            "shape"
+        ] == [1, 4, 4]
 
     async def test_live_frames_are_divided_by_the_cached_median(
         self, tmp_path: Path

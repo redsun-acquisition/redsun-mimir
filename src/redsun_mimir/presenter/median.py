@@ -7,8 +7,8 @@ from event_model import DocumentRouter
 from psygnal import SignalGroup
 from redsun.log import Loggable
 from redsun.presenter import Presenter
-from redsun.storage.writers import WriterError, zarr
 from redsun.virtual import Signal, slot
+from redsun.writers import Writer, WriterError
 
 from redsun_mimir.streams import MEDIAN_SCAN_STREAM
 
@@ -54,14 +54,18 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     [`DocumentRouter`][event_model.DocumentRouter]:
 
     - frames on the `MEDIAN_SCAN_STREAM` are **cached**; when that run stops
-      the median is computed, published on ``frames.median`` and added to the
-      store the acquisition wrote, under ``<detector>_median``;
+      the median is computed, published on ``frames.median`` and written by a
+      `Writer` into the store the acquisition names, under
+      ``<detector>_median``, as soon as a run has named one;
     - frames on any other stream - in practice `LIVE_VIEW_STREAM`, produced
       by ``bps.monitor`` on the detector's buffer signal - are **divided** by
       the cached median and published on ``frames.filtered`` as their
       own viewer layer, leaving the raw layer untouched.
 
-    All state is keyed by run, so concurrent or nested runs never mix.
+    All state is keyed by run, so concurrent or nested runs never mix. Every
+    document reaches the writer before this presenter acts on it, except
+    ``stop``, which reaches it after, so the median written there still
+    finds its run open.
 
     Parameters
     ----------
@@ -97,8 +101,11 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
             if hasattr(device, "buffer")
         }
 
-        #: detector data key -> store the run wrote, from its StreamResource
-        self._stores: dict[str, str] = {}
+        #: writes each detector's median into the store its run names
+        self._writer = Writer()
+        for source in self._sources:
+            detector = _base_name(source)
+            self._writer.derive(f"{detector}{_MEDIAN_SUFFIX}", source=detector)
 
         #: latest median per source data key
         self.medians: dict[str, npt.NDArray[Any]] = {}
@@ -115,13 +122,25 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         container.register_signals(self)
         container.register_callbacks(self)
 
+    def __call__(self, name: str, doc: dict[str, Any], validate: bool = False) -> Any:
+        """Dispatch *doc* to the writer and to this presenter, ``stop`` last to the writer."""
+        if name != "stop":
+            self._writer(name, doc, validate)
+        result = super().__call__(name, doc, validate)
+        if name == "stop":
+            self._writer(name, doc, validate)
+        return result
+
     @slot
     def clear_medians(self, plan_name: str) -> None:
         """Forget every cached median: a new plan means a new background."""
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
         self.medians.clear()
-        self._stores.clear()
+
+    def shutdown(self) -> None:
+        """Close what the writer left open, so every store stays readable."""
+        self._writer.shutdown()
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Route a stream to the accumulate or the correct path."""
@@ -136,12 +155,10 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._scan_streams[doc["uid"]] = (doc["run_start"], sources)
 
     def stream_resource(self, doc: StreamResource) -> None:
-        """Remember the store an acquisition wrote, to add the median to it.
+        """Write a median computed before its store was named.
 
-        A median computed before the store was named is written now: a scan
-        may run before the stream that writes the frames it corrects.
+        A scan may run before the stream that writes the frames it corrects.
         """
-        self._stores[doc["data_key"]] = doc["uri"]
         for source, median in self.medians.items():
             if _base_name(source) == doc["data_key"]:
                 self._write(source, median)
@@ -225,19 +242,15 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
                 del self._scan_streams[uid]
 
     def _write(self, source: str, median: npt.NDArray[Any]) -> None:
-        """Add the median to the store its detector wrote, if there is one."""
+        """Write the median into the store its detector's run names, if one has."""
         detector = _base_name(source)
-        uri = self._stores.get(detector)
-        if uri is None:
-            # a run that wrote nothing has no store to add a key to; the
-            # median is still computed and published
-            return
         try:
-            zarr.write(
-                uri,
-                data_key=f"{detector}{_MEDIAN_SUFFIX}",
-                data=median,
+            self._writer.write(
+                f"{detector}{_MEDIAN_SUFFIX}",
+                median,
                 metadata={"derived_from": detector},
             )
         except WriterError as error:
-            self.logger.error(f"Median for {detector!r} not written: {error}")
+            # a run that named no store yet is the usual case, a scan before
+            # the stream; the median is kept and written once one is named
+            self.logger.debug(f"Median for {detector!r} not written: {error}")
