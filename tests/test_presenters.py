@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
-from redsun.engine import RunEngine
+from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import SRLatch
 from redsun.storage.writers import zarr
 from redsun.virtual import VirtualContainer
@@ -683,23 +683,29 @@ class TestDetectorPresenter:
 
         assert received == []
 
-    async def test_a_roi_change_waits_for_the_run_to_end(
-        self, fake_detector: FakeDetector, caplog: pytest.LogCaptureFixture
+    async def test_a_roi_change_during_a_plan_lands_between_two_messages(
+        self, fake_detector: FakeDetector, virtual_container: VirtualContainer
     ) -> None:
         """Applied inside a point, a ROI would put two frame shapes in one stream."""
+        engine = RunEngine()
+        virtual_container.provide(DEFERRALS, Deferrals(engine))
         presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
-        presenter.on_plan_started("live_stream")
+        presenter.inject_dependencies(virtual_container)
+        announced: list[tuple[str, str, Any]] = []
+        presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
+        future = engine(bps.sleep(0.3))
+        while engine.state != "running":
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
 
         await presenter.set("cam", "roi", "1,1,3,2")
-        assert await fake_detector.roi.get_value() == "0,0,6,4"
-        assert "changes between runs only" in caplog.text
-
         await presenter.set("cam", "exposure", 5.0)
-        assert await fake_detector.exposure.get_value() == 5.0
 
-        presenter.on_plan_done()
-        await presenter.set("cam", "roi", "1,1,3,2")
+        assert await fake_detector.roi.get_value() == "0,0,6,4"
+        assert await fake_detector.exposure.get_value() == 5.0
+        future.result(timeout=5)
         assert await fake_detector.roi.get_value() == "1,1,3,2"
+        assert ("cam", "cam-roi", "1,1,3,2") in announced
 
     async def test_a_refused_setting_is_logged_and_not_announced(
         self,

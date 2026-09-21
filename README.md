@@ -211,10 +211,6 @@ wiring:
     to: img_widget.on_new_configuration
   - from: img_widget.sig_roi_drawn
     to: det_widget.on_roi_drawn
-  - from: acq_ctrl.sig_pre_launch_notify
-    to: det_ctrl.on_plan_started
-  - from: acq_ctrl.sig_plan_done
-    to: det_ctrl.on_plan_done
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
   - from: light_widget.sig_toggle_light_request
@@ -255,7 +251,8 @@ when a plan is what moved it.
 - Live data capture.
 - Region of interest chosen on the image: Select ROI in a detector's settings
   shows a box over its layer to drag, Confirm applies it, and Clear brings
-  the whole sensor back. A change waits for a running plan to end.
+  the whole sensor back. A change asked for during a plan lands between
+  two of its messages.
 - Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).
 - Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.

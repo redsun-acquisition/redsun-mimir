@@ -60,9 +60,7 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
 
     def wire(self) -> None:
         """Connect the presenters to the views."""
-        wire_detector(
-            self, self.det_ctrl, self.det_widget, self.img_widget, self.acq_ctrl
-        )
+        wire_detector(self, self.det_ctrl, self.det_widget, self.img_widget)
         wire_median(self, self.median_ctrl, self.img_widget)
         wire_motor(self, self.motor_ctrl, self.motor_widget)
         wire_light(self, self.light_ctrl, self.light_widget)

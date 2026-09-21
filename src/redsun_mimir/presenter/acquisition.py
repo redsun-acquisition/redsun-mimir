@@ -10,7 +10,7 @@ import redsun.engine.plan_stubs as rps
 from bluesky.preprocessors import set_run_key_wrapper
 from bluesky.utils import MsgGenerator, RequestAbort
 from ophyd_async.core import TriggerInfo
-from redsun.engine import RunEngine
+from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
 from redsun.presenter import Presenter
@@ -158,6 +158,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         super().__init__(name, devices)
         self.models = devices
         self.engine = RunEngine()
+        self.deferrals = Deferrals(self.engine)
 
         self.futures: set[Future[Any]] = set()
         self.action_map: dict[str, SRLatch] = {}
@@ -192,8 +193,9 @@ class AcquisitionPresenter(Presenter, Loggable):
             return None
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register plan specs as a provider in the DI container."""
+        """Register plan specs and the engine's deferrals as providers."""
         container.provide(PLAN_SPECS, self.plans_specificiers())
+        container.provide(DEFERRALS, self.deferrals)
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:

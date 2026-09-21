@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from bluesky.protocols import Descriptor  # noqa: TC002
 from event_model import DocumentRouter
 from redsun.aio import run_coro
+from redsun.engine import DEFERRALS
 from redsun.log import Loggable
 from redsun.presenter import Presenter
 from redsun.virtual import Signal, slot
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor
     from ophyd_async.core import Device, SignalRW
+    from redsun.engine import Deferrals
     from redsun.virtual import VirtualContainer
 
     from redsun_mimir.protocols import LayerSpec
@@ -112,7 +114,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         #: frame is forwarded with the region it was taken with
         self._rois: dict[str, Roi] = {}
         self._roi_callbacks: dict[str, Callable[[dict[str, Reading[Any]]], None]] = {}
-        self._plan_running = False
+        self._deferrals: Deferrals | None = None
         run_coro(self._follow_rois())
 
     async def _follow_rois(self) -> None:
@@ -169,16 +171,6 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             self.sig_new_data.emit(readings)
         return doc
 
-    @slot
-    def on_plan_started(self, plan_name: str) -> None:
-        """Hold ROI changes until the plan announced here ends."""
-        self._plan_running = True
-
-    @slot
-    def on_plan_done(self) -> None:
-        """Let ROI changes through again."""
-        self._plan_running = False
-
     def register_providers(self, container: VirtualContainer) -> None:
         """Register detector info as providers in the DI container.
 
@@ -189,6 +181,10 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         container.provide(DETECTOR_LAYER_SPECS, self.layer_specs())
         container.register_signals(self)
         container.register_callbacks(self)
+
+    def inject_dependencies(self, container: VirtualContainer) -> None:
+        """Take the engine's deferrals, if a presenter here owns an engine."""
+        self._deferrals = container.try_require(DEFERRALS)
 
     def layer_specs(self) -> dict[str, LayerSpec]:
         """Get the layer specifications for all detector devices.
@@ -234,21 +230,21 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         if obj is None:
             self.logger.error(f"Unknown property {property!r} for {detector!r}")
             return
-        if property == "roi" and self._plan_running:
-            # a ROI applied inside a point would put frames of two shapes in
-            # one event stream; until a change can wait for the next quiet
-            # moment, it waits for the run to end
-            self.logger.warning(
-                f"A plan is running; the ROI of {detector!r} changes between runs only"
-            )
-            return
 
-        try:
-            await obj.set(value)
-        except Exception as error:  # noqa: BLE001 - the view is told, the loop goes on
-            self.logger.error(f"Failed to set {obj.name} to {value!r}: {error}")
+        async def apply() -> None:
+            try:
+                await obj.set(value)
+            except Exception as error:  # noqa: BLE001 - the view is told, the loop goes on
+                self.logger.error(f"Failed to set {obj.name} to {value!r}: {error}")
+                return
+            new_reading = await obj.read()
+            self.sig_new_configuration.emit(
+                detector, obj.name, new_reading[obj.name]["value"]
+            )
+
+        if property == "roi" and self._deferrals is not None:
+            # a ROI applied inside a point would put frames of two shapes in
+            # one event stream, so it lands between two messages instead
+            self._deferrals.request(apply)
             return
-        new_reading = await obj.read()
-        self.sig_new_configuration.emit(
-            detector, obj.name, new_reading[obj.name]["value"]
-        )
+        await apply()
