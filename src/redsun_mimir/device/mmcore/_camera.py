@@ -84,9 +84,15 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
         await self.camera.capture.set(True)
 
     async def wait_for_idle(self) -> None:
-        """Wait for a bounded window to write its last frame."""
+        """Wait for a bounded window to write its last frame, or end an unbounded one.
+
+        Closing an unbounded window here, rather than at unstage, is what
+        makes the count the documents report the count of frames on disk.
+        """
         if await self.camera.num_capture.get_value():
             await wait_for_value(self.camera.capture, False, timeout=None)
+        else:
+            await self.camera.capture.set(False)
 
     async def ensure_stopped(self) -> None:
         """Close the window and stop the camera."""

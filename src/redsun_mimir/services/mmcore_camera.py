@@ -357,9 +357,14 @@ class MMCameraController(Controller):
         await self.captured.update(0)
 
     async def _on_capture(self, capturing: bool) -> None:
-        """Open the store frames are written to, or finish the one open."""
+        """Open the store frames are written to, or finish the one open.
+
+        Closing publishes the count as well: an unbounded window ends here,
+        and a client reads the count once it has.
+        """
         if not capturing:
             self._close_store()
+            await self.captured.update(self._written)
             return
         if self._store is not None:
             return

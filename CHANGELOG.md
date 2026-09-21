@@ -155,6 +155,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   `Captured` over when it is handed a store, and `MMCamera` waits for that
   before it describes the window. The count carried over from the last window,
   so the second was waited on for twice its frames and timed out.
+- An unbounded capture window (`write_forever`) reports every frame it wrote:
+  `MMCamera` closes the window as the plan completes, and the camera service
+  publishes the final count as it closes. The window closed at unstage, after
+  the documents were emitted, so the last frames on disk were unaccounted for.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

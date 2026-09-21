@@ -272,6 +272,22 @@ async def test_a_second_window_counts_from_zero(
     assert (tmp_path / "second.zarr" / DATA_KEY / "zarr.json").exists()
 
 
+async def test_closing_an_unbounded_window_publishes_what_it_wrote(
+    controller: tuple[MMCameraController, FakeCore], tmp_path: Path
+) -> None:
+    """``Captured`` is final once ``Capture`` falls, with no tick in between."""
+    camera, _ = controller
+    await camera.file_path.put(str(tmp_path / "window.zarr"))
+    await camera.num_capture.put(0)
+    await camera.capture.put(True)
+    for _ in range(3):
+        camera.grab_once()
+
+    await camera.capture.put(False)
+
+    assert camera.captured.get() == 3
+
+
 async def test_a_setting_is_applied_off_the_event_loop(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
