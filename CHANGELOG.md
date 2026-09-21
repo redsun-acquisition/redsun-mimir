@@ -11,53 +11,48 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Added
 
-- The three services log serialized `loguru` records to their standard
-  output (`redsun_mimir.services`), so the session rebuilds each with its
-  level, time and logger name under `redsun.service.<name>.<logger>` rather
-  than reading it as DEBUG text.
+- The three services (`redsun_mimir.services`) log serialized `loguru`
+  records to their standard output; the session rebuilds each under
+  `redsun.service.<name>.<logger>` with its level, time and logger name.
 
 - A selection box on each detector layer of `ImageView`, shown on request and
-  dragged by its handles to choose a region of the sensor. Dragging announces the box on
-  `ImageView.sig_roi_drawn` as a `Roi` and changes nothing on the camera;
-  `ImageView.on_new_configuration`, wired to the detector presenter, puts the
-  box over the region the camera reads once a ROI is applied.
+  dragged by its handles to choose a region of the sensor. Dragging announces
+  the box as a `Roi` on `ImageView.sig_roi_drawn` and changes nothing on the
+  camera; `ImageView.on_new_configuration`, wired to the detector presenter,
+  moves the box to the region the camera reads once a ROI is applied.
 - A ROI panel under each detector's settings in `DetectorView`: the region the
-  camera reads, the one drawn on its image beside it, Select ROI, Confirm and
-  Clear. Select ROI shows the box on the image, hidden and inert otherwise,
-  through `DetectorView.sig_roi_selection` wired to
-  `ImageView.set_roi_selection`.
+  camera reads, the one drawn on its image, Select ROI, Confirm and Clear.
+  Select ROI shows the box on the image through `DetectorView.sig_roi_selection`,
+  wired to `ImageView.set_roi_selection`; the box is hidden and inert otherwise.
   Confirm sends the drawn region and Clear the whole sensor, each as a `roi`
   property change through `sig_property_changed`; nothing reaches the camera
   while the box is dragged. The drawn region arrives on `on_roi_drawn`, wired
   from `ImageView.sig_roi_drawn`.
 - A `roi` change asked for while a plan runs is applied between two of its
-  messages, since one applied inside a point would put frames of two shapes
-  in one event stream. `AcquisitionPresenter.register_providers` provides
-  the engine's `Deferrals` under `redsun.engine.DEFERRALS`, and
+  messages. `AcquisitionPresenter.register_providers` provides the engine's
+  `Deferrals` under `redsun.engine.DEFERRALS` and
   `DetectorPresenter.inject_dependencies` takes it; a session without an
   acquisition presenter applies the change at once.
 - `sensor_size` on the camera service (`redsun_mimir.services.mmcore_camera`)
   and on `MMCamera` (`redsun_mimir.device.mmcore`): the whole sensor as
-  `(width, height)`, read once while nothing crops the camera. Part of the
-  camera's configuration, and a member of `DetectorProtocol`
+  `(width, height)`, read once while nothing crops the camera, part of the
+  camera's configuration and a member of `DetectorProtocol`
   (`redsun_mimir.protocols`).
 - `FONT_SIZE` (`redsun_mimir.hooks`) - the point size every widget of a
   session is drawn at, 9. `NapariApplication` applies napari's stylesheet at
   that size; `stylesheet(font_size=...)` (`redsun_mimir.utils.napari`) takes
-  the size to ask for, napari's own setting when left out.
+  the size, napari's own setting when left out.
 - `redsun`'s log view in both sessions, declared as `logs` on `MimirApp`.
 
 - A directory control in `AcquisitionView`: a read-only field showing where a
-  run writes and a Browse button. The choice travels as
-  `sig_base_dir_request`, reaches `AcquisitionPresenter.set_base_dir`, and is
-  announced as `sig_base_dir_changed` to the session's path provider and back
-  to the view. A request made while a plan runs is logged and dropped, since
-  one run's files belong under one root.
+  run writes and a Browse button. The choice travels as `sig_base_dir_request`
+  to `AcquisitionPresenter.set_base_dir` and is announced on
+  `sig_base_dir_changed` to the session's path provider and back to the view.
+  A request made while a plan runs is logged and dropped.
 
-- `NapariApplication` (`redsun_mimir.hooks`) - a container hook that runs the
-  session on napari's application and applies napari's stylesheet to it, so a
-  window embedding a napari viewer is styled throughout. It serves
-  `create_application` and `configure_application`.
+- `NapariApplication` (`redsun_mimir.hooks`) - a container hook serving
+  `create_application` and `configure_application`: it runs the session on
+  napari's application and applies napari's stylesheet to it.
 
   ```yaml
   hooks:
@@ -67,13 +62,13 @@ Dates are specified in the format `DD-MM-YYYY`.
   ```
 
 - `stylesheet` (`redsun_mimir.utils.napari`) - napari's QSS for the theme and
-  font size currently in its settings.
+  font size in its settings.
 
 - `build_uc2_container` (`redsun_mimir.configurations`) - the UC2 container,
   unbuilt, matching `build_simulation_container`.
 
 - `redsun_mimir.services.mmcore_camera` - a Micro-Manager camera served over
-  PVAccess. It owns its own `CMMCorePlus`, reads frames through
+  PVAccess. It owns a `CMMCorePlus`, reads frames through
   `startContinuousSequenceAcquisition`, writes a capture window to a Zarr
   store with `acquire-zarr`, and publishes every property the camera lets a
   client write under `properties`. `State` reads `idle`, `acquiring` or
@@ -90,8 +85,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   ```
 
 - `redsun_mimir.services.mmcore_stage` - a Micro-Manager stage served over
-  PVAccess, one process per stage, with the axes it moves given as
-  `--axes x,y`. It serialises moves.
+  PVAccess, one process per stage, its axes given as `--axes x,y`. Moves are
+  serialised.
 
 - `redsun_mimir.services.uc2_controller` - a YouSeeToo board served over
   PVAccess, owning the serial port, with a sub-controller per axis and per
@@ -106,32 +101,28 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `common_configuration.yaml` (`redsun_mimir.configurations`) - the identity,
   presenters and views both sessions share. `full_configuration.yaml` and
-  `uc2_full_configuration.yaml` now carry a `devices` section only and are laid
+  `uc2_full_configuration.yaml` carry a `devices` section only and are laid
   over it.
 
 ### Changed
 
 - `AcquisitionPresenter.live_median_scan` and `live_stream` run each capture
   as a run of its own, nested in the plan's, through
-  `AcquisitionPresenter.capture`: the
-  start document carries `purpose: capture`, `parent`, the plan's run, and
-  `median_scan`, the uid of the last scan or `null` (always `null` from
-  `live_stream`). The capture declares its
-  stream, so its descriptor and `stream_resource` name the store that capture
-  writes. `square_scan` returns the scan run's uid and its start document
-  carries `parent` too. The stack `MedianPresenter` writes carries `scan_run`
-  beside `derived_from` and `stream`.
+  `AcquisitionPresenter.capture`. The capture's start document carries
+  `purpose: capture`, `parent`, the plan's run, and `median_scan`, the uid of
+  the last scan or `null` (always `null` from `live_stream`); it declares its
+  stream, so its descriptor and `stream_resource` name the store it writes.
+  `square_scan` returns the scan run's uid and its start document carries
+  `parent` too. The stack `MedianPresenter` writes carries `scan_run` beside
+  `derived_from` and `stream`.
 - A camera's `roi` is text, `"x,y,width,height"`, on the service and on
   `MMCamera`, and `DetectorProtocol.roi` is a `SignalRW[str]`; `Roi` in
-  `redsun_mimir.common` reads and writes the form. A client can put a string over
-  PVAccess, where the array the setting was served as was refused, so the
-  region was not writable from a session at all.
+  `redsun_mimir.common` reads and writes the form.
 
 - A detector's layer in `ImageView` is the size of the sensor, from the
   camera's `sensor_size`, and stays that size: a frame taken with a ROI is
   drawn into the rectangle the ROI names. `DetectorPresenter.sig_new_data`
-  carries `<detector>-roi` beside `<detector>-buffer` for that. The layer was
-  sized from the ROI, as `(width, height)` against a frame's `(height, width)`.
+  carries `<detector>-roi` beside `<detector>-buffer` for that.
 
 - `MMCamera` (`redsun_mimir.device.mmcore`) takes the prefix of its service
   and builds its signals from PVI. It reports what the service wrote through
@@ -145,8 +136,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `MotorProtocol.axis` is a read-only `Mapping[str, StandardMovable[float]]`.
 
 - `DetectorPresenter.set` accepts any setting the detector publishes in
-  `describe_configuration`, keyed as the view names it, rather than `exposure`
-  and `roi` alone.
+  `describe_configuration`, keyed as the view names it, not only `exposure`
+  and `roi`.
 
 - `MedianPresenter` writes the scan's stack of frames with a
   `redsun.writers.Writer` into the store the acquisition's `StreamResource`
@@ -160,23 +151,19 @@ Dates are specified in the format `DD-MM-YYYY`.
 - The detector view sizes an intensity slider from a signal's display limits
   when it carries no control ones.
 
-- The minimum `redsun` version is 0.13.0rc2, and the bundle installs
+- The minimum `redsun` version is 0.13.0rc4, and the bundle installs
   `fastcs[epicspva]` and `ophyd-async[pva]`.
 
 
 - The example sessions ask for their log level with
-  `MimirSimulator(log_level=logging.DEBUG)` rather than reaching for the
-  `redsun` logger by name in their factories.
+  `MimirSimulator(log_level=logging.DEBUG)`.
 
 - Both example sessions are built on one container. `MimirApp` declares the
   hooks, the presenters, the views and `wire`; `MimirSimulator` and
   `MimirMicroscope` add their devices and the file that configures them.
 
-- The minimum `redsun` version is 0.12.0.
-
 - `LightProtocol.trigger` returns `AsyncStatus[None]`. `AsyncStatus` is
-  generic in the value its awaitable produces from `ophyd-async` 0.21.2
-  onwards.
+  generic in the value it produces from `ophyd-async` 0.21.2 onwards.
 
 ### Removed
 
@@ -184,18 +171,18 @@ Dates are specified in the format `DD-MM-YYYY`.
   `youseetoo-controller` service and names it from each device's `service:`.
 
 - `MMDemoXYStage` and `MMDemoZStage` (`redsun_mimir.device.mmcore`), replaced
-  by `MMStage`. The adapter, the device and the axis names belong to the
-  service declaration.
+  by `MMStage`. The adapter, the device and the axis names go in the service
+  declaration.
 
 - `redsun_mimir.storage`, and the `storage_ctrl` and `storage_widget`
   declarations from the example sessions. A session takes an optional
   `storage:` section instead, and the plan name reaches the session's path
   provider.
 
-- `ImageView` no longer applies napari's stylesheet to itself and to its
-  embedded `QtViewer`, and no longer sets the theme on its viewer model. The
-  view is styled by whatever `configure_application` hook the session installs;
-  with `NapariApplication` installed it renders exactly as before.
+- `ImageView` no longer applies napari's stylesheet to itself and its
+  embedded `QtViewer`, nor sets the theme on its viewer model; the session's
+  `configure_application` hook styles it. With `NapariApplication` installed
+  it renders as before.
 
 - The `light`, `motor` and `acquisition` example containers, their
   configuration files and their `mimir` CLI subcommands. `redsun_mimir.configurations`
@@ -207,17 +194,18 @@ Dates are specified in the format `DD-MM-YYYY`.
 - A Micro-Manager stage move whose readback settles one reporting step from
   its target completes, and one that never settles raises after
   `MOVE_TIMEOUT` (10 s) instead of waiting forever. The service reports
-  positions to two decimals, so a relative move starting off that grid could
-  read a full 0.01 um away; `POSITION_TOLERANCE` is 0.02. A square scan of
-  ten steps per side stalled on its ninth step.
+  positions to two decimals, so a move starting off that grid can read
+  0.01 um away; `POSITION_TOLERANCE` is 0.02. A square scan of ten steps per
+  side stalled on its ninth step.
 - A second capture window in one session completes: the camera service starts
-  `Captured` over when it is handed a store, and `MMCamera` waits for that
-  before it describes the window. The count carried over from the last window,
-  so the second was waited on for twice its frames and timed out.
+  `Captured` over when handed a store, and `MMCamera` waits for that before
+  describing the window. The count carried over from the last window, so the
+  second timed out waiting for twice its frames.
 - An unbounded capture window (`write_forever`) reports every frame it wrote:
   `MMCamera` closes the window as the plan completes, and the camera service
-  publishes the final count as it closes. The window closed at unstage, after
-  the documents were emitted, so the last frames on disk were unaccounted for.
+  publishes the final count as it closes. Closed at unstage, after the
+  documents were emitted, the window left its last frames on disk unaccounted
+  for.
 - `AcquisitionPresenter` emits `sig_plan_done` for a togglable plan too, so
   the session's path provider forgets the plan once a stream is stopped and a
   later directory change is accepted. `stop_plan` does nothing while the engine
@@ -231,8 +219,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   next launch started writing with no click.
 - A camera property Micro-Manager refuses during a sequence acquisition,
   binning and pixel type among them, is written with the sequence paused around
-  it, as a `roi` is; the sequence resumes after. The pause is ordered against
-  the grabbing thread, which exposes only while no sequence runs.
+  it, as a `roi` is. The pause is ordered against the grabbing thread, which
+  exposes only while no sequence runs.
 - `DetectorPresenter.set` logs a write the device refuses, rather than raising
   out of the slot and leaving the view's pending edit unanswered.
 - `MedianPresenter` writes the scan's stack into the store the run around
@@ -240,14 +228,14 @@ Dates are specified in the format `DD-MM-YYYY`.
   scan before the stream, the order the plan documents, wrote nothing, and a
   later plan wrote into the previous plan's store.
 - `UC2LaserDevice.trigger` keeps an intensity set while the laser read off.
-  Turning the laser on restored the intensity saved at the last off, so a
-  slider moved before the button dimmed the laser to that value.
+  Turning the laser on restored the intensity saved at the last off, dimming
+  it past a slider moved meanwhile.
 - `MMCamera` reads the service's `state` and `last_error`, and a `trigger` or a
   window's completion on a faulted camera raises with the camera's own error
   rather than timing out. The service forgets a fault when grabbing restarts,
   so `Acquire` toggled after one no longer reads `faulted` for good.
 - `ImageView.closeEvent` unregisters its viewer providers through
-  `InjectionContext.cleanup` instead of calling the context, which raised
+  `InjectionContext.cleanup` rather than calling the context, which raised
   `TypeError` and left the providers registered.
 
 ## [0.3.1]
