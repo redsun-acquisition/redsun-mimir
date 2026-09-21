@@ -180,6 +180,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   computed it, and forgets the stores of the last plan when a new one starts.
   A scan before the stream, the order the plan documents, wrote no median, and
   a later plan wrote its median into the previous plan's store.
+- `UC2LaserDevice.trigger` keeps an intensity set while the laser read off.
+  Turning the laser on restored the intensity saved at the last off, so a
+  slider moved before the button dimmed the laser to that value.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

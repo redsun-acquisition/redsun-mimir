@@ -76,6 +76,19 @@ class TestUC2LaserDevice:
         finally:
             presenter.shutdown()
 
+    async def test_turning_on_keeps_an_intensity_set_while_off(
+        self, uc2_service: Service
+    ) -> None:
+        """The slider lights the laser whatever the button reads; ON must not dim it."""
+        laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
+        await laser.connect(timeout=CONNECT_TIMEOUT)
+
+        await laser.intensity.set(500)
+        await laser.trigger()
+
+        assert await laser.enabled.get_value() is True
+        assert await laser.intensity.get_value() == 500
+
 
 class TestMockLightDevice:
     """Tests for MockLightDevice."""

@@ -87,12 +87,16 @@ class UC2LaserDevice(StandardReadable, Loggable):
 
     @AsyncStatus.wrap
     async def trigger(self) -> None:
-        """Turn the laser off, keeping its intensity, or back on."""
+        """Turn the laser off, keeping its intensity, or back on.
+
+        An intensity set while the laser reads off has lit it already, and
+        turning it on keeps that; the saved intensity is for a laser at zero.
+        """
         enabled = await self.enabled.get_value()
         if enabled:
             self._current_intensity = await self.intensity.get_value()
             await self.intensity.set(0)
-        else:
+        elif await self.intensity.get_value() == 0:
             await self.intensity.set(self._current_intensity)
         await self.enabled.set(not enabled)
 
