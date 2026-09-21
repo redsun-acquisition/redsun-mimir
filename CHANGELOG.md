@@ -159,6 +159,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   `MMCamera` closes the window as the plan completes, and the camera service
   publishes the final count as it closes. The window closed at unstage, after
   the documents were emitted, so the last frames on disk were unaccounted for.
+- `AcquisitionPresenter` emits `sig_plan_done` for a togglable plan too, so
+  the session's path provider forgets the plan once a stream is stopped and a
+  later directory change is accepted. `stop_plan` does nothing while the engine
+  is idle, rather than raising into the view's Stop button.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

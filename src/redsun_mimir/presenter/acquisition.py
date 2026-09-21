@@ -467,14 +467,11 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.sig_pre_launch_notify.emit(plan_name)
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
-
-        if not spec.togglable:
-            fut.add_done_callback(self._notify_plan_done)
-
+        fut.add_done_callback(self._notify_plan_done)
         fut.add_done_callback(self._discard_future)
 
     def _notify_plan_done(self, fut: Future[Any]) -> None:
-        """Emit ``sig_plan_done`` when a non-togglable plan future settles.
+        """Emit ``sig_plan_done`` when a plan future settles.
 
         ``Future.add_done_callback`` passes the future to its callback,
         while ``sig_plan_done`` carries no payload; the future is discarded
@@ -540,7 +537,10 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     @slot
     def stop_plan(self) -> None:
-        """Stop the running plan."""
+        """Stop the running plan, if one is running."""
+        if self.engine.state == "idle":
+            self.logger.debug("No plan to stop")
+            return
         self.engine.stop()
 
     def shutdown(self) -> None:

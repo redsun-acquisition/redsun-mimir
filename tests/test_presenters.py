@@ -35,7 +35,7 @@ from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from tests.conftest import FakeXYStage
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
     from pathlib import Path
 
     from bluesky.utils import MsgGenerator
@@ -182,6 +182,39 @@ class TestLightPresenter:
         devices: dict[str, Any] = {"motor": motor_stage}
         ctrl = LightPresenter("light_presenter", devices)
         assert "motor" not in ctrl._lights
+
+
+class FakeFuture:
+    """A future the test settles by hand, running the callbacks it was given."""
+
+    def __init__(self) -> None:
+        self.callbacks: list[Callable[[FakeFuture], None]] = []
+
+    def add_done_callback(self, callback: Callable[[FakeFuture], None]) -> None:
+        self.callbacks.append(callback)
+
+    def settle(self) -> None:
+        for callback in self.callbacks:
+            callback(self)
+
+
+class FakeEngine:
+    """Records the plans it is handed, and hands back one future."""
+
+    def __init__(self, future: FakeFuture, state: str = "running") -> None:
+        self.future = future
+        self.state = state
+        self.plans: list[Any] = []
+
+    def __call__(self, plan: Any) -> FakeFuture:
+        self.plans.append(plan)
+        return self.future
+
+    def stop(self) -> None:
+        raise RuntimeError("RunEngine is already idle.")
+
+    def abort(self) -> None:
+        """No-op: satisfies AcquisitionPresenter.shutdown()'s abort path."""
 
 
 @dataclass
@@ -681,6 +714,28 @@ class TestAcquisitionPresenter:
         assert notified == ["live_stream"]
         assert len(calls) == 1
         assert inspect.isgenerator(calls[0])
+
+    def test_a_togglable_plan_announces_its_end(
+        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+    ) -> None:
+        """The path provider and the view learn a stream ended, not only a scan."""
+        settled = FakeFuture()
+        controller.engine = FakeEngine(settled)  # type: ignore[assignment]
+        ended: list[bool] = []
+        controller.sig_plan_done.connect(lambda: ended.append(True))
+
+        controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+        settled.settle()
+
+        assert ended == [True]
+
+    def test_stopping_an_idle_engine_is_nothing(
+        self, controller: AcquisitionPresenter
+    ) -> None:
+        """A Stop after a plan ended on its own must not raise into a Qt slot."""
+        controller.engine = FakeEngine(FakeFuture(), state="idle")  # type: ignore[assignment]
+
+        controller.stop_plan()
 
     def test_toggle_action_event_unknown_action_raises(
         self, controller: AcquisitionPresenter
