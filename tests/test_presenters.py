@@ -15,6 +15,7 @@ import pytest
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import RunEngine
+from redsun.engine.actions import SRLatch
 from redsun.storage.writers import zarr
 from redsun.virtual import VirtualContainer
 
@@ -751,6 +752,18 @@ class TestAcquisitionPresenter:
             controller.futures.discard(running)
 
         assert engine.plans == []
+
+    def test_a_latch_left_set_by_a_stop_does_not_fire_the_next_launch(
+        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+    ) -> None:
+        controller.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
+        stale = SRLatch()
+        stale.set()
+        controller.action_map["stream"] = stale
+
+        controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+
+        assert not stale.is_set()
 
     def test_toggle_action_event_unknown_action_raises(
         self, controller: AcquisitionPresenter

@@ -167,6 +167,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   done, and acts on that plan when it ends, whichever is selected meanwhile.
   `AcquisitionPresenter.launch_plan` refuses a launch while a plan runs, rather
   than clearing the running plan's action latches.
+- `AcquisitionPresenter.launch_plan` resets the action latches of the last
+  launch. A stream stopped while its window wrote left its latch set, and the
+  next launch started writing with no click.
 - `ImageView.closeEvent` unregisters its viewer providers through
   `InjectionContext.cleanup` instead of calling the context, which raised
   `TypeError` and left the providers registered.

@@ -460,6 +460,11 @@ class AcquisitionPresenter(Presenter, Loggable):
         if self.futures:
             self.logger.warning(f"A plan is running; {plan_name!r} not launched")
             return
+        # an action's latch lives on the action instance, which the plan's
+        # default arguments share across launches: one left set by a stop
+        # would fire the action as soon as the next launch waits on it
+        for latch in self.action_map.values():
+            latch.reset()
         self.action_map.clear()
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
