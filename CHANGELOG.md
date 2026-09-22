@@ -126,6 +126,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- The example sessions name themselves: `mimir-sim` for the simulation and
+  `mimir-uc2` for the UC2 microscope, set in their own configuration files
+  instead of the `redsun-mimir` both took from
+  `common_configuration.yaml`. The name is what a run writes and logs under,
+  so the two no longer land in the same place.
+
 - `redsun_mimir.services.mmcore_camera` publishes the camera's own properties
   only when named with `--properties`, comma-separated; none without it.
   `MMCameraController` and `build_controller` take the same list as

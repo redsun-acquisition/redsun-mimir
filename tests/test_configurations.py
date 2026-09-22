@@ -71,17 +71,19 @@ def simulation() -> Iterator[QtAppContainer]:
 
 
 @pytest.mark.parametrize(
-    ("factory", "session_file", "devices"),
+    ("factory", "session_file", "session_name", "devices"),
     [
         pytest.param(
             build_simulation_container,
             "full_configuration.yaml",
+            "mimir-sim",
             {"mmcamera", "XY", "Z", "laser", "led"},
             id="simulation",
         ),
         pytest.param(
             build_uc2_container,
             "uc2_full_configuration.yaml",
+            "mimir-uc2",
             {"iscat", "stage", "laser"},
             id="uc2",
         ),
@@ -90,17 +92,20 @@ def simulation() -> Iterator[QtAppContainer]:
 def test_a_session_declares_only_its_devices(
     factory: Callable[[], QtAppContainer],
     session_file: str,
+    session_name: str,
     devices: set[str],
 ) -> None:
     """Both sessions take the same presenters, views and hooks from the base.
 
     Nothing is built, so this covers the UC2 session too, whose hardware no
     test machine has. The declarations are the thing being checked: the two
-    sessions differ in their devices and in the file that configures them, and
-    in nothing else.
+    sessions differ in their devices, in the file that configures them and in
+    the name they write and log under, and in nothing else.
     """
-    cls = type(factory())
+    container = factory()
+    cls = type(container)
 
+    assert container._config["session"] == session_name
     assert set(cls._device_components) == devices
     assert set(cls._presenter_components) == _SHARED_PRESENTERS
     assert set(cls._view_components) == _SHARED_VIEWS

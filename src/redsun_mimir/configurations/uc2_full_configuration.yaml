@@ -1,5 +1,7 @@
 # UC2 hardware. Lays over common_configuration.yaml.
 
+session: mimir-uc2
+
 services:
   transport: pv-access
   camera_ioc:
