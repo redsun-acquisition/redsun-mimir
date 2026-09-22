@@ -132,7 +132,7 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Region of interest, as text: ``"x,y,width,height"``, read with `Roi.parse`."""
 
     pixel_dtype: SignalRW[str]
-    """The numpy dtype the camera reads out in; one it cannot is refused."""
+    """The numpy dtype the camera reads out in, one of the choices it describes."""
 
     sensor_size: SignalR[np.ndarray]
     """The whole sensor as (width, height): what ``roi`` is expressed against."""

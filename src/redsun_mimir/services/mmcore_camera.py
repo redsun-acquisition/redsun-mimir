@@ -12,17 +12,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import enum
 import re
 import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import numpy as np
 from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
 from fastcs.controllers import Controller
-from fastcs.datatypes import Bool, Float, Int, String, Waveform
+from fastcs.datatypes import Bool, Enum, Float, Int, String, Waveform
 from fastcs.logging import logger
 from fastcs.methods import scan
 from pymmcore_plus import CMMCorePlus
@@ -120,7 +121,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                     self._without_sequence, lambda: self._core.setROI(*roi)
                 )
             case "pixel_dtype":
-                await self._set_pixel_dtype(str(value))
+                await self._set_pixel_dtype(cast("enum.Enum", value).name)
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
         if isinstance(attr, AttrR):
@@ -138,8 +139,9 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 await attr.update(str(Roi(*roi)))
             case "pixel_dtype":
                 dtype = await asyncio.to_thread(self._pixel_dtype)
-                if dtype is not None:
-                    await attr.update(dtype)
+                members = cast("Enum[Any]", attr.datatype).enum_cls.__members__
+                if dtype in members:
+                    await attr.update(members[dtype])
             case setting:
                 raise ValueError(f"no camera setting named {setting!r}")
 
@@ -290,9 +292,6 @@ class MMCameraController(Controller):
     # text, "x,y,width,height": a client can put a string over PVAccess, and
     # not the array a waveform is served as
     roi = AttrRW(String(), io_ref=CoreRef(setting="roi", update_period=1.0))
-    pixel_dtype = AttrRW(
-        String(), io_ref=CoreRef(setting="pixel_dtype", update_period=1.0)
-    )
     sensor_size = AttrR(Waveform(np.int32, shape=(2,)))
     acquire = AttrRW(Bool())
     frame_count = AttrR(Int())
@@ -314,12 +313,8 @@ class MMCameraController(Controller):
         self._property_io = PropertyIO(
             core, label, self._without_sequence, self.publish_layout
         )
-        super().__init__(
-            ios=[
-                CoreIO(core, self._without_sequence, self.publish_layout),
-                self._property_io,
-            ]
-        )
+        self._core_io = CoreIO(core, self._without_sequence, self.publish_layout)
+        super().__init__(ios=[self._core_io, self._property_io])
         self._core = core
         self._label = label
         self._default_data_key = data_key
@@ -355,7 +350,15 @@ class MMCameraController(Controller):
         if frame is None:
             raise RuntimeError("the camera gave no frame to size the buffer from")
         self.buffer = AttrR(Waveform(frame.dtype, shape=frame.shape))
-        await self.pixel_dtype.update(frame.dtype.name)
+        # one choice per dtype the camera reads out in, so a client offers
+        # exactly those; a camera without a PixelType offers the one it has
+        supported = await asyncio.to_thread(self._core_io.pixel_dtypes)
+        names = list(supported) or [frame.dtype.name]
+        self.pixel_dtype = AttrRW(
+            Enum(enum.Enum("PixelDtype", names)),
+            io_ref=CoreRef(setting="pixel_dtype", update_period=1.0),
+        )
+        await self.follow_layout(frame, force=True)
         await self.sensor_size.update(
             np.array(
                 [self._core.getImageWidth(), self._core.getImageHeight()],
@@ -434,17 +437,19 @@ class MMCameraController(Controller):
         if self.captured.get() != self._written:
             await self.captured.update(self._written)
 
-    async def follow_layout(self, frame: NDArray[Any]) -> None:
+    async def follow_layout(self, frame: NDArray[Any], *, force: bool = False) -> None:
         """Retype ``buffer`` and ``pixel_dtype`` to *frame* when its dtype is new.
 
         The declared dtype would otherwise cast every frame to the first
-        frame's.
+        frame's. A dtype ``pixel_dtype`` has no choice for leaves it as is.
         """
-        if frame.dtype != self.buffer.datatype.array_dtype:
+        if force or frame.dtype != self.buffer.datatype.array_dtype:
             self.buffer.update_datatype(
                 Waveform(frame.dtype, shape=self.buffer.datatype.shape)
             )
-            await self.pixel_dtype.update(frame.dtype.name)
+            members = cast("Enum[Any]", self.pixel_dtype.datatype).enum_cls.__members__
+            if frame.dtype.name in members:
+                await self.pixel_dtype.update(members[frame.dtype.name])
 
     async def publish_layout(self, frame: NDArray[Any]) -> None:
         """Retype to *frame* and publish it, so a client sees a property's effect at once."""

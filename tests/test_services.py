@@ -6,7 +6,7 @@ import asyncio
 import threading
 import time
 from queue import Queue
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import msgspec
 import numpy as np
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Sequence
     from pathlib import Path
 
+    from fastcs.datatypes import Enum
     from numpy.typing import NDArray
 
 PREFIX = CAMERA_PREFIX.rstrip(":")
@@ -525,16 +526,16 @@ async def test_pixel_dtype_maps_to_the_pixel_type_the_camera_supports(
 ) -> None:
     """A dtype the camera reads out in sets ``PixelType`` and retypes the buffer."""
     camera, core = controller
-    assert camera.pixel_dtype.get() == "uint8"
+    choices = cast("Enum[Any]", camera.pixel_dtype.datatype).enum_cls
+    assert [choice.name for choice in choices] == ["uint8", "uint16"]
+    assert camera.pixel_dtype.get().name == "uint8"
 
-    await camera.pixel_dtype.put("uint16")
+    await camera.pixel_dtype.put(choices["uint16"])
 
     assert core.properties["PixelType"] == "16bit"
-    assert camera.pixel_dtype.get() == "uint16"
+    assert camera.pixel_dtype.get().name == "uint16"
     assert camera.buffer.datatype.array_dtype == np.uint16
     assert camera.buffer.get().dtype == np.uint16
-    with pytest.raises(ValueError, match="one of \\['uint16', 'uint8'\\]"):
-        await camera.pixel_dtype.put("float16")
     assert "PixelType" not in camera.sub_controllers["properties"].attributes
 
 

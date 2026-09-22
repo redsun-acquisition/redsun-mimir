@@ -143,13 +143,17 @@ async def test_the_camera_carries_its_properties_into_its_configuration(
 
 @needs_mm_adapters
 async def test_a_pixel_dtype_change_reaches_the_frames(mm_camera: MMCamera) -> None:
-    """The buffer carries the new dtype, and a dtype the camera lacks is refused."""
+    """The choices are the dtypes the camera reads out in; the buffer follows."""
     assert (await mm_camera.buffer.get_value()).dtype == np.uint8
+    described = await mm_camera.describe_configuration()
+    assert described[f"{mm_camera.name}-pixel_dtype"]["choices"] == [
+        "uint8",
+        "uint16",
+        "uint32",
+    ]
 
     await mm_camera.pixel_dtype.set("uint16")
 
     assert await mm_camera.pixel_dtype.get_value() == "uint16"
     assert (await mm_camera.buffer.get_value()).dtype == np.uint16
     assert (await frame_shape_and_dtype(mm_camera))[1] == "uint16"
-    with pytest.raises(Exception, match="float16"):
-        await mm_camera.pixel_dtype.set("float16")
