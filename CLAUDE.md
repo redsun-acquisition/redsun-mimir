@@ -45,9 +45,10 @@ which redsun plugin discovery reads.
 
 ```bash
 uv sync --group dev                      # dev env (pulls pyqt + sim + uc2 groups)
+uv run prek install                      # once: run the prek.toml hooks on every commit
 uv run pytest                            # full suite (testpaths=tests)
 uv run pytest tests/test_devices.py -x    # scoped, fast
-uv run ruff check --fix . && uv run ruff format .
+uv run prek run --all-files              # the hooks: ruff, whitespace, yaml/toml checks
 uv run tox -e mypy-pyqt,mypy-pyside       # mypy against each Qt binding, as CI runs it
 uv run tox                               # lint, both mypy envs, tests
 mmcore install --test-adapters           # once: DemoCamera adapters for mmcore tests
@@ -57,6 +58,16 @@ mmcore list                              # verify: the active install must be DI
 ### Shell
 
 Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
+
+### prek
+
+`prek.toml` lists the commit hooks. The same hooks run in the tox `lint` env
+and in the CI `prek` job, so `uv run prek run --all-files` passing locally
+means lint passes in CI. `prek` and `ruff` live in the `lint` dependency group
+(included in `dev`); the ruff hooks run `uv run --locked --only-group lint`, so
+the ruff version comes from `uv.lock` and `prek.toml` pins none. A hook that
+rewrites a file reports failure: stage the rewrite and commit again. Do not
+skip hooks with `--no-verify`.
 
 ### mypy
 
