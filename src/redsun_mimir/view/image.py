@@ -188,7 +188,8 @@ class ImageView(QtView, Loggable):
     def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
         # Unregister the embedded viewer/qt-viewer providers on teardown
         self._provider_disposer.cleanup()
-        super().closeEvent(event)
+        if event is not None:
+            super().closeEvent(event)
 
     def register_providers(self, container: VirtualContainer) -> None:
         """Register the view's signals with the container."""

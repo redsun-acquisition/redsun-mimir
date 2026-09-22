@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from qtpy import QtCore, QtGui
 from qtpy import QtWidgets as QtW
@@ -69,10 +69,11 @@ class AcquisitionView(QtView, Loggable):
         self.plans_combobox.setFixedHeight(32)
 
         self.info_btn = QtW.QPushButton(self)
+        # PyQt6 types style() as optional, PySide6 does not
+        style = self.style()
+        assert style is not None
         self.info_btn.setIcon(
-            cast("QtW.QStyle", self.style()).standardIcon(
-                QtW.QStyle.StandardPixmap.SP_FileDialogInfoView
-            )
+            style.standardIcon(QtW.QStyle.StandardPixmap.SP_FileDialogInfoView)
         )
         self.info_btn.setToolTip("Information about the selected plan")
         button_size = QtCore.QSize(32, 32)

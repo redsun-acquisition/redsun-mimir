@@ -2,66 +2,48 @@ name: Check code formatting and type hints
 
 on:
   workflow_call:
-    inputs:
-      ref:
-        required: true
-        type: string
-      event_name:
-        required: true
-        type: string
 
 jobs:
   ruff:
     name: ruff
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # no --fix: ruff exits 0 once it has fixed everything, so a fixable
       # violation would pass here and reach the branch unnoticed
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4.1.0
         with:
-          # keep this pinned to the floor in pyproject.toml: ruff's default
-          # rule set widens between minor releases, so an unpinned action
-          # silently disagrees with what passes locally
-          version: 0.16.5
+          version-file: uv.lock
           args: "check"
           src: "."
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@v4.1.0
         with:
-          version: 0.16.5
+          version-file: uv.lock
           args: "format --check"
           src: "."
 
   mypy:
-    name: mypy
+    name: mypy with Qt
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.14"]
+        frontend: ["pyside", "pyqt"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.14"
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libxkbcommon-x11-0
 
-      - name: Install dependencies
-        run: uv sync
-
-      # config-driven: [tool.mypy] files= decides the scope, so passing an
-      # explicit path here would silently narrow it
+      # the environment, the binding and the flags all come from
+      # [tool.tox] in pyproject.toml, so this runs what a contributor runs
       - name: Run mypy
-        run: uv run mypy $(uv run qtpy mypy-args)
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QT_API: pyqt6
+        run: uv run tox -e mypy-${{ matrix.frontend }}

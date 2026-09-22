@@ -11,6 +11,9 @@ license = {file = "LICENSE"}
 authors = [
   { name = "Jacopo Abramo", email = "jacopo.abramo@gmail.com" },
 ]
+maintainers = [
+  { name = "Jacopo Abramo", email = "jacopo.abramo@gmail.com" },
+]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -24,7 +27,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "Topic :: Scientific/Engineering"
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -40,14 +45,14 @@ dev = [
     { include-group = "pyqt" },
     { include-group = "sim" },
     { include-group = "uc2" },
+    "coverage>=7.16.1",
     "mypy>=2.3.0",
     "prek>=0.5.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "pytest-cov>=7.0.0",
-    "pytest-env>=1.1.5",
     "pytest-qt>=4.5.0",
     "ruff>=0.16.5",
+    "tox-uv-bare>=1.36.0",
 ]
 uc2 = [
     "pymmcore-plus>=0.18.1",
@@ -60,6 +65,10 @@ pyqt = [
 sim = [
     "redsun-mimir[pyqt]",
     "pymmcore-plus>=0.18.1",
+]
+pyside = [
+    "napari[pyside6]>=0.9.1",
+    "redsun[pyside]>=0.13.0rc6",
 ]
 
 [project.optional-dependencies]
@@ -113,9 +122,14 @@ omit = [
     "src/redsun_mimir/__main__.py",
 ]
 
+# CI combines data from Linux, macOS and Windows runners, each checking out
+# the repository under a different absolute path
+[tool.coverage.paths]
+source = ["src/", "*/src/"]
+
 [tool.mypy]
 # tests are type-checked too, same as redsun
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 disable_error_code = [
     "import-untyped",
     "import-not-found",
@@ -145,10 +159,6 @@ pythonpath = ["."]
 markers = [
     "qt: tests that need a Qt application (auto-skipped headless)",
 ]
-
-[tool.ruff]
-fix = true
-extend-exclude = ["docs"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -180,6 +190,33 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.tox]
+requires = ["tox>=4.28", "tox-uv-bare>=1.36"]
+env_list = ["lint", "mypy-pyqt", "mypy-pyside", "tests"]
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+dependency_groups = ["dev"]
+
+[tool.tox.env.lint]
+commands = [
+    ["ruff", "check", "--fix", "."],
+    ["ruff", "format", "."],
+]
+
+[tool.tox.env.mypy-pyqt]
+dependency_groups = ["dev", "pyqt"]
+set_env = { QT_API = "pyqt6" }
+commands = [["python", "scripts/mypy_qt.py"]]
+
+[tool.tox.env.mypy-pyside]
+dependency_groups = ["dev", "pyside"]
+set_env = { QT_API = "pyside6" }
+commands = [["python", "scripts/mypy_qt.py"]]
+
+[tool.tox.env.tests]
+commands = [["pytest", "-q", { replace = "posargs", extend = true }]]
 
 [tool.hatch.version]
 source = "vcs"
