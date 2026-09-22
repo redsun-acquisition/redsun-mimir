@@ -13,6 +13,7 @@ import bluesky.plan_stubs as bps
 import numpy as np
 import pytest
 from bluesky.run_engine import RunEngineResult
+from bluesky.simulators import RunEngineSimulator
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
@@ -339,7 +340,8 @@ class TestMedianPresenter:
         The scan and the capture are runs nested in the live plan's; the store
         is the one the capture names, and the scan's stack lands in it as a key
         of its own once the capture stops, naming the scan it came from and
-        carrying the axis positions each frame was taken at.
+        carrying one record per frame, its id and the axis positions it was
+        taken at.
         """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
@@ -367,10 +369,20 @@ class TestMedianPresenter:
         assert root_attributes(store / "cam_scan")["derived_from"] == "cam"
         assert root_attributes(store / "cam_scan")["stream"] == MEDIAN_SCAN_STREAM
         assert root_attributes(store / "cam_scan")["scan_run"] == scan_run
-        assert root_attributes(store / "cam_scan")["positions"] == {
-            "xystage-axis-x": [5.0, 10.0, 15.0],
-            "xystage-axis-y": [0.0, 0.0, 0.0],
-        }
+        assert root_attributes(store / "cam_scan")["positions"] == [
+            {
+                "frame_id": 1,
+                "axes": {"xystage-axis-x": 5.0, "xystage-axis-y": 0.0},
+            },
+            {
+                "frame_id": 2,
+                "axes": {"xystage-axis-x": 10.0, "xystage-axis-y": 0.0},
+            },
+            {
+                "frame_id": 3,
+                "axes": {"xystage-axis-x": 15.0, "xystage-axis-y": 0.0},
+            },
+        ]
         assert root_attributes(store / "cam_scan")["redsun"]["run_start"] == "capture"
 
     async def test_a_capture_before_the_scan_gets_no_stack(
@@ -479,12 +491,13 @@ class TestMedianPresenter:
             )
         )
         background = np.full((4, 4), 2, dtype="uint16")
-        for _ in range(3):
+        for seq_num in range(1, 4):
             presenter.event(
                 cast(
                     "Event",
                     {
                         "descriptor": "scan-desc",
+                        "seq_num": seq_num,
                         "time": 0.0,
                         "data": {"cam-buffer": background},
                     },
@@ -967,6 +980,40 @@ class TestAcquisitionPresenter:
         """A required Sequence[ReadableFlyer]/MotorProtocol param with no match skips the plan."""
         ctrl = AcquisitionPresenter("acq_ctrl", {})
         assert ctrl.plan_specs == {}
+
+    def test_the_square_scan_takes_a_frame_before_every_move(
+        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+    ) -> None:
+        """The stack starts where the motor stands; the last move closes the square."""
+        presenter = AcquisitionPresenter("acq_ctrl", {})
+        simulator = RunEngineSimulator()
+        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+
+        try:
+            messages = simulator.simulate_plan(
+                presenter.square_scan([fake_detector], motor_stage, 5.0, 1)
+            )
+        finally:
+            presenter.shutdown()
+
+        assert [
+            (msg.command, getattr(msg.obj, "name", None))
+            for msg in messages
+            if msg.command in {"trigger", "save", "set"}
+        ] == [
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+        ]
 
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,

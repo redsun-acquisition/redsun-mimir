@@ -219,6 +219,16 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `AcquisitionPresenter.square_scan` takes a frame where the motor already
+  stands and before every move, instead of moving first: the stack now starts
+  at the position the scan was asked from, and the last move closes the square
+  back onto it.
+
+- The `positions` metadata `MedianPresenter` writes beside a scan stack is one
+  record per frame, in stack order, its `frame_id` (the event's `seq_num`, the
+  frame's place in the stack) and the `axes` it was taken at, instead of one
+  list per axis key with nothing tying a position to its frame.
+
 - A detector layer the user deleted from the layer list is rebuilt by
   `ImageView.update_layers` as a sensor-sized, writable layer carrying its
   selection box, over the detector's current ROI and shown if a selection was

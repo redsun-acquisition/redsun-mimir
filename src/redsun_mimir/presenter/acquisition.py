@@ -304,7 +304,13 @@ class AcquisitionPresenter(Presenter, Loggable):
         [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter] can
         accumulate the frames and compute the median when that run stops.
         The sides are x, y, -x, -y, with *frames_per_side* frames along
-        each. Returns the run's uid.
+        each. A frame is taken where the motor already stands and before
+        every move, so the stack starts at the position the scan was asked
+        from and the last move closes the square back onto it. Every frame
+        goes in an event of its own, with the axis positions it was taken at;
+        the event's ``seq_num`` is the frame's place in the stack, the
+        ``frame_id`` those positions are written under. Returns the run's
+        uid.
 
         Parameters
         ----------
@@ -320,21 +326,29 @@ class AcquisitionPresenter(Presenter, Loggable):
         uid: str = yield from bps.open_run(
             md={"purpose": MEDIAN_SCAN_STREAM, "parent": parent}
         )
-        for axis, direction in ((x, step), (y, step), (x, -step), (y, -step)):
-            for _ in range(frames_per_side):
-                self.logger.debug(f"Moving {axis.name} by {direction} steps.")
-                yield from bps.mvr(axis, direction)
-                # a detector taking frames continuously has one ready from
-                # before the move; triggering waits for the one taken after it
-                for det in detectors:
-                    yield from bps.trigger(det, wait=True)
-                yield from bps.create(name=MEDIAN_SCAN_STREAM)
-                for det in detectors:
-                    yield from bps.read(det.buffer)
-                # the axes go in the same event, so each frame carries the
-                # position it was taken at
-                yield from bps.read(motor)
-                yield from bps.save()
+        square = [
+            (axis, direction)
+            for axis, direction in ((x, step), (y, step), (x, -step), (y, -step))
+            for _ in range(frames_per_side)
+        ]
+        for frame, (axis, direction) in enumerate(square, start=1):
+            # a detector taking frames continuously has one ready from
+            # before the previous move; triggering waits for the one taken
+            # where the motor stands now
+            for det in detectors:
+                yield from bps.trigger(det, wait=True)
+            yield from bps.create(name=MEDIAN_SCAN_STREAM)
+            for det in detectors:
+                yield from bps.read(det.buffer)
+            # the axes go in the same event, so each frame carries the
+            # position it was taken at
+            yield from bps.read(motor)
+            yield from bps.save()
+            self.logger.debug(
+                f"Frame {frame}/{len(square)} taken; "
+                f"moving {axis.name} by {direction} steps."
+            )
+            yield from bps.mvr(axis, direction)
         yield from bps.close_run()
         return uid
 
