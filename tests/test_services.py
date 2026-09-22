@@ -539,6 +539,28 @@ async def test_pixel_dtype_maps_to_the_pixel_type_the_camera_supports(
     assert "PixelType" not in camera.sub_controllers["properties"].attributes
 
 
+async def test_the_pixel_dtype_is_refused_while_a_capture_writes(
+    controller: tuple[MMCameraController, FakeCore], tmp_path: Path
+) -> None:
+    """The store's dtype is fixed when the window opens; it takes again after."""
+    camera, core = controller
+    choices = cast("Enum[Any]", camera.pixel_dtype.datatype).enum_cls
+    await camera.file_path.put(str(tmp_path / "window.zarr"))
+    await camera.num_capture.put(2)
+    await camera.capture.put(True)
+
+    with pytest.raises(RuntimeError, match="while a capture writes"):
+        await camera.pixel_dtype.put(choices["uint16"])
+    assert core.properties["PixelType"] == "8bit"
+
+    camera.grab_once()
+    camera.grab_once()
+    await asyncio.sleep(0.05)
+    assert camera.capture.get() is False
+    await camera.pixel_dtype.put(choices["uint16"])
+    assert core.properties["PixelType"] == "16bit"
+
+
 async def test_the_camera_publishes_only_the_properties_chosen() -> None:
     """A chosen name the camera lacks, or cannot write, is skipped."""
     core = FakeCore()

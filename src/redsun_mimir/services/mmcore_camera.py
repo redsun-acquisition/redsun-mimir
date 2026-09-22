@@ -90,7 +90,8 @@ class CoreIO(AttributeIO[Any, CoreRef]):
     *without_sequence* runs a callable with no sequence acquisition running,
     for the settings Micro-Manager refuses during one. *layout_changed* is
     handed a frame snapped after a setting that changes what frames look
-    like.
+    like. *capturing* says whether a capture window is writing, during which
+    the pixel dtype is refused: the store's dtype is fixed when it opens.
     """
 
     def __init__(
@@ -98,11 +99,13 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         core: CMMCorePlus,
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
         layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
+        capturing: Callable[[], bool] = lambda: False,
     ) -> None:
         super().__init__()
         self._core = core
         self._without_sequence = without_sequence
         self._layout_changed = layout_changed
+        self._capturing = capturing
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
         """Apply *value* to the camera, and read back what it took.
@@ -164,6 +167,11 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         return next((d for d, p in PIXEL_TYPES.items() if p == pixel), None)
 
     async def _set_pixel_dtype(self, dtype: str) -> None:
+        if self._capturing():
+            raise RuntimeError(
+                "the pixel dtype cannot change while a capture writes; "
+                "the store's dtype was fixed when the window opened"
+            )
         supported = await asyncio.to_thread(self.pixel_dtypes)
         if dtype not in supported:
             raise ValueError(
@@ -313,7 +321,12 @@ class MMCameraController(Controller):
         self._property_io = PropertyIO(
             core, label, self._without_sequence, self.publish_layout
         )
-        self._core_io = CoreIO(core, self._without_sequence, self.publish_layout)
+        self._core_io = CoreIO(
+            core,
+            self._without_sequence,
+            self.publish_layout,
+            lambda: self._store is not None,
+        )
         super().__init__(ios=[self._core_io, self._property_io])
         self._core = core
         self._label = label

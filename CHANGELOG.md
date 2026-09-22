@@ -17,7 +17,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   Micro-Manager's `PixelType` through `PIXEL_TYPES` in
   `redsun_mimir.services.mmcore_camera`, limited to the values the camera
   allows, and reach a client as the signal's `choices`, so the settings tree
-  offers them in a combo box. `PixelType` is never published as a property.
+  offers them in a combo box. A change while a capture window writes is
+  refused, since the store's dtype was fixed when the window opened.
+  `PixelType` is never published as a property.
 
 - The three services (`redsun_mimir.services`) log serialized `loguru`
   records to their standard output; the session rebuilds each under
