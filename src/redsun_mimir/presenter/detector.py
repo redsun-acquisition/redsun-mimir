@@ -133,7 +133,11 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
         run_coro(self._unfollow_rois())
 
     def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
-        self._rois[detector] = Roi.parse(next(iter(reading.values()))["value"])
+        text = next(iter(reading.values()))["value"]
+        # a PV subscription delivers the record's empty default before the
+        # service has published a value; there is no ROI in it to remember
+        if text:
+            self._rois[detector] = Roi.parse(text)
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Remember which streams carry a tracked detector's buffer."""

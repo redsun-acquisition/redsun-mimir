@@ -810,7 +810,14 @@ class TestDetectorPresenter:
         presenter.inject_dependencies(virtual_container)
         announced: list[tuple[str, str, Any]] = []
         presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
-        future = engine(bps.sleep(0.3))
+        # a message the test holds open, so the change cannot land before the
+        # assertions on whatever machine runs them
+        gate = asyncio.Event()
+
+        def held_open() -> MsgGenerator[None]:
+            yield from bps.wait_for([gate.wait])
+
+        future = engine(held_open())
         while engine.state != "running":
             await asyncio.sleep(0.01)
         await asyncio.sleep(0.05)
@@ -820,6 +827,7 @@ class TestDetectorPresenter:
 
         assert await fake_detector.roi.get_value() == "0,0,6,4"
         assert await fake_detector.exposure.get_value() == 5.0
+        engine.loop.call_soon_threadsafe(gate.set)
         future.result(timeout=5)
         assert await fake_detector.roi.get_value() == "1,1,3,2"
         assert ("cam", "cam-roi", "1,1,3,2") in announced

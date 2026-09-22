@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -598,14 +599,15 @@ class TestLightView:
 class TestImageViewTheme:
     """Tests for styling the embedded napari viewer."""
 
-    def test_it_carries_no_stylesheet_of_its_own(self, qapp: QCoreApplication) -> None:
+    def test_it_carries_no_stylesheet_of_its_own(self) -> None:
         """The view is styled by the application, never by itself.
 
         A stylesheet set on the widget would win over the application's and
-        pin the view to the theme it was built under.
+        pin the view to the theme it was built under. The application is not
+        restyled here: that repolishes every widget earlier tests left
+        behind, napari canvases included, and has crashed the interpreter.
         """
         get_settings().appearance.theme = "dark"
-        NapariApplication().configure_application(cast("QApplication", qapp))
 
         view = ImageView("image_view")
 
@@ -636,6 +638,10 @@ class TestNapariApplication:
         self, hook: NapariApplication, qapp: QCoreApplication
     ) -> None:
         app = cast("QApplication", qapp)
+        # restyling repolishes every live widget, so drop the ones earlier
+        # tests closed but the interpreter has not collected yet
+        gc.collect()
+        app.processEvents()
 
         hook.configure_application(app)
 

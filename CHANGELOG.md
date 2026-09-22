@@ -224,6 +224,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   before, a reconnect asked for in that window was dropped and the camera
   stayed idle.
 
+- `DetectorPresenter` ignores the empty string a ROI subscription delivers
+  before the service has published a value, instead of raising
+  `ValueError` inside the subscription callback.
+
 - `ImageView` enables the viewer grid through `canvas.grid`, the attribute
   `napari` 0.9 keeps, instead of the deprecated `viewer.grid`.
 
