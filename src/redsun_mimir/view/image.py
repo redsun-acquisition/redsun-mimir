@@ -125,7 +125,7 @@ class ImageView(QtView, Loggable):
         self.viewer_model = ViewerModel(
             title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
-        self.viewer_model.grid.enabled = True
+        self.viewer_model.canvas.grid.enabled = True
         #: where a detector's frame lands on its layer, from its ROI
         self._rois: dict[str, Roi] = {}
         #: each detector layer's size, (height, width), which a box is clamped to

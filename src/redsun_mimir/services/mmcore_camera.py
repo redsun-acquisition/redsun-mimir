@@ -474,7 +474,7 @@ class MMCameraController(Controller):
         self._error = None
         await super().reconnect()
         if self.acquire.get():
-            self._start_grabbing()
+            await self._start_grabbing()
 
     async def _publish_state(self) -> None:
         """Report what the camera is doing and what stopped it, if anything."""
@@ -493,7 +493,7 @@ class MMCameraController(Controller):
     async def _on_acquire(self, acquiring: bool) -> None:
         """Start or stop the thread grabbing frames."""
         if acquiring:
-            self._start_grabbing()
+            await self._start_grabbing()
         else:
             await self._stop_grabbing()
 
@@ -505,10 +505,15 @@ class MMCameraController(Controller):
         """
         return self._stopped.wait(timeout)
 
-    def _start_grabbing(self) -> None:
+    async def _start_grabbing(self) -> None:
         """Put the grabbing thread to work, unless it already is."""
-        if self._grabber is not None and not self._grabber.done():
+        if self._grabbing.is_set():
             return
+        # a thread that stopped on a fault has set _stopped, but its task is
+        # done only once the loop has run the completion callback; a restart
+        # asked for in between must not be dropped for a thread that is gone
+        if self._grabber is not None:
+            await self._grabber
         # a fault is what stopped the last thread; starting another is the
         # request to try again, and its state reads so at once
         self._error = None

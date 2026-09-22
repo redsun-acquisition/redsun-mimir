@@ -219,6 +219,14 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `MMCameraController.reconnect` after a fault starts grabbing again even
+  when the failed thread's task has not been reaped by the event loop yet;
+  before, a reconnect asked for in that window was dropped and the camera
+  stayed idle.
+
+- `ImageView` enables the viewer grid through `canvas.grid`, the attribute
+  `napari` 0.9 keeps, instead of the deprecated `viewer.grid`.
+
 - `ImageView` blanks a detector's layer when a ROI is applied, so the
   sensor outside the new region shows black rather than the last frames, and
   drops a frame whose shape is not its ROI's, the one a monitor reports
