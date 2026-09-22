@@ -267,6 +267,22 @@ class TestImageViewRoi:
         view.set_roi_selection("cam", False)
         assert not box.visible
 
+    def test_a_frame_not_shaped_like_its_roi_is_dropped(self, view: ImageView) -> None:
+        """A monitor first reports the frame taken before the ROI changed."""
+        layer = view.viewer_model.layers["cam"]
+
+        view.update_layers(
+            {
+                "cam-roi": {"value": Roi(1, 1, 3, 2), "timestamp": 0.0},
+                "cam-buffer": {
+                    "value": np.full((4, 6), 9, dtype=np.uint8),
+                    "timestamp": 0.0,
+                },
+            }
+        )
+
+        assert not layer.data.any()
+
     def test_a_frame_of_a_new_dtype_retypes_its_layer(self, view: ImageView) -> None:
         """A pixel type change must not be cast into the old layer."""
         layer = view.viewer_model.layers["cam"]

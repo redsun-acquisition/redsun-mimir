@@ -127,7 +127,7 @@ class ImageView(QtView, Loggable):
         )
         self.viewer_model.grid.enabled = True
         #: where a detector's frame lands on its layer, from its ROI
-        self._origins: dict[str, tuple[int, int]] = {}
+        self._rois: dict[str, Roi] = {}
         #: each detector layer's size, (height, width), which a box is clamped to
         self._sensors: dict[str, tuple[int, int]] = {}
 
@@ -205,7 +205,7 @@ class ImageView(QtView, Loggable):
             self.logger.debug(f"Creating layer for {name} with spec {spec}")
             buffer = np.zeros(spec["shape"], dtype=np.dtype(spec["dtype"]))
             layer = self.viewer_model.add_image(buffer, name=name)
-            self._origins[name] = (0, 0)
+            self._rois[name] = Roi(0, 0, spec["shape"][1], spec["shape"][0])
             self._sensors[name] = spec["shape"]
             box = ROIInteractionBoxOverlay(
                 bounds=((0, 0), spec["shape"]), handles=True, visible=False
@@ -257,13 +257,12 @@ class ImageView(QtView, Loggable):
 
         A detector's frame is drawn into the rectangle of its layer its ROI
         names, read from the reading beside it; the layer keeps the sensor's
-        size and takes the frame's dtype. Any other reading replaces its
-        layer's data.
+        size and takes the frame's dtype. A frame whose shape is not the
+        ROI's is dropped. Any other reading replaces its layer's data.
         """
         for key, reading in data.items():
             if key.endswith("-roi"):
-                roi: Roi = reading["value"]
-                self._origins[key.removesuffix("-roi")] = (roi.x, roi.y)
+                self._rois[key.removesuffix("-roi")] = reading["value"]
                 continue
             name = key.removesuffix("-buffer")
             img = reading["value"]
@@ -272,10 +271,15 @@ class ImageView(QtView, Loggable):
                 self.viewer_model.add_image(img, name=name)
                 continue
             layer = self.viewer_model.layers[name]
+            roi = self._rois.get(name)
+            if roi is not None and img.shape[:2] != (roi.height, roi.width):
+                # a frame taken before the ROI changed, as the one a monitor
+                # reports first: placing it would paint the old region back
+                self.logger.debug(f"Dropping a {img.shape} frame for a {roi} ROI")
+                continue
             if layer.data.dtype != img.dtype:
                 layer.data = np.zeros(layer.data.shape, dtype=img.dtype)
-            origin = self._origins.get(name)
-            if origin is not None and place(layer.data, img, origin):
+            if roi is not None and place(layer.data, img, (roi.x, roi.y)):
                 layer.refresh()
             else:
                 layer.data = img

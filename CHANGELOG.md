@@ -212,7 +212,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 ### Fixed
 
 - `ImageView` blanks a detector's layer when a ROI is applied, so the
-  sensor outside the new region shows black rather than the last frames.
+  sensor outside the new region shows black rather than the last frames, and
+  drops a frame whose shape is not its ROI's, the one a monitor reports
+  first at the next plan, which painted the old region back.
 
 - The camera service publishes a frame with the dtype the camera now gives,
   retyping `buffer` when `pixel_dtype` changed it; a frame of a new dtype
