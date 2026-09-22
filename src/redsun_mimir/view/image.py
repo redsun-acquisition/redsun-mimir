@@ -232,11 +232,15 @@ class ImageView(QtView, Loggable):
     def on_new_configuration(self, detector: str, key: str, value: object) -> None:
         """Put the box over the region the camera reads, once a ROI is applied.
 
-        Only the ``<detector>-roi`` setting is this view's to show; any other
-        *key* is ignored.
+        The layer is blanked, so what the camera no longer reads shows as
+        black rather than the last frames it sent. Only the ``<detector>-roi``
+        setting is this view's to show; any other *key* is ignored.
         """
-        if key == f"{detector}-roi":
-            self.set_roi_box(detector, Roi.parse(str(value)))
+        if key != f"{detector}-roi" or detector not in self.viewer_model.layers:
+            return
+        layer = self.viewer_model.layers[detector]
+        layer.data = np.zeros_like(layer.data)
+        self.set_roi_box(detector, Roi.parse(str(value)))
 
     @slot
     def set_roi_box(self, detector: str, roi: Roi) -> None:

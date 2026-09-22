@@ -297,16 +297,23 @@ class TestImageViewRoi:
         )
         assert drawn == []
 
-    def test_the_box_follows_the_roi_the_camera_reads(self, view: ImageView) -> None:
+    def test_an_applied_roi_moves_the_box_and_blanks_the_layer(
+        self, view: ImageView
+    ) -> None:
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
 
+        layer = view.viewer_model.layers["cam"]
+        layer.data = np.full(layer.data.shape, 7, dtype=layer.data.dtype)
+
         view.on_new_configuration("cam", "cam-exposure", 5.0)
+        assert layer.data.max() == 7
         view.on_new_configuration("cam", "cam-roi", "2,1,3,2")
 
-        box = view.viewer_model.layers["cam"]._overlays[ROI_BOX]
+        box = layer._overlays[ROI_BOX]
         assert box.bounds == ((1, 2), (3, 5))
         assert drawn == []
+        assert not layer.data.any()
 
 
 class TestAcquisitionView:
