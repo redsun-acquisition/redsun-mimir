@@ -167,9 +167,10 @@ class AcquisitionView(QtView, Loggable):
         return self._running or self.plans_combobox.currentText()
 
     def _mark_running(self, plan: str) -> None:
-        """Hold the selector on *plan* until it is done."""
+        """Hold the selector on *plan* and the root folder until it is done."""
         self._running = plan
         self.plans_combobox.setEnabled(False)
+        self.base_dir_btn.setEnabled(False)
 
     def _on_plan_toggled(self, toggled: bool) -> None:
         plan = self._current_plan()
@@ -196,10 +197,11 @@ class AcquisitionView(QtView, Loggable):
 
     @slot
     def on_plan_done(self) -> None:
-        """Re-enable the controls of the plan that ran, and free the selector."""
+        """Re-enable the controls of the plan that ran, the selector and the root."""
         plan = self._current_plan()
         self._running = None
         self.plans_combobox.setEnabled(True)
+        self.base_dir_btn.setEnabled(True)
         self.plan_widgets[plan].setEnabled(True)
         self.plan_widgets[plan].enable_actions(False)
 

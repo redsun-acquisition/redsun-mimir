@@ -364,12 +364,15 @@ class TestAcquisitionView:
         view.plan_widgets["scan"].run_button.click()
         assert not view.plans_combobox.isEnabled()
         assert not view.plan_widgets["scan"].group_box.isEnabled()
+        assert not view.base_dir_btn.isEnabled()
+        assert view.open_dir_btn.isEnabled()
 
         view.plans_combobox.setCurrentText("stream")
         view.on_plan_done()
 
         assert view.plans_combobox.isEnabled()
         assert view.plan_widgets["scan"].group_box.isEnabled()
+        assert view.base_dir_btn.isEnabled()
 
     def test_a_stream_holds_the_selector_until_it_is_done(
         self, view: AcquisitionView
