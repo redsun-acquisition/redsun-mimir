@@ -87,6 +87,7 @@ class FakeCore:
         self.sequences = sequences
         self.sequencing = False
         self.fault: Exception | None = None
+        self.read_mid_sequence: list[str] = []
         self.popped_a_frame = threading.Event()
         self._buffer: Queue[NDArray[Any]] = Queue()
 
@@ -142,6 +143,11 @@ class FakeCore:
         return name == "CameraName"
 
     def getProperty(self, label: str, name: str) -> str:
+        if self.sequencing:
+            # the DahengGalaxy adapter stops delivering when PixelType is read
+            # during a sequence; the fake records every such read so a test
+            # can pin that none is taken
+            self.read_mid_sequence.append(name)
         return self.properties[name]
 
     def setProperty(self, label: str, name: str, value: str) -> None:
@@ -404,6 +410,33 @@ async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(
     await camera.publish_frame()
     assert camera.state.get() == "idle"
     assert core.sequencing is False
+
+
+async def test_no_property_is_read_from_the_camera_while_it_sequences(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """Polling a property mid-sequence would end it on some adapters.
+
+    The DahengGalaxy adapter delivers no further frame once ``PixelType`` is
+    read during a sequence, so every property poll waits for the camera to be
+    idle. Nothing but a write changes a property meanwhile, and a write
+    updates the attribute itself.
+    """
+    camera, core = controller
+    await camera.acquire.put(True)
+    await until(lambda: core.sequencing, camera)
+
+    await camera._core_io.update(camera.pixel_dtype)
+    for attribute in camera.sub_controllers["properties"].attributes.values():
+        await camera._property_io.update(attribute)
+
+    assert core.read_mid_sequence == []
+
+    # the same polls do reach an idle camera
+    await camera.acquire.put(False)
+    await until(lambda: not core.sequencing, camera)
+    await camera._core_io.update(camera.pixel_dtype)
+    assert camera.pixel_dtype.get().name == "uint8"
 
 
 async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None:

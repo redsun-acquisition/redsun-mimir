@@ -100,12 +100,14 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
         layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
         capturing: Callable[[], bool] = lambda: False,
+        sequencing: Callable[[], bool] = lambda: False,
     ) -> None:
         super().__init__()
         self._core = core
         self._without_sequence = without_sequence
         self._layout_changed = layout_changed
         self._capturing = capturing
+        self._sequencing = sequencing
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
         """Apply *value* to the camera, and read back what it took.
@@ -141,6 +143,11 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 roi = await asyncio.to_thread(self._core.getROI)
                 await attr.update(str(Roi(*roi)))
             case "pixel_dtype":
+                # reading a camera property ends the sequence on some adapters
+                # (the Daheng stops delivering), and the attribute needs no
+                # poll anyway: ``follow_layout`` retypes it from every frame
+                if self._sequencing():
+                    return
                 dtype = await asyncio.to_thread(self._pixel_dtype)
                 members = cast("Enum[Any]", attr.datatype).enum_cls.__members__
                 if dtype in members:
@@ -210,12 +217,14 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
         label: str,
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
         layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
+        sequencing: Callable[[], bool] = lambda: False,
     ) -> None:
         super().__init__()
         self._core = core
         self._label = label
         self._without_sequence = without_sequence
         self._layout_changed = layout_changed
+        self._sequencing = sequencing
 
     async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
         """Write the property, and read back what the camera made of it.
@@ -238,7 +247,15 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
             await self._layout_changed(snapped[0])
 
     async def update(self, attr: AttrR[str, PropertyRef]) -> None:
-        """Read the camera's own value of the property."""
+        """Read the camera's own value of the property, unless it is sequencing.
+
+        Reading a property ends the sequence on some adapters, the Daheng
+        among them, which then delivers no further frame. Nothing but
+        ``send`` changes a property meanwhile, and that updates the attribute
+        itself, so the poll is skipped rather than deferred.
+        """
+        if self._sequencing():
+            return
         value = await asyncio.to_thread(
             self._core.getProperty, self._label, attr.io_ref.property
         )
@@ -319,13 +336,18 @@ class MMCameraController(Controller):
         properties: Iterable[str] | None = None,
     ) -> None:
         self._property_io = PropertyIO(
-            core, label, self._without_sequence, self.publish_layout
+            core,
+            label,
+            self._without_sequence,
+            self.publish_layout,
+            lambda: self._sequencing,
         )
         self._core_io = CoreIO(
             core,
             self._without_sequence,
             self.publish_layout,
             lambda: self._store is not None,
+            lambda: self._sequencing,
         )
         super().__init__(ios=[self._core_io, self._property_io])
         self._core = core
