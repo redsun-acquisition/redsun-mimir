@@ -54,7 +54,7 @@ uc2 = [
     "pyserial>=3.5",
 ]
 pyqt = [
-    "napari[pyqt6]>=0.9.1",
+    "napari[pyqt6]",
     "redsun[pyqt]",
 ]
 sim = [
@@ -64,11 +64,11 @@ sim = [
 
 [project.optional-dependencies]
 pyqt = [
-    "napari[pyqt6]>=0.9.1",
+    "napari[pyqt6]",
     "redsun[pyqt]",
 ]
 pyside = [
-    "napari[pyside6]>=0.9.1",
+    "napari[pyside6]",
     "redsun[pyside]",
 ]
 uc2 = [
