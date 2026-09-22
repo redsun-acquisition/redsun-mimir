@@ -219,6 +219,14 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- A detector layer the user deleted from the layer list is rebuilt by
+  `ImageView.update_layers` as a sensor-sized, writable layer carrying its
+  selection box, over the detector's current ROI and shown if a selection was
+  asked for. Before, the next frame became the layer's data as it arrived, so
+  the frame after it was written into a read-only array and the emission
+  failed with `ValueError: assignment destination is read-only`, and the
+  layer came back without its box.
+
 - `MMCameraController.reconnect` after a fault starts grabbing again even
   when the failed thread's task has not been reaped by the event loop yet;
   before, a reconnect asked for in that window was dropped and the camera

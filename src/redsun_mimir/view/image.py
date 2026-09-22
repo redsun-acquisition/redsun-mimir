@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Reading
+    from napari.layers import Image
     from numpy.typing import NDArray
     from redsun.virtual import VirtualContainer
 
@@ -130,6 +131,8 @@ class ImageView(QtView, Loggable):
         self._rois: dict[str, Roi] = {}
         #: each detector layer's size, (height, width), which a box is clamped to
         self._sensors: dict[str, tuple[int, int]] = {}
+        #: whether each detector's box is asked to be visible, kept across deletions
+        self._selecting: dict[str, bool] = {}
 
         register_qt_types()
 
@@ -203,17 +206,33 @@ class ImageView(QtView, Loggable):
         """
         for name, spec in specs.items():
             self.logger.debug(f"Creating layer for {name} with spec {spec}")
-            buffer = np.zeros(spec["shape"], dtype=np.dtype(spec["dtype"]))
-            layer = self.viewer_model.add_image(buffer, name=name)
             self._rois[name] = Roi(0, 0, spec["shape"][1], spec["shape"][0])
-            self._sensors[name] = spec["shape"]
-            box = ROIInteractionBoxOverlay(
-                bounds=((0, 0), spec["shape"]), handles=True, visible=False
-            )
-            layer._overlays[ROI_BOX] = box
-            layer.mouse_drag_callbacks.append(resize_selection_box)
-            layer.mouse_move_callbacks.append(highlight_roi_box_handles)
-            box.events.bounds.connect(partial(self._on_box_drawn, name))
+            self._add_layer(name, spec["shape"], np.dtype(spec["dtype"]))
+
+    def _add_layer(
+        self, name: str, shape: tuple[int, int], dtype: np.dtype[Any]
+    ) -> Image:
+        """Add a sensor-sized, writable layer for *name*, carrying its selection box.
+
+        The box is put over the detector's current ROI and shown only if a
+        selection was asked for, so a layer the user deleted comes back in the
+        state it was in.
+        """
+        layer = self.viewer_model.add_image(np.zeros(shape, dtype=dtype), name=name)
+        self._sensors[name] = shape
+        box = ROIInteractionBoxOverlay(
+            bounds=((0, 0), shape),
+            handles=True,
+            visible=self._selecting.get(name, False),
+        )
+        layer._overlays[ROI_BOX] = box
+        layer.mouse_drag_callbacks.append(resize_selection_box)
+        layer.mouse_move_callbacks.append(highlight_roi_box_handles)
+        box.events.bounds.connect(partial(self._on_box_drawn, name))
+        roi = self._rois.get(name)
+        if roi is not None:
+            self.set_roi_box(name, roi)
+        return layer
 
     def _on_box_drawn(self, detector: str, event: object = None) -> None:
         """Announce where the box on *detector*'s layer now stands."""
@@ -225,6 +244,7 @@ class ImageView(QtView, Loggable):
     @slot
     def set_roi_selection(self, detector: str, enabled: bool) -> None:
         """Show the box on *detector*'s layer and let it be dragged, or hide it."""
+        self._selecting[detector] = enabled
         if detector in self.viewer_model.layers:
             self.viewer_model.layers[detector]._overlays[ROI_BOX].visible = enabled
 
@@ -267,9 +287,11 @@ class ImageView(QtView, Loggable):
             name = key.removesuffix("-buffer")
             img = reading["value"]
             if name not in self.viewer_model.layers:
+                # the user deleted it: give it back, box and all, rather than
+                # letting the detector's own frame stand in as the layer's data
                 self.logger.debug(f"Adding new layer for {name}")
-                self.viewer_model.add_image(img, name=name)
-                continue
+                shape = self._sensors.get(name, (img.shape[0], img.shape[1]))
+                self._add_layer(name, shape, img.dtype)
             layer = self.viewer_model.layers[name]
             roi = self._rois.get(name)
             if roi is not None and img.shape[:2] != (roi.height, roi.width):
@@ -282,4 +304,6 @@ class ImageView(QtView, Loggable):
             if roi is not None and place(layer.data, img, (roi.x, roi.y)):
                 layer.refresh()
             else:
-                layer.data = img
+                # a copy: what a detector hands over may be read-only, and the
+                # next frame is written into whatever the layer holds
+                layer.data = np.array(img)
