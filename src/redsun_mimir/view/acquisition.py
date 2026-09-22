@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from qtpy import QtCore
+from qtpy import QtCore, QtGui
 from qtpy import QtWidgets as QtW
 from redsun.log import Loggable
 from redsun.path_provider import PATH_PROVIDER
@@ -87,15 +87,22 @@ class AcquisitionView(QtView, Loggable):
 
         self.base_dir_label = QtW.QLineEdit(self)
         self.base_dir_label.setReadOnly(True)
-        self.base_dir_label.setToolTip("Where the devices of a run write")
+        self.base_dir_label.setToolTip("Current root folder")
 
-        self.base_dir_btn = QtW.QPushButton("Browse...", self)
+        self.base_dir_btn = QtW.QPushButton("Choose root...", self)
+        self.base_dir_btn.setToolTip("Choose the root folder for acquired data")
         self.base_dir_btn.setFixedHeight(32)
         self.base_dir_btn.clicked.connect(self._on_base_dir_clicked)
 
+        self.open_dir_btn = QtW.QPushButton("Browse root", self)
+        self.open_dir_btn.setFixedHeight(32)
+        self.open_dir_btn.setToolTip("Open the current root folder in the file manager")
+        self.open_dir_btn.clicked.connect(self._on_open_dir_clicked)
+
         self.base_dir_layout = QtW.QHBoxLayout()
-        self.base_dir_layout.addWidget(self.base_dir_label)
         self.base_dir_layout.addWidget(self.base_dir_btn)
+        self.base_dir_layout.addWidget(self.open_dir_btn)
+        self.root_layout.addWidget(self.base_dir_label)
         self.root_layout.addLayout(self.base_dir_layout)
 
         self.stack_widget = QtW.QStackedWidget(self)
@@ -125,6 +132,12 @@ class AcquisitionView(QtView, Loggable):
         )
         if chosen:
             self.sig_base_dir_request.emit(chosen)
+
+    def _on_open_dir_clicked(self) -> None:
+        """Open the root folder in the system file manager."""
+        QtGui.QDesktopServices.openUrl(
+            QtCore.QUrl.fromLocalFile(self.base_dir_label.text())
+        )
 
     @slot
     def on_base_dir_changed(self, base_dir: str) -> None:
