@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
-## [Unreleased]
+## [0.4.1] - 07-09-2026
+
+### Changed
+
+- `MotorView` (`redsun_mimir.view.motor`) - revamped UI (napari settings were causing weird visualization)
+- bump `redsun` to 0.12.2, which fixes a bug in the `psygnal` emission queue
+- bump `napari` to 0.9.1
+
+## [0.4.0] - 03-09-2026
 
 ### Added
 
@@ -535,6 +543,8 @@ caller.
 
 - Initial release.
 
+[0.4.1]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.2.0...v0.3.0
 [0.1.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.1.0

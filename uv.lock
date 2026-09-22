@@ -2742,7 +2742,7 @@ wheels = [
 
 [[package]]
 name = "napari"
-version = "0.9.0"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "app-model" },
@@ -2785,9 +2785,9 @@ dependencies = [
     { name = "vispy" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/9c/8f35aac8a5f2388562c15d6f3e2604e6eb037e2aaeb0d6166a10a7a7d907/napari-0.9.0.tar.gz", hash = "sha256:697a24165f918e09bf03c31ccddaaf38114d73cb1474cd179ef19d26f88ddeb5", size = 3267570, upload-time = "2026-08-25T17:14:32.355Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/49/07d9ff19bf21bbbd1fabbc137fb680507baa3f3bd509364cb32b484f1c2b/napari-0.9.1.tar.gz", hash = "sha256:9a0712de1ede928e1274cec7c0d04a263eaec8be76e231435d99f988cfe51a98", size = 3403020, upload-time = "2026-09-04T21:43:17.723Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/64/278f6139724250d5c36827eb7bccf33cee0716fc9dcd0a6ad6b073c2639e/napari-0.9.0-py3-none-any.whl", hash = "sha256:821516d9954b383ccb63d9573b625375ef859751539f36b3844190fee39bb654", size = 3696463, upload-time = "2026-08-25T17:14:29.66Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/0a/5df6986090910113519aa993da1f265bac5603a9f83ecc889ef3ecc13391/napari-0.9.1-py3-none-any.whl", hash = "sha256:546eab2a65bc3e929e610daac1cdd9bd36886d98a4fe0888f5e1dfa12e15963b", size = 3832509, upload-time = "2026-09-04T21:43:15.091Z" },
 ]
 
 [package.optional-dependencies]
@@ -4429,10 +4429,10 @@ uc2 = [
 requires-dist = [
     { name = "fastcs", extras = ["epicspva"], specifier = ">=0.14.2" },
     { name = "msgspec", specifier = ">=0.21.1" },
-    { name = "napari", specifier = ">=0.9.0" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.9.0" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.9.0" },
-    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.9.0" },
+    { name = "napari", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.9.1" },
     { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
@@ -4447,7 +4447,7 @@ provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.3.0" },
-    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.0" },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
     { name = "prek", specifier = ">=0.5.0" },
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
     { name = "pyserial", specifier = ">=3.5" },
@@ -4461,7 +4461,7 @@ dev = [
     { name = "ruff", specifier = ">=0.16.5" },
 ]
 pyqt = [
-    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.0" },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
     { name = "redsun", extras = ["pyqt"] },
 ]
 sim = [
