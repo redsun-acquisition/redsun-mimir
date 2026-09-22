@@ -23,10 +23,10 @@ from redsun_mimir.configurations import (
     build_uc2_container,
 )
 
-from .conftest import needs_opengl
+from .conftest import HAS_OPENGL, NO_OPENGL_REASON
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from redsun.qt import QtAppContainer
 
@@ -35,7 +35,6 @@ pytestmark = pytest.mark.qt
 
 #: Declared by `MimirApp`, so every session has them whatever its hardware.
 _SHARED_PRESENTERS = {
-    "storage_ctrl",
     "median_ctrl",
     "det_ctrl",
     "acq_ctrl",
@@ -48,19 +47,27 @@ _SHARED_VIEWS = {
     "det_widget",
     "light_widget",
     "motor_widget",
-    "storage_widget",
+    "logs",
 }
 
-_CONTAINERS = [
-    pytest.param(
-        build_simulation_container,
-        {"mmcamera", "XY", "Z", "laser", "led"},
-        _SHARED_PRESENTERS,
-        _SHARED_VIEWS,
-        id="simulation",
-        marks=needs_opengl,
-    ),
-]
+_SIMULATION_DEVICES = {"mmcamera", "XY", "Z", "laser", "led"}
+
+
+@pytest.fixture
+def simulation() -> Iterator[QtAppContainer]:
+    """Return the built simulation container, shut down after the test.
+
+    Building it needs a real OpenGL context for the napari viewer, so a test
+    taking it is skipped headless. A mark cannot do that from a fixture.
+    """
+    if not HAS_OPENGL:
+        pytest.skip(NO_OPENGL_REASON)
+    container = build_simulation_container()
+    try:
+        container.build()
+        yield container
+    finally:
+        container.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -75,7 +82,7 @@ _CONTAINERS = [
         pytest.param(
             build_uc2_container,
             "uc2_full_configuration.yaml",
-            {"serial", "iscat", "stage", "laser"},
+            {"iscat", "stage", "laser"},
             id="uc2",
         ),
     ],
@@ -105,42 +112,24 @@ def test_a_session_declares_only_its_devices(
     ]
 
 
-@pytest.mark.parametrize(("factory", "devices", "presenters", "views"), _CONTAINERS)
-def test_container_builds_every_component(
-    factory: Callable[[], QtAppContainer],
-    devices: set[str],
-    presenters: set[str],
-    views: set[str],
-) -> None:
+def test_container_builds_every_component(simulation: QtAppContainer) -> None:
     """Every declared component comes up, and presenters/views satisfy the protocols.
 
     Device build failures are logged and skipped by redsun rather than
     raising, so asserting on the device names is the only way a missing or
     misdeclared device surfaces here.
     """
-    container = factory()
-    try:
-        container.build()
+    assert set(simulation.devices) == _SIMULATION_DEVICES
+    assert set(simulation.presenters) == _SHARED_PRESENTERS
+    assert set(simulation.views) == _SHARED_VIEWS
 
-        assert set(container.devices) == devices
-        assert set(container.presenters) == presenters
-        assert set(container.views) == views
-
-        for presenter in container.presenters.values():
-            assert isinstance(presenter, PPresenter)
-        for view in container.views.values():
-            assert isinstance(view, PView)
-    finally:
-        container.shutdown()
+    for presenter in simulation.presenters.values():
+        assert isinstance(presenter, PPresenter)
+    for view in simulation.views.values():
+        assert isinstance(view, PView)
 
 
-_FACTORIES = [
-    pytest.param(build_simulation_container, id="simulation", marks=needs_opengl),
-]
-
-
-@pytest.mark.parametrize("factory", _FACTORIES)
-def test_every_slot_is_reached(factory: Callable[[], QtAppContainer]) -> None:
+def test_every_slot_is_reached(simulation: QtAppContainer) -> None:
     """No marked slot is left without a publisher.
 
     A misspelled port fails at build; a connection nobody wrote fails
@@ -150,14 +139,8 @@ def test_every_slot_is_reached(factory: Callable[[], QtAppContainer]) -> None:
     Only slots: a container legitimately declares components offering signals
     it does not use, so ``unconnected.signals`` is expected to be non-empty.
     """
-    container = factory()
-    try:
-        container.build()
-
-        report = container.virtual_container.unconnected
-        assert report.slots == [], str(report)
-    finally:
-        container.shutdown()
+    report = simulation.virtual_container.unconnected
+    assert report.slots == [], str(report)
 
 
 #: Expected wiring graph per container, as ``(publisher.port, consumer.port)``.
@@ -168,6 +151,10 @@ _DETECTOR_LINKS = {
     ("det_ctrl.sig_new_data", "img_widget.update_layers"),
     ("det_widget.sig_property_changed", "det_ctrl.set"),
     ("det_ctrl.sig_new_configuration", "det_widget.on_new_configuration"),
+    ("det_ctrl.sig_new_configuration", "img_widget.on_new_configuration"),
+    ("img_widget.sig_roi_drawn", "det_widget.on_roi_drawn"),
+    ("det_widget.sig_roi_selection", "img_widget.set_roi_selection"),
+    ("det_widget.sig_roi_edited", "img_widget.set_roi_box"),
 }
 _MEDIAN_LINKS = {
     ("median_ctrl.median", "img_widget.update_layers"),
@@ -181,8 +168,11 @@ _ACQUISITION_LINKS = {
     ("acq_ctrl.sig_plan_done", "acq_widget.on_plan_done"),
     ("acq_ctrl.sig_action_done", "acq_widget.on_action_done"),
     ("acq_ctrl.sig_pre_launch_notify", "median_ctrl.clear_medians"),
-    ("acq_ctrl.sig_pre_launch_notify", "storage_ctrl.set_plan"),
-    ("acq_ctrl.sig_plan_done", "storage_ctrl.reset_plan"),
+    ("acq_ctrl.sig_pre_launch_notify", "path_provider.set_plan"),
+    ("acq_ctrl.sig_plan_done", "path_provider.reset_plan"),
+    ("acq_widget.sig_base_dir_request", "acq_ctrl.set_base_dir"),
+    ("acq_ctrl.sig_base_dir_changed", "acq_widget.on_base_dir_changed"),
+    ("acq_ctrl.sig_base_dir_changed", "path_provider.set_base_dir"),
 }
 _FULL_LINKS = (
     _DETECTOR_LINKS
@@ -195,64 +185,33 @@ _FULL_LINKS = (
     }
 )
 
-_GRAPHS = [
-    pytest.param(
-        build_simulation_container,
-        _FULL_LINKS,
-        id="simulation",
-        marks=needs_opengl,
-    ),
-]
 
-
-@pytest.mark.parametrize(("factory", "expected"), _GRAPHS)
-def test_container_declares_the_expected_graph(
-    factory: Callable[[], QtAppContainer],
-    expected: set[tuple[str, str]],
-) -> None:
+def test_container_declares_the_expected_graph(simulation: QtAppContainer) -> None:
     """The whole wiring graph, not a sample of it.
 
     `test_every_slot_is_reached` catches a line nobody wrote; this catches
     one written wrong, and pins the fan-in that is easiest to get subtly
     incorrect (three publishers reach ``img_widget.update_layers``).
     """
-    container = factory()
-    try:
-        container.build()
-
-        actual = {
-            (
-                f"{link.publisher}.{link.publisher_port}",
-                f"{link.consumer}.{link.consumer_port}",
-            )
-            for link in container.virtual_container.connections
-        }
-        assert actual == expected
-    finally:
-        container.shutdown()
+    actual = {
+        (
+            f"{link.publisher}.{link.publisher_port}",
+            f"{link.consumer}.{link.consumer_port}",
+        )
+        for link in simulation.virtual_container.connections
+    }
+    assert actual == _FULL_LINKS
 
 
-_SUBSCRIPTIONS = [
-    pytest.param(
-        build_simulation_container,
-        {
-            ("XY-axis-x", "motor_widget.update_setpoint"),
-            ("XY-axis-y", "motor_widget.update_setpoint"),
-            ("Z-axis-z", "motor_widget.update_setpoint"),
-            # the storage view follows the session path provider, whose soft
-            # signal carries no name, hence the empty source
-            ("", "storage_widget.update_base_dir"),
-        },
-        id="simulation",
-        marks=needs_opengl,
-    ),
-]
+_EXPECTED_SUBSCRIPTIONS = {
+    ("XY-axis-x", "motor_widget.update_setpoint"),
+    ("XY-axis-y", "motor_widget.update_setpoint"),
+    ("Z-axis-z", "motor_widget.update_setpoint"),
+}
 
 
-@pytest.mark.parametrize(("factory", "expected"), _SUBSCRIPTIONS)
 def test_container_declares_the_expected_subscriptions(
-    factory: Callable[[], QtAppContainer],
-    expected: set[tuple[str, str]],
+    simulation: QtAppContainer,
 ) -> None:
     """Every axis readback reaches the position labels.
 
@@ -260,14 +219,8 @@ def test_container_declares_the_expected_subscriptions(
     injecting its dependencies, so an axis silently missing from the map would
     leave one label frozen and nothing else would notice.
     """
-    container = factory()
-    try:
-        container.build()
-
-        actual = {
-            (record.source, f"{record.consumer}.{record.consumer_port}")
-            for record in container.virtual_container.subscriptions
-        }
-        assert actual == expected
-    finally:
-        container.shutdown()
+    actual = {
+        (record.source, f"{record.consumer}.{record.consumer_port}")
+        for record in simulation.virtual_container.subscriptions
+    }
+    assert actual == _EXPECTED_SUBSCRIPTIONS

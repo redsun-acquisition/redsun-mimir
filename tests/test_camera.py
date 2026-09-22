@@ -1,9 +1,8 @@
-"""Fly-scan lifecycle test for MMDemoCamera (demo adapter).
+"""Fly-scan lifecycle for a camera served by its own process.
 
-Mirrors ``test_plan_with_device_and_callback_writers`` in redsun's own SDK
-test suite (``tests/sdk/storage/test_integration_plans.py``), adapted to
-drive the real MMCore camera device and its custom arm/trigger/data logics
-instead of a synthetic ``StandardDetector``.
+The camera writes nothing here: the service does, and the device reports what
+it wrote. The plan is the standard fly sequence, so what this pins is the
+document stream and the store that comes out of it.
 """
 
 from __future__ import annotations
@@ -12,26 +11,29 @@ import asyncio
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
+import numpy as np
 import pytest
 from bluesky.run_engine import RunEngine as BlueskyRunEngine
 from ophyd_async.core import TriggerInfo
 from ophyd_async.testing import assert_emitted
-from pymmcore_plus import CMMCorePlus
-from redsun.aio import run_coro
-from redsun.storage import BaseStorage, SessionPathProvider
-from redsun.storage.backends._memory import MemoryIO
+from redsun.path_provider import SessionPathProvider
 
-from redsun_mimir.device.mmcore import MMDemoCamera
+from redsun_mimir.device.mmcore import MMCamera
+from redsun_mimir.device.mmcore._camera import frame_shape_and_dtype
+
+from .conftest import needs_mm_adapters
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+    from redsun.services import Service
+
+FRAMES = 4
 
 
 @pytest.fixture
@@ -43,82 +45,115 @@ def bluesky_re() -> Generator[BlueskyRunEngine, None, None]:
 
 
 @pytest.fixture
-def demo_camera(
-    tmp_path: Path, bluesky_re: BlueskyRunEngine
-) -> Generator[tuple[MMDemoCamera, BaseStorage, MemoryIO], None, None]:
-    """Yield a connected MMDemoCamera (demo adapter) backed by ``MemoryIO``.
-
-    Connects the device on the RunEngine's event loop so that all
-    ophyd-async signal infrastructure (including the frame-counter setter
-    used from the streaming thread) is bound to the same loop that drives
-    the plan.
-    """
-    io = MemoryIO()
-    provider = SessionPathProvider(base_dir=tmp_path, session="camera")
-    storage = BaseStorage(io=io, path_provider=provider)
-
-    cam = MMDemoCamera("cam", storage=storage)
-    asyncio.run_coroutine_threadsafe(cam.connect(mock=False), bluesky_re.loop).result(
-        timeout=10.0
+def fly_camera(
+    camera_service: Service, tmp_path: Path, bluesky_re: BlueskyRunEngine
+) -> MMCamera:
+    """Return a camera connected on the RunEngine's loop, as a plan needs it."""
+    camera = MMCamera(
+        camera_service.prefix,
+        path_provider=SessionPathProvider(base_dir=tmp_path, session="camera"),
+        name="cam",
     )
-    yield cam, storage, io
-
-    CMMCorePlus.instance().reset()
-
-
-# ---------------------------------------------------------------------------
-# Fly-scan lifecycle test
-# ---------------------------------------------------------------------------
+    asyncio.run_coroutine_threadsafe(camera.connect(), bluesky_re.loop).result(
+        timeout=30.0
+    )
+    return camera
 
 
+@needs_mm_adapters
 def test_fly_scan_lifecycle(
-    demo_camera: tuple[MMDemoCamera, BaseStorage, MemoryIO],
-    bluesky_re: BlueskyRunEngine,
+    fly_camera: MMCamera, bluesky_re: BlueskyRunEngine, tmp_path: Path
 ) -> None:
-    """Fly scan plan lifecycle with MMDemoCamera (demo adapter).
+    """Stage, prepare, kickoff, collect, unstage, and the store that results.
 
-    Verifies that the standard bluesky fly-scan protocol
-    (stage -> prepare -> declare_stream -> kickoff -> collect_while_completing -> unstage)
-    produces the expected stream document sequence and writes the correct
-    number of frames through ``BaseStorage``/``MemoryIO`` using the MMCore
-    background streaming thread.
+    Each document batch reports frames the service has already written, so the
+    frames the stream datums account for are the frames on disk. The plan runs
+    twice: the second window counts its own frames, not the first's as well.
     """
-    cam, storage, io = demo_camera
-    RE = bluesky_re
-    n_frames = 4
-
     docs: dict[str, list[Any]] = defaultdict(list)
-    RE.subscribe(lambda name, doc: docs[name].append(doc))
+    bluesky_re.subscribe(lambda name, doc: docs[name].append(doc))
 
-    @bpp.stage_decorator([cam])  # type: ignore[untyped-decorator]
+    @bpp.stage_decorator([fly_camera])  # type: ignore[untyped-decorator]
     @bpp.run_decorator()  # type: ignore[untyped-decorator]
     def fly_plan() -> Any:
-        yield from bps.prepare(cam, TriggerInfo(number_of_events=n_frames), wait=True)
-        yield from bps.declare_stream(cam, name="primary", collect=True)
-        yield from bps.kickoff(cam, wait=True)
+        yield from bps.prepare(
+            fly_camera, TriggerInfo(number_of_events=FRAMES), wait=True
+        )
+        yield from bps.declare_stream(fly_camera, name="primary", collect=True)
+        yield from bps.kickoff(fly_camera, wait=True)
         yield from bps.collect_while_completing(
-            flyers=[cam], dets=[cam], flush_period=0.1
+            flyers=[fly_camera], dets=[fly_camera], flush_period=0.1
         )
 
-    RE(fly_plan())
+    bluesky_re(fly_plan())
+    bluesky_re(fly_plan())
 
-    # deterministic settle: close() awaits any drain still flushing
-    run_coro(storage.close())
-
-    # At least one stream_datum batch must have been emitted
-    assert len(docs["stream_datum"]) >= 1
     assert_emitted(
         docs,
-        start=1,
-        descriptor=1,
-        stream_resource=1,
+        start=2,
+        descriptor=2,
+        stream_resource=2,
         stream_datum=len(docs["stream_datum"]),
-        stop=1,
+        stop=2,
     )
-    # All n_frames must be accounted for across all batches
-    total = sum(
-        sd["indices"]["stop"] - sd["indices"]["start"] for sd in docs["stream_datum"]
+    written = sum(
+        datum["indices"]["stop"] - datum["indices"]["start"]
+        for datum in docs["stream_datum"]
     )
-    assert total == n_frames
-    assert len(io.stores) == 1
-    assert len(io.stores[0].arrays["cam"]) == n_frames
+    assert written == 2 * FRAMES
+
+    store = Path(url2pathname(urlparse(docs["stream_resource"][0]["uri"]).path))
+    assert (store / "cam" / "zarr.json").exists()
+
+
+@needs_mm_adapters
+async def test_a_roi_is_written_as_text_and_sizes_the_frames(
+    mm_camera: MMCamera,
+) -> None:
+    """The one form of the setting a client can put over PVAccess."""
+    await mm_camera.roi.set("10,20,100,50")
+
+    assert await mm_camera.roi.get_value() == "10,20,100,50"
+    assert (await frame_shape_and_dtype(mm_camera))[0] == (50, 100)
+
+    await mm_camera.roi.set("0,0,512,512")
+
+
+@needs_mm_adapters
+async def test_the_camera_carries_its_properties_into_its_configuration(
+    mm_camera: MMCamera,
+) -> None:
+    """A property the camera lets one write is a setting like any other.
+
+    The view builds its panel from ``describe_configuration``, so a property
+    that stays inside the service is a property nobody can change.
+    """
+    described = await mm_camera.describe_configuration()
+
+    assert f"{mm_camera.name}-exposure" in described
+    assert f"{mm_camera.name}-sensor_size" in described
+    assert f"{mm_camera.name}-properties-Binning" in described
+
+    await mm_camera.properties["Binning"].set("2")
+
+    assert await mm_camera.properties["Binning"].get_value() == "2"
+    readings = await mm_camera.read_configuration()
+    assert readings[f"{mm_camera.name}-properties-Binning"]["value"] == "2"
+
+
+@needs_mm_adapters
+async def test_a_pixel_dtype_change_reaches_the_frames(mm_camera: MMCamera) -> None:
+    """The choices are the dtypes the camera reads out in; the buffer follows."""
+    assert (await mm_camera.buffer.get_value()).dtype == np.uint8
+    described = await mm_camera.describe_configuration()
+    assert described[f"{mm_camera.name}-pixel_dtype"]["choices"] == [
+        "uint8",
+        "uint16",
+        "uint32",
+    ]
+
+    await mm_camera.pixel_dtype.set("uint16")
+
+    assert await mm_camera.pixel_dtype.get_value() == "uint16"
+    assert (await mm_camera.buffer.get_value()).dtype == np.uint16
+    assert (await frame_shape_and_dtype(mm_camera))[1] == "uint16"

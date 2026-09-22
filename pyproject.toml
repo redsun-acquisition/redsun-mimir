@@ -30,7 +30,9 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.9.1",
     "msgspec>=0.21.1",
-    "redsun[zarr]>=0.12.2",
+    "redsun[zarr]>=0.13.0rc6",
+    "fastcs[epicspva]>=0.14.2",
+    "ophyd-async[pva]>=0.21.2",
 ]
 
 [dependency-groups]
@@ -52,7 +54,7 @@ uc2 = [
     "pyserial>=3.5",
 ]
 pyqt = [
-    "napari[pyqt6]>=0.9.1",
+    "napari[pyqt6]",
     "redsun[pyqt]",
 ]
 sim = [
@@ -62,11 +64,11 @@ sim = [
 
 [project.optional-dependencies]
 pyqt = [
-    "napari[pyqt6]>=0.9.1",
+    "napari[pyqt6]",
     "redsun[pyqt]",
 ]
 pyside = [
-    "napari[pyside6]>=0.9.1",
+    "napari[pyside6]",
     "redsun[pyside]",
 ]
 uc2 = [
@@ -125,6 +127,12 @@ pretty = true
 strict = true
 warn_unreachable = true
 warn_no_return = true
+
+# fastcs ships no py.typed, so every class a service takes from it is Any:
+# subclassing one, or taking its decorator, is an error a stub would fix
+[[tool.mypy.overrides]]
+module = "redsun_mimir.services.*"
+disable_error_code = ["misc", "untyped-decorator"]
 
 
 [tool.pytest.ini_options]

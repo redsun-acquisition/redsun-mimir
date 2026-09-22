@@ -42,23 +42,17 @@ def _label_egu_key(label: str) -> str:
 class LightView(QtView, Loggable):
     """View for light source toggle and intensity control.
 
-    Builds one control group per light device using configuration
-    provided by [`LightPresenter`][redsun_mimir.presenter.LightPresenter].
-
-    Parameters
-    ----------
-    name: str
-        Identity key of the view.
+    One control group per light, from the configuration
+    [`LightPresenter`][redsun_mimir.presenter.LightPresenter] provides.
 
     Attributes
     ----------
     sig_toggle_light_request : Signal[str]
-        Emitted when the user toggles a light source on or off.
-        Carries the light source device label (``str``, ``prefix:name``).
+        Emitted when the user toggles a light on or off, with its device
+        label, ``prefix:name``.
     sig_intensity_request : Signal[str, Any]
-        Emitted when the user adjusts a light source intensity.
-        Carries the light source device label (``str``) and the new
-        intensity value.
+        Emitted when the user moves an intensity slider, with the device
+        label and the new value.
     """
 
     sig_toggle_light_request = Signal(str)
@@ -91,11 +85,11 @@ class LightView(QtView, Loggable):
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Build the UI and register light view signals in the virtual container."""
+        """Register the view's signals with the container."""
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Connect inbound signals from the light presenter and build the UI."""
+        """Build the controls from the light presenter's configuration."""
         self.setup_ui(
             container.require(LIGHT_CONFIGURATION), container.require(LIGHT_DESCRIPTION)
         )
@@ -105,7 +99,7 @@ class LightView(QtView, Loggable):
         readings: dict[str, Reading[Any]],
         description: dict[str, Descriptor],
     ) -> None:
-        """Create the UI from configuration readings and descriptors."""
+        """Build one control group per light, with a slider unless it is binary."""
         # map of device name to list of reading names and units
         reading_names: dict[str, list[str]] = {}
         for key in readings:
@@ -144,7 +138,9 @@ class LightView(QtView, Loggable):
             low: int | float | None = None
             high: int | float | None = None
             if limits is not None:
-                ctrl = limits.get("control", None)
+                # a soft signal carries control limits, a PV its display
+                # ones, and either sizes the slider
+                ctrl = limits.get("control", None) or limits.get("display", None)
                 if (
                     ctrl is not None
                     and ctrl["low"] is not None
@@ -196,7 +192,7 @@ class LightView(QtView, Loggable):
             self._buttons[_button_on_key(device_label)].setText("ON")
 
     def _on_slider_changed(self, value: float, device_label: str) -> None:
-        """Change the intensity of the light source."""
+        """Request the new intensity of the light source."""
         self.logger.debug(
             f"Change intensity of light source {device_label} to {value:.2f}"
         )

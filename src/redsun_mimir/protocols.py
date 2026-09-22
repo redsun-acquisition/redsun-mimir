@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
-import numpy as np
 from bluesky.protocols import (
     Collectable,
     Flyable,
@@ -17,16 +16,11 @@ from ophyd_async.core import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    import numpy as np
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import AsyncStatus, DeviceMap, SignalR, SignalRW
-
-T = TypeVar("T", int, float)
-
-Array2D = np.ndarray[tuple[int, int], Any]
-#: A 2D array type, with shape (height, width).
-
-ROIType = np.ndarray[tuple[int, int, int, int], Any]
-#: A region of interest (ROI) type, represented as an array of four integers: (x, y, width, height).
+    from ophyd_async.core import AsyncStatus, SignalR, SignalRW
 
 
 class LayerSpec(TypedDict):
@@ -36,103 +30,112 @@ class LayerSpec(TypedDict):
     """Shape of the image data (height, width)."""
 
     dtype: str
-    """Data type of the image data, as a string (e.g. 'uint16')."""
+    """Data type of the image data as a string, such as ``'uint16'``."""
 
 
 @runtime_checkable
 class MotorProtocol(AsyncReadable, Protocol):
     """Protocol for individual motor axes."""
 
-    axis: DeviceMap[StandardMovable[float]]
-    """Map of axis names to movable axes.
+    @property
+    def axis(self) -> Mapping[str, StandardMovable[float]]:
+        """Movable axes by name.
 
-    ``locate`` reports the commanded setpoint and the measured readback
-    separately; a controller that cannot be queried reports them as equal.
-    """
+        Read-only and a `Mapping`, not a `DeviceMap`: a mutable protocol
+        attribute is invariant, while a read-only one is covariant in both
+        the mapping and the axis type, so a device holding a map of its own
+        axis class matches.
+
+        ``locate`` reports setpoint and readback separately; a controller
+        that cannot be queried reports them equal.
+        """
+        ...
 
 
 @runtime_checkable
 class LightProtocol(AsyncConfigurable, Protocol):
-    """Protocol for light source devices.
+    """Protocol for light sources.
 
     Attributes
     ----------
     intensity :
-        Settable signal for the current light intensity.
-        The ``units`` field of its ``Descriptor`` carries the engineering unit.
+        Settable intensity; the ``units`` field of its ``Descriptor`` carries
+        the engineering unit.
     wavelength :
-        Read-only signal for the wavelength in nanometres.
+        Wavelength in nanometres.
     enabled :
-        Read-only signal reflecting the current on/off state.
-        Updated internally each time [`trigger`][redsun_mimir.protocols.LightProtocol.trigger]
-        is called.
+        On/off state, updated by each
+        [`trigger`][redsun_mimir.protocols.LightProtocol.trigger] call.
     binary :
-        Read-only signal marking the source as on/off only.
-        A binary source refuses intensity changes.
+        Marks the source as on/off only; a binary source refuses intensity
+        changes.
     """
 
-    intensity: SignalRW[int | float]
-    """Light source intensity."""
-    wavelength: SignalR[int]
-    """Light source wavelength."""
+    @property
+    def intensity(self) -> SignalRW[Any]:
+        """Light source intensity.
 
-    enabled: SignalRW[bool]
-    """Current on/off state of the light source."""
+        Read-only, as `MotorProtocol.axis` is: a mutable protocol attribute
+        is invariant, so an ``int`` intensity would not match ``int | float``.
+        """
+        ...
 
-    binary: SignalR[bool]
-    """Whether the source is on/off only, ignoring ``intensity``."""
+    @property
+    def wavelength(self) -> SignalR[int]:
+        """Wavelength in nanometres."""
+        ...
+
+    @property
+    def enabled(self) -> SignalRW[bool]:
+        """Current on/off state."""
+        ...
+
+    @property
+    def binary(self) -> SignalR[bool]:
+        """Whether the source is on/off only, ignoring ``intensity``."""
+        ...
 
     async def read(self) -> dict[str, Reading[Any]]:
-        """Read the current state of the light source.
-
-        Returns
-        -------
-        dict[str, Any]
-            Dictionary of signal names to their current values.
-        """
+        """Return the current value of every signal, by name."""
         ...
 
     async def describe(self) -> dict[str, Descriptor]:
-        """Describe the light source signals.
-
-        Returns
-        -------
-        dict[str, Descriptor]
-            Dictionary of signal names to their descriptors.
-        """
+        """Return the descriptor of every signal, by name."""
         ...
 
     def trigger(self) -> AsyncStatus[None]:
-        """Toggle the activation status of the light source.
-
-        Returns
-        -------
-        AsyncStatus[None]
-            Status object of the operation.
-        """
+        """Toggle the light source on or off."""
         ...
 
 
 @runtime_checkable
-class BufferDataProtocol(Protocol):
-    """Protocol for devices that provide a continuously updated data buffer."""
+class HasAsyncShutdown(Protocol):
+    """A device releasing what it holds asynchronously."""
 
-    buffer: SignalR[Array2D]
-    """Readable signal providing access to the current data buffer."""
+    async def shutdown(self) -> None:
+        """Release the device's resources."""
+        ...
 
 
 @runtime_checkable
-class DetectorProtocol(BufferDataProtocol, AsyncConfigurable, AsyncStageable, Protocol):
+@runtime_checkable
+class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models."""
 
-    exposure: SignalRW[float]
-    """Signal for exposure time."""
+    buffer: SignalR[np.ndarray]
+    """The latest frame, of shape (height, width)."""
 
-    roi: SignalRW[ROIType]
-    """Signal for setting region of interest (ROI)."""
+    exposure: SignalRW[float]
+    """Exposure time."""
+
+    roi: SignalRW[str]
+    """Region of interest, as text: ``"x,y,width,height"``, read with `Roi.parse`."""
 
     pixel_dtype: SignalRW[str]
-    """Signal for setting pixel data type."""
+    """The numpy dtype the camera reads out in, one of the choices it describes."""
+
+    sensor_size: SignalR[np.ndarray]
+    """The whole sensor as (width, height): what ``roi`` is expressed against."""
 
 
 @runtime_checkable
@@ -144,16 +147,14 @@ class ReadableFlyer(
     WritesStreamAssets,
     Protocol,
 ):
-    """Protocol for objects that can write to disk."""
+    """Protocol for detectors that fly and write stream assets."""
 
 
 __all__ = [
-    "Array2D",
-    "BufferDataProtocol",
     "DetectorProtocol",
+    "HasAsyncShutdown",
     "LayerSpec",
     "LightProtocol",
     "MotorProtocol",
-    "ROIType",
     "ReadableFlyer",
 ]

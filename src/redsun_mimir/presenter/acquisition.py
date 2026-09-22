@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
-from bluesky.preprocessors import set_run_key_wrapper
+from bluesky.preprocessors import set_run_key_decorator
 from bluesky.utils import MsgGenerator, RequestAbort
 from ophyd_async.core import TriggerInfo
-from redsun.engine import RunEngine
+from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
 from redsun.presenter import Presenter
@@ -23,12 +23,12 @@ from redsun.presenter.plan_spec import (
 )
 from redsun.virtual import Signal, slot
 
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from redsun_mimir.protocols import (  # noqa: TC001
     MotorProtocol,
     ReadableFlyer,
 )
 from redsun_mimir.providers import PLAN_SPECS
-from redsun_mimir.streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -39,18 +39,15 @@ if TYPE_CHECKING:
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
 
-#: Run key isolating the background scan from the enclosing live run, so the
-#: median presenter sees a start/descriptor/event/stop cycle of its own.
+#: Run key giving the background scan a document cycle of its own, apart from
+#: the enclosing live run.
 _MEDIAN_RUN_KEY = "median_scan"
+_CAPTURE_RUN_KEY = "capture"
 
 
 @dataclass
 class ScanAction(Action):
-    """Action to trigger a scan during live acquisition.
-
-    This action can be used to trigger a scan movement
-    of a motor during a live acquisition plan.
-    """
+    """Action triggering a motor scan during live acquisition."""
 
     name: str = "scan"
     description: str = "Trigger a scan movement."
@@ -58,16 +55,7 @@ class ScanAction(Action):
 
 @dataclass
 class StreamAction(Action):
-    """Action to trigger data streaming to disk during live acquisition.
-
-    This action can be used to trigger data streaming to a Zarr store
-    on disk during a live acquisition plan.
-
-    Attributes
-    ----------
-    frames : int
-        The number of frames to stream to disk.
-    """
+    """Action toggling data streaming to a Zarr store during live acquisition."""
 
     name: str = "stream"
     description: str = "Toggle data streaming to disk."
@@ -87,11 +75,9 @@ def prepare_and_declare(
     """Prepare detectors and optionally declare their stream.
 
     Preparing starts live acquisition and hands each detector the sink it
-    *will* write through; the write window itself only opens at kickoff, so
-    frames reach viewers but not storage until then.
-
-    Staging is the caller's responsibility so that multiple device
-    groups can be staged together in one ``stage_all`` call.
+    will write through; the write window opens at kickoff, so frames reach
+    viewers but not storage until then. Staging is left to the caller, so
+    several device groups can share one ``stage_all`` call.
     """
     for det in detectors:
         yield from bps.prepare(det, trigger_info, wait=True)
@@ -110,38 +96,31 @@ def teardown_acquisition(
 
 
 class AcquisitionPresenter(Presenter, Loggable):
-    """A centralized acquisition presenter to manage a Bluesky run engine.
+    """Presenter owning the run engine and the plans it launches.
 
     Parameters
     ----------
-    name : str
-        Identity key of the presenter.
-    devices : Mapping[str, Device]
-        The available devices in the application.
     callbacks : list[str] | None, optional
         Names of the document callbacks to subscribe on the run engine.
-        Defaults to ``None``, meaning **every** callback registered on the
-        virtual container is subscribed - live visualization and median
-        filtering are document-driven, so an unlisted callback is a silently
-        dead viewer. Pass an explicit list to restrict the selection, or an
-        empty list to subscribe none.
+        ``None`` subscribes every callback the container registered; an
+        empty list subscribes none.
 
     Attributes
     ----------
     sig_pre_launch_notify : Signal[str]
-        Emitted before launching a plan,
-        carrying the name of the plan to be launched as a `str`.
-        Useful to notify other presenters to prepare
-        for the upcoming plan launch (e.g., to set up storage paths).
+        Emitted with the plan's name before it launches.
+    sig_base_dir_changed : Signal[str]
+        Emitted with the new directory when a request to change where a run
+        writes is accepted.
     sig_plan_done : Signal[None]
         Emitted when a non-togglable plan completes.
     sig_action_done : Signal[str]
-        Emitted when an action event is cleared.
-        Carries the name of the action as a `str`.
+        Emitted with the action's name when its event is cleared.
     """
 
     sig_pre_launch_notify = Signal(str)
     sig_plan_done = Signal()
+    sig_base_dir_changed = Signal(str)
     sig_action_done = Signal(str)
 
     def __init__(
@@ -154,6 +133,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         super().__init__(name, devices)
         self.models = devices
         self.engine = RunEngine()
+        self.deferrals = Deferrals(self.engine)
 
         self.futures: set[Future[Any]] = set()
         self.action_map: dict[str, SRLatch] = {}
@@ -188,8 +168,9 @@ class AcquisitionPresenter(Presenter, Loggable):
             return None
 
     def register_providers(self, container: VirtualContainer) -> None:
-        """Register plan specs as a provider in the DI container."""
+        """Register plan specs and the engine's deferrals as providers."""
         container.provide(PLAN_SPECS, self.plans_specificiers())
+        container.provide(DEFERRALS, self.deferrals)
         container.register_signals(self)
 
     def inject_dependencies(self, container: VirtualContainer) -> None:
@@ -211,7 +192,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
     def plans_specificiers(self) -> set[PlanSpec]:
-        """Return the current set of plan specifications for the available plans."""
+        """Return the specs of the available plans."""
         return set(self.plan_specs.values())
 
     @continous
@@ -230,34 +211,29 @@ class AcquisitionPresenter(Presenter, Loggable):
     ) -> MsgGenerator[None]:
         """Perform live data collection with temporal median filtering.
 
-        When starting the plan, detectors will start emitting acquired frames at their live-view rates.
-        If the "scan" action is triggered from the UI, the plan will perform a square motor movement
-        over x and y axis, collecting ``scan_frames / 4`` frames for each side of the rectangle.
-        The ``MedianPresenter`` callback accumulates these frames and computes the median at the
-        end of the run.
-
-        If the "stream" action is triggered, the plan will fly the detectors to disk for
-        ``stream_frames`` frames. If a scan was previously performed, the computed median
-        frame will also be written to disk.
+        Detectors emit frames at their live-view rate from the start. The
+        "scan" action moves the motor in a square over x and y, collecting
+        ``scan_frames / 4`` frames per side; the ``MedianPresenter`` callback
+        computes their median when that run ends. The "stream" action flies
+        the detectors to disk for ``stream_frames`` frames, as a run nested in
+        this one whose start document names this run as ``parent`` and the
+        last scan's run as ``median_scan``; the ``MedianPresenter`` writes
+        that scan's stack into the store the capture names.
 
         Parameters
         ----------
-        - detectors: ``Sequence[MedianFlyer]``
-            - The detectors to use for data collection.
-            - They must provide a `median` attribute that is a `MedianDevice`, which computes the median of the acquired frames.
-        - motor: ``XYMotor``
-            - The motor to use for the scan movement.
-            - Must expose ``x`` and ``y`` as
-            [`MotorAxis`][redsun_mimir.device.axis.MotorAxis] attributes.
+        - detectors: ``Sequence[ReadableFlyer]``
+            - The detectors to collect from.
+        - motor: ``MotorProtocol``
+            - The motor to scan with. Must expose ``x`` and ``y`` axes.
         - step: ``float``, optional
-            - The step size for motor movement. Default is 5.0.
-            - The measurement unit is determined by the motor in use.
+            - The motor step per frame, in the motor's units. Default is 5.0.
         - scan_frames: ``int``, optional
-            - The number of frames to collect for median filtering.
-            - Default is 40 (resulting in 10 frames per side of the square).
+            - The number of frames to collect for the median. Default is 40,
+            ten per side of the square.
         - stream_frames: ``int``, optional
-            - The number of frames to stream to disk when the stream action is triggered.
-            - Default is 10.
+            - The number of frames to stream to disk per stream action.
+            Default is 10.
 
         Raises
         ------
@@ -273,10 +249,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         live_stream = "live_stream"
         stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
 
-        live_stream_declared = False
         restage = True
+        scan_run: str | None = None
 
-        yield from bps.open_run()
+        parent = yield from bps.open_run()
 
         # every live frame travels as an Event document so MedianPresenter
         # can divide it by the background median and publish the result
@@ -285,14 +261,12 @@ class AcquisitionPresenter(Presenter, Loggable):
 
         while True:
             if restage:
+                # preparing starts the live view and hands each detector the
+                # store its next capture writes; the capture declares it
                 yield from bps.stage_all(*detectors)
                 yield from prepare_and_declare(
-                    detectors,
-                    stream_prepare_info,
-                    live_stream,
-                    declare=not live_stream_declared,
+                    detectors, stream_prepare_info, live_stream, declare=False
                 )
-                live_stream_declared = True
                 restage = False
 
             name, event = yield from rps.wait_for_actions(
@@ -300,74 +274,97 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                yield from self.square_scan(detectors, motor, step, scan_frames // 4)
+                scan_run = yield from self.square_scan(
+                    detectors, motor, step, scan_frames // 4, parent=parent
+                )
 
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
-                yield from bps.kickoff_all(*detectors, wait=True)
-                yield from teardown_acquisition(detectors, live_stream)
+                yield from self.capture(
+                    detectors, live_stream, parent=parent, median_scan=scan_run
+                )
                 restage = True
                 self.logger.debug("Writing complete")
 
             self.clear_and_notify(name, event)
 
+    @set_run_key_decorator(_MEDIAN_RUN_KEY)  # type: ignore[untyped-decorator]
     def square_scan(
         self,
         detectors: Sequence[ReadableFlyer],
         motor: MotorProtocol,
         step: float,
         frames_per_side: int,
-    ) -> MsgGenerator[None]:
+        *,
+        parent: str | None = None,
+    ) -> MsgGenerator[str]:
         """Collect a background stack by moving the motor in a square.
 
-        The stack is emitted as Event documents in a **nested run**, which
-        gives [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter] a
-        natural boundary: it accumulates the frames and computes - and
-        writes - the median when that run stops.
-
-        Scan sequence is x -> y -> -x -> -y, with *frames_per_side* frames
-        collected along each side.
+        The stack is emitted as Event documents in a nested run, so
+        [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter] can
+        accumulate the frames and compute the median when that run stops.
+        The sides are x, y, -x, -y, with *frames_per_side* frames along
+        each. Returns the run's uid.
 
         Parameters
         ----------
-        detectors : Sequence[ReadableFlyer]
-            The detectors to read from before each motor movement.
-        motor : MotorProtocol
-            The motor to use for the scan movement.
-        step : float
-            The step size for motor movement.
-        frames_per_side : int
-            The number of frames to collect for each side of the square.
+        parent : str, optional
+            The uid of the run this scan serves, recorded on its start
+            document.
         """
-        yield from set_run_key_wrapper(
-            self._square_scan_run(detectors, motor, step, frames_per_side),
-            _MEDIAN_RUN_KEY,
-        )
-
-    def _square_scan_run(
-        self,
-        detectors: Sequence[ReadableFlyer],
-        motor: MotorProtocol,
-        step: float,
-        frames_per_side: int,
-    ) -> MsgGenerator[None]:
-        """Emit the square-scan stack as its own run."""
         # TODO: handle the case of failure in motor movement or detector gracefully;
         # probably best to wrap any exception in try-except.
         x = motor.axis["x"]
         y = motor.axis["y"]
 
-        yield from bps.open_run(md={"purpose": MEDIAN_SCAN_STREAM})
+        uid: str = yield from bps.open_run(
+            md={"purpose": MEDIAN_SCAN_STREAM, "parent": parent}
+        )
         for axis, direction in ((x, step), (y, step), (x, -step), (y, -step)):
             for _ in range(frames_per_side):
                 self.logger.debug(f"Moving {axis.name} by {direction} steps.")
+                yield from bps.mvr(axis, direction)
+                # a detector taking frames continuously has one ready from
+                # before the move; triggering waits for the one taken after it
+                for det in detectors:
+                    yield from bps.trigger(det, wait=True)
                 yield from bps.create(name=MEDIAN_SCAN_STREAM)
                 for det in detectors:
                     yield from bps.read(det.buffer)
+                # the axes go in the same event, so each frame carries the
+                # position it was taken at
+                yield from bps.read(motor)
                 yield from bps.save()
-                yield from bps.mvr(axis, direction)
-                yield from bps.sleep(0.05)
         yield from bps.close_run()
+        return uid
+
+    @set_run_key_decorator(_CAPTURE_RUN_KEY)  # type: ignore[untyped-decorator]
+    def capture(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        stream_name: str,
+        *,
+        parent: str,
+        median_scan: str | None = None,
+        until_reset: bool = False,
+    ) -> MsgGenerator[str]:
+        """Fly the prepared detectors to disk in a nested run and return its uid.
+
+        The start document names *parent*, the run served, and *median_scan*,
+        the scan whose stack goes into the store this capture names. With
+        *until_reset* the window stays open until the action that opened it
+        is toggled off. The detectors are left unstaged for the next capture.
+        """
+        uid: str = yield from bps.open_run(
+            md={"purpose": "capture", "parent": parent, "median_scan": median_scan}
+        )
+        yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+        yield from bps.kickoff_all(*detectors, wait=True)
+        if until_reset:
+            yield from rps.wait_for_actions(self.action_map, wait_for="reset")
+        yield from teardown_acquisition(detectors, stream_name)
+        yield from bps.close_run()
+        return uid
 
     @continous(togglable=True)
     def live_stream(
@@ -381,33 +378,27 @@ class AcquisitionPresenter(Presenter, Loggable):
     ) -> MsgGenerator[None]:
         """Perform live data collection and optionally store data to disk.
 
-        Provides an optional `stream` action that, when triggered from the UI,
-        starts streaming the acquired data to a Zarr store on disk on the
-        specified path, for a given number of `frames`.
-
-        While streaming is active, live visualization continues as normal.
+        The `stream` action streams the acquired frames to a Zarr store for
+        `frames` frames, as a run nested in this one whose start document
+        names this run as ``parent``. Live visualization continues meanwhile.
 
         Parameters
         ----------
         - detectors: ``Sequence[ReadableFlyer]``
-            - The detectors to use for data collection.
-            - Must implement the additional `Preparable` and `Flyable` protocols.
+            - The detectors to collect from.
+            - Must also implement the `Preparable` and `Flyable` protocols.
         - frames: ``int``, optional
-            - The number of images to stream to disk.
-            - Default is 10.
+            - The number of frames to stream to disk. Default is 10.
         - write_forever: ``bool``, optional
-            - If True, the data will be streamed to disk until
-            the `stream` action is toggled off from the UI, disregarding
-            the `frames` parameter.
-            Default is False (only `frames` number of images will be streamed).
+            - If True, stream until the `stream` action is toggled off,
+            ignoring `frames`. Default is False.
         """
-        streams_declared = False
         stream_name = "live_stream"
         trigger_info = TriggerInfo(number_of_events=0 if write_forever else frames)
 
         self.action_map.update(**stream_action.event_map)
 
-        yield from bps.open_run()
+        parent = yield from bps.open_run()
 
         # live visualization travels as Event documents, so the viewer sees
         # frames through the same document sequence as everything else
@@ -415,41 +406,36 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from bps.monitor(det.buffer, name=LIVE_VIEW_STREAM)
 
         while True:
+            # preparing starts the live view and hands each detector the
+            # store its next capture writes; the capture declares it
             yield from bps.stage_all(*detectors)
             yield from prepare_and_declare(
-                detectors,
-                trigger_info,
-                stream_name,
-                declare=not streams_declared,
+                detectors, trigger_info, stream_name, declare=False
             )
-            streams_declared = True
             name, current_action = yield from rps.wait_for_actions(
                 self.action_map, wait_for="set"
             )
             self.logger.debug("Start writing")
-            # kickoff opens the write window: frames were already reaching
-            # viewers from prepare onwards, they now also reach storage
-            yield from bps.kickoff_all(*detectors, wait=True)
-            if write_forever:
-                name, current_action = yield from rps.wait_for_actions(
-                    self.action_map, wait_for="reset"
-                )
-            yield from teardown_acquisition(detectors, stream_name)
+            yield from self.capture(
+                detectors, stream_name, parent=parent, until_reset=write_forever
+            )
             self.logger.debug("Writing complete")
             self.clear_and_notify(name, current_action)
 
     @slot
     def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
-        """Launch the specified plan.
+        """Launch *plan_name* with the parameter values the UI collected.
 
-        Parameters
-        ----------
-        plan_name : ``str``
-            The name of the plan to launch.
-        param_values : ``Mapping[str, Any]``
-            The parameter values to pass to the plan.
-            Elaborated from the UI inputs.
+        Refused, with a warning, while another plan runs.
         """
+        if self.futures:
+            self.logger.warning(f"A plan is running; {plan_name!r} not launched")
+            return
+        # an action's latch lives on the action instance, which the plan's
+        # default arguments share across launches: one left set by a stop
+        # would fire the action as soon as the next launch waits on it
+        for latch in self.action_map.values():
+            latch.reset()
         self.action_map.clear()
         plan = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
@@ -460,37 +446,24 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.sig_pre_launch_notify.emit(plan_name)
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
-
-        if not spec.togglable:
-            fut.add_done_callback(self._notify_plan_done)
-
+        fut.add_done_callback(self._notify_plan_done)
         fut.add_done_callback(self._discard_future)
 
     def _notify_plan_done(self, fut: Future[Any]) -> None:
-        """Emit ``sig_plan_done`` when a non-togglable plan future settles.
+        """Emit ``sig_plan_done`` when a plan future settles.
 
-        ``Future.add_done_callback`` passes the future to its callback,
-        while ``sig_plan_done`` carries no payload; the future is discarded
-        here rather than handed to the signal.
+        The signal carries no payload, so the future is dropped.
         """
         self.sig_plan_done.emit()
 
     def clear_and_notify(self, name: str, event: SRLatch) -> None:
-        """Reset the given latch and emit "action done" signal.
-
-        Parameters
-        ----------
-        name : ``str``
-            The name of the action.
-        event : ``SRLatch``
-            The latch to reset and notify.
-        """
+        """Reset *event* and emit ``sig_action_done`` with *name*."""
         event.reset()
         self.sig_action_done.emit(name)
 
     @slot
     def toggle_action_event(self, action_name: str, state: bool) -> None:
-        """Toggle the event associated with the given action name."""
+        """Set or reset the latch of *action_name*, on the engine's loop."""
         event = self.action_map[action_name]
         if state:
             self.engine.loop.call_soon_threadsafe(event.set)
@@ -499,13 +472,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
     @slot
     def pause_or_resume_plan(self, pause: bool) -> None:
-        """Pause or resume the running plan.
-
-        Parameters
-        ----------
-        pause : ``bool``
-            If True, pause the plan; if False, resume the plan.
-        """
+        """Pause the running plan, or resume it when *pause* is false."""
         if pause:
             self.discard_by_pause = True
             self.engine.request_pause(defer=True)
@@ -518,15 +485,28 @@ class AcquisitionPresenter(Presenter, Loggable):
             fut.add_done_callback(self._discard_future)
 
     @slot
+    def set_base_dir(self, base_dir: str) -> None:
+        """Announce *base_dir* as where the devices of a run write.
+
+        Refused while a plan runs, so the files of one run stay under one root.
+        """
+        if self.futures:
+            self.logger.warning(
+                f"A plan is running; {base_dir!r} takes effect between runs only"
+            )
+            return
+        self.sig_base_dir_changed.emit(base_dir)
+
+    @slot
     def stop_plan(self) -> None:
-        """Stop the running plan."""
+        """Stop the running plan, if any."""
+        if self.engine.state == "idle":
+            self.logger.debug("No plan to stop")
+            return
         self.engine.stop()
 
     def shutdown(self) -> None:
-        """Shutdown the presenter.
-
-        If there is a running plan, abort it.
-        """
+        """Abort the running plan, if any, without emitting ``sig_plan_done``."""
         if len(self.futures) > 0:
             self.logger.debug("Aborting running plan(s) during presenter shutdown.")
             with self.sig_plan_done.blocked():

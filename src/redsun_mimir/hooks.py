@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from napari._qt.qt_event_loop import get_qapp
 
@@ -11,26 +11,32 @@ from redsun_mimir.utils.napari import stylesheet
 if TYPE_CHECKING:
     from qtpy.QtWidgets import QApplication
 
-__all__ = ["NapariApplication"]
+__all__ = ["FONT_SIZE", "NapariApplication"]
+
+#: Point size every widget of a session is drawn at.
+FONT_SIZE: Final = 9
 
 
 class NapariApplication:
-    """Runs the session on napari's application, themed like napari.
+    """Hooks running the session on napari's application, themed like napari.
 
-    Serves two hook points. ``create_application`` hands the container the
-    application napari itself would build, carrying its name, icon, identifier
-    and high-DPI attributes; ``configure_application`` puts napari's stylesheet
-    on that application, so a window embedding a napari viewer is styled
-    throughout rather than only where the viewer sits.
+    ``create_application`` hands the container the application napari itself
+    would build, with its name, icon, identifier and high-DPI attributes;
+    ``configure_application`` puts napari's stylesheet on it, so a window
+    embedding a napari viewer is styled throughout, not only where the viewer
+    sits.
 
-    The stylesheet is read from napari's settings once, as the session starts.
+    The stylesheet is read from napari's settings once, as the session
+    starts, at `FONT_SIZE` rather than napari's own size, which is larger
+    than a platform gives a Qt application and would show on every widget
+    beside the viewer.
     """
 
     def create_application(self, argv: list[str]) -> QApplication:
         """Return napari's application, creating it if it does not exist.
 
-        *argv* is not forwarded: napari builds its own, so that the name shown
-        in the macOS application menu is the one it expects.
+        *argv* is not forwarded: napari builds its own, so the macOS
+        application menu shows the name it expects.
         """
         # TODO: get_qapp correctly returns QApplication,
         # but napari is not fully typed yet and it has no
@@ -40,4 +46,4 @@ class NapariApplication:
 
     def configure_application(self, app: QApplication) -> None:
         """Put napari's stylesheet on *app*."""
-        app.setStyleSheet(stylesheet())
+        app.setStyleSheet(stylesheet(FONT_SIZE))

@@ -45,32 +45,25 @@ if TYPE_CHECKING:
 class ROIInteractionBoxOverlay(SelectionBoxOverlay):  # type: ignore[misc]
     """A box to select a region of interest in an image.
 
+    The attributes are `SelectionBoxOverlay`'s.
+
     Attributes
     ----------
     bounds : 2-tuple of 2-tuples
-        Corners at top left and bottom right in layer coordinates.
+        Top-left and bottom-right corners in layer coordinates.
     handles : bool
-        Whether to show the handles for transfomation or just the box.
+        Whether the handles are drawn, or only the box.
     selected_handle : Optional[InteractionBoxHandle]
-        The currently selected handle.
-    visible : bool
-        If the overlay is visible or not.
+        The handle under the mouse, if any.
     opacity : float
-        The opacity of the overlay. 0 is fully transparent.
+        0 is fully transparent.
     order : int
-        The rendering order of the overlay: lower numbers get rendered first.
-
-    Notes
-    -----
-    The attributes are inherited from `SelectionBoxOverlay`.
+        Rendering order; lower is drawn first.
     """
 
 
 class VispyROIBoxOverlay(VispySelectionBoxOverlay):  # type: ignore[misc]
-    """Vispy overlay, connected to an assigne Image layer and its associated ROIInteractionBoxOverlay.
-
-    Provides a visual representation of the region of interest (ROI) of the image layer.
-    """
+    """Vispy overlay drawing an image layer's ``ROIInteractionBoxOverlay``."""
 
     node: InteractionBox
     overlay: ROIInteractionBoxOverlay

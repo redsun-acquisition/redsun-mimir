@@ -10,7 +10,7 @@ class Options(Namespace):
 
 
 def main() -> None:
-    """Run main function to run the script."""
+    """Run the ``mimir`` CLI."""
     parser = ArgumentParser(description="CLI for redsun-mimir examples")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("sim", help="Run the full simulation example")

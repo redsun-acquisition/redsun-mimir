@@ -1,9 +1,24 @@
 # Simulated hardware. Lays over common_configuration.yaml.
 
+services:
+  transport: pv-access
+  camera1_ioc:
+    plugin_name: redsun-mimir
+    plugin_id: mmcore-camera
+    prefix: "MIMIR-CAM1:"
+    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
+  xy_stage:
+    plugin_name: redsun-mimir
+    plugin_id: mmcore-stage
+    prefix: "MIMIR-XY:"
+    args: ["--adapter", "DemoCamera", "--device", "DXYStage", "--axes", "x,y"]
+  z_stage:
+    plugin_name: redsun-mimir
+    plugin_id: mmcore-stage
+    prefix: "MIMIR-Z:"
+    args: ["--adapter", "DemoCamera", "--device", "DStage", "--axes", "z"]
+
 devices:
-  camera1: {}
-  xy-motor: {}
-  z-motor: {}
   led:
     wavelength: 300
     binary: true

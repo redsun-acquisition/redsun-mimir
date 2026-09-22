@@ -9,7 +9,7 @@ Bundle of [`redsun`](https://github.com/redsun-acquisition/redsun) components fo
 
 ## About `mimir`
 
-Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with an hardware controller developed by [openUC2](https://openuc2.com/). It employs [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for camera control and [`pyserial`](https://github.com/pyserial/pyserial) for motor and laser control.
+Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with an hardware controller developed by [openUC2](https://openuc2.com/). The hardware is driven from separate processes: [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for the camera and the stages, [`pyserial`](https://github.com/pyserial/pyserial) for the openUC2 board. Each runs as a `redsun` service and is reached over PVAccess, served by [`fastcs`](https://github.com/DiamondLightSource/FastCS).
 
 `redsun-mimir` is a bundle of components developed to target the specific hardware and software requirements for real-time acquisition with said microscope.
 
@@ -17,7 +17,7 @@ Mimir is the codename for an in-development portable [interferometric scattering
 > This bundle has been used as a staging ground for development in cohesion with the main framework. Some components may be moved to `redsun` itself to be provided as built-in functionalities. Expect breaking changes as the framework evolves.
 
 > [!WARNING]
-> The `youseetoo` module has not been fully tested and there is currently no known way of testing it in a continous integration. Ensure you can pre-emptively test the components locally.
+> The `youseetoo` module has not been fully tested and there is currently no known way of testing it in a continous integration. The service is exercised against a `loop://` serial port, which answers nothing; the board itself is untested. Ensure you can pre-emptively test the components locally.
 
 ## Installation
 
@@ -144,6 +144,49 @@ look.
 The shipped containers declare the hook themselves, so `mimir sim` and
 `mimir uc2` need no `hooks:` section.
 
+## Services
+
+Every piece of hardware runs in its own process. A service owns the driver, a
+`redsun` session starts and stops it, and the device in the session talks to it
+over PVAccess. The bundle ships three:
+
+| service | what it owns | arguments |
+| --- | --- | --- |
+| `mmcore-camera` | one Micro-Manager camera | `--adapter`, `--device`, `--properties` |
+| `mmcore-stage` | one Micro-Manager stage | `--adapter`, `--device`, `--axes` |
+| `youseetoo-controller` | the openUC2 board's serial port | `--port`, `--baudrate` |
+
+A session declares them beside its devices, and each device names the service
+it belongs to:
+
+```yaml
+services:
+  transport: pv-access
+  camera1_ioc:
+    plugin_name: redsun-mimir
+    plugin_id: mmcore-camera
+    prefix: "MIMIR-CAM1:"
+    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
+```
+
+`--properties` names the camera's own properties to publish beside `exposure`
+and `roi`, comma-separated; without it none are.
+
+```python
+class MimirSimulator(MimirApp, config=_CONFIG):
+    mmcamera = declare_device(MMCamera, service="camera1_ioc")
+```
+
+A service reads its prefix from the environment the session launches it with,
+and the device connects at that prefix, so the session file names it once.
+
+The directory a capture goes to is a session setting:
+
+```yaml
+storage:
+  base_dir: "D:/mimir-data"   # optional; the user data directory otherwise
+```
+
 ## Wiring a session from YAML
 
 The shipped containers declare their connections in `wire()`. A session built
@@ -167,6 +210,14 @@ wiring:
     to: det_ctrl.set
   - from: det_ctrl.sig_new_configuration
     to: det_widget.on_new_configuration
+  - from: det_ctrl.sig_new_configuration
+    to: img_widget.on_new_configuration
+  - from: img_widget.sig_roi_drawn
+    to: det_widget.on_roi_drawn
+  - from: det_widget.sig_roi_selection
+    to: img_widget.set_roi_selection
+  - from: det_widget.sig_roi_edited
+    to: img_widget.set_roi_box
   - from: motor_widget.sig_motor_move
     to: motor_ctrl.move
   - from: light_widget.sig_toggle_light_request
@@ -185,18 +236,24 @@ wiring:
     to: acq_widget.on_plan_done
   - from: acq_ctrl.sig_action_done
     to: acq_widget.on_action_done
+  - from: acq_widget.sig_base_dir_request
+    to: acq_ctrl.set_base_dir
+  - from: acq_ctrl.sig_base_dir_changed
+    to: acq_widget.on_base_dir_changed
   - from: acq_ctrl.sig_pre_launch_notify
     to: median_ctrl.clear_medians
   - from: acq_ctrl.sig_pre_launch_notify
-    to: storage_ctrl.set_plan
+    to: path_provider.set_plan
   - from: acq_ctrl.sig_plan_done
-    to: storage_ctrl.reset_plan
+    to: path_provider.reset_plan
+  - from: acq_ctrl.sig_base_dir_changed
+    to: path_provider.set_base_dir
 ```
 
 Component names are the keys used under `devices:`, `presenters:` and `views:`;
-port names are the signal attributes and the names the slots declare. The last
-two rules reach `redsun`'s own `StoragePresenter`, which stopped discovering
-those signals by itself in 0.11.0.
+port names are the signal attributes and the names the slots declare. The three
+rules reaching `path_provider` go to the session's own path provider, which is
+what names the directory a capture is written to.
 
 There is no rule feeding `motor_widget.update_setpoint`: the motor view
 subscribes to the axis readbacks themselves, so its labels track the stage even
@@ -205,9 +262,15 @@ when a plan is what moved it.
 ## Features
 
 - Live data capture.
-- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607).
+- Region of interest chosen on the image: Select ROI in a detector's settings
+  opens an editor and shows a box over its layer. Drag the box or type the
+  numbers, each follows the other; Full fills in the whole sensor, OK applies.
+  A change asked for during a plan lands between two of its messages.
+- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
+- Every capture and every scan is a run of its own, nested in the live plan's run, with the run it serves and the scan it follows named on its start document.
+- The session's log records in a view of their own, from `redsun`.
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).
-- Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr).
+- Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.
 - Manual control of light source and motor drivers.
 - Fully extensible via additional components following the `redsun` framework.
 

@@ -50,21 +50,12 @@ if TYPE_CHECKING:
 
 
 def resize_selection_box(layer: Image, event: NapariMouseEvent) -> Iterator[None]:
-    """Resize the selection box based on mouse movement.
+    """Drag a handle of *layer*'s selection box, as a mouse drag callback.
 
-    Parameters
-    ----------
-    layer : DetectorLayer
-        The layer to resize the selection box for.
-    event : NapariMouseEvent
-        The event triggered by mouse movement.
-
-    Yields
-    ------
-    None
-        This is a generator function that handles mouse dragging.
+    A generator: napari resumes it on every mouse move until the button is
+    released.
     """
-    if len(event.dims_displayed) != 2:
+    if len(event.dims_displayed) != 2 or not layer._overlays["roi_box"].visible:
         return
 
     # Get the selected handle
@@ -121,16 +112,8 @@ def resize_selection_box(layer: Image, event: NapariMouseEvent) -> Iterator[None
 
 
 def highlight_roi_box_handles(layer: Image, event: NapariMouseEvent) -> None:
-    """Highlight the hovered handle of a selection box.
-
-    Parameters
-    ----------
-    layer: Image
-        The layer to highlight the selection box for.
-    event: NapariMouseEvent
-        The event triggered by mouse movement.
-    """
-    if len(event.dims_displayed) != 2:
+    """Highlight the hovered handle of *layer*'s selection box, on mouse move."""
+    if len(event.dims_displayed) != 2 or not layer._overlays["roi_box"].visible:
         return
 
     # we work in data space so we're axis aligned which simplifies calculation

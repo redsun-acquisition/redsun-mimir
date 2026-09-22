@@ -1,9 +1,18 @@
 # UC2 hardware. Lays over common_configuration.yaml.
 
+services:
+  transport: pv-access
+  camera_ioc:
+    plugin_name: redsun-mimir
+    plugin_id: mmcore-camera
+    prefix: "MIMIR-ISCAT:"
+    args: ["--adapter", "Daheng", "--device", "Camera"]
+  uc2_board:
+    plugin_name: redsun-mimir
+    plugin_id: youseetoo-controller
+    prefix: "MIMIR-UC2:"
+    args: ["--port", "COM4"]
+
 devices:
-  serial:
-    port: COM4
-  stage: {}
   laser:
     wavelength: 650
-  camera: {}

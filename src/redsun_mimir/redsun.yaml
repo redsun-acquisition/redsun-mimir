@@ -1,17 +1,25 @@
 devices:
   # youseetoo (UC2) devices
-  uc2-serial: redsun_mimir.device.youseetoo:UC2Serial
   uc2-motor: redsun_mimir.device.youseetoo:UC2MotorDevice
   uc2-laser: redsun_mimir.device.youseetoo:UC2LaserDevice
 
   # mmcore devices
-  mmcore-demo-camera: redsun_mimir.device.mmcore:MMDemoCamera
-  mmcore-daheng-camera: redsun_mimir.device.mmcore:MMDahengCamera
-  mmcore-demo-xy-stage: redsun_mimir.device.mmcore:MMDemoXYStage
-  mmcore-demo-z-stage: redsun_mimir.device.mmcore:MMDemoZStage
+  mmcore-camera: redsun_mimir.device.mmcore:MMCamera
+  mmcore-stage: redsun_mimir.device.mmcore:MMStage
 
   # mock devices
   mock-light: redsun_mimir.device:MockLightDevice
+
+services:
+  mmcore-camera:
+    module: redsun_mimir.services.mmcore_camera
+    ready: mmcore camera ready
+  mmcore-stage:
+    module: redsun_mimir.services.mmcore_stage
+    ready: mmcore stage ready
+  youseetoo-controller:
+    module: redsun_mimir.services.uc2_controller
+    ready: uc2 controller ready
 
 presenters:
   acquisition: redsun_mimir.presenter.acquisition:AcquisitionPresenter

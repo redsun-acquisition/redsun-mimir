@@ -1,9 +1,8 @@
 """Connections shared by the example containers.
 
-Each helper takes the components it connects rather than the container, so
-every port is checked against the class that declares it. Passing the
-container instead would type each component as ``Any`` and lose exactly the
-check these declarations exist for.
+Each helper takes the components it connects, not the container, so every
+port is checked against the class declaring it; through the container each
+component would be ``Any``.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from redsun.containers import AppContainer
-    from redsun.presenter.builtins import StoragePresenter
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -44,6 +42,10 @@ def wire_detector(
     app.connect(ctrl.sig_new_data, image.update_layers)
     app.connect(view.sig_property_changed, ctrl.set)
     app.connect(ctrl.sig_new_configuration, view.on_new_configuration)
+    app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
+    app.connect(image.sig_roi_drawn, view.on_roi_drawn)
+    app.connect(view.sig_roi_selection, image.set_roi_selection)
+    app.connect(view.sig_roi_edited, image.set_roi_box)
 
 
 def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> None:
@@ -55,8 +57,8 @@ def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> N
 def wire_motor(app: AppContainer, ctrl: MotorPresenter, view: MotorView) -> None:
     """Connect stage step requests.
 
-    The return path is not a connection: the view subscribes to the axis
-    readbacks itself, so it also follows moves this presenter never made.
+    There is no return path: the view subscribes to the axis readbacks
+    itself, so it follows moves the presenter never made.
     """
     app.connect(view.sig_motor_move, ctrl.move)
 
@@ -71,13 +73,13 @@ def wire_acquisition(
     app: AppContainer,
     ctrl: AcquisitionPresenter,
     view: AcquisitionView,
-    storage: StoragePresenter | None = None,
     median: MedianPresenter | None = None,
 ) -> None:
     """Connect run control, and the plan lifecycle to whoever tracks it.
 
-    *storage* and *median* are optional because not every container declares
-    them; when present they learn the plan name from the same signal.
+    The session's path provider takes the plan name, which names the files a
+    run writes, and the base directory, which the view lets a user choose
+    between runs. *median* is optional since not every container declares it.
     """
     app.connect(view.sig_launch_plan_request, ctrl.launch_plan)
     app.connect(view.sig_stop_plan_request, ctrl.stop_plan)
@@ -86,8 +88,12 @@ def wire_acquisition(
     app.connect(ctrl.sig_plan_done, view.on_plan_done)
     app.connect(ctrl.sig_action_done, view.on_action_done)
 
+    app.connect(view.sig_base_dir_request, ctrl.set_base_dir)
+    app.connect(ctrl.sig_base_dir_changed, view.on_base_dir_changed)
+
+    app.connect(ctrl.sig_pre_launch_notify, app.path_provider.set_plan)
+    app.connect(ctrl.sig_plan_done, app.path_provider.reset_plan)
+    app.connect(ctrl.sig_base_dir_changed, app.path_provider.set_base_dir)
+
     if median is not None:
         app.connect(ctrl.sig_pre_launch_notify, median.clear_medians)
-    if storage is not None:
-        app.connect(ctrl.sig_pre_launch_notify, storage.set_plan)
-        app.connect(ctrl.sig_plan_done, storage.reset_plan)

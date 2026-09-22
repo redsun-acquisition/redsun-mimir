@@ -1,14 +1,12 @@
 """Typed keys for the objects this bundle shares through the virtual container.
 
-A key is declared by the package that owns the type it identifies. The
-presenter that computes a value binds it with
+The package owning a type declares its key. A presenter binds a value with
 [`provide`][redsun.virtual.VirtualContainer.provide]; a view resolves it with
 [`require`][redsun.virtual.VirtualContainer.require].
 
-Most values here are snapshots taken while the owning presenter runs
-``register_providers``: later changes travel over signals, not through the
-container. The exception is a key holding device signals, which a consumer
-subscribes to and which therefore keeps reporting after the build.
+Most values are snapshots taken during ``register_providers``: later changes
+travel over signals. A key holding device signals is the exception, since a
+subscriber keeps hearing from them after the build.
 """
 
 from __future__ import annotations
@@ -47,9 +45,8 @@ MOTOR_READINGS: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(instance_o
 #: Descriptors of every motor axis, by data key.
 MOTOR_DESCRIPTION: ProviderKey[dict[str, Descriptor]] = dip.Dependency(instance_of=dict)
 
-#: Readback signal of every motor axis, by data key. Unlike the two keys above
-#: this is the live signal, so a subscriber sees every move, including the ones
-#: a plan makes.
+#: Readback signal of every motor axis, by data key. Live, unlike the two keys
+#: above: a subscriber sees every move, a plan's included.
 MOTOR_READBACKS: ProviderKey[dict[str, SignalR[float]]] = dip.Dependency(
     instance_of=dict
 )

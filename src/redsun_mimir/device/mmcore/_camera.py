@@ -1,170 +1,263 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Final
 
-from ophyd_async.core import StandardDetector
-from pymmcore_plus import CMMCorePlus
-from redsun.log import Loggable
-from redsun.storage import BaseStorage, SessionPathProvider, register_storage
-from redsun.storage.backends._acquire_zarr import AcquireZarrIO
-
-from redsun_mimir.device._logics import BaseDataLogic, BaseTriggerLogic
-from redsun_mimir.device.signals import readable_buffer_signal
-
-from ._backend import (
-    mm_exposure_signal,
-    mm_property_signal,
-    mm_roi_signal,
+import numpy as np
+from ophyd_async.core import (
+    AsyncStatus,
+    DetectorAcquireLogic,
+    DetectorDataLogic,
+    DetectorTriggerLogic,
+    SignalR,
+    SignalRW,
+    StandardDetector,
+    StreamResourceDataProvider,
+    StreamResourceInfo,
+    TriggerInfo,
+    wait_for_value,
 )
-from ._common import MMAdapterInfo
-from ._logics import MMAcquireLogic
+from ophyd_async.fastcs.core import fastcs_connector
+from redsun.log import Loggable
+
+from redsun_mimir.common import Roi
+from redsun_mimir.device.containers import ReadableDeviceMap  # noqa: TC001
 
 if TYPE_CHECKING:
-    from typing import Final
+    from collections.abc import Sequence
 
-    from ophyd_async.core import SignalRW
+    from bluesky.protocols import Reading
+    from event_model import DataKey
+    from ophyd_async.core import PathProvider, StreamableDataProvider
 
-LIVE_PERIOD: Final[float] = 1 / 60.0  # 60 Hz live view update rate
+#: What a capture window writes, as the documents name it.
+MIMETYPE = "application/x-zarr"
+
+#: Seconds ``trigger`` waits for a frame taken after it was called.
+DEFAULT_TIMEOUT: Final = 5.0
+
+#: Milliseconds per second, the units a camera takes its exposure in.
+MILLISECONDS = 1000.0
+
+#: What the service reports as its state once grabbing stopped on an error.
+FAULTED: Final = "faulted"
 
 
-class MMBaseCameraDevice(StandardDetector, Loggable):
-    """Base camera wrapper for Micro-Manager Core.
+@dataclass
+class ServiceTriggerLogic(DetectorTriggerLogic):
+    """Trigger logic telling the service how many frames the next window writes."""
+
+    camera: MMCamera
+
+    def config_sigs(self) -> set[SignalR[Any]]:
+        """Return the settings that describe how the frames were taken."""
+        return {
+            self.camera.exposure,
+            self.camera.roi,
+            self.camera.pixel_dtype,
+            self.camera.sensor_size,
+        }
+
+    async def prepare_internal(
+        self, num: int, livetime: float, deadtime: float
+    ) -> None:
+        """Set the exposure and the number of frames to write, 0 for unbounded."""
+        if livetime:
+            await self.camera.exposure.set(livetime * MILLISECONDS)
+        await self.camera.num_capture.set(num)
+
+    async def default_trigger_info(self) -> TriggerInfo:
+        """Return the unbounded window a plan without `prepare` gets."""
+        return TriggerInfo(number_of_events=0)
+
+
+@dataclass
+class ServiceAcquireLogic(DetectorAcquireLogic):
+    """Acquire logic starting and stopping the camera and the window it writes.
+
+    The camera takes frames from ``stage`` to ``unstage`` whether or not
+    anything is written: a viewer watches the buffer, and a read after a move
+    wants the frame taken since.
+    """
+
+    camera: MMCamera
+
+    async def ensure_ready(self) -> None:
+        """Have the camera take frames."""
+        await self.camera.acquire.set(True)
+
+    async def start_acquiring(self) -> None:
+        """Open the window frames are written to."""
+        await self.camera.capture.set(True)
+
+    async def wait_for_idle(self) -> None:
+        """Wait for a bounded window's last frame, or close an unbounded window.
+
+        Closing an unbounded window here rather than at unstage keeps the
+        count the documents report equal to the frames on disk.
+        """
+        if await self.camera.num_capture.get_value():
+            closed = asyncio.ensure_future(
+                wait_for_value(self.camera.capture, False, timeout=None)
+            )
+            faulted = asyncio.ensure_future(
+                wait_for_value(self.camera.state, FAULTED, timeout=None)
+            )
+            try:
+                await asyncio.wait(
+                    [closed, faulted], return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                closed.cancel()
+                faulted.cancel()
+            await self.camera.faulted()
+        else:
+            await self.camera.capture.set(False)
+
+    async def ensure_stopped(self) -> None:
+        """Close the window and stop the camera."""
+        await self.camera.capture.set(False)
+        await self.camera.acquire.set(False)
+
+
+@dataclass
+class ServiceDataLogic(DetectorDataLogic):
+    """Data logic naming the store the service writes and reporting what it wrote."""
+
+    camera: MMCamera
+    path_provider: PathProvider
+
+    def get_hinted_fields(self, datakey_name: str) -> Sequence[str]:
+        """Return the stream a viewer plots by default."""
+        return [datakey_name]
+
+    async def prepare_unbounded(self, datakey_name: str) -> StreamableDataProvider:
+        """Hand the service a store to write, and describe what lands in it."""
+        info = self.path_provider(datakey_name)
+        directory = Path(info.directory_path)
+        directory.mkdir(parents=True, exist_ok=True)
+        store = directory / f"{info.filename}.zarr"
+
+        await asyncio.gather(
+            self.camera.file_path.set(str(store)),
+            self.camera.data_key.set(datakey_name),
+        )
+        # the service starts its count over when it is handed a store, and
+        # what is counted from here is what this window writes
+        await wait_for_value(self.camera.captured, 0, timeout=DEFAULT_TIMEOUT)
+        shape, dtype = await frame_shape_and_dtype(self.camera)
+
+        return StreamResourceDataProvider(
+            uri=f"{info.directory_uri}{info.filename}.zarr",
+            resources=[
+                StreamResourceInfo(
+                    data_key=datakey_name,
+                    shape=shape,
+                    chunk_shape=(1, *shape),
+                    dtype_numpy=np.dtype(dtype).str,
+                    parameters={"dataset": datakey_name},
+                )
+            ],
+            mimetype=MIMETYPE,
+            collections_written_signal=self.camera.captured,
+        )
+
+
+async def frame_shape_and_dtype(camera: MMCamera) -> tuple[tuple[int, int], str]:
+    """Return the ``(height, width)`` and dtype of the frames a camera sends."""
+    text, dtype = await asyncio.gather(
+        camera.roi.get_value(), camera.pixel_dtype.get_value()
+    )
+    roi = Roi.parse(text)
+    return (roi.height, roi.width), dtype
+
+
+class MMCamera(StandardDetector, Loggable):
+    """A Micro-Manager camera, reached through the service that owns it.
+
+    The service publishes PVI, so each signal below is built from its
+    annotation and paired by name; the adapter and the device belong to the
+    service's declaration.
 
     Parameters
     ----------
-    name : str
-        Name of this device.
-    pixel_dtype: SignalRW[str]
-        Signal for the pixel data type.
-    adapter_info: str
-        Information about the Micro-Manager adapter and device to use.
-    storage : BaseStorage | None
-        Storage backend this camera writes frames to. Devices receive
-        storage rather than reaching for a module-global singleton: pass an
-        already-constructed [`BaseStorage`][redsun.storage.BaseStorage] to
-        share one store across detectors (register it with `eager_open`
-        disabled on every data logic in the group). If omitted, a
-        camera-private store is built from
-        [`AcquireZarrIO`][redsun.storage.backends._acquire_zarr.AcquireZarrIO]
-        and a default [`SessionPathProvider`][redsun.storage.SessionPathProvider].
-        Either way the instance is published in the process-wide registry
-        under `name` (see
-        [`register_storage`][redsun.storage.register_storage]) so sibling
-        components - e.g. a median presenter deriving a key from this
-        camera's stream - can retrieve the same storage via
-        [`get_storage`][redsun.storage.get_storage].
+    prefix :
+        PV prefix of the service, ending in ``:``; a device declared with
+        ``service=`` receives it from that service.
+    path_provider :
+        Where a capture window writes; the session passes its own.
     """
 
-    def __init__(
-        self,
-        name: str,
-        *,
-        core: CMMCorePlus,
-        pixel_dtype: SignalRW[str],
-        adapter_info: MMAdapterInfo,
-        storage: BaseStorage | None = None,
-        live_period: float = LIVE_PERIOD,
-    ) -> None:
-        self.core = core
-        if self.core.getCameraDevice() != "":
-            raise RuntimeError("Only one camera device can be active at a time. ")
-        self.core.loadDevice(name, adapter_info.adapter, adapter_info.device)
-        self.core.initializeDevice(name)
-        self.core.setCameraDevice(name)
-        self.storage = storage or BaseStorage(
-            io=AcquireZarrIO(), path_provider=SessionPathProvider()
-        )
-        register_storage(name, self.storage)
-        self.core.clearROI()
-
-        # for simplicity, hardcode
-        # the default exposure time to 100 ms
-        self.core.setExposure(100.0)
-        self.exposure = mm_exposure_signal(self.core, name)
-        self.roi = mm_roi_signal(self.core, name)
-        self.pixel_dtype = pixel_dtype
-
-        self.buffer, setter = readable_buffer_signal(self.roi, self.pixel_dtype)
-
-        acquire_logic = MMAcquireLogic(
-            core=self.core, set_buffer=setter, live_period=live_period
-        )
-
-        trigger_logic = BaseTriggerLogic(
-            datakey_name=name,
-            storage=self.storage,
-            acquire=acquire_logic,
-            roi=self.roi,
-            dtype=pixel_dtype,
-        )
-
-        data_logic = BaseDataLogic(
-            storage=self.storage,
-            acquire=acquire_logic,
-            roi=self.roi,
-            dtype=pixel_dtype,
-        )
-
-        self.add_detector_logics(trigger_logic, acquire_logic, data_logic)
-        self.add_config_signals(self.exposure, self.roi, pixel_dtype)
-        super().__init__(name=name)
-
-
-class MMDemoCamera(MMBaseCameraDevice):
-    """Demo camera device."""
+    # the filler reads these annotations at runtime to build the signals, so
+    # the types they name are imported at runtime too. The settings a reading
+    # is described by are registered by the trigger logic, since a detector is
+    # not a StandardReadable and cannot carry the annotation
+    exposure: SignalRW[float]
+    roi: SignalRW[str]
+    pixel_dtype: SignalRW[str]
+    sensor_size: SignalR[np.ndarray]
+    buffer: SignalR[np.ndarray]
+    acquire: SignalRW[bool]
+    frame_count: SignalR[int]
+    capture: SignalRW[bool]
+    file_path: SignalRW[str]
+    data_key: SignalRW[str]
+    num_capture: SignalRW[int]
+    captured: SignalR[int]
+    state: SignalR[str]
+    last_error: SignalR[str]
+    properties: ReadableDeviceMap[SignalRW[str]]
 
     def __init__(
-        self,
-        name: str,
-        *,
-        storage: BaseStorage | None = None,
-        live_period: float = 0.1,
+        self, prefix: str, *, path_provider: PathProvider, name: str = ""
     ) -> None:
-        # numpy to adapter dtype mapping
-        pixel_dtype: dict[str, str] = {
-            "uint8": "8bit",
-        }
-        self.core = CMMCorePlus.instance()
-        self.pixel_dtype = mm_property_signal(
-            self.core, name, "PixelType", enum_map=pixel_dtype
+        super().__init__(name=name, connector=fastcs_connector(prefix, self))
+        self.add_detector_logics(
+            ServiceTriggerLogic(self),
+            ServiceAcquireLogic(self),
+            ServiceDataLogic(self, path_provider),
         )
-        adapter_info = MMAdapterInfo(adapter="DemoCamera", device="DCam")
-        super().__init__(
-            name,
-            core=self.core,
-            pixel_dtype=self.pixel_dtype,
-            adapter_info=adapter_info,
-            storage=storage,
-            live_period=live_period,
-        )
-        self.core.setProperty(name, "PixelType", "8bit")
 
-
-class MMDahengCamera(MMBaseCameraDevice):
-    """Daheng camera device."""
-
-    def __init__(
-        self,
-        name: str,
-        *,
-        storage: BaseStorage | None = None,
-        live_period: float = 0.1,
-    ) -> None:
-        # numpy to adapter dtype mapping
-        pixel_dtype: dict[str, str] = {
-            "uint16": "Mono10",
-        }
-        self.core = CMMCorePlus.instance()
-        self.pixel_dtype = mm_property_signal(
-            self.core, name, "PixelType", enum_map=pixel_dtype
+    async def read_configuration(self) -> dict[str, Reading[Any]]:
+        """Return the settings, and every property the camera lets one write."""
+        settings, properties = await asyncio.gather(
+            super().read_configuration(), self.properties.read()
         )
-        adapter_info = MMAdapterInfo(adapter="DahengGalaxy", device="DahengCamera")
-        super().__init__(
-            name,
-            core=self.core,
-            pixel_dtype=self.pixel_dtype,
-            adapter_info=adapter_info,
-            storage=storage,
-            live_period=live_period,
+        return {**settings, **properties}
+
+    async def describe_configuration(self) -> dict[str, DataKey]:
+        """Describe the settings, and every property the camera lets one write."""
+        settings, properties = await asyncio.gather(
+            super().describe_configuration(), self.properties.describe()
         )
-        self.core.setProperty(name, "PixelType", "Mono10")
+        return {**settings, **properties}
+
+    async def faulted(self) -> None:
+        """Raise with the camera's own error if it stopped on a fault.
+
+        A fault ends the grabbing thread, so waiting on a frame would only
+        time out; this names the cause instead.
+        """
+        if await self.state.get_value() == FAULTED:
+            raise RuntimeError(
+                f"{self.name} stopped: {await self.last_error.get_value()}"
+            )
+
+    @AsyncStatus.wrap
+    async def trigger(self) -> None:  # type: ignore[override]
+        """Wait for a frame taken after this call.
+
+        The camera runs continuously, so the frame already published may
+        predate the move a plan just made.
+        """
+        seen = await self.frame_count.get_value()
+        await self.faulted()
+        try:
+            await wait_for_value(
+                self.frame_count, lambda count: count > seen, timeout=DEFAULT_TIMEOUT
+            )
+        except TimeoutError:
+            await self.faulted()
+            raise

@@ -5,9 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from redsun.containers import declare_hook, declare_presenter, declare_view
-from redsun.presenter.builtins import StoragePresenter
 from redsun.qt import QtAppContainer
-from redsun.view.qt.builtins import StorageView
+from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
@@ -40,15 +39,14 @@ _napari_app = NapariApplication()
 class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     """Every part of a Mimir session that does not depend on the hardware.
 
-    A session subclasses this, declares its devices and names the file that
-    configures them; the presenters, the views, their configuration and the
-    wiring between them come from here.
+    A session subclasses this, declares its devices and names their
+    configuration file; the presenters, the views, their configuration and
+    their wiring come from here.
     """
 
     create_application = declare_hook(_napari_app)
     configure_application = declare_hook(_napari_app)
 
-    storage_ctrl = declare_presenter(StoragePresenter, from_config="storage_ctrl")
     median_ctrl = declare_presenter(MedianPresenter, from_config="median_ctrl")
     det_ctrl = declare_presenter(DetectorPresenter, from_config="det_ctrl")
     acq_ctrl = declare_presenter(AcquisitionPresenter, from_config="acq_ctrl")
@@ -60,7 +58,7 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     det_widget = declare_view(DetectorView, from_config="det_widget")
     light_widget = declare_view(LightView, from_config="light_widget")
     motor_widget = declare_view(MotorView, from_config="motor_widget")
-    storage_widget = declare_view(StorageView, from_config="storage_widget")
+    logs = declare_view(LogView)
 
     def wire(self) -> None:
         """Connect the presenters to the views."""
@@ -72,6 +70,5 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
             self,
             self.acq_ctrl,
             self.acq_widget,
-            storage=self.storage_ctrl,
             median=self.median_ctrl,
         )
