@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import pytest
 from bluesky.utils import MsgGenerator
+from napari._app_model import get_app_model
 from napari.layers import LayerLock
+from napari.layers._layer_actions import _are_bounding_boxes_visible
 from napari.settings import get_settings
 from qtpy import QtWidgets
 from redsun.engine.actions import continous
@@ -286,6 +288,14 @@ class TestImageViewRoi:
         assert box.visible
         view.set_roi_selection("cam", False)
         assert not box.visible
+
+    def test_the_layer_menu_finds_the_embedded_layers(self, view: ImageView) -> None:
+        """The layer list's context menu asks napari's store for the layers."""
+        view.viewer_model.layers.selection.active = view.viewer_model.layers["cam"]
+
+        visible = get_app_model().injection_store.inject(_are_bounding_boxes_visible)
+
+        assert visible() is False
 
     def test_a_frame_not_shaped_like_its_roi_is_dropped(self, view: ImageView) -> None:
         """A monitor first reports the frame taken before the ROI changed."""
