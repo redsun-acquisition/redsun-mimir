@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
+from bluesky.utils import RunEngineInterrupted
 from ophyd_async.core import Device, soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
@@ -21,7 +22,13 @@ from redsun.engine.actions import SRLatch
 from redsun.virtual import VirtualContainer
 from redsun.writers._base import root_attributes
 
-from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, DeviceLocks, Roi
+from redsun_mimir.common import (
+    LIVE_VIEW_STREAM,
+    MEDIAN_SCAN_STREAM,
+    DeviceLocks,
+    Roi,
+    lock_wrapper,
+)
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
@@ -206,31 +213,16 @@ class FakeFuture:
 
 
 class FakeEngine:
-    """Records the plans it is handed, and hands back one future.
+    """Records the plans it is handed, and hands back one future."""
 
-    A resume hands back *resumed*, the future of the run after a pause.
-    """
-
-    def __init__(
-        self,
-        future: FakeFuture,
-        state: str = "running",
-        resumed: FakeFuture | None = None,
-    ) -> None:
+    def __init__(self, future: FakeFuture, state: str = "running") -> None:
         self.future = future
-        self.resumed = resumed or FakeFuture()
         self.state = state
         self.plans: list[Any] = []
 
     def __call__(self, plan: Any) -> FakeFuture:
         self.plans.append(plan)
         return self.future
-
-    def request_pause(self, defer: bool = False) -> None:
-        """Nothing to pause: the test settles the future itself."""
-
-    def resume(self) -> FakeFuture:
-        return self.resumed
 
     def stop(self) -> None:
         raise RuntimeError("RunEngine is already idle.")
@@ -1086,53 +1078,35 @@ class TestAcquisitionPresenter:
 
         assert ended == [True]
 
-    def test_a_plan_locks_the_devices_in_its_arguments_until_it_ends(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+    def test_a_wrapped_plan_locks_its_devices_until_it_ends(
+        self,
+        controller: AcquisitionPresenter,
+        fake_detector: FakeDetector,
+        motor_stage: FakeXYStage,
     ) -> None:
-        settled = FakeFuture()
-        controller.engine = FakeEngine(settled)  # type: ignore[assignment]
         seen: list[frozenset[str]] = []
         controller.sig_locks_changed.connect(seen.append)
 
-        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        assert controller.locks.locked == {fake_flyer.name}
-        settled.settle()
+        controller.engine(lock_wrapper(bps.null(), motor_stage, fake_detector)).result(
+            timeout=10
+        )
 
-        assert controller.locks.locked == frozenset()
-        assert seen == [{fake_flyer.name}, frozenset()]
+        assert seen == [{motor_stage.name, fake_detector.name}, frozenset()]
 
-    def test_a_paused_plan_keeps_its_devices_locked(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
-    ) -> None:
-        """A pause settles the run's future; the resumed run keeps the lock."""
-        paused, resumed = FakeFuture(), FakeFuture()
-        controller.engine = FakeEngine(paused, resumed=resumed)  # type: ignore[assignment]
-
-        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        controller.pause_or_resume_plan(True)
-        paused.settle()
-        assert controller.locks.locked == {fake_flyer.name}
-
-        controller.pause_or_resume_plan(False)
-        resumed.settle()
-        assert controller.locks.locked == frozenset()
-
-    def test_a_hold_inside_a_plan_ends_when_the_plan_is_closed(
+    def test_a_failing_wrapped_plan_unlocks(
         self, controller: AcquisitionPresenter, motor_stage: FakeXYStage
     ) -> None:
-        """A stop or abort closes the plan's generator, which ends its holds."""
+        seen: list[frozenset[str]] = []
+        controller.sig_locks_changed.connect(seen.append)
 
-        def plan() -> MsgGenerator[None]:
-            with controller.locks.hold(motor_stage):
-                yield from bps.null()
-                yield from bps.null()
+        def fail() -> MsgGenerator[None]:
+            yield from bps.null()
+            raise RuntimeError("the plan failed")
 
-        run = plan()
-        next(run)
-        assert controller.locks.locked == {motor_stage.name}
+        with pytest.raises(RuntimeError):
+            controller.engine(lock_wrapper(fail(), motor_stage)).result(timeout=10)
 
-        run.close()
-        assert controller.locks.locked == frozenset()
+        assert seen == [{motor_stage.name}, frozenset()]
 
     def test_stopping_an_idle_engine_is_nothing(
         self, controller: AcquisitionPresenter
@@ -1177,26 +1151,37 @@ class TestAcquisitionPresenter:
             controller.toggle_action_event("does-not-exist", True)
 
 
-def test_a_device_held_twice_stays_locked_until_both_holds_end() -> None:
+def test_a_device_locked_twice_stays_locked_until_both_are_released() -> None:
     """Only a change in the locked set is announced."""
     locks = DeviceLocks()
+    engine = RunEngine()
+    locks.register(engine)
     stage, camera = Device(name="stage"), Device(name="camera")
     seen: list[frozenset[str]] = []
     locks.sig_locks_changed.connect(seen.append)
 
-    with locks.hold(stage):
-        with locks.hold(stage), locks.hold(stage, camera):
-            assert locks.locked == {"stage", "camera"}
-        assert locks.locked == {"stage"}
+    def inner() -> MsgGenerator[None]:
+        yield from lock_wrapper(bps.null(), stage, camera)
 
-    assert locks.locked == frozenset()
+    engine(lock_wrapper(inner(), stage)).result(timeout=10)
+
     assert seen == [{"stage"}, {"stage", "camera"}, {"stage"}, frozenset()]
 
 
-def test_a_hold_ends_when_its_block_raises() -> None:
+def test_a_lock_replayed_after_a_rewind_is_released_once() -> None:
+    """Resuming a pause replays the lock message the checkpoint cached."""
     locks = DeviceLocks()
+    engine = RunEngine()
+    locks.register(engine)
 
-    with pytest.raises(RuntimeError), locks.hold(Device(name="stage")):
-        raise RuntimeError("the plan failed")
+    def plan() -> MsgGenerator[None]:
+        yield from bps.checkpoint()
+        yield from lock_wrapper(bps.pause(), Device(name="stage"))
+
+    with pytest.raises(RunEngineInterrupted):
+        engine(plan()).result(timeout=10)
+    assert locks.locked == {"stage"}
+
+    engine.resume().result(timeout=10)
 
     assert locks.locked == frozenset()
