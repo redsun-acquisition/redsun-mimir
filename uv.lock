@@ -4416,6 +4416,9 @@ uc2 = [
 ]
 
 [package.dev-dependencies]
+coverage = [
+    { name = "coverage" },
+]
 dev = [
     { name = "coverage" },
     { name = "mypy" },
@@ -4447,6 +4450,9 @@ sim = [
     { name = "pymmcore-plus" },
     { name = "redsun-mimir", extra = ["pyqt"] },
 ]
+tox = [
+    { name = "tox-uv-bare" },
+]
 uc2 = [
     { name = "pymmcore-plus" },
     { name = "pyserial" },
@@ -4457,32 +4463,33 @@ requires-dist = [
     { name = "fastcs", extras = ["epicspva"], specifier = ">=0.14.2" },
     { name = "msgspec", specifier = ">=0.21.1" },
     { name = "napari", specifier = ">=0.9.1" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'" },
-    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.9.1" },
     { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.13.0rc6" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", specifier = ">=0.13.0rc6" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.13.0rc6" },
     { name = "redsun", extras = ["zarr"], specifier = ">=0.13.0rc6" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 
 [package.metadata.requires-dev]
+coverage = [{ name = "coverage", specifier = ">=7.16.1" }]
 dev = [
     { name = "coverage", specifier = ">=7.16.1" },
     { name = "mypy", specifier = ">=2.3.0" },
-    { name = "napari", extras = ["pyqt6"] },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
     { name = "prek", specifier = ">=0.5.0" },
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0rc6" },
     { name = "redsun-mimir", extras = ["pyqt"] },
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "tox-uv-bare", specifier = ">=1.36.0" },
@@ -4492,8 +4499,8 @@ lint = [
     { name = "ruff", specifier = ">=0.16.5" },
 ]
 pyqt = [
-    { name = "napari", extras = ["pyqt6"] },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0rc6" },
 ]
 pyside = [
     { name = "napari", extras = ["pyside6"], specifier = ">=0.9.1" },
@@ -4503,6 +4510,7 @@ sim = [
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
     { name = "redsun-mimir", extras = ["pyqt"] },
 ]
+tox = [{ name = "tox-uv-bare", specifier = ">=1.36.0" }]
 uc2 = [
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
     { name = "pyserial", specifier = ">=3.5" },
@@ -5717,7 +5725,7 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.10.0"
+version = "21.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
@@ -5725,9 +5733,9 @@ dependencies = [
     { name = "platformdirs" },
     { name = "python-discovery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/ea/0221ff416c626986b0f6784d001818540ce645795606f3ff6b6758f033eb/virtualenv-21.10.0.tar.gz", hash = "sha256:7416cbc176d8a06b0c71e2bf65745b00822a5c204df9a2473b91d8fd06e4f6fd", size = 5380422, upload-time = "2026-09-22T16:19:40.929Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8d/f0/58b5e510c05ef177afa8c5679516a46bf7b3cf131aadae3bbd1605f19035/virtualenv-21.11.0.tar.gz", hash = "sha256:fa83254de82b83565013b2f111519cf056124dd068bdbb8c5e49c6b72c061f0f", size = 5391846, upload-time = "2026-09-23T03:09:33.626Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/69/e61d427327d01b3310ee2d87ee603bbabceb56eb6e5b3e0ba73306c290e9/virtualenv-21.10.0-py3-none-any.whl", hash = "sha256:55ab699da97bcdb28e0d2ae6f61610238bdb08f407d19c0f89151303062c428c", size = 5486130, upload-time = "2026-09-22T16:19:39.12Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/ba/324de21687982db37a65fa1ef9d32d4a07bbcc47081ab35291480bfd1c75/virtualenv-21.11.0-py3-none-any.whl", hash = "sha256:15be2e0b4a5c35f2bec284b11ef025f2b80e0d907b0ab9bbae3c4f835f6bf1e8", size = 5485008, upload-time = "2026-09-23T03:09:30.916Z" },
 ]
 
 [[package]]

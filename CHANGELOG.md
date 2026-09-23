@@ -14,6 +14,30 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `--no-reset` (`redsun_mimir.services.uc2_controller`) - opens the serial
   port without restarting the board, for a port with no board behind it.
 
+### Changed
+
+- The example sessions are named `mimir-sim` and `mimir-uc2`, each in its own
+  configuration file.
+- `AcquisitionPresenter.square_scan` takes a frame before every move, starting
+  where the motor stands; the last move closes the square.
+- `redsun_mimir.services.mmcore_camera` reads no camera property and no
+  `PixelType` while the camera sequences. A property written meanwhile is read
+  back while the sequence is paused.
+- `ImageView` locks each detector layer against deletion from the layer list
+  (napari's `LayerLock.DELETION`). A user who unlocks and deletes one gets it
+  back with the next frame.
+
+### Changed (breaking)
+
+- The `positions` metadata `MedianPresenter` writes beside a scan stack is one
+  record per frame, in stack order, with its `frame_id` and the `axes` it was
+  taken at.
+
+### Fixed
+
+- `ImageView.update_layers` rebuilds a detector layer the user deleted as a
+  sensor-sized, writable layer with its selection box.
+
 ## [0.4.1] - 07-09-2026
 
 ### Changed
@@ -133,12 +157,6 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
-- The example sessions name themselves: `mimir-sim` for the simulation and
-  `mimir-uc2` for the UC2 microscope, set in their own configuration files
-  instead of the `redsun-mimir` both took from
-  `common_configuration.yaml`. The name is what a run writes and logs under,
-  so the two no longer land in the same place.
-
 - `redsun_mimir.services.mmcore_camera` publishes the camera's own properties
   only when named with `--properties`, comma-separated; none without it.
   `MMCameraController` and `build_controller` take the same list as
@@ -231,24 +249,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   `run_uc2_container`; the CLI accepts `sim` and `uc2`.
 
 ### Fixed
-
-- `AcquisitionPresenter.square_scan` takes a frame where the motor already
-  stands and before every move, instead of moving first: the stack now starts
-  at the position the scan was asked from, and the last move closes the square
-  back onto it.
-
-- The `positions` metadata `MedianPresenter` writes beside a scan stack is one
-  record per frame, in stack order, its `frame_id` (the event's `seq_num`, the
-  frame's place in the stack) and the `axes` it was taken at, instead of one
-  list per axis key with nothing tying a position to its frame.
-
-- A detector layer the user deleted from the layer list is rebuilt by
-  `ImageView.update_layers` as a sensor-sized, writable layer carrying its
-  selection box, over the detector's current ROI and shown if a selection was
-  asked for. Before, the next frame became the layer's data as it arrived, so
-  the frame after it was written into a read-only array and the emission
-  failed with `ValueError: assignment destination is read-only`, and the
-  layer came back without its box.
 
 - `MMCameraController.reconnect` after a fault starts grabbing again even
   when the failed thread's task has not been reaped by the event loop yet;
