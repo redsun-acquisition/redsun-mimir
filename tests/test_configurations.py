@@ -53,9 +53,11 @@ _SHARED_VIEWS = {
 _SIMULATION_DEVICES = {"mmcamera", "XY", "Z", "laser", "led"}
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def simulation() -> Iterator[QtAppContainer]:
-    """Return the built simulation container, shut down after the test.
+    """Return the built simulation container, shut down after the module.
+
+    Built once: the tests taking it only read what it declares and connects.
 
     Building it needs a real OpenGL context for the napari viewer, so a test
     taking it is skipped headless. A mark cannot do that from a fixture.

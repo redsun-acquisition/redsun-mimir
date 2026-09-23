@@ -162,6 +162,10 @@ pythonpath = ["."]
 markers = [
     "qt: tests that need a Qt application (auto-skipped headless)",
 ]
+filterwarnings = [
+    # raised by napari's EventedModel and useq-schema's base model, not by this package
+    "ignore:`json_encoders` is deprecated:pydantic.warnings.PydanticDeprecatedSince20",
+]
 
 [tool.ruff.format]
 docstring-code-format = true

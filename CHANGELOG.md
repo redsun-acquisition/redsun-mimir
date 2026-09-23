@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
+## [Unreleased]
+
+### Added
+
+- `--no-reset` (`redsun_mimir.services.uc2_controller`) - opens the serial
+  port without restarting the board, for a port with no board behind it.
+
 ## [0.4.1] - 07-09-2026
 
 ### Changed

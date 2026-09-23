@@ -147,13 +147,17 @@ class UC2Controller(Controller):
             self._serial.close()
 
 
-def open_board(port: str, baudrate: int, timeout: float) -> Serial:
+def open_board(
+    port: str, baudrate: int, timeout: float, *, reset: bool = True
+) -> Serial:
     """Open the port and restart the board on it, waiting for its setup to end.
 
     *port* is anything ``pyserial`` opens by url, a device name such as
-    ``COM4`` included.
+    ``COM4`` included. Without *reset* the port is only opened.
     """
     serial = serial_for_url(port, baudrate=baudrate, timeout=timeout)
+    if not reset:
+        return serial
     serial.dtr = False
     serial.rts = True
     time.sleep(RESET_HOLD)
@@ -171,12 +175,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", required=True, help="serial port of the board")
     parser.add_argument("--baudrate", type=int, default=115200, help="baud rate")
     parser.add_argument("--timeout", type=float, default=3.0, help="read timeout, s")
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="open the port without restarting the board, for a port with none",
+    )
     identity_arguments(parser, "uc2")
     options = parser.parse_args(argv)
 
     session_logging()
     controller = UC2Controller(
-        open_board(options.port, options.baudrate, options.timeout)
+        open_board(
+            options.port, options.baudrate, options.timeout, reset=not options.no_reset
+        )
     )
     asyncio.run(serve(controller, controller_id(options), READY))
     return 0

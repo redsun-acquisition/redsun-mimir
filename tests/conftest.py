@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 from ophyd_async.core import (
+    AsyncStatus,
     DeviceMap,
     MovableLogic,
     StandardMovable,
@@ -45,9 +46,11 @@ if TYPE_CHECKING:
         ) -> Service: ...
 
     import asyncio
-    from collections.abc import AsyncGenerator, Generator, Iterator
+    from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
     from pathlib import Path
 
+    from bluesky.protocols import StreamAsset
+    from event_model import DataKey
     from qtpy.QtCore import QCoreApplication
 
 #: PV prefix the camera service serves under while the tests run.
@@ -209,6 +212,50 @@ async def fake_detector() -> FakeDetector:
     return device
 
 
+class FakeFlyer(FakeDetector):
+    """A ``FakeDetector`` the acquisition plans accept as a ``ReadableFlyer``.
+
+    For tests that launch a plan on a stand-in engine, which builds the plan
+    but never drives it; none of these methods runs.
+    """
+
+    @AsyncStatus.wrap
+    async def prepare(self, value: object) -> None:
+        """Do nothing."""
+
+    @AsyncStatus.wrap
+    async def kickoff(self) -> None:
+        """Do nothing."""
+
+    @AsyncStatus.wrap
+    async def complete(self) -> None:
+        """Do nothing."""
+
+    async def describe_collect(self) -> dict[str, DataKey]:
+        """Describe no stream."""
+        return {}
+
+    async def collect_asset_docs(
+        self, index: int | None = None
+    ) -> AsyncIterator[StreamAsset]:
+        """Write no asset."""
+        assets: tuple[StreamAsset, ...] = ()
+        for asset in assets:
+            yield asset
+
+    async def get_index(self) -> int:
+        """Report nothing written."""
+        return 0
+
+
+@pytest.fixture
+async def fake_flyer() -> FakeFlyer:
+    """Return a connected ``FakeFlyer``."""
+    device = FakeFlyer("cam")
+    await device.connect(mock=True)
+    return device
+
+
 @pytest.fixture
 async def motor_stage() -> FakeXYStage:
     """Return a connected two-axis ``FakeXYStage`` double (see class docstring)."""
@@ -284,7 +331,10 @@ def stage_service(service: ServiceFactory) -> Service:
 
 @pytest.fixture
 def uc2_service(service: ServiceFactory) -> Service:
-    """Launch the UC2 service on a serial port that answers nothing."""
+    """Launch the UC2 service on a serial port that answers nothing.
+
+    Nothing is there to restart, so the service skips the board's reset.
+    """
     return service(
         "uc2",
         UC2_PREFIX,
@@ -292,6 +342,7 @@ def uc2_service(service: ServiceFactory) -> Service:
         UC2_READY,
         "--port",
         "loop://",
+        "--no-reset",
     )
 
 
