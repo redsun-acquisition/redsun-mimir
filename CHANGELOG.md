@@ -13,6 +13,20 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `--no-reset` (`redsun_mimir.services.uc2_controller`) - opens the serial
   port without restarting the board, for a port with no board behind it.
+- `DeviceLocks` (`redsun_mimir.common`) - names the devices a plan holds, with
+  `hold(*devices)` as a context manager and `sig_locks_changed` emitting the
+  set when it changes.
+- `AcquisitionPresenter.locks` and `AcquisitionPresenter.sig_locks_changed` -
+  a plan holds the devices in its arguments until it ends; a paused plan keeps
+  them.
+- `MotorView.set_locked`, `LightView.set_locked`, `DetectorView.set_locked` -
+  disable the controls of the named devices; readouts keep updating.
+
+  ```python
+  def scan(self, stage: Stage, camera: Camera) -> MsgGenerator[None]:
+      with self.locks.hold(self.laser):
+          yield from bps.mv(self.laser.power, 5)
+  ```
 
 ### Changed
 
