@@ -23,6 +23,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `redsun_mimir.services.mmcore_camera` reads no camera property and no
   `PixelType` while the camera sequences. A property written meanwhile is read
   back while the sequence is paused.
+- `ImageView` locks each detector layer against deletion from the layer list
+  (napari's `LayerLock.DELETION`). A user who unlocks and deletes one gets it
+  back with the next frame.
 
 ### Changed (breaking)
 

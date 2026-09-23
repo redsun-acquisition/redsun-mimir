@@ -239,6 +239,8 @@ class FakeFlyer(FakeDetector):
         self, index: int | None = None
     ) -> AsyncIterator[StreamAsset]:
         """Write no asset."""
+        # an empty loop rather than return-then-yield, which strict mypy's
+        # warn_unreachable reports
         assets: tuple[StreamAsset, ...] = ()
         for asset in assets:
             yield asset

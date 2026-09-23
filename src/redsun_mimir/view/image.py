@@ -9,6 +9,7 @@ from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
+from napari.layers import LayerLock
 from napari.utils._proxies import PublicOnlyProxy
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
     from typing import Any
 
     from bluesky.protocols import Reading
-    from napari.layers import Image
     from numpy.typing import NDArray
     from redsun.virtual import VirtualContainer
 
@@ -212,14 +212,16 @@ class ImageView(QtView, Loggable):
 
     def _add_layer(
         self, name: str, shape: tuple[int, int], dtype: np.dtype[Any]
-    ) -> Image:
+    ) -> None:
         """Add a sensor-sized, writable layer for *name*, carrying its selection box.
 
-        The box is put over the detector's current ROI and shown only if a
-        selection was asked for, so a layer the user deleted comes back in the
+        The layer is locked against deletion from the layer list. The box is
+        put over the detector's current ROI and shown only if a selection was
+        asked for, so a layer the user unlocked and deleted comes back in the
         state it was in.
         """
         layer = self.viewer_model.add_image(np.zeros(shape, dtype=dtype), name=name)
+        layer.locked = LayerLock.DELETION
         self._sensors[name] = shape
         box = ROIInteractionBoxOverlay(
             bounds=((0, 0), shape),
@@ -233,7 +235,6 @@ class ImageView(QtView, Loggable):
         roi = self._rois.get(name)
         if roi is not None:
             self.set_roi_box(name, roi)
-        return layer
 
     def _on_box_drawn(self, detector: str, event: object = None) -> None:
         """Announce where the box on *detector*'s layer now stands."""
@@ -288,11 +289,13 @@ class ImageView(QtView, Loggable):
             name = key.removesuffix("-buffer")
             img = reading["value"]
             if name not in self.viewer_model.layers:
-                # the user deleted it: give it back, box and all, rather than
-                # letting the detector's own frame stand in as the layer's data
                 self.logger.debug(f"Adding new layer for {name}")
-                shape = self._sensors.get(name, (img.shape[0], img.shape[1]))
-                self._add_layer(name, shape, img.dtype)
+                if name in self._sensors:
+                    # a detector's layer the user deleted: give it back, box
+                    # and all, rather than letting the frame stand in for it
+                    self._add_layer(name, self._sensors[name], img.dtype)
+                else:
+                    self.viewer_model.add_image(np.zeros_like(img), name=name)
             layer = self.viewer_model.layers[name]
             roi = self._rois.get(name)
             if roi is not None and img.shape[:2] != (roi.height, roi.width):
@@ -305,6 +308,6 @@ class ImageView(QtView, Loggable):
             if roi is not None and place(layer.data, img, (roi.x, roi.y)):
                 layer.refresh()
             else:
-                # a copy: what a detector hands over may be read-only, and the
-                # next frame is written into whatever the layer holds
-                layer.data = np.array(img)
+                # what a detector hands over may be read-only, and the next
+                # frame is written into whatever the layer holds
+                layer.data = img if img.flags.writeable else img.copy()

@@ -14,6 +14,7 @@ import pytest
 from redsun.services import Service
 
 from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
+from redsun_mimir.services import uc2_controller
 from redsun_mimir.services.mmcore_camera import MMCameraController
 from redsun_mimir.services.uc2_controller import UC2Controller
 
@@ -88,6 +89,9 @@ class FakeCore:
         self.sequencing = False
         self.fault: Exception | None = None
         self.read_mid_sequence: list[str] = []
+        self.read_unguarded: list[str] = []
+        #: whether a read is safe from a sequence starting under it
+        self.guarded: Callable[[], bool] = lambda: True
         self.popped_a_frame = threading.Event()
         self._buffer: Queue[NDArray[Any]] = Queue()
 
@@ -148,6 +152,8 @@ class FakeCore:
             # during a sequence; the fake records every such read so a test
             # can pin that none is taken
             self.read_mid_sequence.append(name)
+        if not self.guarded():
+            self.read_unguarded.append(name)
         return self.properties[name]
 
     def setProperty(self, label: str, name: str, value: str) -> None:
@@ -442,6 +448,39 @@ async def test_no_property_is_read_from_the_camera_while_it_sequences(
     await until(lambda: not core.sequencing, camera)
     await camera._core_io.update(camera.pixel_dtype)
     assert camera.pixel_dtype.get().name == "uint8"
+
+
+def test_the_board_reset_runs_on_a_port_with_no_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The DTR/RTS toggling and the wait for the board's answer, without the delays."""
+    monkeypatch.setattr(uc2_controller, "RESET_HOLD", 0.0)
+    monkeypatch.setattr(uc2_controller, "RESET_SETTLE", 0.0)
+
+    serial = uc2_controller.open_board("loop://", 115200, 0.01)
+    try:
+        assert serial.is_open
+        assert serial.rts is False
+    finally:
+        serial.close()
+
+
+async def test_a_property_poll_reads_under_the_lock_a_sequence_starts_under(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """A sequence starting between the check and the read would take the read.
+
+    On the Daheng that read ends the sequence for good, so the check and the
+    read are one step under the lock ``_start_sequence`` runs under.
+    """
+    camera, core = controller
+    core.guarded = camera._sequence_lock.locked
+
+    for attribute in camera.sub_controllers["properties"].attributes.values():
+        await camera._property_io.update(attribute)
+    await camera._core_io.update(camera.pixel_dtype)
+
+    assert core.read_unguarded == []
 
 
 async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None:

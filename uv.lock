@@ -4457,16 +4457,16 @@ requires-dist = [
     { name = "fastcs", extras = ["epicspva"], specifier = ">=0.14.2" },
     { name = "msgspec", specifier = ">=0.21.1" },
     { name = "napari", specifier = ">=0.9.1" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'" },
-    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'" },
-    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'pyqt'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.9.1" },
+    { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.9.1" },
     { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.13.0rc6" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", specifier = ">=0.13.0rc6" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.13.0rc6" },
     { name = "redsun", extras = ["zarr"], specifier = ">=0.13.0rc6" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
@@ -4475,14 +4475,14 @@ provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 dev = [
     { name = "coverage", specifier = ">=7.16.1" },
     { name = "mypy", specifier = ">=2.3.0" },
-    { name = "napari", extras = ["pyqt6"] },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
     { name = "prek", specifier = ">=0.5.0" },
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0rc6" },
     { name = "redsun-mimir", extras = ["pyqt"] },
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "tox-uv-bare", specifier = ">=1.36.0" },
@@ -4492,8 +4492,8 @@ lint = [
     { name = "ruff", specifier = ">=0.16.5" },
 ]
 pyqt = [
-    { name = "napari", extras = ["pyqt6"] },
-    { name = "redsun", extras = ["pyqt"] },
+    { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0rc6" },
 ]
 pyside = [
     { name = "napari", extras = ["pyside6"], specifier = ">=0.9.1" },

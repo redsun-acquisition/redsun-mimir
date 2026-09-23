@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import pytest
 from bluesky.utils import MsgGenerator
+from napari.layers import LayerLock
 from napari.settings import get_settings
 from redsun.engine.actions import continous
 from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
@@ -314,6 +315,25 @@ class TestImageViewRoi:
         )
         assert drawn == []
 
+    def test_a_detector_layer_is_locked_against_deletion(self, view: ImageView) -> None:
+        layers = view.viewer_model.layers
+        layers.selection = {layers["cam"]}
+
+        layers.remove_selected()
+
+        assert "cam" in layers
+        assert layers["cam"].locked == LayerLock.DELETION
+
+    def test_a_derived_layer_is_plain_and_unlocked(self, view: ImageView) -> None:
+        frame = np.ones((4, 6), dtype=np.float32)
+
+        view.update_layers({"cam_median": {"value": frame, "timestamp": 0.0}})
+
+        layer = view.viewer_model.layers["cam_median"]
+        assert not layer.locked
+        assert ROI_BOX not in layer._overlays
+        np.testing.assert_array_equal(layer.data, frame)
+
     def test_a_deleted_layer_comes_back_with_its_box_and_takes_frames(
         self, view: ImageView
     ) -> None:
@@ -332,6 +352,7 @@ class TestImageViewRoi:
         view.update_layers(reading)
 
         layer = view.viewer_model.layers["cam"]
+        assert layer.locked == LayerLock.DELETION
         assert layer.data.shape == (4, 6)
         assert layer.data[1:3, 1:4].all()
         assert layer.data[0].sum() == 0

@@ -18,7 +18,8 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, cast
+from functools import partial
+from typing import TYPE_CHECKING, Any, Final, Protocol, TypeVar, cast
 
 import numpy as np
 from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
@@ -71,6 +72,8 @@ ACQUIRING: Final = "acquiring"
 #: What ``State`` reads once grabbing stopped on an error.
 FAULTED: Final = "faulted"
 
+T = TypeVar("T")
+
 
 @dataclass
 class CoreRef(AttributeIORef):
@@ -82,6 +85,18 @@ class CoreRef(AttributeIORef):
 def as_is(apply: Callable[[], None]) -> None:
     """Run *apply* as it is, for a camera nothing sequences."""
     apply()
+
+
+class WhenIdle(Protocol):
+    """Runs a read only while the camera takes no sequence."""
+
+    def __call__(self, read: Callable[[], T], /) -> T | None:
+        """Return what *read* returns, or ``None`` while a sequence runs."""
+
+
+def run_now(read: Callable[[], T]) -> T | None:
+    """Run *read* at once, for a camera nothing sequences."""
+    return read()
 
 
 class CoreIO(AttributeIO[Any, CoreRef]):
@@ -100,14 +115,14 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
         layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
         capturing: Callable[[], bool] = lambda: False,
-        sequencing: Callable[[], bool] = lambda: False,
+        when_idle: WhenIdle = run_now,
     ) -> None:
         super().__init__()
         self._core = core
         self._without_sequence = without_sequence
         self._layout_changed = layout_changed
         self._capturing = capturing
-        self._sequencing = sequencing
+        self._when_idle = when_idle
 
     async def send(self, attr: AttrW[Any, CoreRef], value: Any) -> None:
         """Apply *value* to the camera, and read back what it took.
@@ -146,9 +161,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
                 # reading a camera property ends the sequence on some adapters
                 # (the Daheng stops delivering), and the attribute needs no
                 # poll anyway: ``follow_layout`` retypes it from every frame
-                if self._sequencing():
-                    return
-                dtype = await asyncio.to_thread(self._pixel_dtype)
+                dtype = await asyncio.to_thread(self._when_idle, self._pixel_dtype)
                 members = cast("Enum[Any]", attr.datatype).enum_cls.__members__
                 if dtype in members:
                     await attr.update(members[dtype])
@@ -217,14 +230,14 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
         label: str,
         without_sequence: Callable[[Callable[[], None]], None] = as_is,
         layout_changed: Callable[[NDArray[Any]], Awaitable[None]] | None = None,
-        sequencing: Callable[[], bool] = lambda: False,
+        when_idle: WhenIdle = run_now,
     ) -> None:
         super().__init__()
         self._core = core
         self._label = label
         self._without_sequence = without_sequence
         self._layout_changed = layout_changed
-        self._sequencing = sequencing
+        self._when_idle = when_idle
 
     async def send(self, attr: AttrW[str, PropertyRef], value: str) -> None:
         """Write the property, and read back what the camera made of it.
@@ -259,12 +272,12 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
         back while the sequence is paused, so the poll is skipped rather than
         deferred.
         """
-        if self._sequencing():
-            return
         value = await asyncio.to_thread(
-            self._core.getProperty, self._label, attr.io_ref.property
+            self._when_idle,
+            partial(self._core.getProperty, self._label, attr.io_ref.property),
         )
-        await attr.update(str(value))
+        if value is not None:
+            await attr.update(str(value))
 
 
 class FrameStore:
@@ -345,14 +358,14 @@ class MMCameraController(Controller):
             label,
             self._without_sequence,
             self.publish_layout,
-            lambda: self._sequencing,
+            self._when_idle,
         )
         self._core_io = CoreIO(
             core,
             self._without_sequence,
             self.publish_layout,
             lambda: self._store is not None,
-            lambda: self._sequencing,
+            self._when_idle,
         )
         super().__init__(ios=[self._core_io, self._property_io])
         self._core = core
@@ -661,6 +674,16 @@ class MMCameraController(Controller):
             with self._sequence_lock:
                 self._stop_sequence()
             self._stopped.set()
+
+    def _when_idle(self, read: Callable[[], T]) -> T | None:
+        """Return what *read* returns, or ``None`` while a sequence runs.
+
+        The check and the read hold the lock a sequence starts under, so none
+        can start between them: on some adapters a read during a sequence ends
+        it.
+        """
+        with self._sequence_lock:
+            return None if self._sequencing else read()
 
     def _without_sequence(self, apply: Callable[[], None]) -> None:
         """Run *apply* with no sequence running, and resume one that was.

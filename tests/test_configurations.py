@@ -107,7 +107,7 @@ def test_a_session_declares_only_its_devices(
     container = factory()
     cls = type(container)
 
-    assert container._config["session"] == session_name
+    assert container.config["session"] == session_name
     assert set(cls._device_components) == devices
     assert set(cls._presenter_components) == _SHARED_PRESENTERS
     assert set(cls._view_components) == _SHARED_VIEWS

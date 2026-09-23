@@ -58,8 +58,8 @@ uc2 = [
     "pyserial>=3.5",
 ]
 pyqt = [
-    "napari[pyqt6]",
-    "redsun[pyqt]",
+    "napari[pyqt6]>=0.9.1",
+    "redsun[pyqt]>=0.13.0rc6",
 ]
 sim = [
     "redsun-mimir[pyqt]",
@@ -76,12 +76,12 @@ lint = [
 
 [project.optional-dependencies]
 pyqt = [
-    "napari[pyqt6]",
-    "redsun[pyqt]",
+    "napari[pyqt6]>=0.9.1",
+    "redsun[pyqt]>=0.13.0rc6",
 ]
 pyside = [
-    "napari[pyside6]",
-    "redsun[pyside]",
+    "napari[pyside6]>=0.9.1",
+    "redsun[pyside]>=0.13.0rc6",
 ]
 uc2 = [
     "pymmcore-plus>=0.18.1",
