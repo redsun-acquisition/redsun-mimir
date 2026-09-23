@@ -7,7 +7,7 @@ from redsun.log import Loggable
 from redsun.utils.descriptors import parse_key
 from redsun.view import ViewPosition
 from redsun.view.qt import QtView
-from redsun.virtual import Signal
+from redsun.virtual import Signal, slot
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
 from redsun_mimir.providers import LIGHT_CONFIGURATION, LIGHT_DESCRIPTION
@@ -80,6 +80,8 @@ class LightView(QtView, Loggable):
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._sliders: dict[str, QLabeledDoubleSlider | QLabeledSlider] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
+        # each light's button and slider, disabled while a plan holds it
+        self._inputs: dict[str, list[QtWidgets.QWidget]] = {}
 
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
@@ -93,6 +95,16 @@ class LightView(QtView, Loggable):
         self.setup_ui(
             container.require(LIGHT_CONFIGURATION), container.require(LIGHT_DESCRIPTION)
         )
+
+    @slot
+    def set_locked(self, names: frozenset[str]) -> None:
+        """Disable the controls of the lights in *names*, and enable the rest.
+
+        A slider still follows the intensity read back, drawn disabled.
+        """
+        for device, inputs in self._inputs.items():
+            for widget in inputs:
+                widget.setEnabled(device not in names)
 
     def setup_ui(
         self,
@@ -126,6 +138,7 @@ class LightView(QtView, Loggable):
             self._buttons[_button_on_key(name)].clicked.connect(
                 lambda _, lbl=name: self._on_toggle_button_checked(lbl)
             )
+            self._inputs[name] = [self._buttons[_button_on_key(name)]]
             if binary:
                 layout.addWidget(self._buttons[_button_on_key(name)], 0, 0)
                 self.main_layout.addWidget(self._groups[_group_key(name)])
@@ -170,6 +183,7 @@ class LightView(QtView, Loggable):
                     "Intensity descriptor must have dtype 'number' or 'integer'."
                 )
             self._sliders[_slider_power_key(name)] = slider
+            self._inputs[name].append(slider)
             self._sliders[_slider_power_key(name)].setRange(*range)
             self._sliders[_slider_power_key(name)].valueChanged.connect(
                 lambda value, lbl=name: self._on_slider_changed(value, lbl)

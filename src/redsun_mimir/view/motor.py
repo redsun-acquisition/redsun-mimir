@@ -90,6 +90,8 @@ class MotorView(QtView, Loggable):
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._steps: dict[str, QtWidgets.QDoubleSpinBox] = {}
+        # each motor's jog strips, disabled while a plan holds the motor
+        self._inputs: dict[str, list[QtWidgets.QWidget]] = {}
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
@@ -207,7 +209,18 @@ class MotorView(QtView, Loggable):
         layout.addWidget(self._buttons[f"button:{suffix}:up"])
         layout.addWidget(step)
         layout.addWidget(self._buttons[f"button:{suffix}:down"])
+        self._inputs.setdefault(motor, []).append(strip)
         return strip
+
+    @slot
+    def set_locked(self, names: frozenset[str]) -> None:
+        """Disable the controls of the motors in *names*, and enable the rest.
+
+        Positions keep updating: only the jog controls are disabled.
+        """
+        for device, inputs in self._inputs.items():
+            for widget in inputs:
+                widget.setEnabled(device not in names)
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
         """Move the motor by a step size.

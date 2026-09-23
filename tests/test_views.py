@@ -10,6 +10,7 @@ import pytest
 from bluesky.utils import MsgGenerator
 from napari.layers import LayerLock
 from napari.settings import get_settings
+from qtpy import QtWidgets
 from redsun.engine.actions import continous
 from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
 from redsun.presenter.plan_spec import create_plan_spec
@@ -160,6 +161,23 @@ class TestDetectorViewRoi:
             await fake_detector.read_configuration(),
         )
         return view
+
+    def test_a_locked_detector_disables_its_editors_and_roi_panel(
+        self, view: DetectorView
+    ) -> None:
+        settings = view.settings_controls["cam"]
+        panel = settings.roi_panel
+        assert panel is not None
+        editors = settings.tree_view.findChildren(QtWidgets.QAbstractSpinBox)
+        assert editors
+
+        view.set_locked(frozenset({"cam"}))
+        assert not panel.isEnabled()
+        assert not any(editor.isEnabled() for editor in editors)
+
+        view.set_locked(frozenset())
+        assert panel.isEnabled()
+        assert all(editor.isEnabled() for editor in editors)
 
     def test_ok_sends_the_drawn_region_unchanged(self, view: DetectorView) -> None:
         sent: list[tuple[str, str, Any]] = []
@@ -454,6 +472,22 @@ class TestMotorView:
             assert f"button:xystage:{axis}:up" in widget._buttons
             assert f"button:xystage:{axis}:down" in widget._buttons
 
+    async def test_a_locked_motor_disables_its_jog_controls_and_keeps_its_readout(
+        self, widget: MotorView, motor_stage: FakeXYStage
+    ) -> None:
+        await _build_motor_view(widget, motor_stage)
+
+        widget.set_locked(frozenset({"xystage"}))
+        widget.update_setpoint(_reading("xystage-axis-x", 7.5))
+
+        assert not widget._buttons["button:xystage:x:up"].isEnabled()
+        assert not widget._steps["step:xystage:x"].isEnabled()
+        assert widget._labels["pos:xystage:x"].isEnabled()
+        assert widget._labels["pos:xystage:x"].text().startswith("7.50")
+
+        widget.set_locked(frozenset())
+        assert widget._buttons["button:xystage:x:up"].isEnabled()
+
     async def test_step_size_comes_from_the_view(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
@@ -546,6 +580,19 @@ class TestLightView:
         assert "laser" in widget._groups
         assert "on:laser" in widget._buttons
         assert "power:laser" in widget._sliders
+
+    async def test_only_a_locked_light_disables_its_controls(
+        self, widget: LightView, mock_laser: MockLightDevice
+    ) -> None:
+        await _build_light_view(widget, mock_laser)
+
+        widget.set_locked(frozenset({"another_light"}))
+        assert widget._buttons["on:laser"].isEnabled()
+
+        widget.set_locked(frozenset({"laser"}))
+        assert not widget._buttons["on:laser"].isEnabled()
+        assert not widget._sliders["power:laser"].isEnabled()
+        assert widget._groups["laser"].isEnabled()
 
     async def test_binary_source_gets_no_slider(
         self, widget: LightView, mock_binary_led: MockLightDevice

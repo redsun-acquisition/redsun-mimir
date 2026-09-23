@@ -207,6 +207,21 @@ class SettingsControlWidget(QtWidgets.QWidget):
             layout.addWidget(self.roi_panel)
         self.setLayout(layout)
 
+    def set_locked(self, locked: bool) -> None:
+        """Disable the property editors and the ROI panel, or enable them again.
+
+        The editors keep showing each new reading; a read-only property's label
+        is left as it is.
+        """
+        items = QtWidgets.QTreeWidgetItemIterator(self.tree_view)
+        while item := items.value():
+            editor = self.tree_view.itemWidget(item, 1)
+            if editor is not None and not isinstance(editor, QtWidgets.QLabel):
+                editor.setEnabled(not locked)
+            items += 1
+        if self.roi_panel is not None:
+            self.roi_panel.setEnabled(not locked)
+
     def _roi_panel(self, readings: dict[str, Reading[Any]]) -> RoiPanel | None:
         """Build the ROI panel for a detector reporting a sensor size and a ROI."""
         sensor = next(
@@ -318,6 +333,15 @@ class DetectorView(QtView, Loggable):
                 )
             self.settings_controls[device_label] = widget
             self.settings_tab_widget.addTab(widget, device_label)
+
+    @slot
+    def set_locked(self, names: frozenset[str]) -> None:
+        """Disable the settings of the detectors in *names*, and enable the rest.
+
+        Their readings keep updating: only what edits them is disabled.
+        """
+        for detector, widget in self.settings_controls.items():
+            widget.set_locked(detector in names)
 
     @slot
     def on_roi_drawn(self, detector: str, roi: Roi) -> None:

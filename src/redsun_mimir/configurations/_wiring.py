@@ -27,6 +27,7 @@ __all__ = [
     "wire_acquisition",
     "wire_detector",
     "wire_light",
+    "wire_locks",
     "wire_median",
     "wire_motor",
 ]
@@ -97,3 +98,13 @@ def wire_acquisition(
 
     if median is not None:
         app.connect(ctrl.sig_pre_launch_notify, median.clear_medians)
+
+
+def wire_locks(
+    app: AppContainer,
+    ctrl: AcquisitionPresenter,
+    *views: MotorView | LightView | DetectorView,
+) -> None:
+    """Disable, in each view, the controls of the devices a running plan holds."""
+    for view in views:
+        app.connect(ctrl.sig_locks_changed, view.set_locked)

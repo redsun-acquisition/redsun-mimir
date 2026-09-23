@@ -24,6 +24,7 @@ from ._wiring import (
     wire_acquisition,
     wire_detector,
     wire_light,
+    wire_locks,
     wire_median,
     wire_motor,
 )
@@ -71,4 +72,7 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
             self.acq_ctrl,
             self.acq_widget,
             median=self.median_ctrl,
+        )
+        wire_locks(
+            self, self.acq_ctrl, self.motor_widget, self.light_widget, self.det_widget
         )
