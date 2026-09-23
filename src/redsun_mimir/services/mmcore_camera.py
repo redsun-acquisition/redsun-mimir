@@ -230,19 +230,23 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
         """Write the property, and read back what the camera made of it.
 
         Every write pauses a running sequence, since some properties,
-        binning and pixel type among them, are refused during one. A frame
-        is snapped while it is paused and handed to *layout_changed*, since a
-        property may change what the camera's frames look like.
+        binning and pixel type among them, are refused during one. The value
+        is read back and a frame snapped while it is paused: reading a property
+        mid-sequence ends it on some adapters. The frame is handed to
+        *layout_changed*, since a property may change what the camera's
+        frames look like.
         """
+        read: list[str] = []
         snapped: list[NDArray[Any]] = []
 
         def apply() -> None:
             self._core.setProperty(self._label, attr.io_ref.property, value)
+            read.append(str(self._core.getProperty(self._label, attr.io_ref.property)))
             snapped.append(self._core.snap())
 
         await asyncio.to_thread(self._without_sequence, apply)
         if isinstance(attr, AttrR):
-            await self.update(attr)
+            await attr.update(read[0])
         if self._layout_changed is not None:
             await self._layout_changed(snapped[0])
 
@@ -251,8 +255,9 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
 
         Reading a property ends the sequence on some adapters, the Daheng
         among them, which then delivers no further frame. Nothing but
-        ``send`` changes a property meanwhile, and that updates the attribute
-        itself, so the poll is skipped rather than deferred.
+        ``send`` changes a property meanwhile, and ``send`` reads its value
+        back while the sequence is paused, so the poll is skipped rather than
+        deferred.
         """
         if self._sequencing():
             return

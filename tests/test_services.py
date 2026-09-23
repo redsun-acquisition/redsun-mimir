@@ -341,8 +341,10 @@ async def test_a_setting_refused_mid_sequence_pauses_it(
         assert core.roi == (1, 1, 2, 2)
         assert camera.roi.get() == "1,1,2,2"
     else:
-        await camera.sub_controllers["properties"].attributes["Gain"].put("3")
+        gain = camera.sub_controllers["properties"].attributes["Gain"]
+        await gain.put("3")
         assert core.properties["Gain"] == "3"
+        assert gain.get() == "3"
 
     assert core.sequencing
     await camera.acquire.put(False)
@@ -427,10 +429,13 @@ async def test_no_property_is_read_from_the_camera_while_it_sequences(
     await until(lambda: core.sequencing, camera)
 
     await camera._core_io.update(camera.pixel_dtype)
-    for attribute in camera.sub_controllers["properties"].attributes.values():
+    properties = camera.sub_controllers["properties"].attributes
+    for attribute in properties.values():
         await camera._property_io.update(attribute)
+    await properties["Gain"].put("3")
 
     assert core.read_mid_sequence == []
+    assert properties["Gain"].get() == "3"
 
     # the same polls do reach an idle camera
     await camera.acquire.put(False)
