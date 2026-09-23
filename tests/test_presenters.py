@@ -14,14 +14,14 @@ import numpy as np
 import pytest
 from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
-from ophyd_async.core import soft_signal_rw
+from ophyd_async.core import Device, soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import SRLatch
 from redsun.virtual import VirtualContainer
 from redsun.writers._base import root_attributes
 
-from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, DeviceLocks, Roi
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
@@ -1112,3 +1112,28 @@ class TestAcquisitionPresenter:
         """toggle_action_event() on a name with no registered latch raises KeyError."""
         with pytest.raises(KeyError):
             controller.toggle_action_event("does-not-exist", True)
+
+
+def test_a_device_held_twice_stays_locked_until_both_holds_end() -> None:
+    """Only a change in the locked set is announced."""
+    locks = DeviceLocks()
+    stage, camera = Device(name="stage"), Device(name="camera")
+    seen: list[frozenset[str]] = []
+    locks.sig_locks_changed.connect(seen.append)
+
+    with locks.hold(stage):
+        with locks.hold(stage), locks.hold(stage, camera):
+            assert locks.locked == {"stage", "camera"}
+        assert locks.locked == {"stage"}
+
+    assert locks.locked == frozenset()
+    assert seen == [{"stage"}, {"stage", "camera"}, {"stage"}, frozenset()]
+
+
+def test_a_hold_ends_when_its_block_raises() -> None:
+    locks = DeviceLocks()
+
+    with pytest.raises(RuntimeError), locks.hold(Device(name="stage")):
+        raise RuntimeError("the plan failed")
+
+    assert locks.locked == frozenset()
