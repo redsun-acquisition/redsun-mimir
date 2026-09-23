@@ -206,16 +206,31 @@ class FakeFuture:
 
 
 class FakeEngine:
-    """Records the plans it is handed, and hands back one future."""
+    """Records the plans it is handed, and hands back one future.
 
-    def __init__(self, future: FakeFuture, state: str = "running") -> None:
+    A resume hands back *resumed*, the future of the run after a pause.
+    """
+
+    def __init__(
+        self,
+        future: FakeFuture,
+        state: str = "running",
+        resumed: FakeFuture | None = None,
+    ) -> None:
         self.future = future
+        self.resumed = resumed or FakeFuture()
         self.state = state
         self.plans: list[Any] = []
 
     def __call__(self, plan: Any) -> FakeFuture:
         self.plans.append(plan)
         return self.future
+
+    def request_pause(self, defer: bool = False) -> None:
+        """Nothing to pause: the test settles the future itself."""
+
+    def resume(self) -> FakeFuture:
+        return self.resumed
 
     def stop(self) -> None:
         raise RuntimeError("RunEngine is already idle.")
@@ -1070,6 +1085,54 @@ class TestAcquisitionPresenter:
         settled.settle()
 
         assert ended == [True]
+
+    def test_a_plan_locks_the_devices_in_its_arguments_until_it_ends(
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+    ) -> None:
+        settled = FakeFuture()
+        controller.engine = FakeEngine(settled)  # type: ignore[assignment]
+        seen: list[frozenset[str]] = []
+        controller.sig_locks_changed.connect(seen.append)
+
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        assert controller.locks.locked == {fake_flyer.name}
+        settled.settle()
+
+        assert controller.locks.locked == frozenset()
+        assert seen == [{fake_flyer.name}, frozenset()]
+
+    def test_a_paused_plan_keeps_its_devices_locked(
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+    ) -> None:
+        """A pause settles the run's future; the resumed run keeps the lock."""
+        paused, resumed = FakeFuture(), FakeFuture()
+        controller.engine = FakeEngine(paused, resumed=resumed)  # type: ignore[assignment]
+
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        controller.pause_or_resume_plan(True)
+        paused.settle()
+        assert controller.locks.locked == {fake_flyer.name}
+
+        controller.pause_or_resume_plan(False)
+        resumed.settle()
+        assert controller.locks.locked == frozenset()
+
+    def test_a_hold_inside_a_plan_ends_when_the_plan_is_closed(
+        self, controller: AcquisitionPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """A stop or abort closes the plan's generator, which ends its holds."""
+
+        def plan() -> MsgGenerator[None]:
+            with controller.locks.hold(motor_stage):
+                yield from bps.null()
+                yield from bps.null()
+
+        run = plan()
+        next(run)
+        assert controller.locks.locked == {motor_stage.name}
+
+        run.close()
+        assert controller.locks.locked == frozenset()
 
     def test_stopping_an_idle_engine_is_nothing(
         self, controller: AcquisitionPresenter

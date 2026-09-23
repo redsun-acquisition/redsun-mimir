@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -9,7 +10,7 @@ import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
 from bluesky.preprocessors import set_run_key_decorator
 from bluesky.utils import MsgGenerator, RequestAbort
-from ophyd_async.core import TriggerInfo
+from ophyd_async.core import Device, TriggerInfo
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import Action, continous
 from redsun.log import Loggable
@@ -23,7 +24,7 @@ from redsun.presenter.plan_spec import (
 )
 from redsun.virtual import Signal, slot
 
-from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, DeviceLocks
 from redsun_mimir.protocols import (  # noqa: TC001
     MotorProtocol,
     ReadableFlyer,
@@ -31,11 +32,10 @@ from redsun_mimir.protocols import (  # noqa: TC001
 from redsun_mimir.providers import PLAN_SPECS
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable
     from concurrent.futures import Future
     from typing import Any
 
-    from ophyd_async.core import Device
     from redsun.engine.actions import SRLatch
     from redsun.virtual import VirtualContainer
 
@@ -116,12 +116,17 @@ class AcquisitionPresenter(Presenter, Loggable):
         Emitted when a non-togglable plan completes.
     sig_action_done : Signal[str]
         Emitted with the action's name when its event is cleared.
+    sig_locks_changed : Signal[frozenset[str]]
+        Emitted with the names of the devices a plan holds, whenever they
+        change. A plan holds the devices in its arguments while it runs, and
+        others with ``self.locks.hold(...)``.
     """
 
     sig_pre_launch_notify = Signal(str)
     sig_plan_done = Signal()
     sig_base_dir_changed = Signal(str)
     sig_action_done = Signal(str)
+    sig_locks_changed = Signal(frozenset)
 
     def __init__(
         self,
@@ -138,6 +143,10 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.futures: set[Future[Any]] = set()
         self.action_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
+        self._locks = DeviceLocks()
+        self._locks.sig_locks_changed.connect(self.sig_locks_changed.emit)
+        # what the running plan holds for its whole run, released when it ends
+        self._run_holds = ExitStack()
         # None => subscribe whatever the container registered
         self.expected_callbacks: frozenset[str] | None = (
             None if callbacks is None else frozenset(callbacks)
@@ -154,6 +163,11 @@ class AcquisitionPresenter(Presenter, Loggable):
             if spec is not None:
                 self.plan_specs[plan_name] = spec
         self._is_single_shot_plan = False
+
+    @property
+    def locks(self) -> DeviceLocks:
+        """The devices the running plan holds; a plan holds more with ``hold``."""
+        return self._locks
 
     def _try_build_plan_spec(
         self,
@@ -458,10 +472,23 @@ class AcquisitionPresenter(Presenter, Loggable):
         args, kwargs = collect_arguments(spec, resolved)
 
         self.sig_pre_launch_notify.emit(plan_name)
+        self._run_holds.enter_context(
+            self._locks.hold(*devices_in([*args, *kwargs.values()]))
+        )
         fut = self.engine(plan(*args, **kwargs))
         self.futures.add(fut)
         fut.add_done_callback(self._notify_plan_done)
+        fut.add_done_callback(self._release_unless_paused)
         fut.add_done_callback(self._discard_future)
+
+    def _release_unless_paused(self, fut: Future[Any]) -> None:
+        """Release what the run holds, unless its future settled for a pause.
+
+        A paused plan resumes with a new future, and keeps its devices locked
+        until that one settles.
+        """
+        if not self.discard_by_pause:
+            self._run_holds.close()
 
     def _notify_plan_done(self, fut: Future[Any]) -> None:
         """Emit ``sig_plan_done`` when a plan future settles.
@@ -496,6 +523,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             # we store the new future again
             fut = self.engine.resume()
             self.futures.add(fut)
+            fut.add_done_callback(self._release_unless_paused)
             fut.add_done_callback(self._discard_future)
 
     @slot
@@ -542,6 +570,19 @@ class AcquisitionPresenter(Presenter, Loggable):
         if self.discard_by_pause:
             self.discard_by_pause = False
         self.futures.discard(fut)
+
+
+def devices_in(values: Iterable[Any]) -> list[Device]:
+    """Return the devices among *values*, and those one level inside a sequence or mapping."""
+    found: list[Device] = []
+    for value in values:
+        if isinstance(value, Device):
+            found.append(value)
+        elif isinstance(value, Mapping):
+            found.extend(v for v in value.values() if isinstance(v, Device))
+        elif isinstance(value, Sequence) and not isinstance(value, str):
+            found.extend(v for v in value if isinstance(v, Device))
+    return found
 
 
 class _SuppressRequestAbort(logging.Filter):
