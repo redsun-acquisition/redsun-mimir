@@ -314,6 +314,31 @@ class TestImageViewRoi:
         )
         assert drawn == []
 
+    def test_a_deleted_layer_comes_back_with_its_box_and_takes_frames(
+        self, view: ImageView
+    ) -> None:
+        """The user may bin a layer; the next run must not crash on it."""
+        view.set_roi_selection("cam", True)
+        view.set_roi_box("cam", Roi(1, 1, 3, 2))
+        view.viewer_model.layers.remove("cam")
+
+        frame = np.full((2, 3), 9, dtype=np.uint8)
+        frame.flags.writeable = False
+        reading: dict[str, Reading[Any]] = {
+            "cam-roi": {"value": Roi(1, 1, 3, 2), "timestamp": 0.0},
+            "cam-buffer": {"value": frame, "timestamp": 0.0},
+        }
+        view.update_layers(reading)
+        view.update_layers(reading)
+
+        layer = view.viewer_model.layers["cam"]
+        assert layer.data.shape == (4, 6)
+        assert layer.data[1:3, 1:4].all()
+        assert layer.data[0].sum() == 0
+        box = layer._overlays[ROI_BOX]
+        assert box.visible
+        assert box.bounds == ((1, 1), (3, 4))
+
     def test_an_applied_roi_moves_the_box_and_blanks_the_layer(
         self, view: ImageView
     ) -> None:

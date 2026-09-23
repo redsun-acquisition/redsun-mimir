@@ -2,24 +2,15 @@ name: Run tests
 
 on:
   workflow_call:
-    inputs:
-      ref:
-        required: true
-        type: string
-      event_name:
-        required: true
-        type: string
     secrets:
       codecov_token:
         required: false
-
-env:
-  PROJECT_NAME: redsun-mimir
 
 jobs:
   test:
     name: ${{ matrix.os }} py${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -27,18 +18,14 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
+        uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+          cache-dependency-glob: "uv.lock"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -61,7 +48,7 @@ jobs:
           wm: herbstluftwm
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
       # Auto-detects the device interface version from the installed
       # pymmcore/pymmcore-nano, so it must run after uv sync. Installs to the
@@ -81,39 +68,31 @@ jobs:
           assert find_micromanager(), 'no Micro-Manager device adapters found'"
 
       - name: Run tests with coverage
-        run: uv run coverage run -p -m pytest --color=yes --log-cli-level=DEBUG
+        run: uv run --locked coverage run -p -m pytest --color=yes --log-cli-level=DEBUG
         env:
           MIMIR_TEST_OPENGL: "1"
 
-      - name: Generate UUID
-        shell: bash
-        run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            echo "UUID=$(powershell -Command '[guid]::NewGuid().ToString()')" >> $GITHUB_ENV
-          else
-            echo "UUID=$(uuidgen)" >> $GITHUB_ENV
-          fi
-
       - name: Upload coverage data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: covreport-${{ matrix.os }}-py${{ matrix.python-version }}-${{ env.UUID }}
+          name: covreport-${{ matrix.os }}-py${{ matrix.python-version }}
           path: ./.coverage*
           include-hidden-files: true
 
   upload_coverage:
     name: Upload coverage
+    if: ${{ !cancelled() }}
     needs: [test]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.1.0
 
       - name: Download coverage data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: covreport-*
           path: covreports
@@ -121,22 +100,13 @@ jobs:
 
       - name: Combine coverage data
         run: |
-          REPO_NAME="${GITHUB_REPOSITORY##*/}"
-          echo "[paths]" > ci_coveragerc
-          echo "source =" >> ci_coveragerc
-          echo "    ${GITHUB_WORKSPACE}/src" >> ci_coveragerc
-          echo "    D:\\a\\$REPO_NAME\\$REPO_NAME\\src" >> ci_coveragerc
-          echo "    /home/runner/work/$REPO_NAME/$REPO_NAME/src" >> ci_coveragerc
-          echo "    /Users/runner/work/$REPO_NAME/$REPO_NAME/src" >> ci_coveragerc
-          echo "    */site-packages/" >> ci_coveragerc
-          cat ci_coveragerc
-          uv run coverage combine --rcfile=ci_coveragerc covreports
+          uv run coverage combine covreports
           uv run coverage xml -o coverage.xml
           uv run coverage report
           uv run coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
 
       - name: Upload to codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           fail_ci_if_error: true
           verbose: true

@@ -14,6 +14,7 @@ from redsun_mimir.common import MEDIAN_SCAN_STREAM
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import TypedDict
 
     import numpy.typing as npt
     from bluesky.protocols import Reading
@@ -21,10 +22,21 @@ if TYPE_CHECKING:
     from ophyd_async.core import Device
     from redsun.virtual import VirtualContainer
 
-_MEDIAN_SUFFIX = "_median"
+    class FramePosition(TypedDict):
+        """Where one frame of a scan's stack was taken."""
 
-#: Every reading of a scan's events beside the frames, one list per key.
-Positions = dict[str, list[Any]]
+        frame_id: int
+        """The frame's place in the stack, counted from one."""
+
+        axes: dict[str, Any]
+        """Every reading of the frame's event beside the frame itself, keyed
+        as the event keys them, such as ``xystage-axis-x``."""
+
+    #: One record per scan frame, in stack order.
+    Positions = list[FramePosition]
+
+
+_MEDIAN_SUFFIX = "_median"
 _SCAN_SUFFIX = "_scan"
 _FILTERED_SUFFIX = "_filtered"
 _BUFFER_SUFFIX = "-buffer"
@@ -62,10 +74,11 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     is divided by it. Both phases arrive as Event documents, so this
     presenter is a [`DocumentRouter`][event_model.DocumentRouter]:
 
-    - frames on the `MEDIAN_SCAN_STREAM` are cached; when that run stops the
-      median is published on ``frames.median`` and the stack is written under
-      ``<detector>_scan`` into the store the acquisition names, once a run
-      has named one;
+    - frames on the `MEDIAN_SCAN_STREAM` are cached, each with the readings
+      that came in its event; when that run stops the median is published on
+      ``frames.median`` and the stack is written under ``<detector>_scan``
+      into the store the acquisition names, once a run has named one, with
+      one record per frame naming the position it was taken at;
     - frames on any other stream, in practice `LIVE_VIEW_STREAM`, are divided
       by the cached median and published on ``frames.filtered`` as a layer
       of their own.
@@ -123,7 +136,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._live_streams: dict[str, list[str]] = {}
         # (run uid, source) -> accumulated scan frames
         self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
-        # run uid -> every other reading of its scan events, one list per key
+        # run uid -> one record per scan event, in the order they arrived
         self._positions: dict[str, Positions] = {}
 
     def register_providers(self, container: VirtualContainer) -> None:
@@ -178,13 +191,18 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         scan = self._scan_streams.get(doc["descriptor"])
         if scan is not None:
             run, sources = scan
+            # the stream counts its own events, so the id is the frame's place
+            # in the stack whatever the plan did between two of them
+            axes: dict[str, Any] = {}
             for key, value in doc["data"].items():
                 if key in sources:
                     self._frames.setdefault((run, key), []).append(np.asarray(value))
                 elif key not in self._sources:
-                    self._positions.setdefault(run, {}).setdefault(key, []).append(
-                        plain(value)
-                    )
+                    axes[key] = plain(value)
+            if axes:
+                self._positions.setdefault(run, []).append(
+                    {"frame_id": doc["seq_num"], "axes": axes}
+                )
             return doc
 
         live = self._live_streams.get(doc["descriptor"])
@@ -224,7 +242,7 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     def stop(self, doc: RunStop) -> None:
         """Publish the median of every source of this run and write its stack."""
         run = doc["run_start"]
-        positions = self._positions.pop(run, {})
+        positions = self._positions.pop(run, [])
         for (candidate, source), frames in list(self._frames.items()):
             if candidate != run:
                 continue
@@ -264,9 +282,9 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
     ) -> None:
         """Write the stack of *scan_run* into the store its detector's run names.
 
-        *positions* go with it under ``positions``, one list per reading key,
-        aligned with the stack. Logged and skipped while no run has named a
-        store.
+        *positions* go with it under ``positions``, one record per frame in
+        stack order, its ``frame_id`` and the ``axes`` it was taken at.
+        Logged and skipped while no run has named a store.
         """
         detector = _base_name(source)
         try:

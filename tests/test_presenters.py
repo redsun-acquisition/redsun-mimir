@@ -13,6 +13,7 @@ import bluesky.plan_stubs as bps
 import numpy as np
 import pytest
 from bluesky.run_engine import RunEngineResult
+from bluesky.simulators import RunEngineSimulator
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
@@ -36,7 +37,7 @@ from redsun_mimir.providers import (
     MOTOR_READBACKS,
     MOTOR_READINGS,
 )
-from tests.conftest import FakeDetector, FakeXYStage
+from tests.conftest import FakeDetector, FakeFlyer, FakeXYStage
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -49,8 +50,6 @@ if TYPE_CHECKING:
         RunStop,
     )
     from ophyd_async.core import SignalRW
-
-    from redsun_mimir.device.mmcore import MMCamera
 
 
 class TestMotorPresenter:
@@ -339,7 +338,8 @@ class TestMedianPresenter:
         The scan and the capture are runs nested in the live plan's; the store
         is the one the capture names, and the scan's stack lands in it as a key
         of its own once the capture stops, naming the scan it came from and
-        carrying the axis positions each frame was taken at.
+        carrying one record per frame, its id and the axis positions it was
+        taken at.
         """
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
@@ -367,10 +367,20 @@ class TestMedianPresenter:
         assert root_attributes(store / "cam_scan")["derived_from"] == "cam"
         assert root_attributes(store / "cam_scan")["stream"] == MEDIAN_SCAN_STREAM
         assert root_attributes(store / "cam_scan")["scan_run"] == scan_run
-        assert root_attributes(store / "cam_scan")["positions"] == {
-            "xystage-axis-x": [5.0, 10.0, 15.0],
-            "xystage-axis-y": [0.0, 0.0, 0.0],
-        }
+        assert root_attributes(store / "cam_scan")["positions"] == [
+            {
+                "frame_id": 1,
+                "axes": {"xystage-axis-x": 5.0, "xystage-axis-y": 0.0},
+            },
+            {
+                "frame_id": 2,
+                "axes": {"xystage-axis-x": 10.0, "xystage-axis-y": 0.0},
+            },
+            {
+                "frame_id": 3,
+                "axes": {"xystage-axis-x": 15.0, "xystage-axis-y": 0.0},
+            },
+        ]
         assert root_attributes(store / "cam_scan")["redsun"]["run_start"] == "capture"
 
     async def test_a_capture_before_the_scan_gets_no_stack(
@@ -479,12 +489,13 @@ class TestMedianPresenter:
             )
         )
         background = np.full((4, 4), 2, dtype="uint16")
-        for _ in range(3):
+        for seq_num in range(1, 4):
             presenter.event(
                 cast(
                     "Event",
                     {
                         "descriptor": "scan-desc",
+                        "seq_num": seq_num,
                         "time": 0.0,
                         "data": {"cam-buffer": background},
                     },
@@ -648,16 +659,16 @@ class TestDetectorPresenter:
 
     @pytest.fixture
     def controller(
-        self, mm_camera: MMCamera
+        self, fake_detector: FakeDetector
     ) -> Generator[DetectorPresenter, None, None]:
-        yield DetectorPresenter("det_ctrl", {mm_camera.name: mm_camera})
+        yield DetectorPresenter("det_ctrl", {fake_detector.name: fake_detector})
 
     def test_instantiation(
-        self, controller: DetectorPresenter, mm_camera: MMCamera
+        self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
         """Controller identifies the detector device and its buffer key."""
-        assert mm_camera.name in controller.detectors
-        assert mm_camera.buffer.name in controller._buffer_keys
+        assert fake_detector.name in controller.detectors
+        assert fake_detector.buffer.name in controller._buffer_keys
 
     def test_register_providers(
         self, controller: DetectorPresenter, virtual_container: VirtualContainer
@@ -665,7 +676,7 @@ class TestDetectorPresenter:
         """register_providers() populates detector providers on the container."""
         controller.register_providers(virtual_container)
         specs = virtual_container.require(DETECTOR_LAYER_SPECS)
-        assert "camera1" in specs
+        assert "cam" in specs
 
     def test_a_setting_the_presenter_cannot_write_is_described_read_only(
         self, controller: DetectorPresenter, virtual_container: VirtualContainer
@@ -674,20 +685,20 @@ class TestDetectorPresenter:
         controller.register_providers(virtual_container)
         described = virtual_container.require(DETECTOR_DESCRIPTORS)
 
-        assert described["camera1-sensor_size"]["source"].endswith(":readonly")
-        assert not described["camera1-pixel_dtype"]["source"].endswith(":readonly")
-        assert not described["camera1-exposure"]["source"].endswith(":readonly")
-        assert not described["camera1-roi"]["source"].endswith(":readonly")
+        assert described["cam-sensor_size"]["source"].endswith(":readonly")
+        assert not described["cam-pixel_dtype"]["source"].endswith(":readonly")
+        assert not described["cam-exposure"]["source"].endswith(":readonly")
+        assert not described["cam-roi"]["source"].endswith(":readonly")
 
     def test_live_events_are_forwarded_raw(
-        self, controller: DetectorPresenter, mm_camera: MMCamera
+        self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
         """Frames arrive as Event documents and are forwarded unmodified.
 
         Median correction belongs to MedianPresenter, which publishes it on
         its own signal as a separate layer.
         """
-        key = mm_camera.buffer.name
+        key = fake_detector.buffer.name
         received: list[dict[str, Any]] = []
         controller.sig_new_data.connect(received.append)
 
@@ -707,8 +718,8 @@ class TestDetectorPresenter:
 
         assert len(received) == 1
         np.testing.assert_array_equal(received[0][key]["value"], frame)
-        assert received[0][f"{mm_camera.name}-roi"]["value"] == Roi.parse(
-            run_coro(mm_camera.roi.get_value())
+        assert received[0][f"{fake_detector.name}-roi"]["value"] == Roi.parse(
+            run_coro(fake_detector.roi.get_value())
         )
 
     def test_a_frame_is_forwarded_with_the_roi_it_was_taken_with(
@@ -835,7 +846,7 @@ class TestDetectorPresenter:
     async def test_a_refused_setting_is_logged_and_not_announced(
         self,
         controller: DetectorPresenter,
-        mm_camera: MMCamera,
+        fake_detector: FakeDetector,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """A write the device refuses reaches the log, not the caller's slot."""
@@ -844,32 +855,34 @@ class TestDetectorPresenter:
             lambda d, k, v: received.append((d, k, v))
         )
 
-        await controller.set(mm_camera.name, "exposure", "not a number")
+        await controller.set(fake_detector.name, "exposure", "not a number")
 
         assert received == []
         assert "Failed to set" in caplog.text
 
     async def test_set_exposure_emits_new_configuration(
-        self, controller: DetectorPresenter, mm_camera: MMCamera
+        self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
         """set() applies the setting and emits sig_new_configuration."""
         received: list[tuple[str, str, Any]] = []
         controller.sig_new_configuration.connect(
             lambda d, k, v: received.append((d, k, v))
         )
-        await controller.set(mm_camera.name, "exposure", 50.0)
+        await controller.set(fake_detector.name, "exposure", 50.0)
 
         assert received
-        assert received[0][0] == mm_camera.name
-        assert run_coro(mm_camera.exposure.get_value()) == pytest.approx(50.0)
+        assert received[0][0] == fake_detector.name
+        assert run_coro(fake_detector.exposure.get_value()) == pytest.approx(50.0)
 
 
 class TestAcquisitionPresenter:
     """Tests for AcquisitionPresenter."""
 
     @pytest.fixture
-    def devices(self, mm_camera: MMCamera, motor_stage: FakeXYStage) -> dict[str, Any]:
-        return {mm_camera.name: mm_camera, motor_stage.name: motor_stage}
+    def devices(
+        self, fake_flyer: FakeFlyer, motor_stage: FakeXYStage
+    ) -> dict[str, Any]:
+        return {fake_flyer.name: fake_flyer, motor_stage.name: motor_stage}
 
     @pytest.fixture
     def controller(
@@ -968,10 +981,44 @@ class TestAcquisitionPresenter:
         ctrl = AcquisitionPresenter("acq_ctrl", {})
         assert ctrl.plan_specs == {}
 
+    def test_the_square_scan_takes_a_frame_before_every_move(
+        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+    ) -> None:
+        """The stack starts where the motor stands; the last move closes the square."""
+        presenter = AcquisitionPresenter("acq_ctrl", {})
+        simulator = RunEngineSimulator()
+        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+
+        try:
+            messages = simulator.simulate_plan(
+                presenter.square_scan([fake_detector], motor_stage, 5.0, 1)
+            )
+        finally:
+            presenter.shutdown()
+
+        assert [
+            (msg.command, getattr(msg.obj, "name", None))
+            for msg in messages
+            if msg.command in {"trigger", "save", "set"}
+        ] == [
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+        ]
+
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,
         controller: AcquisitionPresenter,
-        mm_camera: MMCamera,
+        fake_flyer: FakeFlyer,
         motor_stage: FakeXYStage,
     ) -> None:
         """launch_plan() resolves UI values into real devices and fires sig_pre_launch_notify.
@@ -1003,7 +1050,7 @@ class TestAcquisitionPresenter:
 
         controller.launch_plan(
             "live_stream",
-            {"detectors": [mm_camera.name], "frames": 3},
+            {"detectors": [fake_flyer.name], "frames": 3},
         )
 
         assert notified == ["live_stream"]
@@ -1011,7 +1058,7 @@ class TestAcquisitionPresenter:
         assert inspect.isgenerator(calls[0])
 
     def test_a_togglable_plan_announces_its_end(
-        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
         """The path provider and the view learn a stream ended, not only a scan."""
         settled = FakeFuture()
@@ -1019,7 +1066,7 @@ class TestAcquisitionPresenter:
         ended: list[bool] = []
         controller.sig_plan_done.connect(lambda: ended.append(True))
 
-        controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
         settled.settle()
 
         assert ended == [True]
@@ -1033,7 +1080,7 @@ class TestAcquisitionPresenter:
         controller.stop_plan()
 
     def test_a_launch_while_a_plan_runs_is_refused(
-        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
         """A second plan would take the running one's action latches with it."""
         engine = FakeEngine(FakeFuture())
@@ -1041,21 +1088,21 @@ class TestAcquisitionPresenter:
         running: Future[None] = Future()
         controller.futures.add(running)
         try:
-            controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+            controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
         finally:
             controller.futures.discard(running)
 
         assert engine.plans == []
 
     def test_a_latch_left_set_by_a_stop_does_not_fire_the_next_launch(
-        self, controller: AcquisitionPresenter, mm_camera: MMCamera
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
         controller.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
         stale = SRLatch()
         stale.set()
         controller.action_map["stream"] = stale
 
-        controller.launch_plan("live_stream", {"detectors": [mm_camera.name]})
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
 
         assert not stale.is_set()
 

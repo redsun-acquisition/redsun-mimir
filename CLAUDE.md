@@ -32,7 +32,8 @@ src/redsun_mimir/
   hooks.py         # NapariApplication, FONT_SIZE
   utils/napari/    # napari callbacks, overlay, stylesheet
 tests/             # flat: conftest.py + test_<subsystem>.py
-pyproject.toml     # all tool config: pytest, ruff, mypy, coverage
+scripts/mypy_qt.py # mypy with the qtpy flags for the binding QT_API names
+pyproject.toml     # all tool config: pytest, ruff, mypy, coverage, tox
 ```
 
 Entry point:
@@ -44,26 +45,38 @@ which redsun plugin discovery reads.
 
 ```bash
 uv sync --group dev                      # dev env (pulls pyqt + sim + uc2 groups)
+uv run prek install                      # once: run the prek.toml hooks on every commit
 uv run pytest                            # full suite (testpaths=tests)
 uv run pytest tests/test_devices.py -x    # scoped, fast
-uv run ruff check --fix . && uv run ruff format .
-uv run mypy src/ $(uv run qtpy mypy-args)
+uv run prek run --all-files              # the hooks: ruff, whitespace, yaml/toml checks
+uv run tox -e mypy-pyqt,mypy-pyside       # mypy against each Qt binding, as CI runs it
+uv run tox                               # lint, both mypy envs, tests
 mmcore install --test-adapters           # once: DemoCamera adapters for mmcore tests
 mmcore list                              # verify: the active install must be DIV-compatible
 ```
 
 ### Shell
 
-`cmd.exe` has no `$(...)`. On Windows use PowerShell and write the mypy args
-as `@(uv run qtpy mypy-args)`. Prefer PowerShell over `cmd.exe` for Claude
-Code sessions on this repo.
+Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
+
+### prek
+
+`prek.toml` lists the commit hooks. The same hooks run in the tox `lint` env
+and in the CI `prek` job, so `uv run prek run --all-files` passing locally
+means lint passes in CI. `prek` and `ruff` live in the `lint` dependency group
+(included in `dev`); the ruff hooks run `uv run --locked --only-group lint`, so
+the ruff version comes from `uv.lock` and `prek.toml` pins none. A hook that
+rewrites a file reports failure: stage the rewrite and commit again. Do not
+skip hooks with `--no-verify`.
 
 ### mypy
 
-Always run mypy through qtpy shim. Pins Qt binding mypy resolves against, and
-is what CI runs. Bare `mypy src/` diverges once both pyqt6 and pyside6 present.
+Always run mypy through the tox envs (`scripts/mypy_qt.py`). They pin the Qt
+binding mypy resolves against, and are what CI runs, once per binding. Bare
+`mypy` diverges once both pyqt6 and pyside6 present, and code must pass both.
 
-mypy is `strict = true` with `warn_unreachable` and `files = ["src", "tests"]`,
+mypy is `strict = true` with `warn_unreachable` and
+`files = ["src", "tests", "scripts"]`,
 so tests type-checked as strictly as package, same as redsun. Only
 `import-untyped`, `import-not-found`, `no-untyped-call` disabled. Do not widen
 list to silence real error.

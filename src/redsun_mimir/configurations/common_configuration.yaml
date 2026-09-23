@@ -1,7 +1,8 @@
-# Everything both sessions share. Each session file lays its devices over this.
+# Everything both sessions share. Each session file lays its devices over this,
+# and names the session itself: the name is what a run writes and logs under,
+# so the two must not share one.
 
 schema_version: 1.0
-session: redsun-mimir
 frontend: pyqt
 
 presenters:

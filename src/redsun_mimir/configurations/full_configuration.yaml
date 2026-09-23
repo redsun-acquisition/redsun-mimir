@@ -1,5 +1,7 @@
 # Simulated hardware. Lays over common_configuration.yaml.
 
+session: mimir-sim
+
 services:
   transport: pv-access
   camera1_ioc:
