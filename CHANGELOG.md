@@ -13,20 +13,23 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `--no-reset` (`redsun_mimir.services.uc2_controller`) - opens the serial
   port without restarting the board, for a port with no board behind it.
-- `DeviceLocks` (`redsun_mimir.common`) - names the devices a plan holds, with
-  `hold(*devices)` as a context manager and `sig_locks_changed` emitting the
-  set when it changes.
-- `AcquisitionPresenter.locks` and `AcquisitionPresenter.sig_locks_changed` -
-  a plan holds the devices in its arguments until it ends; a paused plan keeps
-  them.
-- `MotorView.set_locked`, `LightView.set_locked`, `DetectorView.set_locked` -
-  disable the controls of the named devices; readouts keep updating.
+- `DeviceLocks` (`redsun_mimir.common`) - names the devices a plan locks;
+  `register(engine)` handles the engine's `lock` and `unlock` messages, and
+  `sig_locks_changed` emits the set when it changes.
+- `lock_wrapper` (`redsun_mimir.common`) - runs a plan with devices locked and
+  unlocks them however it ends.
 
   ```python
-  def scan(self, stage: Stage, camera: Camera) -> MsgGenerator[None]:
-      with self.locks.hold(self.laser):
-          yield from bps.mv(self.laser.power, 5)
+  yield from lock_wrapper(self.square_scan(detectors, motor, 5.0, 10), motor)
   ```
+
+- `AcquisitionPresenter.sig_locks_changed` - the scan action locks its motor
+  and detectors, the stream action its detectors, while each runs.
+- `MotorView.set_locked`, `LightView.set_locked`, `DetectorView.set_locked` -
+  disable the controls of the named devices; readouts keep updating.
+- `register_embedded_viewer` (`redsun_mimir.utils.napari`) - registers an
+  embedded `ViewerModel`, its `QtViewer`, layers and selection with napari's
+  injection store, for napari's actions and menus.
 
 ### Changed
 
@@ -53,6 +56,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `ImageView.update_layers` rebuilds a detector layer the user deleted as a
   sensor-sized, writable layer with its selection box.
+- `ImageView`'s layer list context menu opens instead of aborting the session.
 
 ## [0.4.1] - 07-09-2026
 
