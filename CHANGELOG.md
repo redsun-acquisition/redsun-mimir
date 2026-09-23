@@ -16,6 +16,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- `redsun` 0.13.0 is the minimum version, in the dependencies and the `pyqt`
+  and `pyside` extras.
 - The example sessions are named `mimir-sim` and `mimir-uc2`, each in its own
   configuration file.
 - `AcquisitionPresenter.square_scan` takes a frame before every move, starting
