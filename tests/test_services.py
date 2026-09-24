@@ -286,7 +286,7 @@ async def test_a_bounded_window_closes_where_its_last_frame_is_written(
     camera.grab_once()
     camera.grab_once()
 
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
 
     assert camera.captured.get() == 2
     assert camera.capture.get() is False
@@ -303,7 +303,7 @@ async def test_a_second_window_counts_from_zero(
     await camera.capture.put(True)
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.captured.get() == 2
 
     await camera.file_path.put(str(tmp_path / "second.zarr"))
@@ -312,7 +312,7 @@ async def test_a_second_window_counts_from_zero(
     await camera.capture.put(True)
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.captured.get() == 2
     assert (tmp_path / "second.zarr" / DATA_KEY / "zarr.json").exists()
 
@@ -632,7 +632,7 @@ async def test_the_pixel_dtype_is_refused_while_a_capture_writes(
 
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.capture.get() is False
     await camera.pixel_dtype.put(choices["uint16"])
     assert core.properties["PixelType"] == "16bit"
@@ -662,7 +662,7 @@ async def test_a_fault_mid_capture_ends_the_window(
     core.fault = RuntimeError("camera unplugged")
     await camera.acquire.put(True)
     assert await asyncio.to_thread(camera.wait_until_idle, TIMEOUT)
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
 
     await camera.publish_frame()
 

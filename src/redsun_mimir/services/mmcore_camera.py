@@ -468,7 +468,7 @@ class MMCameraController(Controller):
     async def disconnect(self) -> None:
         """Stop grabbing and finish a capture left open."""
         await self._stop_grabbing()
-        self._close_store()
+        await asyncio.to_thread(self._close_store)
 
     @scan(LIVE_PERIOD)
     async def publish_frame(self) -> None:
@@ -568,8 +568,7 @@ class MMCameraController(Controller):
         preparing; left at the last window's total, the next would be waited
         on for twice its frames.
         """
-        with self._writing:
-            self._written = 0
+        await asyncio.to_thread(self._reset_written)
         await self.captured.update(0)
 
     async def _on_capture(self, capturing: bool) -> None:
@@ -578,7 +577,7 @@ class MMCameraController(Controller):
         Closing publishes the count too, since an unbounded window ends here.
         """
         if not capturing:
-            self._close_store()
+            await asyncio.to_thread(self._close_store)
             await self.captured.update(self._written)
             return
         if self._store is not None:
@@ -592,7 +591,7 @@ class MMCameraController(Controller):
 
     async def _end_capture(self) -> None:
         """Finish a window that has written every frame it was asked for."""
-        self._close_store()
+        await asyncio.to_thread(self._close_store)
         await self.captured.update(self._written)
         await self.capture.update(False)
 
@@ -603,11 +602,16 @@ class MMCameraController(Controller):
             await self._grabber
             self._grabber = None
 
+    def _reset_written(self) -> None:
+        with self._writing:
+            self._written = 0
+
     def _close_store(self) -> None:
         """Finish the capture's store, if one is open.
 
         Held under the lock the grabbing thread appends beneath, so no store
-        is closed between its check and its append.
+        is closed between its check and its append. Closing writes what the
+        store still holds, so it runs off the event loop.
         """
         with self._writing:
             if self._store is not None:
