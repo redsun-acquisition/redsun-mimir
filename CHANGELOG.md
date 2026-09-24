@@ -7,14 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
-## [Unreleased]
-
-### Fixed
-
-- `MMCamera` finishes a bounded capture window without a `TimeoutError` on
-  its `State` signal when the window closes before the first `State` update
-  arrives.
-
 ## [0.5.0] - 24-09-2026
 
 ### Added
@@ -61,6 +53,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `ImageView`'s layer list context menu opens instead of aborting the session.
 - `redsun_mimir.services.mmcore_camera` keeps answering its PVs while a
   capture's store is written out.
+- `MMCamera` finishes a bounded capture window without a `TimeoutError` on
+  its `State` signal when the window closes before the first `State` update
+  arrives.
 
 ## [0.4.1] - 07-09-2026
 
