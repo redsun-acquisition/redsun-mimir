@@ -7,6 +7,7 @@ the environment, and stopped by closing its standard input.
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import os
 import sys
 from typing import TYPE_CHECKING, Final
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
 
 #: Where the readiness check looks for the controller it just served.
 LOOPBACK: Final = "127.0.0.1"
+
+#: Seconds a service may take to become ready, or to stop once asked, before
+#: it writes every thread's stack to its output. Below the 15 s a session
+#: waits for readiness, so the stacks reach the session's log.
+STALL_DUMP: Final = 10.0
 
 
 def session_logging() -> None:
@@ -85,13 +91,17 @@ async def serve(controller: Controller, prefix: str, ready: str) -> None:
     ``FastCS.run`` installs signal handlers POSIX only and watches no input,
     so the serving task is cancelled here instead.
     """
+    faulthandler.dump_traceback_later(STALL_DUMP)
     controller.set_path([prefix])
     control_system = FastCS(controller, [EpicsPVATransport()])
     serving = asyncio.ensure_future(control_system.serve(interactive=False))
     announcing = asyncio.ensure_future(announce_when_reachable(prefix, ready))
+    announcing.add_done_callback(lambda _: faulthandler.cancel_dump_traceback_later())
 
     await asyncio.to_thread(sys.stdin.read)
 
+    faulthandler.dump_traceback_later(STALL_DUMP)
     announcing.cancel()
     serving.cancel()
     await asyncio.gather(serving, announcing, return_exceptions=True)
+    faulthandler.cancel_dump_traceback_later()
