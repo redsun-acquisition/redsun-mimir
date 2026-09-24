@@ -12,23 +12,17 @@ from typing import TYPE_CHECKING, Any, cast
 import bluesky.plan_stubs as bps
 import numpy as np
 import pytest
+import redsun.engine.plan_stubs as rps
 from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
-from bluesky.utils import RunEngineInterrupted
-from ophyd_async.core import Device, soft_signal_rw
+from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import DEFERRALS, Deferrals, RunEngine
 from redsun.engine.actions import SRLatch
 from redsun.virtual import VirtualContainer
 from redsun.writers._base import root_attributes
 
-from redsun_mimir.common import (
-    LIVE_VIEW_STREAM,
-    MEDIAN_SCAN_STREAM,
-    DeviceLocks,
-    Roi,
-    lock_wrapper,
-)
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
@@ -1087,9 +1081,9 @@ class TestAcquisitionPresenter:
         seen: list[frozenset[str]] = []
         controller.sig_locks_changed.connect(seen.append)
 
-        controller.engine(lock_wrapper(bps.null(), motor_stage, fake_detector)).result(
-            timeout=10
-        )
+        controller.engine(
+            rps.lock_wrapper(bps.null(), motor_stage, fake_detector)
+        ).result(timeout=10)
 
         assert seen == [{motor_stage.name, fake_detector.name}, frozenset()]
 
@@ -1104,7 +1098,7 @@ class TestAcquisitionPresenter:
             raise RuntimeError("the plan failed")
 
         with pytest.raises(RuntimeError):
-            controller.engine(lock_wrapper(fail(), motor_stage)).result(timeout=10)
+            controller.engine(rps.lock_wrapper(fail(), motor_stage)).result(timeout=10)
 
         assert seen == [{motor_stage.name}, frozenset()]
 
@@ -1149,39 +1143,3 @@ class TestAcquisitionPresenter:
         """toggle_action_event() on a name with no registered latch raises KeyError."""
         with pytest.raises(KeyError):
             controller.toggle_action_event("does-not-exist", True)
-
-
-def test_a_device_locked_twice_stays_locked_until_both_are_released() -> None:
-    """Only a change in the locked set is announced."""
-    locks = DeviceLocks()
-    engine = RunEngine()
-    locks.register(engine)
-    stage, camera = Device(name="stage"), Device(name="camera")
-    seen: list[frozenset[str]] = []
-    locks.sig_locks_changed.connect(seen.append)
-
-    def inner() -> MsgGenerator[None]:
-        yield from lock_wrapper(bps.null(), stage, camera)
-
-    engine(lock_wrapper(inner(), stage)).result(timeout=10)
-
-    assert seen == [{"stage"}, {"stage", "camera"}, {"stage"}, frozenset()]
-
-
-def test_a_lock_replayed_after_a_rewind_is_released_once() -> None:
-    """Resuming a pause replays the lock message the checkpoint cached."""
-    locks = DeviceLocks()
-    engine = RunEngine()
-    locks.register(engine)
-
-    def plan() -> MsgGenerator[None]:
-        yield from bps.checkpoint()
-        yield from lock_wrapper(bps.pause(), Device(name="stage"))
-
-    with pytest.raises(RunEngineInterrupted):
-        engine(plan()).result(timeout=10)
-    assert locks.locked == {"stage"}
-
-    engine.resume().result(timeout=10)
-
-    assert locks.locked == frozenset()

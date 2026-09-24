@@ -35,7 +35,7 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.9.1",
     "msgspec>=0.21.1",
-    "redsun[zarr]>=0.13.0",
+    "redsun[zarr]>=0.13.1",
     "fastcs[epicspva]>=0.14.2",
     "ophyd-async[pva]>=0.21.2",
 ]
@@ -59,7 +59,7 @@ uc2 = [
 ]
 pyqt = [
     "napari[pyqt6]>=0.9.1",
-    "redsun[pyqt]>=0.13.0",
+    "redsun[pyqt]>=0.13.1",
 ]
 sim = [
     "redsun-mimir[pyqt]",
@@ -67,7 +67,7 @@ sim = [
 ]
 pyside = [
     "napari[pyside6]>=0.9.1",
-    "redsun[pyside]>=0.13.0",
+    "redsun[pyside]>=0.13.1",
 ]
 lint = [
     "prek>=0.5.0",
@@ -83,11 +83,11 @@ tox = [
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.9.1",
-    "redsun[pyqt]>=0.13.0",
+    "redsun[pyqt]>=0.13.1",
 ]
 pyside = [
     "napari[pyside6]>=0.9.1",
-    "redsun[pyside]>=0.13.0",
+    "redsun[pyside]>=0.13.1",
 ]
 uc2 = [
     "pymmcore-plus>=0.18.1",

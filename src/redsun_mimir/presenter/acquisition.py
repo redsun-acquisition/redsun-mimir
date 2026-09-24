@@ -23,12 +23,7 @@ from redsun.presenter.plan_spec import (
 )
 from redsun.virtual import Signal, slot
 
-from redsun_mimir.common import (
-    LIVE_VIEW_STREAM,
-    MEDIAN_SCAN_STREAM,
-    DeviceLocks,
-    lock_wrapper,
-)
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from redsun_mimir.protocols import (  # noqa: TC001
     MotorProtocol,
     ReadableFlyer,
@@ -147,9 +142,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.futures: set[Future[Any]] = set()
         self.action_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
-        self._locks = DeviceLocks()
-        self._locks.register(self.engine)
-        self._locks.sig_locks_changed.connect(self.sig_locks_changed.emit)
+        self.engine.sig_locks_changed.connect(self.sig_locks_changed.emit)
         # None => subscribe whatever the container registered
         self.expected_callbacks: frozenset[str] | None = (
             None if callbacks is None else frozenset(callbacks)
@@ -286,7 +279,7 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                scan_run = yield from lock_wrapper(
+                scan_run = yield from rps.lock_wrapper(
                     self.square_scan(
                         detectors, motor, step, scan_frames // 4, parent=parent
                     ),
@@ -296,7 +289,7 @@ class AcquisitionPresenter(Presenter, Loggable):
 
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
-                yield from lock_wrapper(
+                yield from rps.lock_wrapper(
                     self.capture(
                         detectors, live_stream, parent=parent, median_scan=scan_run
                     ),
@@ -449,7 +442,7 @@ class AcquisitionPresenter(Presenter, Loggable):
                 self.action_map, wait_for="set"
             )
             self.logger.debug("Start writing")
-            yield from lock_wrapper(
+            yield from rps.lock_wrapper(
                 self.capture(
                     detectors, stream_name, parent=parent, until_reset=write_forever
                 ),

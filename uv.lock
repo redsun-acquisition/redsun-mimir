@@ -4353,7 +4353,7 @@ wheels = [
 
 [[package]]
 name = "redsun"
-version = "0.13.0"
+version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bluesky" },
@@ -4366,9 +4366,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/18/0c/07a1d95f0ca23fbefcb4fc764fe028b7e4bacb9aad45b82f028d0e5923a3/redsun-0.13.0.tar.gz", hash = "sha256:60c3c8cd8857ac5880ea2db11054c4ccd308fcca3eb6f98a4d2dd25a6e8ac934", size = 104648, upload-time = "2026-09-23T11:02:02.394Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/ab/1a3b09484eb21a5c0a337540c9a339b4293a41296c896d20c89ca15e6ed0/redsun-0.13.1.tar.gz", hash = "sha256:976a60cacd226c2529b8084d1f958bc19ca2adaf40dd02978a8b327b55dea902", size = 105919, upload-time = "2026-09-24T06:26:57.087Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/83/ef5e7aa292737037523d9d52d954bedadae3db564341359cda39a55fc423/redsun-0.13.0-py3-none-any.whl", hash = "sha256:104093589d64e32bf256bc5d39b2509a4d8e209ed00acd30fc235557f9e2434f", size = 129533, upload-time = "2026-09-23T11:02:00.997Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/d3/3ed06749fda2aa91dcace5cadb936a6601acd3acdc4818610378708d9653/redsun-0.13.1-py3-none-any.whl", hash = "sha256:ca8ad3222244c9fb1f9b1b91297fc533287dd71174c358519480270fc11999bf", size = 130915, upload-time = "2026-09-24T06:26:55.593Z" },
 ]
 
 [package.optional-dependencies]
@@ -4471,10 +4471,10 @@ requires-dist = [
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
     { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.13.0" },
-    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", specifier = ">=0.13.0" },
-    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.13.0" },
-    { name = "redsun", extras = ["zarr"], specifier = ">=0.13.0" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.13.1" },
+    { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", specifier = ">=0.13.1" },
+    { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.13.1" },
+    { name = "redsun", extras = ["zarr"], specifier = ">=0.13.1" },
 ]
 provides-extras = ["pyqt", "pyside", "sim", "uc2"]
 
@@ -4490,7 +4490,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
-    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0" },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.1" },
     { name = "redsun-mimir", extras = ["pyqt"] },
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "tox-uv-bare", specifier = ">=1.36.0" },
@@ -4501,11 +4501,11 @@ lint = [
 ]
 pyqt = [
     { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
-    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.0" },
+    { name = "redsun", extras = ["pyqt"], specifier = ">=0.13.1" },
 ]
 pyside = [
     { name = "napari", extras = ["pyside6"], specifier = ">=0.9.1" },
-    { name = "redsun", extras = ["pyside"], specifier = ">=0.13.0" },
+    { name = "redsun", extras = ["pyside"], specifier = ">=0.13.1" },
 ]
 sim = [
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
