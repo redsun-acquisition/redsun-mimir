@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
-## [Unreleased]
+## [0.5.0] - 24-09-2026
 
 ### Added
 
@@ -36,6 +36,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `ImageView` locks each detector layer against deletion from the layer list
   (napari's `LayerLock.DELETION`). A user who unlocks and deletes one gets it
   back with the next frame.
+- `redsun_mimir.services` write every thread's stack to their output when
+  they are not ready 10 s after starting, or not stopped 10 s after being
+  asked to stop.
 
 ### Changed (breaking)
 
@@ -48,6 +51,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `ImageView.update_layers` rebuilds a detector layer the user deleted as a
   sensor-sized, writable layer with its selection box.
 - `ImageView`'s layer list context menu opens instead of aborting the session.
+- `redsun_mimir.services.mmcore_camera` keeps answering its PVs while a
+  capture's store is written out.
 
 ## [0.4.1] - 07-09-2026
 
@@ -597,6 +602,7 @@ caller.
 
 - Initial release.
 
+[0.5.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/redsun-acquisition/redsun-mimir/compare/v0.3.0...v0.3.1

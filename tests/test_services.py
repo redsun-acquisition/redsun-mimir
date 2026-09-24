@@ -227,16 +227,24 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
         client.put(f"{PREFIX}:Acquire", True, timeout=10.0)
         client.put(f"{PREFIX}:FilePath", str(store), timeout=10.0)
         client.put(f"{PREFIX}:NumCapture", CAPTURED_FRAMES, timeout=10.0)
+        window_over = threading.Event()
+        capturing: list[bool] = []
+
+        def on_capture(value: Any) -> None:
+            # a monitor hands over a disconnection as an exception, not a value
+            if isinstance(value, Exception):
+                return
+            if bool(value):
+                capturing.append(True)
+            elif capturing:
+                window_over.set()
+
+        watching = client.monitor(f"{PREFIX}:Capture_RBV", on_capture)
         client.put(f"{PREFIX}:Capture", True, timeout=10.0)
 
-        captured = 0
-        deadline = time.monotonic() + 30
-        while captured < CAPTURED_FRAMES and time.monotonic() < deadline:
-            captured = int(client.get(f"{PREFIX}:Captured", timeout=10.0))
-            time.sleep(0.1)
-
-        assert captured == CAPTURED_FRAMES
-        assert not bool(client.get(f"{PREFIX}:Capture_RBV", timeout=10.0))
+        assert window_over.wait(30.0)
+        watching.close()
+        assert int(client.get(f"{PREFIX}:Captured", timeout=10.0)) == CAPTURED_FRAMES
         assert float(client.get(f"{PREFIX}:Exposure_RBV", timeout=10.0)) == 25.0
         assert int(client.get(f"{PREFIX}:FrameCount", timeout=10.0)) > 0
         client.put(f"{PREFIX}:Acquire", False, timeout=10.0)
@@ -286,7 +294,7 @@ async def test_a_bounded_window_closes_where_its_last_frame_is_written(
     camera.grab_once()
     camera.grab_once()
 
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
 
     assert camera.captured.get() == 2
     assert camera.capture.get() is False
@@ -303,7 +311,7 @@ async def test_a_second_window_counts_from_zero(
     await camera.capture.put(True)
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.captured.get() == 2
 
     await camera.file_path.put(str(tmp_path / "second.zarr"))
@@ -312,7 +320,7 @@ async def test_a_second_window_counts_from_zero(
     await camera.capture.put(True)
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.captured.get() == 2
     assert (tmp_path / "second.zarr" / DATA_KEY / "zarr.json").exists()
 
@@ -632,7 +640,7 @@ async def test_the_pixel_dtype_is_refused_while_a_capture_writes(
 
     camera.grab_once()
     camera.grab_once()
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
     assert camera.capture.get() is False
     await camera.pixel_dtype.put(choices["uint16"])
     assert core.properties["PixelType"] == "16bit"
@@ -662,7 +670,7 @@ async def test_a_fault_mid_capture_ends_the_window(
     core.fault = RuntimeError("camera unplugged")
     await camera.acquire.put(True)
     assert await asyncio.to_thread(camera.wait_until_idle, TIMEOUT)
-    await asyncio.sleep(0.05)
+    await camera.capture.wait_for_value(False, timeout=TIMEOUT)
 
     await camera.publish_frame()
 
