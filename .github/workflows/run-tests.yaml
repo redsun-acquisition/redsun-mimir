@@ -71,6 +71,9 @@ jobs:
         run: uv run --locked coverage run -p -m pytest --color=yes
         env:
           MIMIR_TEST_OPENGL: "1"
+          # p4p's native startup log, which a service writes to the output
+          # pytest shows for a failing test
+          PVXS_LOG: "pvxs.server.setup=DEBUG,pvxs.udp.setup=DEBUG,pvxs.tcp.setup=DEBUG,pvxs.iface=DEBUG,pvxs.sock=DEBUG"
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v7
