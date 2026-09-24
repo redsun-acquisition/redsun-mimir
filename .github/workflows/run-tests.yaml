@@ -68,7 +68,7 @@ jobs:
           assert find_micromanager(), 'no Micro-Manager device adapters found'"
 
       - name: Run tests with coverage
-        run: uv run --locked coverage run -p -m pytest --color=yes --log-cli-level=DEBUG
+        run: uv run --locked coverage run -p -m pytest --color=yes
         env:
           MIMIR_TEST_OPENGL: "1"
 
