@@ -189,6 +189,9 @@ _FULL_LINKS = (
         ("motor_widget.sig_motor_move", "motor_ctrl.move"),
         ("light_widget.sig_toggle_light_request", "light_ctrl.trigger"),
         ("light_widget.sig_intensity_request", "light_ctrl.set"),
+        ("acq_ctrl.sig_locks_changed", "det_widget.set_locked"),
+        ("acq_ctrl.sig_locks_changed", "motor_widget.set_locked"),
+        ("acq_ctrl.sig_locks_changed", "light_widget.set_locked"),
     }
 )
 
