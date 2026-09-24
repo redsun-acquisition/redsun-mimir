@@ -4,13 +4,10 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import numpy as np
-from napari._app_model import get_app_model
-from napari._qt._qapp_model.injection._qproviders import register_qt_types
 from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.layers import LayerLock
-from napari.utils._proxies import PublicOnlyProxy
 from qtpy import QtCore, QtGui, QtWidgets
 from redsun.log import Loggable
 from redsun.view import ViewPosition
@@ -22,6 +19,7 @@ from redsun_mimir.providers import DETECTOR_LAYER_SPECS
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
+    register_embedded_viewer,
     resize_selection_box,
 )
 
@@ -134,21 +132,13 @@ class ImageView(QtView, Loggable):
         #: whether each detector's box is asked to be visible, kept across deletions
         self._selecting: dict[str, bool] = {}
 
-        register_qt_types()
-
         # QtViewer is a QSplitter containing the canvas and the dims bar.
         # It does not carry any main-window chrome (no menu bar, status bar,
         # activity dialog, etc.), making it safe to embed as a child widget.
         self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
-        def _provide_embedded_viewer() -> ViewerModel | None:
-            return PublicOnlyProxy(self.viewer_model)
-
-        def _provide_embedded_qt_viewer() -> QtViewer | None:
-            return self._qt_viewer
-
-        self._provider_disposer = get_app_model().injection_store.register(
-            providers=[(_provide_embedded_viewer,), (_provide_embedded_qt_viewer,)],
+        self._provider_disposer = register_embedded_viewer(
+            self.viewer_model, self._qt_viewer
         )
 
         # Access the sub-panels via QtViewer's lazy properties so they are

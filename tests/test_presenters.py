@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import bluesky.plan_stubs as bps
 import numpy as np
 import pytest
+import redsun.engine.plan_stubs as rps
 from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
 from ophyd_async.core import soft_signal_rw
@@ -1070,6 +1071,36 @@ class TestAcquisitionPresenter:
         settled.settle()
 
         assert ended == [True]
+
+    def test_a_wrapped_plan_locks_its_devices_until_it_ends(
+        self,
+        controller: AcquisitionPresenter,
+        fake_detector: FakeDetector,
+        motor_stage: FakeXYStage,
+    ) -> None:
+        seen: list[frozenset[str]] = []
+        controller.sig_locks_changed.connect(seen.append)
+
+        controller.engine(
+            rps.lock_wrapper(bps.null(), motor_stage, fake_detector)
+        ).result(timeout=10)
+
+        assert seen == [{motor_stage.name, fake_detector.name}, frozenset()]
+
+    def test_a_failing_wrapped_plan_unlocks(
+        self, controller: AcquisitionPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        seen: list[frozenset[str]] = []
+        controller.sig_locks_changed.connect(seen.append)
+
+        def fail() -> MsgGenerator[None]:
+            yield from bps.null()
+            raise RuntimeError("the plan failed")
+
+        with pytest.raises(RuntimeError):
+            controller.engine(rps.lock_wrapper(fail(), motor_stage)).result(timeout=10)
+
+        assert seen == [{motor_stage.name}, frozenset()]
 
     def test_stopping_an_idle_engine_is_nothing(
         self, controller: AcquisitionPresenter

@@ -31,7 +31,7 @@ from redsun_mimir.protocols import (  # noqa: TC001
 from redsun_mimir.providers import PLAN_SPECS
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
     from concurrent.futures import Future
     from typing import Any
 
@@ -116,12 +116,16 @@ class AcquisitionPresenter(Presenter, Loggable):
         Emitted when a non-togglable plan completes.
     sig_action_done : Signal[str]
         Emitted with the action's name when its event is cleared.
+    sig_locks_changed : Signal[frozenset[str]]
+        Emitted with the names of the devices a plan holds, whenever they
+        change. A scan locks its motor and detectors, a capture its detectors.
     """
 
     sig_pre_launch_notify = Signal(str)
     sig_plan_done = Signal()
     sig_base_dir_changed = Signal(str)
     sig_action_done = Signal(str)
+    sig_locks_changed = Signal(frozenset)
 
     def __init__(
         self,
@@ -138,6 +142,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.futures: set[Future[Any]] = set()
         self.action_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
+        self.engine.sig_locks_changed.connect(self.sig_locks_changed.emit)
         # None => subscribe whatever the container registered
         self.expected_callbacks: frozenset[str] | None = (
             None if callbacks is None else frozenset(callbacks)
@@ -274,14 +279,21 @@ class AcquisitionPresenter(Presenter, Loggable):
             )
 
             if name == scan_action.name:
-                scan_run = yield from self.square_scan(
-                    detectors, motor, step, scan_frames // 4, parent=parent
+                scan_run = yield from rps.lock_wrapper(
+                    self.square_scan(
+                        detectors, motor, step, scan_frames // 4, parent=parent
+                    ),
+                    motor,
+                    *detectors,
                 )
 
             elif name == stream_action.name:
                 self.logger.debug("Start writing")
-                yield from self.capture(
-                    detectors, live_stream, parent=parent, median_scan=scan_run
+                yield from rps.lock_wrapper(
+                    self.capture(
+                        detectors, live_stream, parent=parent, median_scan=scan_run
+                    ),
+                    *detectors,
                 )
                 restage = True
                 self.logger.debug("Writing complete")
@@ -430,8 +442,11 @@ class AcquisitionPresenter(Presenter, Loggable):
                 self.action_map, wait_for="set"
             )
             self.logger.debug("Start writing")
-            yield from self.capture(
-                detectors, stream_name, parent=parent, until_reset=write_forever
+            yield from rps.lock_wrapper(
+                self.capture(
+                    detectors, stream_name, parent=parent, until_reset=write_forever
+                ),
+                *detectors,
             )
             self.logger.debug("Writing complete")
             self.clear_and_notify(name, current_action)

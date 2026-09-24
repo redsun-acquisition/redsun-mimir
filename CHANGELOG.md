@@ -13,9 +13,19 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `--no-reset` (`redsun_mimir.services.uc2_controller`) - opens the serial
   port without restarting the board, for a port with no board behind it.
+- `AcquisitionPresenter.sig_locks_changed` - re-emits the engine's
+  `RunEngine.sig_locks_changed`. The scan action locks its motor and
+  detectors, the stream action its detectors, while each runs.
+- `MotorView.set_locked`, `LightView.set_locked`, `DetectorView.set_locked` -
+  disable the controls of the named devices; readouts keep updating.
+- `register_embedded_viewer` (`redsun_mimir.utils.napari`) - registers an
+  embedded `ViewerModel`, its `QtViewer`, layers and selection with napari's
+  injection store, for napari's actions and menus.
 
 ### Changed
 
+- `redsun` 0.13.2 is the minimum version, in the dependencies and the `pyqt`
+  and `pyside` extras.
 - The example sessions are named `mimir-sim` and `mimir-uc2`, each in its own
   configuration file.
 - `AcquisitionPresenter.square_scan` takes a frame before every move, starting
@@ -37,6 +47,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `ImageView.update_layers` rebuilds a detector layer the user deleted as a
   sensor-sized, writable layer with its selection box.
+- `ImageView`'s layer list context menu opens instead of aborting the session.
 
 ## [0.4.1] - 07-09-2026
 

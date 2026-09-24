@@ -1,6 +1,10 @@
-"""What more than one layer of the bundle shares: stream names and the ROI form."""
+"""What more than one layer of the bundle shares: stream names, the ROI form."""
 
 from ._roi import Roi
 from ._streams import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 
-__all__ = ["LIVE_VIEW_STREAM", "MEDIAN_SCAN_STREAM", "Roi"]
+__all__ = [
+    "LIVE_VIEW_STREAM",
+    "MEDIAN_SCAN_STREAM",
+    "Roi",
+]
