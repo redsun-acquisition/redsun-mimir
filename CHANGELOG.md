@@ -24,7 +24,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
-- `redsun` 0.13.1 is the minimum version, in the dependencies and the `pyqt`
+- `redsun` 0.13.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
 - The example sessions are named `mimir-sim` and `mimir-uc2`, each in its own
   configuration file.
