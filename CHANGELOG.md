@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
+## [Unreleased]
+
+### Fixed
+
+- `MMCamera` finishes a bounded capture window without a `TimeoutError` on
+  its `State` signal when the window closes before the first `State` update
+  arrives.
+
 ## [0.5.0] - 24-09-2026
 
 ### Added

@@ -112,6 +112,10 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
             finally:
                 closed.cancel()
                 faulted.cancel()
+                # a cancelled wait closes its subscription only once it runs
+                # again; a read made before then waits on the closing
+                # subscription's first value, which never comes
+                await asyncio.gather(closed, faulted, return_exceptions=True)
             await self.camera.faulted()
         else:
             await self.camera.capture.set(False)
