@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import threading
 from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -825,14 +826,17 @@ class TestDetectorPresenter:
         # a message the test holds open, so the change cannot land before the
         # assertions on whatever machine runs them
         gate = asyncio.Event()
+        entered = threading.Event()
+
+        async def hold() -> None:
+            entered.set()
+            await gate.wait()
 
         def held_open() -> MsgGenerator[None]:
-            yield from bps.wait_for([gate.wait])
+            yield from bps.wait_for([hold])
 
         future = engine(held_open())
-        while engine.state != "running":
-            await asyncio.sleep(0.01)
-        await asyncio.sleep(0.05)
+        assert await asyncio.to_thread(entered.wait, 5)
 
         await presenter.set("cam", "roi", "1,1,3,2")
         await presenter.set("cam", "exposure", 5.0)

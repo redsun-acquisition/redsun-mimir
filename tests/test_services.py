@@ -227,16 +227,24 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
         client.put(f"{PREFIX}:Acquire", True, timeout=10.0)
         client.put(f"{PREFIX}:FilePath", str(store), timeout=10.0)
         client.put(f"{PREFIX}:NumCapture", CAPTURED_FRAMES, timeout=10.0)
+        window_over = threading.Event()
+        capturing: list[bool] = []
+
+        def on_capture(value: Any) -> None:
+            # a monitor hands over a disconnection as an exception, not a value
+            if isinstance(value, Exception):
+                return
+            if bool(value):
+                capturing.append(True)
+            elif capturing:
+                window_over.set()
+
+        watching = client.monitor(f"{PREFIX}:Capture_RBV", on_capture)
         client.put(f"{PREFIX}:Capture", True, timeout=10.0)
 
-        captured = 0
-        deadline = time.monotonic() + 30
-        while captured < CAPTURED_FRAMES and time.monotonic() < deadline:
-            captured = int(client.get(f"{PREFIX}:Captured", timeout=10.0))
-            time.sleep(0.1)
-
-        assert captured == CAPTURED_FRAMES
-        assert not bool(client.get(f"{PREFIX}:Capture_RBV", timeout=10.0))
+        assert window_over.wait(30.0)
+        watching.close()
+        assert int(client.get(f"{PREFIX}:Captured", timeout=10.0)) == CAPTURED_FRAMES
         assert float(client.get(f"{PREFIX}:Exposure_RBV", timeout=10.0)) == 25.0
         assert int(client.get(f"{PREFIX}:FrameCount", timeout=10.0)) > 0
         client.put(f"{PREFIX}:Acquire", False, timeout=10.0)
