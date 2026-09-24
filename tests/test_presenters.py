@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-import threading
 from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -821,14 +820,8 @@ class TestDetectorPresenter:
         virtual_container.provide(DEFERRALS, Deferrals(engine))
         presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
         presenter.inject_dependencies(virtual_container)
-        # the engine may report the plan done before the deferred change runs
-        roi_applied = threading.Event()
-
-        def on_new_configuration(detector: str, key: str, value: Any) -> None:
-            if (detector, key, value) == ("cam", "cam-roi", "1,1,3,2"):
-                roi_applied.set()
-
-        presenter.sig_new_configuration.connect(on_new_configuration)
+        announced: list[tuple[str, str, Any]] = []
+        presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
         # a message the test holds open, so the change cannot land before the
         # assertions on whatever machine runs them
         gate = asyncio.Event()
@@ -848,8 +841,8 @@ class TestDetectorPresenter:
         assert await fake_detector.exposure.get_value() == 5.0
         engine.loop.call_soon_threadsafe(gate.set)
         future.result(timeout=5)
-        assert await asyncio.to_thread(roi_applied.wait, 5)
         assert await fake_detector.roi.get_value() == "1,1,3,2"
+        assert ("cam", "cam-roi", "1,1,3,2") in announced
 
     async def test_a_refused_setting_is_logged_and_not_announced(
         self,
