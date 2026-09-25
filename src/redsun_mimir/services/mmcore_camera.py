@@ -422,6 +422,11 @@ class MMCameraController(Controller):
         self._grabber: asyncio.Task[None] | None = None
         self._sequencing = False
         self._camera_lock = threading.Lock()
+        # the grabbing thread takes the camera again as soon as it lets go,
+        # and a lock is not fair, so a write waiting for it can wait for
+        # every frame that follows: whoever wants the camera holds this
+        # first, and the grabbing thread passes through it between frames
+        self._camera_wanted = threading.Lock()
         self._error: str | None = None
 
         self.acquire.add_on_update_callback(self._on_acquire)
@@ -662,6 +667,8 @@ class MMCameraController(Controller):
         camera lock: a driver reached from two threads at once, one exposing
         and one changing what frames look like, can end the process.
         """
+        with self._camera_wanted:
+            pass
         with self._camera_lock:
             if not self._sequencing:
                 return self._core.snap()
@@ -724,7 +731,7 @@ class MMCameraController(Controller):
         The check and the read hold the camera lock, so no sequence can start
         between them: on some adapters a read during a sequence ends it.
         """
-        with self._camera_lock:
+        with self._camera_wanted, self._camera_lock:
             return None if self._sequencing else read()
 
     def _without_sequence(self, apply: Callable[[], None]) -> None:
@@ -734,7 +741,7 @@ class MMCameraController(Controller):
         the frame it is taking to end and takes no other until *apply* is
         done.
         """
-        with self._camera_lock:
+        with self._camera_wanted, self._camera_lock:
             was_sequencing = self._sequencing
             if was_sequencing:
                 self._stop_sequence()

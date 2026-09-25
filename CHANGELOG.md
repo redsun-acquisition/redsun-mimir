@@ -36,7 +36,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   that crop.
 - `MMCameraController` takes every frame under the lock a setting is written
   beneath, so one thread at a time reaches the camera. A driver exposing while
-  another thread rebuilds its buffers can end the service process.
+  another thread rebuilds its buffers can end the service process. A write
+  waits at most one frame for it: the grabbing thread passes through a second
+  lock between frames, and a lock the thread takes again as soon as it lets go
+  holds up everything else.
+- `MMCamera.trigger` polls the camera's frame counter instead of watching it.
+  A monitor opened on that counter while a plan runs can come back from the
+  service as `Monitor Create implied error`, and every later read through that
+  subscription times out, which aborts the run. Watching it is the shape to
+  return to once the monitor holds.
 - A negative number in a YouSeeToo board's answer keeps its sign:
   `redsun_mimir.services.uc2_controller` cuts the board's framing at the
   braces of the document rather than by character.

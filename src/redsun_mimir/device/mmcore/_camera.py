@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -37,6 +38,11 @@ MIMETYPE = "application/x-zarr"
 
 #: Seconds ``trigger`` waits for a frame taken after it was called.
 DEFAULT_TIMEOUT: Final = 5.0
+
+#: Seconds between two reads of the frame counter in ``trigger``. The service
+#: publishes the counter every ``LIVE_PERIOD``, so a faster poll only adds
+#: traffic.
+FRAME_POLL: Final = 0.05
 
 #: Milliseconds per second, the units a camera takes its exposure in.
 MILLISECONDS = 1000.0
@@ -255,13 +261,21 @@ class MMCamera(StandardDetector, Loggable):
 
         The camera runs continuously, so the frame already published may
         predate the move a plan just made.
+
+        The counter is polled, not watched. A monitor opened on it while a
+        plan runs comes back from the service as ``Monitor Create implied
+        error`` often enough to abort a scan, and every later read through
+        that subscription times out. This is a workaround: watching the
+        counter is the right shape once a monitor holds.
         """
-        seen = await self.frame_count.get_value()
+        seen = await self.frame_count.get_value(cached=False)
         await self.faulted()
-        try:
-            await wait_for_value(
-                self.frame_count, lambda count: count > seen, timeout=DEFAULT_TIMEOUT
-            )
-        except TimeoutError:
-            await self.faulted()
-            raise
+        deadline = time.monotonic() + DEFAULT_TIMEOUT
+        while await self.frame_count.get_value(cached=False) <= seen:
+            if time.monotonic() > deadline:
+                await self.faulted()
+                raise TimeoutError(
+                    f"{self.name} took no frame in {DEFAULT_TIMEOUT} s, "
+                    f"its frame count still at {seen}"
+                )
+            await asyncio.sleep(FRAME_POLL)
