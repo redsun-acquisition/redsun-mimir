@@ -1,9 +1,9 @@
 """The wire protocol of a YouSeeToo (UC2) controller.
 
-The board acknowledges a command but reports no position or laser power
-back. One port carries every axis and laser, so a command is sent under a
-lock, and ``pyserial`` blocks, so a caller keeps these calls off its event
-loop.
+The board acknowledges a command, answers a query for where its steppers
+stand, and reports no laser power back. One port carries every axis and
+laser, so a command is sent under a lock, and ``pyserial`` blocks, so a
+caller keeps these calls off its event loop.
 """
 
 from __future__ import annotations
@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING, Final
 
 import msgspec
 
-from ._uc2_actions import Acknowledge, LaserAction, MotorAction, MotorResponse
+from ._uc2_actions import (
+    Acknowledge,
+    LaserAction,
+    MotorAction,
+    MotorResponse,
+    MotorStateResponse,
+)
 
 if TYPE_CHECKING:
     from threading import Lock
@@ -29,18 +35,45 @@ MOTOR_STEP: Final[int] = 320
 #: The stepper each axis is wired to.
 AXIS_ID: Final[dict[str, int]] = {"x": 1, "y": 2, "z": 3}
 
+#: What the board answers with the state of every stepper it carries.
+POSITION_QUERY: Final[bytes] = b'{"task":"/motor_get"}'
+
 
 def clean(raw: bytes) -> str:
-    """Strip the controller's framing noise out of a response."""
-    return (
-        str(raw)
-        .replace("+", "")
-        .replace("-", "")
-        .replace("\\r", "")
-        .replace("\\n", "")
-        .replace("b'", "")
-        .replace("'", "")
-    )
+    """Return the document in *raw*, without the board's framing.
+
+    The board wraps an answer in ``++`` and ``--`` and breaks it over lines.
+    Cutting at the outermost braces keeps the minus sign of a negative
+    position, which stripping the framing characters would take with it.
+    """
+    text = raw.decode(errors="ignore")
+    opened, closed = text.find("{"), text.rfind("}")
+    return text[opened : closed + 1] if 0 <= opened < closed else ""
+
+
+def read_positions(serial: Serial, lock: Lock, factor: int) -> dict[int, float]:
+    """Ask the board where its steppers stand, keyed by stepper id.
+
+    *factor* is the nanometres in the unit a position is wanted in, as
+    `move_axis` takes it; `AXIS_ID` names the id of each axis.
+    """
+    with lock:
+        serial.reset_input_buffer()
+        written = serial.write(POSITION_QUERY)
+        if written is None or written != len(POSITION_QUERY):
+            raise RuntimeError("Failed to write to serial port.")
+
+        answer = clean(serial.read_until(expected=b"--"))
+        if not answer:
+            raise RuntimeError("Failed to read from serial port.")
+        try:
+            response = msgspec.json.decode(answer, type=MotorStateResponse)
+        except msgspec.DecodeError as e:
+            raise RuntimeError(f"Failed to decode stepper state: {e}") from e
+        return {
+            stepper.id: stepper.position * MOTOR_STEP / factor
+            for stepper in response.motor.steppers
+        }
 
 
 def move_axis(

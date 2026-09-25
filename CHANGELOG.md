@@ -15,6 +15,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   back over the whole sensor and returns what it covers.
 - `within` (`redsun_mimir.services.mmcore_camera`) - whether one ROI falls
   inside another.
+- `redsun_mimir.services.uc2_controller` reads each axis position from the
+  board once at startup, so a session opens on where the board left its
+  steppers. A board answering no position leaves the axis at zero and logs a
+  warning.
 
 ### Changed
 
@@ -33,6 +37,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `MMCameraController` takes every frame under the lock a setting is written
   beneath, so one thread at a time reaches the camera. A driver exposing while
   another thread rebuilds its buffers can end the service process.
+- A negative number in a YouSeeToo board's answer keeps its sign:
+  `redsun_mimir.services.uc2_controller` cuts the board's framing at the
+  braces of the document rather than by character.
 
 ## [0.5.0] - 24-09-2026
 

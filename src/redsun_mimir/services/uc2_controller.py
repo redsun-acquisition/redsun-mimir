@@ -22,10 +22,11 @@ from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
 from fastcs.controllers import Controller
 from fastcs.datatypes import Float, Int
 from fastcs.logging import logger
+from fastcs.util import ONCE
 from serial import Serial, serial_for_url
 
 from ._process import controller_id, identity_arguments, serve, session_logging
-from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, set_laser
+from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, read_positions, set_laser
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -65,10 +66,10 @@ class SerialRef(AttributeIORef):
 
 
 class SerialIO(AttributeIO[Any, SerialRef]):
-    """Commands the board, and echoes back what was commanded.
+    """Commands the board, and reads back where it stands.
 
-    The board reports nothing back, so an attribute reads the last value it
-    acknowledged.
+    An axis is read from the board itself; a laser is not, so its attribute
+    reads the last value the board acknowledged.
     """
 
     def __init__(self, serial: Serial, lock: Lock) -> None:
@@ -96,15 +97,40 @@ class SerialIO(AttributeIO[Any, SerialRef]):
             await attr.update(value)
 
     async def update(self, attr: AttrR[Any, SerialRef]) -> None:
-        """Do nothing: the board answers no query."""
+        """Read where an axis stands; a laser answers no query.
+
+        A board that answers nothing leaves the axis where it is: the
+        position is worth having, and not worth refusing to serve the board
+        over.
+        """
+        ref = attr.io_ref
+        if not ref.axis:
+            return
+        try:
+            positions = await asyncio.to_thread(
+                read_positions, self._serial, self._lock, UM_TO_NM
+            )
+        except (RuntimeError, OSError) as error:
+            logger.warning(f"Board reported no position for {ref.axis!r}: {error}")
+            return
+        position = positions.get(AXIS_ID[ref.axis])
+        if position is not None:
+            await attr.update(position)
 
 
 class UC2AxisController(Controller):
-    """One axis of the board's stage."""
+    """One axis of the board's stage.
+
+    The position is read from the board once, at startup: the board keeps
+    where its steppers stand across a restart, and nothing moves them but
+    this service afterwards.
+    """
 
     def __init__(self, axis: str, io: SerialIO) -> None:
         super().__init__(ios=[io])
-        self.position = AttrRW(Float(units=UNITS), io_ref=SerialRef(axis=axis))
+        self.position = AttrRW(
+            Float(units=UNITS), io_ref=SerialRef(axis=axis, update_period=ONCE)
+        )
 
 
 class UC2LaserController(Controller):

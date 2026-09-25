@@ -162,3 +162,36 @@ class MotorResponse(Struct):
 
     steppers: list[MovementResponseInfo]
     qid: int
+
+
+class StepperState(Struct):
+    """Where one stepper of the board stands.
+
+    Attributes
+    ----------
+    id: `int`
+        Stepper id, encoded as `stepperid`.
+    position: `int`
+        Where it stands, in steps. The board keeps this across a restart.
+    """
+
+    id: int = field(name="stepperid")
+    position: int = field(default=0)
+
+
+class Steppers(Struct):
+    """Every stepper the board carries, as it reports them."""
+
+    steppers: list[StepperState]
+
+
+class MotorStateResponse(Struct):
+    """The board's answer to a query for its steppers' state.
+
+    Attributes
+    ----------
+    motor: `Steppers`
+        The steppers and where each stands.
+    """
+
+    motor: Steppers

@@ -40,12 +40,16 @@ class FakeBoard:
     """A YouSeeToo board that acknowledges whatever it is sent.
 
     The real one answers a move with an acknowledgement and then a stepper
-    report, and a laser command with an acknowledgement alone.
+    report, a laser command with an acknowledgement alone, and a position
+    query with the state of every stepper it carries, framed in ``++`` and
+    ``--``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, positions: dict[int, int] | None = None) -> None:
         self.written: list[bytes] = []
         self.is_open = True
+        #: where each stepper stands, in steps, as the board keeps it
+        self.positions = positions if positions is not None else {}
         self._answers: list[bytes] = []
 
     def reset_input_buffer(self) -> None:
@@ -54,6 +58,20 @@ class FakeBoard:
     def write(self, packet: bytes) -> int:
         self.written.append(packet)
         request = msgspec.json.decode(packet)
+        if request.get("task") == "/motor_get":
+            report = msgspec.json.encode(
+                {
+                    "motor": {
+                        "steppers": [
+                            {"stepperid": stepper, "position": position}
+                            for stepper, position in sorted(self.positions.items())
+                        ]
+                    },
+                    "qid": 0,
+                }
+            )
+            self._answers.append(b"++\r\n" + report + b"\r\n--")
+            return len(packet)
         qid = request["qid"]
         self._answers.append(b'{"success": 1, "qid": %d}--' % qid)
         if "motor" in request:
@@ -641,6 +659,45 @@ async def board() -> AsyncGenerator[tuple[UC2Controller, FakeBoard], None]:
     controller.post_initialise()
     yield controller, serial
     await controller.disconnect()
+
+
+@pytest.mark.parametrize(
+    ("steps", "position"),
+    [
+        pytest.param(
+            {1: 46, 2: 156, 3: 0}, {"x": 14.72, "y": 49.92, "z": 0.0}, id="um"
+        ),
+        pytest.param(
+            {1: -46, 2: 0, 3: 25},
+            {"x": -14.72, "y": 0.0, "z": 8.0},
+            id="negative",
+        ),
+    ],
+)
+async def test_an_axis_starts_from_where_the_board_left_its_stepper(
+    steps: dict[int, int], position: dict[str, float]
+) -> None:
+    """The board keeps its steppers across a restart, so each axis asks it once.
+
+    The board answers in steps, framed in ``++`` and ``--``; an axis reads
+    micrometres. A negative position has a minus sign the framing must not
+    take with it.
+    """
+    serial = FakeBoard(positions=steps)
+    controller = UC2Controller(serial)
+    await controller.initialise()
+    controller.post_initialise()
+    axes = controller.sub_controllers["stage"].sub_controllers["axis"]
+
+    try:
+        for axis in position:
+            await axes.sub_controllers[axis].position.bind_update_callback()()
+    finally:
+        await controller.disconnect()
+
+    assert {
+        axis: axes.sub_controllers[axis].position.get() for axis in position
+    } == pytest.approx(position)
 
 
 async def test_an_axis_is_commanded_and_echoes_what_it_took(

@@ -29,8 +29,8 @@ LASER_GROUP = "Laser1"
 class UC2Axis(StandardReadable, StandardMovable[float]):
     """One axis of a YouSeeToo stage, commanded through its service.
 
-    The board reports no position, so the readback is the value it last
-    acknowledged.
+    The readback is where the service found the board's stepper at startup,
+    and the value it last acknowledged after that.
     """
 
     position: A[SignalRW[float], StandardReadableFormat.HINTED_SIGNAL]
