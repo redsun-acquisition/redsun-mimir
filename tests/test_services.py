@@ -13,9 +13,10 @@ import numpy as np
 import pytest
 from redsun.services import Service
 
+from redsun_mimir.common import Roi
 from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
 from redsun_mimir.services import uc2_controller
-from redsun_mimir.services.mmcore_camera import MMCameraController
+from redsun_mimir.services.mmcore_camera import MMCameraController, uncrop
 from redsun_mimir.services.uc2_controller import UC2Controller
 
 from .conftest import CAMERA_PREFIX, needs_mm_adapters
@@ -93,6 +94,13 @@ class FakeCore:
         #: whether a read is safe from a sequence starting under it
         self.guarded: Callable[[], bool] = lambda: True
         self.popped_a_frame = threading.Event()
+        #: set while an exposure is in flight, for a layout change to catch
+        self.exposing = threading.Event()
+        #: an exposure returns only once this is set
+        self.may_expose = threading.Event()
+        self.may_expose.set()
+        #: every layout change the fake was asked for during an exposure
+        self.overlapped: list[str] = []
         self._buffer: Queue[NDArray[Any]] = Queue()
 
     def produce(self, frames: int = 1) -> None:
@@ -103,8 +111,13 @@ class FakeCore:
     def snap(self) -> NDArray[Any]:
         if self.sequencing:
             raise RuntimeError("cannot expose while a sequence acquisition runs")
-        self.snapped += 1
-        return np.full(FRAME_SHAPE, self.snapped, dtype=self.dtype)
+        self.exposing.set()
+        try:
+            self.may_expose.wait(TIMEOUT)
+            self.snapped += 1
+            return np.full(FRAME_SHAPE, self.snapped, dtype=self.dtype)
+        finally:
+            self.exposing.clear()
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -172,10 +185,32 @@ class FakeCore:
     def getROI(self) -> Sequence[int]:
         return self.roi
 
+    def clearROI(self) -> None:
+        self._layout_change("clearROI")
+        # the DahengGalaxy adapter writes the size before the offsets, so one
+        # clear zeroes the offsets and leaves the size they allowed
+        self.roi = (0, 0, FRAME_SHAPE[1] - self.roi[0], FRAME_SHAPE[0] - self.roi[1])
+
     def setROI(self, *roi: int) -> None:
+        self._layout_change("setROI")
         if self.sequencing:
             raise RuntimeError("Cannot set ROI while a sequence runs")
+        _, _, width, height = roi
+        # a GenICam camera caps the width at what is left of the sensor
+        # beyond the current offset, as the DahengGalaxy adapter does and the
+        # DemoCamera adapter does not
+        room = (FRAME_SHAPE[1] - self.roi[0], FRAME_SHAPE[0] - self.roi[1])
+        if width > room[0] or height > room[1]:
+            raise RuntimeError(
+                f"Value = {max(width, height)} must be equal or smaller "
+                f"than Max = {min(room)}"
+            )
         self.roi = tuple(roi)
+
+    def _layout_change(self, call: str) -> None:
+        """Record *call* if it reached the camera during an exposure."""
+        if self.exposing.is_set():
+            self.overlapped.append(call)
 
     def getImageWidth(self) -> int:
         return self.roi[2]
@@ -341,6 +376,68 @@ async def test_closing_an_unbounded_window_publishes_what_it_wrote(
     assert camera.captured.get() == 3
 
 
+def test_uncropping_grows_the_readout_back_to_the_whole_sensor() -> None:
+    """One clear leaves the size the offsets allowed, which is short of the sensor."""
+    core = FakeCore()
+    core.setROI(2, 1, 3, 2)
+
+    whole = Roi(0, 0, FRAME_SHAPE[1], FRAME_SHAPE[0])
+    assert uncrop(core) == whole  # type: ignore[arg-type]
+    assert core.roi == tuple(whole)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        pytest.param("1,1,2,2", "0,0,6,4", id="back-to-the-whole-sensor"),
+        pytest.param("2,1,2,2", "1,0,5,4", id="wider-from-a-smaller-offset"),
+    ],
+)
+async def test_a_roi_widens_again_from_a_cropped_camera(
+    controller: tuple[MMCameraController, FakeCore], first: str, second: str
+) -> None:
+    """A camera capping the width at the room left beyond its offset takes both.
+
+    The second ROI is wider than what is left of the sensor beyond the first
+    one's offset, which such a camera refuses while it stands cropped. A
+    ``DahengGalaxy`` camera refuses it and the ``DemoCamera`` adapter does
+    not, so `FakeCore` is what the cap is reproduced on.
+    """
+    camera, core = controller
+
+    await camera.roi.put(first)
+    await camera.roi.put(second)
+
+    assert core.roi == tuple(Roi.parse(second))
+    assert camera.roi.get() == second
+
+
+async def test_a_roi_write_waits_for_the_frame_the_camera_is_taking(
+    controller: tuple[MMCameraController, FakeCore],
+) -> None:
+    """A camera driven by two threads at once can take the process down.
+
+    A write rebuilds the driver's buffers, so it waits for the exposure in
+    flight rather than running beside it.
+    """
+    camera, core = controller
+    core.sequences = False
+    core.may_expose.clear()
+    await camera.acquire.put(True)
+    assert core.exposing.wait(TIMEOUT)
+
+    writing = asyncio.ensure_future(camera.roi.put("1,1,2,2"))
+    landed, _ = await asyncio.wait({writing}, timeout=0.5)
+    assert not landed, "the write reached the camera during an exposure"
+
+    core.may_expose.set()
+    await writing
+    await camera.acquire.put(False)
+
+    assert core.overlapped == []
+    assert core.roi == (1, 1, 2, 2)
+
+
 @pytest.mark.parametrize("setting", ["roi", "property"])
 async def test_a_setting_refused_mid_sequence_pauses_it(
     controller: tuple[MMCameraController, FakeCore], setting: str
@@ -473,7 +570,7 @@ def test_the_board_reset_runs_on_a_port_with_no_board(
         serial.close()
 
 
-async def test_a_property_poll_reads_under_the_lock_a_sequence_starts_under(
+async def test_a_property_poll_reads_under_the_camera_lock(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
     """A sequence starting between the check and the read would take the read.
@@ -482,7 +579,7 @@ async def test_a_property_poll_reads_under_the_lock_a_sequence_starts_under(
     read are one step under the lock ``_start_sequence`` runs under.
     """
     camera, core = controller
-    core.guarded = camera._sequence_lock.locked
+    core.guarded = camera._camera_lock.locked
 
     for attribute in camera.sub_controllers["properties"].attributes.values():
         await camera._property_io.update(attribute)

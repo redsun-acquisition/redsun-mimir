@@ -87,6 +87,27 @@ def as_is(apply: Callable[[], None]) -> None:
     apply()
 
 
+def within(roi: Roi, outer: Roi) -> bool:
+    """Whether *roi* falls inside *outer*, both on the sensor's own axes."""
+    return (
+        roi.x >= outer.x
+        and roi.y >= outer.y
+        and roi.x + roi.width <= outer.x + outer.width
+        and roi.y + roi.height <= outer.y + outer.height
+    )
+
+
+def uncrop(core: CMMCorePlus) -> Roi:
+    """Put the readout back over the whole sensor, and return what it covers.
+
+    The first clear zeroes the offsets and leaves the size they allowed; the
+    second takes the size zero offsets allow, which is the whole sensor.
+    """
+    core.clearROI()
+    core.clearROI()
+    return Roi(*core.getROI())
+
+
 class WhenIdle(Protocol):
     """Runs a read only while the camera takes no sequence."""
 
@@ -138,7 +159,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
             case "roi":
                 roi = Roi.parse(value)
                 await asyncio.to_thread(
-                    self._without_sequence, lambda: self._core.setROI(*roi)
+                    self._without_sequence, lambda: self._set_roi(roi)
                 )
             case "pixel_dtype":
                 await self._set_pixel_dtype(cast("enum.Enum", value).name)
@@ -148,6 +169,21 @@ class CoreIO(AttributeIO[Any, CoreRef]):
             # without this the readback carries the old value until the next
             # scan, and a client that reads straight after writing sees it
             await self.update(attr)
+
+    def _set_roi(self, roi: Roi) -> None:
+        """Put the camera's readout over *roi*, from wherever it stands now.
+
+        A ROI reaching outside what the camera reads now needs the readout
+        uncropped first, since an adapter that caps the width at what is left
+        of the sensor beyond the current offset refuses it while the camera is
+        cropped. A ROI inside goes straight to the camera, and one the camera
+        already reads goes nowhere: every write rebuilds the driver's buffers.
+        """
+        covered = Roi(*self._core.getROI())
+        if not within(roi, covered):
+            covered = uncrop(self._core)
+        if roi != covered:
+            self._core.setROI(*roi)
 
     async def update(self, attr: AttrR[Any, CoreRef]) -> None:
         """Read the camera's own value of the setting into *attr*."""
@@ -385,7 +421,7 @@ class MMCameraController(Controller):
         self._stopped.set()
         self._grabber: asyncio.Task[None] | None = None
         self._sequencing = False
-        self._sequence_lock = threading.Lock()
+        self._camera_lock = threading.Lock()
         self._error: str | None = None
 
         self.acquire.add_on_update_callback(self._on_acquire)
@@ -622,13 +658,16 @@ class MMCameraController(Controller):
         """Return the camera's next frame, or ``None`` while it has none.
 
         With a sequence running the frame comes from Micro-Manager's circular
-        buffer; without one, each call exposes the camera.
+        buffer; without one, each call exposes the camera. Taking it holds the
+        camera lock: a driver reached from two threads at once, one exposing
+        and one changing what frames look like, can end the process.
         """
-        if not self._sequencing:
-            return self._core.snap()
-        if self._core.getRemainingImageCount() < 1:
-            return None
-        return self._core.popNextImage()
+        with self._camera_lock:
+            if not self._sequencing:
+                return self._core.snap()
+            if self._core.getRemainingImageCount() < 1:
+                return None
+            return self._core.popNextImage()
 
     def grab_once(self) -> NDArray[Any] | None:
         """Take one frame, and write it if a capture window wants it.
@@ -663,7 +702,7 @@ class MMCameraController(Controller):
     def _grab_loop(self) -> None:
         """Take frames until asked to stop, or until the camera fails."""
         try:
-            with self._sequence_lock:
+            with self._camera_lock:
                 self._start_sequence()
             while self._grabbing.is_set():
                 if self.grab_once() is None:
@@ -675,27 +714,27 @@ class MMCameraController(Controller):
             # and no frame will arrive to end it now
             self._finish_window()
         finally:
-            with self._sequence_lock:
+            with self._camera_lock:
                 self._stop_sequence()
             self._stopped.set()
 
     def _when_idle(self, read: Callable[[], T]) -> T | None:
         """Return what *read* returns, or ``None`` while a sequence runs.
 
-        The check and the read hold the lock a sequence starts under, so none
-        can start between them: on some adapters a read during a sequence ends
-        it.
+        The check and the read hold the camera lock, so no sequence can start
+        between them: on some adapters a read during a sequence ends it.
         """
-        with self._sequence_lock:
+        with self._camera_lock:
             return None if self._sequencing else read()
 
     def _without_sequence(self, apply: Callable[[], None]) -> None:
         """Run *apply* with no sequence running, and resume one that was.
 
-        The grabbing thread exposes per frame meanwhile. The lock keeps this
-        from restarting a sequence the grab loop is ending.
+        The camera lock is held throughout, so the grabbing thread waits for
+        the frame it is taking to end and takes no other until *apply* is
+        done.
         """
-        with self._sequence_lock:
+        with self._camera_lock:
             was_sequencing = self._sequencing
             if was_sequencing:
                 self._stop_sequence()
@@ -740,7 +779,9 @@ def build_controller(
     core.loadDevice(label, adapter, device)
     core.initializeDevice(label)
     core.setCameraDevice(label)
-    core.clearROI()
+    # a camera left cropped by whoever had it last would otherwise report
+    # that crop as its sensor size
+    uncrop(core)
     core.setExposure(DEFAULT_EXPOSURE)
     return MMCameraController(core, label, data_key, properties)
 

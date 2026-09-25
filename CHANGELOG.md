@@ -9,10 +9,30 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ## [Unreleased]
 
+### Added
+
+- `uncrop` (`redsun_mimir.services.mmcore_camera`) - puts a camera's readout
+  back over the whole sensor and returns what it covers.
+- `within` (`redsun_mimir.services.mmcore_camera`) - whether one ROI falls
+  inside another.
+
 ### Changed
 
 - `MotorView` takes the 100.0 default step size its documentation names, not
   10.0.
+
+### Fixed
+
+- `redsun_mimir.services.mmcore_camera` uncrops the camera before it writes a
+  `roi` reaching outside the one it reads, so a camera capping the width at
+  what is left of the sensor beyond its offset, such as a `DahengGalaxy` one,
+  takes the wider ROI. A `roi` the camera already reads is not written.
+- `build_controller` (`redsun_mimir.services.mmcore_camera`) uncrops a camera
+  another session left cropped, so `sensor_size` is the sensor rather than
+  that crop.
+- `MMCameraController` takes every frame under the lock a setting is written
+  beneath, so one thread at a time reaches the camera. A driver exposing while
+  another thread rebuilds its buffers can end the service process.
 
 ## [0.5.0] - 24-09-2026
 
