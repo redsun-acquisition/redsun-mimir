@@ -518,8 +518,8 @@ class TestMotorView:
     @pytest.mark.parametrize(
         ("direction_up", "expected"),
         [
-            pytest.param(True, 10.0, id="step-up"),
-            pytest.param(False, -10.0, id="step-down"),
+            pytest.param(True, 100.0, id="step-up"),
+            pytest.param(False, -100.0, id="step-down"),
         ],
     )
     async def test_step_emits_a_displacement_not_a_target(

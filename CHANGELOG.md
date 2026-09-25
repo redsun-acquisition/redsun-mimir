@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dates are specified in the format `DD-MM-YYYY`.
 
+## [Unreleased]
+
+### Changed
+
+- `MotorView` takes the 100.0 default step size its documentation names, not
+  10.0.
+
 ## [0.5.0] - 24-09-2026
 
 ### Added
