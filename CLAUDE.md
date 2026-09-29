@@ -151,8 +151,13 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   manifest entry in the same commit.
 - Devices are `ophyd-async` devices. Hardware access is async; no threads for
   I/O. `DeviceMap` comes from `ophyd_async.core`.
-- A presenter's constructor takes `name` and then keywords only, `devices:
-  DeviceMapping` among them when it needs devices. A view is a `QWidget` with
+- A presenter's constructor takes `name` and then keywords only. A presenter
+  driving devices asks for `DevicesOf[P]`, the devices satisfying one protocol
+  from `protocols.py`, and never filters a mapping itself:
+  `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)`,
+  `MotorPresenter(motors=...)`, `MedianPresenter(sources=...)`.
+  `AcquisitionPresenter` and `AcquisitionView` take `DeviceMapping`, since any
+  device may fill a plan's parameters. A view is a `QWidget` with
   a `placement`, whose constructor starts with `(name, parent)`. Components
   inherit no `redsun` base class: the session fills every parameter by type
   and checks the built instance by shape.

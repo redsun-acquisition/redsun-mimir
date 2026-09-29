@@ -39,6 +39,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   actions of the component offering the running plan.
 - `HasActions` (`redsun_mimir.protocols`) - a component holding the
   `ActionManager` its plans wait on.
+- `HasBuffer` (`redsun_mimir.protocols`) - a device publishing its latest
+  frame, the devices `MedianPresenter` takes.
 
 ### Changed
 
@@ -54,11 +56,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
   `open_board` is a coroutine.
 - `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter`,
-  `MedianPresenter`, `MotorPresenter` take `name` and then `devices` by
-  keyword, and inherit no base class:
+  `MedianPresenter`, `MotorPresenter` take `name` and then keywords only, and
+  inherit no base class. `AcquisitionPresenter` takes every device as
+  `devices`; the others take only the devices they drive, which the session
+  picks by protocol: `DetectorPresenter(detectors=...)`,
+  `LightPresenter(lights=...)`, `MotorPresenter(motors=...)` and
+  `MedianPresenter(sources=...)`.
 
   ```python
-  MotorPresenter("motor_ctrl", devices=devices, timeout=2.0)
+  MotorPresenter("motor_ctrl", motors={"XY": stage}, timeout=2.0)
   ```
 
 - `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are

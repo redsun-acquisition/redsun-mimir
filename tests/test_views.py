@@ -92,12 +92,12 @@ def parent(qapp: QCoreApplication) -> QtWidgets.QWidget:
 
 def build_motor_view(widget: MotorView, motor: FakeXYStage) -> None:
     """Build *widget* from a presenter describing *motor*."""
-    widget.setup(MotorPresenter("motor_ctrl", devices={motor.name: motor}))
+    widget.setup(MotorPresenter("motor_ctrl", motors={motor.name: motor}))
 
 
 def build_light_view(widget: LightView, *devices: MockLightDevice) -> None:
     """Build *widget* from a presenter describing *devices*."""
-    widget.setup(LightPresenter("light_ctrl", devices={d.name: d for d in devices}))
+    widget.setup(LightPresenter("light_ctrl", lights={d.name: d for d in devices}))
 
 
 @pytest.mark.parametrize(

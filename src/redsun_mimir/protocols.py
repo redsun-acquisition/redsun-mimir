@@ -131,6 +131,16 @@ class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
 
 
 @runtime_checkable
+class HasBuffer(Protocol):
+    """A device publishing its latest frame."""
+
+    @property
+    def buffer(self) -> SignalR[np.ndarray]:
+        """The latest frame, of shape (height, width)."""
+        ...
+
+
+@runtime_checkable
 class ReadableFlyer(
     DetectorProtocol,
     Preparable,
@@ -210,6 +220,7 @@ __all__ = [
     "DescribesMotors",
     "DetectorProtocol",
     "HasActions",
+    "HasBuffer",
     "HoldsDeferrals",
     "LayerSpec",
     "LightProtocol",

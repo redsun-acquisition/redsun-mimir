@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from redsun import DeviceMapping, slot
+from redsun import DevicesOf, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
 
-from redsun_mimir.protocols import MotorProtocol
+from redsun_mimir.protocols import MotorProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from typing import Any
@@ -23,10 +23,8 @@ class MotorPresenter(Loggable):
     emitting thread never waits for the device. Moves are serialised per
     device: a stage writing several coordinates on every set cannot have two
     in flight at once. Positions are not announced; `devices_readbacks`
-    returns the axis readback signals for whoever displays them. The devices
-    satisfying [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] are
-    taken at initialisation, and an axis is reached as `axis[name]` on its
-    device.
+    returns the axis readback signals for whoever displays them. An axis is
+    reached as `axis[name]` on its device.
 
     Parameters
     ----------
@@ -38,17 +36,12 @@ class MotorPresenter(Loggable):
         self,
         name: str,
         *,
-        devices: DeviceMapping,
+        motors: DevicesOf[MotorProtocol],
         timeout: float | None = None,
     ) -> None:
         self.name = name
         self._timeout = timeout or 2.0
-
-        self._motors: dict[str, MotorProtocol] = {
-            name: device
-            for name, device in devices.items()
-            if isinstance(device, MotorProtocol)
-        }
+        self._motors = motors
         self._locks = {name: asyncio.Lock() for name in self._motors}
 
         self.logger.info("Initialized")

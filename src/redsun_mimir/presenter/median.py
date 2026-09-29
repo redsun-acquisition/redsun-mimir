@@ -11,14 +11,18 @@ from bluesky.utils import MsgGenerator  # noqa: TC002
 from event_model import DocumentRouter
 from ophyd_async.core import TriggerInfo
 from psygnal import Signal, SignalGroup
-from redsun import DeviceMapping, slot
+from redsun import DevicesOf, slot
 from redsun.engine.actions import ActionManager, PlanAction, continuous
 from redsun.log import Loggable
 from redsun.writers import Writer, WriterError
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
 from redsun_mimir.presenter.acquisition import capture, prepare_and_declare
-from redsun_mimir.protocols import MotorProtocol, ReadableFlyer  # noqa: TC001
+from redsun_mimir.protocols import (  # noqa: TC001
+    HasBuffer,
+    MotorProtocol,
+    ReadableFlyer,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -106,14 +110,9 @@ class MedianPresenter(DocumentRouter, Loggable):
     State is keyed by run, so nested runs never mix. Every document reaches
     the writer before this presenter, except `stop`, which reaches it
     after, so the stack written there still finds its run open.
-
-    Parameters
-    ----------
-    devices
-        Only those exposing a `buffer` signal are tracked.
     """
 
-    def __init__(self, name: str, *, devices: DeviceMapping) -> None:
+    def __init__(self, name: str, *, sources: DevicesOf[HasBuffer]) -> None:
         super().__init__()
         self.name = name
         self.actions = ActionManager()
@@ -125,11 +124,7 @@ class MedianPresenter(DocumentRouter, Loggable):
         `dict[str, Reading[Any]]`."""
 
         #: data keys of the buffers whose frames this presenter takes
-        self._sources: set[str] = {
-            device.buffer.name
-            for device in devices.values()
-            if hasattr(device, "buffer")
-        }
+        self._sources = {source.buffer.name for source in sources.values()}
 
         #: writes each detector's scan stack into the store its run names
         self._writer = Writer()

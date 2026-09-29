@@ -221,7 +221,9 @@ needs in `setup`, through a protocol in `redsun_mimir.protocols`, and the
 session hands it the component that matches: `DetectorView` and `ImageView`
 ask for `DescribesDetectors`, `MotorView` for `DescribesMotors`, `LightView`
 for `DescribesLights`, and `DetectorPresenter` for `HoldsDeferrals`, which
-`AcquisitionPresenter` satisfies. A presenter offering plans has a `plan_map`;
+`AcquisitionPresenter` satisfies. The same holds for devices: a presenter
+asks for `DevicesOf[P]` and is given only the devices satisfying `P`, such as
+`DetectorProtocol` for `DetectorPresenter`. A presenter offering plans has a `plan_map`;
 `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
 `live_median_scan`, and `AcquisitionPresenter` runs both.
 

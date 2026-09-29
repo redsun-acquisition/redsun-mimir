@@ -123,7 +123,7 @@ class TestMotorPresenter:
     def controller(
         self, motor_stage: FakeXYStage
     ) -> Generator[MotorPresenter, None, None]:
-        yield MotorPresenter("motor_presenter", devices={motor_stage.name: motor_stage})
+        yield MotorPresenter("motor_presenter", motors={motor_stage.name: motor_stage})
 
     def test_describes_its_motors(self, controller: MotorPresenter) -> None:
         """Describe every axis, and return a readback for each axis read."""
@@ -180,7 +180,7 @@ class TestLightPresenter:
 
     @pytest.fixture
     def controller(self, devices: dict[str, MockLightDevice]) -> LightPresenter:
-        return LightPresenter("light_presenter", devices=devices)
+        return LightPresenter("light_presenter", lights=devices)
 
     def test_describes_its_lights(self, controller: LightPresenter) -> None:
         """Describe and read every light source."""
@@ -209,9 +209,7 @@ class TestLightPresenter:
         self, mock_binary_led: MockLightDevice
     ) -> None:
         """Ignore an intensity asked of a binary source."""
-        ctrl = LightPresenter(
-            "light_presenter", devices={"binary_led": mock_binary_led}
-        )
+        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
 
         await ctrl.set("binary_led", 42.0)
 
@@ -221,37 +219,15 @@ class TestLightPresenter:
         self, mock_binary_led: MockLightDevice
     ) -> None:
         """Toggle a binary source."""
-        ctrl = LightPresenter(
-            "light_presenter", devices={"binary_led": mock_binary_led}
-        )
+        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
 
         await ctrl.trigger("binary_led")
 
         assert await mock_binary_led.enabled.get_value() is True
 
-    def test_non_light_devices_are_excluded(self, motor_stage: FakeXYStage) -> None:
-        """Leave out a device that is not a light source."""
-        devices: dict[str, Any] = {"motor": motor_stage}
-        ctrl = LightPresenter("light_presenter", devices=devices)
-        assert "motor" not in ctrl._lights
-
 
 class TestMedianPresenter:
     """Tests for the document-driven MedianPresenter."""
-
-    def test_instantiation_tracks_only_buffered_devices(
-        self, motor_stage: FakeXYStage
-    ) -> None:
-        """Track only the devices exposing a `buffer`."""
-        buf = soft_signal_rw(
-            np.ndarray, initial_value=np.zeros((2, 2)), name="cam-buffer"
-        )
-        devices: dict[str, Any] = {
-            "cam": _MedianSource(buffer=buf),
-            "motor": motor_stage,
-        }
-        presenter = MedianPresenter("median_presenter", devices=devices)
-        assert presenter._sources == {"cam-buffer"}
 
     @staticmethod
     def capture(presenter: MedianPresenter, store: Path, scan_run: str | None) -> None:
@@ -340,7 +316,7 @@ class TestMedianPresenter:
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         received: list[dict[str, Any]] = []
         presenter.frames.median.connect(received.append)
         engine = RunEngine()
@@ -386,7 +362,7 @@ class TestMedianPresenter:
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         engine = RunEngine()
         engine.subscribe(presenter)
 
@@ -410,7 +386,7 @@ class TestMedianPresenter:
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         engine = RunEngine()
         engine.subscribe(presenter)
         presenter("start", {"uid": "outer", "time": 0.0})
@@ -463,7 +439,7 @@ class TestMedianPresenter:
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -539,7 +515,7 @@ class TestMedianPresenter:
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -583,7 +559,7 @@ class TestMedianPresenter:
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -621,7 +597,7 @@ class TestMedianPresenter:
         )
         other = soft_signal_rw(float, initial_value=0.0, name="other-signal")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices=devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         received: list[dict[str, Any]] = []
         presenter.frames.median.connect(received.append)
@@ -644,7 +620,7 @@ class TestMedianPresenter:
         self, fake_detector: FakeDetector, motor_stage: FakeXYStage
     ) -> None:
         """Take a frame before every move, so the stack starts where the motor stands."""
-        presenter = MedianPresenter("median_ctrl", devices={})
+        presenter = MedianPresenter("median_ctrl", sources={})
         simulator = RunEngineSimulator()
         simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
 
@@ -679,7 +655,9 @@ class TestDetectorPresenter:
     def controller(
         self, fake_detector: FakeDetector
     ) -> Generator[DetectorPresenter, None, None]:
-        yield DetectorPresenter("det_ctrl", devices={fake_detector.name: fake_detector})
+        yield DetectorPresenter(
+            "det_ctrl", detectors={fake_detector.name: fake_detector}
+        )
 
     def test_instantiation(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
@@ -737,7 +715,7 @@ class TestDetectorPresenter:
         self, fake_detector: FakeDetector
     ) -> None:
         """Forward a frame with the ROI it was taken with."""
-        presenter = DetectorPresenter("det_ctrl", devices={"cam": fake_detector})
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
         received: list[dict[str, Any]] = []
         presenter.sig_new_data.connect(received.append)
         presenter.descriptor(
@@ -769,7 +747,7 @@ class TestDetectorPresenter:
         self, fake_detector: FakeDetector
     ) -> None:
         """Stop following the ROIs at shutdown."""
-        presenter = DetectorPresenter("det_ctrl", devices={"cam": fake_detector})
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
         received: list[dict[str, Any]] = []
         presenter.sig_new_data.connect(received.append)
         presenter.descriptor(
@@ -804,7 +782,7 @@ class TestDetectorPresenter:
         run_coro(set_roi(fake_detector, (1, 1, 3, 2)))
 
         specs = DetectorPresenter(
-            "det_ctrl", devices={"cam": fake_detector}
+            "det_ctrl", detectors={"cam": fake_detector}
         ).detector_layer_specs()
 
         assert specs["cam"]["shape"] == (4, 6)
@@ -830,7 +808,7 @@ class TestDetectorPresenter:
     ) -> None:
         """Apply a ROI asked for during a plan between two of its messages."""
         engine = RunEngine()
-        presenter = DetectorPresenter("det_ctrl", devices={"cam": fake_detector})
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
         presenter.setup(EngineHolder(engine))
         announced: list[tuple[str, str, Any]] = []
         presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
@@ -914,7 +892,7 @@ class TestAcquisitionPresenter:
     ) -> None:
         """Collect the plans of every component offering them, its own included."""
         acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={})
         try:
             acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
         finally:
@@ -940,8 +918,10 @@ class TestAcquisitionPresenter:
     ) -> None:
         """Subscribe for each run only its plan's callbacks and the attached ones."""
         acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", devices=devices)
-        detector = DetectorPresenter("det_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
+        detector = DetectorPresenter(
+            "det_ctrl", detectors={fake_flyer.name: fake_flyer}
+        )
         acquisition.setup(
             {"acq_ctrl": acquisition, "median_ctrl": median},
             {"det_ctrl": detector, "median_ctrl": median},
@@ -971,7 +951,7 @@ class TestAcquisitionPresenter:
     ) -> None:
         """Pass an action request to the actions of the running plan's component."""
         acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
         acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
         acquisition.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
         acquisition.launch_plan(

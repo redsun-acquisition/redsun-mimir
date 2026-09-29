@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from redsun import DeviceMapping, slot
+from redsun import DevicesOf, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
 
-from redsun_mimir.protocols import LightProtocol
+from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from typing import Any
@@ -31,17 +31,13 @@ class LightPresenter(Loggable):
         self,
         name: str,
         *,
-        devices: DeviceMapping,
+        lights: DevicesOf[LightProtocol],
         timeout: float | None = None,
     ) -> None:
         self.name = name
         self._timeout: float = timeout or 2.0
 
-        self._lights: dict[str, LightProtocol] = {
-            name: device
-            for name, device in devices.items()
-            if isinstance(device, LightProtocol)
-        }
+        self._lights = lights
         self._locks = {name: asyncio.Lock() for name in self._lights}
         if not self._lights:
             self.logger.warning("No device found.")

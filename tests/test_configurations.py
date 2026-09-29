@@ -11,11 +11,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from redsun import Layer
+from redsun import Layer, satisfying
 
 from redsun_mimir.configurations import (
     build_simulation_container,
     build_uc2_container,
+)
+from redsun_mimir.protocols import (
+    DetectorProtocol,
+    HasBuffer,
+    LightProtocol,
+    MotorProtocol,
 )
 
 from .conftest import HAS_OPENGL, NO_OPENGL_REASON
@@ -139,6 +145,23 @@ def test_the_simulation_builds_every_component(simulation: MimirApp) -> None:
     assert set(simulation.devices) == SIMULATION_DEVICES
     assert set(simulation.presenters) == SHARED_PRESENTERS
     assert set(simulation.views) == SHARED_VIEWS
+
+
+@pytest.mark.parametrize(
+    ("protocol", "devices"),
+    [
+        (DetectorProtocol, {"mmcamera"}),
+        (HasBuffer, {"mmcamera"}),
+        (LightProtocol, {"laser", "led"}),
+        (MotorProtocol, {"XY", "Z"}),
+    ],
+    ids=["detectors", "buffers", "lights", "motors"],
+)
+def test_each_protocol_answers_the_devices_meant_for_it(
+    simulation: MimirApp, protocol: type, devices: set[str]
+) -> None:
+    """Answer a presenter's device protocol with exactly the devices it drives."""
+    assert set(satisfying(simulation.devices, protocol)) == devices
 
 
 def test_every_port_is_reached(simulation: MimirApp) -> None:

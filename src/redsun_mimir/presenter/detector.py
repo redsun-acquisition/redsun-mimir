@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 from event_model import DocumentRouter
 from psygnal import Signal
-from redsun import DeviceMapping, slot
+from redsun import DevicesOf, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
 
 from redsun_mimir.common import Roi
-from redsun_mimir.protocols import DetectorProtocol, HoldsDeferrals
+from redsun_mimir.protocols import DetectorProtocol, HoldsDeferrals  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -70,17 +70,13 @@ class DetectorPresenter(DocumentRouter, Loggable):
         self,
         name: str,
         *,
-        devices: DeviceMapping,
+        detectors: DevicesOf[DetectorProtocol],
         timeout: float | None = 1.0,
     ) -> None:
         super().__init__()
         self.name = name
         self.timeout = timeout or 1.0
-        self.detectors: dict[str, DetectorProtocol] = {
-            name: device
-            for name, device in devices.items()
-            if isinstance(device, DetectorProtocol)
-        }
+        self.detectors = detectors
         #: buffer data keys this presenter forwards, by descriptor uid
         self._live_streams: dict[str, list[str]] = {}
         self._buffer_keys = {
