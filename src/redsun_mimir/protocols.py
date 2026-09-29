@@ -109,16 +109,6 @@ class LightProtocol(AsyncConfigurable, Protocol):
 
 
 @runtime_checkable
-class HasAsyncShutdown(Protocol):
-    """A device releasing what it holds asynchronously."""
-
-    async def shutdown(self) -> None:
-        """Release the device's resources."""
-        ...
-
-
-@runtime_checkable
-@runtime_checkable
 class DetectorProtocol(AsyncConfigurable, AsyncStageable, Protocol):
     """Protocol for detector models."""
 
@@ -152,7 +142,6 @@ class ReadableFlyer(
 
 __all__ = [
     "DetectorProtocol",
-    "HasAsyncShutdown",
     "LayerSpec",
     "LightProtocol",
     "MotorProtocol",

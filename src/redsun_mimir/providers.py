@@ -1,75 +1,47 @@
-"""Typed keys for the objects this bundle shares through the virtual container.
+"""The types this bundle's components share values under.
 
-The package owning a type declares its key. A presenter binds a value with
-[`provide`][redsun.virtual.VirtualContainer.provide]; a view resolves it with
-[`require`][redsun.virtual.VirtualContainer.require].
+A presenter returns one from a method marked with `redsun.provides`; any
+component asking for the type in its constructor or `setup` receives it.
 
-Most values are snapshots taken during ``register_providers``: later changes
-travel over signals. A key holding device signals is the exception, since a
-subscriber keeps hearing from them after the build.
+Most values are snapshots taken when the presenter is built: later changes
+travel over signals.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, NewType
 
-import dependency_injector.providers as dip
+from bluesky.protocols import Descriptor, Reading
 
-if TYPE_CHECKING:
-    from typing import Any
-
-    from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import SignalR
-    from redsun.virtual import ProviderKey
-
-    from redsun_mimir.protocols import LayerSpec
+from redsun_mimir.protocols import LayerSpec
 
 #: Configuration descriptors of every detector, by data key.
-DETECTOR_DESCRIPTORS: ProviderKey[dict[str, Descriptor]] = dip.Dependency(
-    instance_of=dict
-)
+DetectorDescriptors = NewType("DetectorDescriptors", dict[str, Descriptor])
 
 #: Current configuration readings of every detector, by data key.
-DETECTOR_READINGS: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(
-    instance_of=dict
-)
+DetectorReadings = NewType("DetectorReadings", dict[str, Reading[Any]])
 
 #: Shape and dtype of the image layer each detector feeds, by device name.
-DETECTOR_LAYER_SPECS: ProviderKey[dict[str, LayerSpec]] = dip.Dependency(
-    instance_of=dict
-)
+DetectorLayerSpecs = NewType("DetectorLayerSpecs", dict[str, LayerSpec])
 
 #: Current readings of every motor axis, by data key.
-MOTOR_READINGS: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(instance_of=dict)
+MotorReadings = NewType("MotorReadings", dict[str, Reading[Any]])
 
 #: Descriptors of every motor axis, by data key.
-MOTOR_DESCRIPTION: ProviderKey[dict[str, Descriptor]] = dip.Dependency(instance_of=dict)
-
-#: Readback signal of every motor axis, by data key. Live, unlike the two keys
-#: above: a subscriber sees every move, a plan's included.
-MOTOR_READBACKS: ProviderKey[dict[str, SignalR[float]]] = dip.Dependency(
-    instance_of=dict
-)
+MotorDescription = NewType("MotorDescription", dict[str, Descriptor])
 
 #: Current readings of every light source, by data key.
-LIGHT_CONFIGURATION: ProviderKey[dict[str, Reading[Any]]] = dip.Dependency(
-    instance_of=dict
-)
+LightConfiguration = NewType("LightConfiguration", dict[str, Reading[Any]])
 
 #: Descriptors of every light source, by data key.
-LIGHT_DESCRIPTION: ProviderKey[dict[str, Descriptor]] = dip.Dependency(instance_of=dict)
-
-#: Specifiers of the plans the acquisition presenter can launch.
-PLAN_SPECS: ProviderKey[set[Any]] = dip.Dependency(instance_of=set)
+LightDescription = NewType("LightDescription", dict[str, Descriptor])
 
 __all__ = [
-    "DETECTOR_DESCRIPTORS",
-    "DETECTOR_LAYER_SPECS",
-    "DETECTOR_READINGS",
-    "LIGHT_CONFIGURATION",
-    "LIGHT_DESCRIPTION",
-    "MOTOR_DESCRIPTION",
-    "MOTOR_READBACKS",
-    "MOTOR_READINGS",
-    "PLAN_SPECS",
+    "DetectorDescriptors",
+    "DetectorLayerSpecs",
+    "DetectorReadings",
+    "LightConfiguration",
+    "LightDescription",
+    "MotorDescription",
+    "MotorReadings",
 ]
