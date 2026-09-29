@@ -159,7 +159,7 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
 - **A component never names another component's class and never receives a
   value shared by type.** It asks in `setup` for a protocol from
   `protocols.py` (`DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
-  `HoldsDeferrals`), whose method names no device has, and calls its methods.
+  `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
   Nothing here uses `redsun.provides`. What the session itself hands out,
   such as `DeviceMapping`, the path provider or the document callbacks, is
   still asked for by type.
@@ -168,7 +168,8 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   `live_median_scan` and lists itself as its callback; `AcquisitionPresenter`
   offers `live_stream`, collects every plan in `setup` and runs them all,
   giving each run its plan's callbacks and the ones the user attached, for
-  that run only.
+  that run only. It passes an action request to the `HasActions` component
+  offering the running plan.
 - **The bundle writes acquisition bytes in the service owning the hardware**,
   not in the session: the camera service writes the capture window with
   `acquire-zarr`, and the device reports it with `StreamResource`/`StreamDatum`.

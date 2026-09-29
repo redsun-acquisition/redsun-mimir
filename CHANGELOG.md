@@ -35,6 +35,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   to disk in a nested run, until a given plan returns when one is given.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
   plan from the state its `ActionManager` reports.
+- `AcquisitionPresenter.request_action` - passes an action request to the
+  actions of the component offering the running plan.
+- `HasActions` (`redsun_mimir.protocols`) - a component holding the
+  `ActionManager` its plans wait on.
 
 ### Changed
 
@@ -101,7 +105,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `AcquisitionPresenter.set_base_dir`,
   `AcquisitionPresenter.sig_base_dir_changed`,
   `AcquisitionPresenter.sig_action_done`,
-  `AcquisitionPresenter.toggle_action_event`,
+  `AcquisitionPresenter.toggle_action_event` (replaced by
+  `AcquisitionPresenter.request_action`),
   `AcquisitionPresenter.clear_and_notify`, and the `callbacks` keyword of
   `AcquisitionPresenter`.
 - `AcquisitionView.on_action_done`.

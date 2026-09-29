@@ -25,7 +25,7 @@ from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
-from redsun_mimir.presenter.median import MedianPresenter
+from redsun_mimir.presenter.median import SCAN, MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import (
     DescribesDetectors,
@@ -961,6 +961,31 @@ class TestAcquisitionPresenter:
         second.settle()
 
         assert engine.subs == [[median, detector], []]
+
+    def test_an_action_reaches_the_component_offering_the_running_plan(
+        self,
+        devices: dict[str, Any],
+        fake_flyer: FakeFlyer,
+        motor_stage: FakeXYStage,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Pass an action request to the actions of the running plan's component."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", devices=devices)
+        acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
+        acquisition.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
+        acquisition.launch_plan(
+            "live_median_scan",
+            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
+        )
+        waiting = median.actions.wait(SCAN)
+        next(waiting)
+
+        acquisition.request_action("scan", True)
+
+        wait_message = next(waiting)
+        assert wait_message.args[0]["scan"].is_set()
+        assert "refused" not in caplog.text
 
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,

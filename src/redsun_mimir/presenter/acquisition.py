@@ -23,7 +23,7 @@ from redsun.presenter.plan_spec import (
 )
 
 from redsun_mimir.common import LIVE_VIEW_STREAM
-from redsun_mimir.protocols import ReadableFlyer  # noqa: TC001
+from redsun_mimir.protocols import HasActions, ReadableFlyer
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -134,6 +134,8 @@ class AcquisitionPresenter(Loggable):
         self.plans: dict[str, PlanEntry] = {}
         self.plan_specs: dict[str, PlanSpec] = {}
         self.callbacks: dict[str, CallbackType] = {}
+        self._action_owners: dict[str, HasActions] = {}
+        self._running: str | None = None
 
     def plan_deferrals(self) -> Deferrals:
         """Return the deferrals of this presenter's engine."""
@@ -151,6 +153,8 @@ class AcquisitionPresenter(Loggable):
         """Collect the plans of every component offering them, and the callbacks.
 
         A plan whose signature no plan widget can show is logged and left out.
+        The actions of a plan are those of the component offering it, when
+        that component holds any.
         """
         for component in providers.values():
             for plan_name, entry in component.plan_map().items():
@@ -162,6 +166,8 @@ class AcquisitionPresenter(Loggable):
                     self.logger.warning(str(error))
                     continue
                 self.plans[plan_name] = entry
+                if isinstance(component, HasActions):
+                    self._action_owners[plan_name] = component
         self.callbacks = dict(callbacks)
 
     @continuous
@@ -253,10 +259,24 @@ class AcquisitionPresenter(Loggable):
         ]
 
         self.sig_pre_launch_notify.emit(plan_name)
+        self._running = plan_name
         fut = self.engine(entry["plan"](*args, **kwargs), subs)
         self.futures.add(fut)
         fut.add_done_callback(self._notify_plan_done)
         fut.add_done_callback(self._discard_future)
+
+    @slot
+    def request_action(self, name: str, on: bool) -> None:
+        """Ask for the action *name* of the last plan launched, or ask it to end.
+
+        The request goes to the actions of the component offering that plan;
+        with no such component it is logged and dropped.
+        """
+        owner = self._action_owners.get(self._running or "")
+        if owner is None:
+            self.logger.warning(f"Action {name!r} refused: no plan holds actions")
+            return
+        owner.actions.request(name, on)
 
     def _notify_plan_done(self, fut: Future[Any]) -> None:
         """Emit `sig_plan_done` when a plan future settles.

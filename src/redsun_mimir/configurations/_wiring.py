@@ -80,8 +80,9 @@ def wire_acquisition(
 ) -> Iterator[Link]:
     """Link run control, the plans' actions, and the plan lifecycle.
 
-    The view asks both components offering plans for an action, and follows
-    the actions of both. The path provider takes the plan name, which names
+    The view asks the acquisition presenter for an action, which passes the
+    request to the component offering the running plan, and follows the
+    actions of both components offering plans. The path provider takes the plan name, which names
     the files a run writes, and the base directory, which the view lets a
     user choose while no plan runs.
     """
@@ -89,8 +90,8 @@ def wire_acquisition(
     yield view.sig_stop_plan_request, ctrl.stop_plan
     yield view.sig_pause_resume_request, ctrl.pause_or_resume_plan
     yield ctrl.sig_plan_done, view.on_plan_done
+    yield view.sig_action_request, ctrl.request_action
     for actions in (ctrl.actions, median.actions):
-        yield view.sig_action_request, actions.request
         yield actions.sig_changed, view.on_action_changed
 
     yield view.sig_base_dir_request, paths.set_base_dir

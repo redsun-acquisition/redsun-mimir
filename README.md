@@ -254,6 +254,7 @@ wiring:
   acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan
   acq_widget.sig_stop_plan_request: acq_ctrl.stop_plan
   acq_widget.sig_pause_resume_request: acq_ctrl.pause_or_resume_plan
+  acq_widget.sig_action_request: acq_ctrl.request_action
   acq_ctrl.sig_plan_done:
     - acq_widget.on_plan_done
     - path_provider.reset_plan
@@ -273,19 +274,20 @@ port names are the signal attributes and the names the slots declare.
 `path_provider` is the session's own path provider, which names the directory
 a capture is written to and refuses a new one while a plan runs.
 
-A session file cannot make three kinds of link, because a path there is
+`acq_ctrl.request_action` passes an action request to the component
+offering the plan that runs.
+
+A session file cannot make two kinds of link, because a path there is
 `component.port` and cannot reach an object a component holds:
 
-- `acq_widget.sig_action_request` to `acq_ctrl.actions.request` and
-  `median_ctrl.actions.request`, which start and stop a plan's actions;
 - `acq_ctrl.actions.sig_changed` and `median_ctrl.actions.sig_changed` to
   `acq_widget.on_action_changed`, which sets the action buttons;
 - each motor axis readback to `motor_widget.update_setpoint`, which keeps the
   position labels current.
 
-Without them the plans start and stop but their action buttons do nothing,
-and the motor labels do not move. The session classes in
-`redsun_mimir.configurations` make all three in `wire()`.
+Without them the action buttons are never enabled, and the motor labels do
+not move. The session classes in `redsun_mimir.configurations` make both in
+`wire()`.
 
 ## Features
 
