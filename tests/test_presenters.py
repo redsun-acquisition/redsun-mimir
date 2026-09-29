@@ -937,6 +937,59 @@ class TestAcquisitionPresenter:
 
         assert announced == []
 
+    def test_setup_collects_the_plans_of_every_component(
+        self, devices: dict[str, Any]
+    ) -> None:
+        """Collect the plans of every component offering them, its own included."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", devices=devices)
+        try:
+            acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
+        finally:
+            acquisition.shutdown()
+
+        assert set(acquisition.plan_specs) == {"live_stream", "live_median_scan"}
+
+    def test_a_plan_no_device_can_fill_is_left_out(self) -> None:
+        """Leave out a plan asking for a device the session does not have."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices={})
+        try:
+            acquisition.setup({"acq_ctrl": acquisition}, {})
+        finally:
+            acquisition.shutdown()
+
+        assert acquisition.plan_specs == {}
+
+    def test_a_run_gets_the_callbacks_of_its_plan_then_the_attached_ones(
+        self,
+        devices: dict[str, Any],
+        fake_flyer: FakeFlyer,
+        motor_stage: FakeXYStage,
+    ) -> None:
+        """Subscribe for each run only its plan's callbacks and the attached ones."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", devices=devices)
+        detector = DetectorPresenter("det_ctrl", devices=devices)
+        acquisition.setup(
+            {"acq_ctrl": acquisition, "median_ctrl": median},
+            {"det_ctrl": detector, "median_ctrl": median},
+        )
+        first, second = FakeFuture(), FakeFuture()
+        engine = FakeEngine(first)
+        acquisition.engine = engine  # type: ignore[assignment]
+
+        acquisition.launch_plan(
+            "live_median_scan",
+            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
+            ["det_ctrl"],
+        )
+        first.settle()
+        engine.future = second
+        acquisition.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        second.settle()
+
+        assert engine.subs == [[median, detector], []]
+
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,
         controller: AcquisitionPresenter,
