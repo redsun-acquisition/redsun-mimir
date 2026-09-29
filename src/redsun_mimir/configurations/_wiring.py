@@ -83,7 +83,7 @@ def wire_acquisition(
     The view asks both components offering plans for an action, and follows
     the actions of both. The path provider takes the plan name, which names
     the files a run writes, and the base directory, which the view lets a
-    user choose between runs.
+    user choose while no plan runs.
     """
     yield view.sig_launch_plan_request, ctrl.launch_plan
     yield view.sig_stop_plan_request, ctrl.stop_plan
@@ -93,12 +93,11 @@ def wire_acquisition(
         yield view.sig_action_request, actions.request
         yield actions.sig_changed, view.on_action_changed
 
-    yield view.sig_base_dir_request, ctrl.set_base_dir
-    yield ctrl.sig_base_dir_changed, view.on_base_dir_changed
+    yield view.sig_base_dir_request, paths.set_base_dir
+    yield paths.sig_base_dir_changed, view.on_base_dir_changed
 
     yield ctrl.sig_pre_launch_notify, paths.set_plan
     yield ctrl.sig_plan_done, paths.reset_plan
-    yield ctrl.sig_base_dir_changed, paths.set_base_dir
 
     yield ctrl.sig_pre_launch_notify, median.clear_medians
 

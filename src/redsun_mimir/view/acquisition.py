@@ -15,6 +15,8 @@ from redsun.qt import Dock
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from redsun import PlanEntry
     from redsun.view.qt.utils import ActionButton
 
@@ -162,9 +164,9 @@ class AcquisitionView(QtW.QWidget, Loggable):
         )
 
     @slot
-    def on_base_dir_changed(self, base_dir: str) -> None:
+    def on_base_dir_changed(self, base_dir: Path) -> None:
         """Show the directory a run writes under."""
-        self.base_dir_label.setText(base_dir)
+        self.base_dir_label.setText(str(base_dir))
 
     def _current_plan(self) -> str:
         """Return the plan running, or the one selected while none runs."""

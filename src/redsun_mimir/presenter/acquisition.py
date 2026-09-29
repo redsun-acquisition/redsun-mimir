@@ -116,10 +116,6 @@ class AcquisitionPresenter(Loggable):
     sig_plan_done = Signal()
     """Emitted when a plan ends, however it ends."""
 
-    sig_base_dir_changed = Signal(str)
-    """Emitted with the new directory when a request to change where a run
-    writes is accepted."""
-
     sig_locks_changed = Signal(frozenset)
     """Emitted with the names of the devices a plan holds, whenever they
     change. A scan locks its motor and detectors, a capture its detectors."""
@@ -282,19 +278,6 @@ class AcquisitionPresenter(Loggable):
             fut = self.engine.resume()
             self.futures.add(fut)
             fut.add_done_callback(self._discard_future)
-
-    @slot
-    def set_base_dir(self, base_dir: str) -> None:
-        """Announce *base_dir* as where the devices of a run write.
-
-        Refused while a plan runs, so the files of one run stay under one root.
-        """
-        if self.futures:
-            self.logger.warning(
-                f"A plan is running; {base_dir!r} takes effect between runs only"
-            )
-            return
-        self.sig_base_dir_changed.emit(base_dir)
 
     @slot
     def stop_plan(self) -> None:

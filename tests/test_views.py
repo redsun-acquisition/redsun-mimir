@@ -424,6 +424,20 @@ class TestAcquisitionView:
         )
         return view
 
+    def test_a_folder_chosen_while_idle_is_shown_once_the_provider_moves(
+        self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path
+    ) -> None:
+        """Show the folder the path provider moved to at the view's request."""
+        paths = SessionPathProvider(base_dir=tmp_path)
+        view = AcquisitionView("acq_widget", parent)
+        view.setup({"plans": plans}, {}, {}, paths)
+        view.sig_base_dir_request.connect(paths.set_base_dir)
+        paths.sig_base_dir_changed.connect(view.on_base_dir_changed)
+
+        view.sig_base_dir_request.emit(str(tmp_path / "elsewhere"))
+
+        assert view.base_dir_label.text() == str(tmp_path / "elsewhere")
+
     def test_the_selector_is_held_on_the_plan_that_runs(
         self, view: AcquisitionView
     ) -> None:

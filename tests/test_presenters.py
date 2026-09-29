@@ -909,34 +909,6 @@ class TestAcquisitionPresenter:
         yield ctrl
         ctrl.shutdown()
 
-    def test_a_directory_request_is_announced_when_no_plan_runs(
-        self, controller: AcquisitionPresenter
-    ) -> None:
-        """Announce a directory asked for while no plan runs."""
-        announced: list[str] = []
-        controller.sig_base_dir_changed.connect(announced.append)
-
-        controller.set_base_dir("D:/mimir-data")
-
-        assert announced == ["D:/mimir-data"]
-
-    def test_a_directory_request_during_a_plan_is_refused(
-        self, controller: AcquisitionPresenter
-    ) -> None:
-        """Refuse a directory asked for while a plan runs."""
-        announced: list[str] = []
-        controller.sig_base_dir_changed.connect(announced.append)
-        running: Future[None] = Future()
-        controller.futures.add(running)
-        try:
-            controller.set_base_dir("D:/mimir-data")
-        finally:
-            # the presenter reads this set to know a plan is in flight, and
-            # its own shutdown reads it too
-            controller.futures.discard(running)
-
-        assert announced == []
-
     def test_setup_collects_the_plans_of_every_component(
         self, devices: dict[str, Any]
     ) -> None:
