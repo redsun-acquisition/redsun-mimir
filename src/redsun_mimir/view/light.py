@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from psygnal import Signal
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun import Placement, slot
 from redsun.log import Loggable
+from redsun.qt import Dock
 from redsun.utils.descriptors import parse_key
-from redsun.view import ViewPosition
-from redsun.view.qt import QtView
-from redsun.virtual import Signal, slot
 from superqt import QLabeledDoubleSlider, QLabeledSlider
 
-from redsun_mimir.providers import LIGHT_CONFIGURATION, LIGHT_DESCRIPTION
+from redsun_mimir.protocols import DescribesLights  # noqa: TC001
 
 if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
-    from redsun.virtual import VirtualContainer
 
 # Key format templates for widget dictionaries
 _KEY_GROUP = "{label}"
@@ -39,36 +38,25 @@ def _label_egu_key(label: str) -> str:
     return _KEY_LABEL_EGU.format(label=label)
 
 
-class LightView(QtView, Loggable):
+class LightView(QtWidgets.QWidget, Loggable):
     """View for light source toggle and intensity control.
 
-    One control group per light, from the configuration
-    [`LightPresenter`][redsun_mimir.presenter.LightPresenter] provides.
-
-    Attributes
-    ----------
-    sig_toggle_light_request : Signal[str]
-        Emitted when the user toggles a light on or off, with its device
-        label, ``prefix:name``.
-    sig_intensity_request : Signal[str, Any]
-        Emitted when the user moves an intensity slider, with the device
-        label and the new value.
+    One control group per light, from the component describing the light
+    sources of the session.
     """
 
+    placement: Placement = Dock("right")
+
     sig_toggle_light_request = Signal(str)
-    sig_intensity_request = Signal(str, object)  # device_label, intensity
+    """Emitted when the user toggles a light on or off, with its name."""
 
-    @property
-    def view_position(self) -> ViewPosition:
-        """The position in the main view."""
-        return ViewPosition.RIGHT
+    sig_intensity_request = Signal(str, object)
+    """Emitted when the user moves an intensity slider, with the light's name
+    and the new value."""
 
-    def __init__(
-        self,
-        name: str,
-        /,
-    ) -> None:
-        super().__init__(name)
+    def __init__(self, name: str, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self.name = name
 
         self._configuration: dict[str, Reading[Any]] = {}
         self._description: dict[str, Descriptor] = {}
@@ -86,15 +74,9 @@ class LightView(QtView, Loggable):
         float_regex = QtCore.QRegularExpression(r"^[-+]?\d*\.?\d+$")
         self.validator = QtGui.QRegularExpressionValidator(float_regex)
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the view's signals with the container."""
-        container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the controls from the light presenter's configuration."""
-        self.setup_ui(
-            container.require(LIGHT_CONFIGURATION), container.require(LIGHT_DESCRIPTION)
-        )
+    def setup(self, lights: DescribesLights) -> None:
+        """Build the controls of every light source *lights* describes."""
+        self.setup_ui(lights.light_readings(), lights.light_descriptors())
 
     @slot
     def set_locked(self, names: frozenset[str]) -> None:

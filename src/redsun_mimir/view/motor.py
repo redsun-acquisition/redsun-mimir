@@ -2,20 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from psygnal import Signal
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun import Placement, slot
 from redsun.log import Loggable
+from redsun.qt import Dock
 from redsun.utils.descriptors import parse_map_key
-from redsun.view import ViewPosition
-from redsun.view.qt import QtView
-from redsun.virtual import Signal, slot
 
-from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READBACKS, MOTOR_READINGS
+from redsun_mimir.protocols import DescribesMotors  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from bluesky.protocols import Descriptor, Reading
-    from redsun.virtual import VirtualContainer
 
 _JOG_SPACING = 4
 
@@ -42,11 +41,11 @@ def _resized(font: QtGui.QFont, delta: int) -> QtGui.QFont:
     return resized
 
 
-class MotorView(QtView, Loggable):
+class MotorView(QtWidgets.QWidget, Loggable):
     """View for manual motor stage control.
 
-    Builds one control group per motor device using configuration
-    provided by [`MotorPresenter`][redsun_mimir.presenter.MotorPresenter].
+    Builds one control group per motor device from the component describing
+    the motors of the session.
 
     Each axis is one row of its device's group: the axis name, the readback
     position, and a jog strip carrying the step size between the two buttons
@@ -54,37 +53,26 @@ class MotorView(QtView, Loggable):
 
     Parameters
     ----------
-    name : str
-        Identity key of the view.
-    step_size : float, optional
-        Default step size for motor movements,
-        in the engineering unit of the motor
-        (e.g. microns).
-
-        Defaults to ``100.0``.
-
-    Attributes
-    ----------
-    sig_motor_move :
-        Emitted when the user requests a stage movement.
-        Carries motor name (``str``), axis (``str``), and the displacement
-        to apply (``float``), signed by the direction of the button.
+    step_size
+        Default step size for motor movements, in the engineering unit of the
+        motor (e.g. microns).
     """
 
-    sig_motor_move = Signal(str, str, float)
+    placement: Placement = Dock("right")
 
-    @property
-    def view_position(self) -> ViewPosition:
-        """The position in the main view."""
-        return ViewPosition.RIGHT
+    sig_motor_move = Signal(str, str, float)
+    """Emitted when the user requests a stage movement, with the motor name,
+    the axis and the displacement to apply, signed by the direction of the
+    button."""
 
     def __init__(
         self,
         name: str,
-        /,
+        parent: QtWidgets.QWidget,
         step_size: float = 100.0,
     ) -> None:
-        super().__init__(name)
+        super().__init__(parent)
+        self.name = name
         self.step_size = step_size
         self._labels: dict[str, QtWidgets.QLabel] = {}
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
@@ -101,22 +89,9 @@ class MotorView(QtView, Loggable):
             QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont), 2
         )
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Build the UI and register motor view signals in the virtual container."""
-        container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the per-axis controls, then follow each axis readback.
-
-        The subscription is made here rather than in the application's
-        ``wire()`` because subscribing delivers the current reading at once,
-        and the labels it writes to must exist by then.
-        """
-        self.setup_ui(
-            container.require(MOTOR_READINGS), container.require(MOTOR_DESCRIPTION)
-        )
-        for readback in container.require(MOTOR_READBACKS).values():
-            container.subscribe(readback, self.update_setpoint)
+    def setup(self, motors: DescribesMotors) -> None:
+        """Build the per-axis controls of every motor *motors* describes."""
+        self.setup_ui(motors.motor_readings(), motors.motor_descriptors())
 
     def setup_ui(
         self,
@@ -227,12 +202,8 @@ class MotorView(QtView, Loggable):
 
         Parameters
         ----------
-        motor : ``str``
-            Motor device label (``name``).
-        axis : ``str``
-            Motor axis.
-        direction_up : ``bool``
-            If ``True``, increase motor's position.
+        direction_up
+            If `True`, increase the motor's position.
         """
         # a displacement, never a target computed from the position label: the
         # label only refreshes once a move completes, so two quick clicks would
@@ -242,13 +213,7 @@ class MotorView(QtView, Loggable):
 
     @slot
     def update_setpoint(self, reading: Mapping[str, Reading[Any]]) -> None:
-        """Write an axis reading into its position label.
-
-        Parameters
-        ----------
-        reading : Mapping[str, Reading[Any]]
-            Reading of a single axis, keyed ``<device>-axis-<name>``.
-        """
+        """Write an axis reading, keyed `<device>-axis-<name>`, into its label."""
         for key, value in reading.items():
             motor, _, axis = parse_map_key(key, "axis")
             self._labels[f"pos:{motor}:{axis}"].setText(f"{value['value']:.2f}")

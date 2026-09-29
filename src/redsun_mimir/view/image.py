@@ -8,14 +8,14 @@ from napari._qt.qt_event_loop import get_qapp
 from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.layers import LayerLock
+from psygnal import Signal
 from qtpy import QtCore, QtGui, QtWidgets
+from redsun import Placement, slot
 from redsun.log import Loggable
-from redsun.view import ViewPosition
-from redsun.view.qt import QtView
-from redsun.virtual import Signal, slot
+from redsun.qt import Central
 
 from redsun_mimir.common import Roi
-from redsun_mimir.providers import DETECTOR_LAYER_SPECS
+from redsun_mimir.protocols import DescribesDetectors  # noqa: TC001
 from redsun_mimir.utils.napari import (
     ROIInteractionBoxOverlay,
     highlight_roi_box_handles,
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from numpy.typing import NDArray
-    from redsun.virtual import VirtualContainer
 
     from redsun_mimir.protocols import LayerSpec
 
@@ -72,7 +71,7 @@ def place(canvas: NDArray[Any], frame: NDArray[Any], origin: tuple[int, int]) ->
     return True
 
 
-class ImageView(QtView, Loggable):
+class ImageView(QtWidgets.QWidget, Loggable):
     """View for live image display in a napari viewer.
 
     A [`napari.components.ViewerModel`][] with a
@@ -82,8 +81,8 @@ class ImageView(QtView, Loggable):
     menu bar, status bar or other main-window chrome.
 
     One image layer is created per detector in
-    [`inject_dependencies`][redsun_mimir.view.ImageView.inject_dependencies]
-    and updated as frames arrive from the presenter.
+    [`setup`][redsun_mimir.view.ImageView.setup] and updated as frames
+    arrive from the presenter.
 
     The widget sets no stylesheet of its own: a session that wants napari's
     theme puts napari's QSS on the application.
@@ -92,28 +91,18 @@ class ImageView(QtView, Loggable):
     to choose a region of the sensor. Dragging changes nothing on the camera:
     the box is announced on ``sig_roi_drawn`` and applied by whoever confirms
     it, after which it follows the region the camera reads.
-
-    Attributes
-    ----------
-    sig_roi_drawn : Signal[str, Roi]
-        Emitted as a detector's selection box is dragged, with the detector's
-        name and the box as a `Roi` in sensor pixels. The box is hidden, and
-        cannot be dragged, until `set_roi_selection` shows it.
     """
 
+    placement: Placement = Central()
+
     sig_roi_drawn = Signal(str, object)
+    """Emitted as a detector's selection box is dragged, with the detector's
+    name and the box as a `Roi` in sensor pixels. The box is hidden, and
+    cannot be dragged, until `set_roi_selection` shows it."""
 
-    @property
-    def view_position(self) -> ViewPosition:
-        """The position in the main view."""
-        return ViewPosition.CENTER
-
-    def __init__(
-        self,
-        name: str,
-        /,
-    ) -> None:
-        super().__init__(name)
+    def __init__(self, name: str, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self.name = name
 
         # Ensure the QApplication exists and napari's theme search paths
         # (theme_<name>:/) are registered via QDir.addSearchPath.
@@ -181,13 +170,9 @@ class ImageView(QtView, Loggable):
         if event is not None:
             super().closeEvent(event)
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the view's signals with the container."""
-        container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Create one image layer per detector."""
-        self.setup_layers(container.require(DETECTOR_LAYER_SPECS))
+    def setup(self, detectors: DescribesDetectors) -> None:
+        """Create one image layer per detector *detectors* describes."""
+        self.setup_layers(detectors.detector_layer_specs())
 
     def setup_layers(self, specs: dict[str, LayerSpec]) -> None:
         """Create an empty, sensor-sized image layer for each detector, with its box.
