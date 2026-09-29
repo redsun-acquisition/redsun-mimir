@@ -76,7 +76,7 @@ cd redsun-mimir
 uv sync
 ```
 
-## Running a simulator container
+## Running the simulation session
 
 `redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes.
 
@@ -84,7 +84,7 @@ To run it, you have to:
 
 1. install the package in your virtual environment by adding the `sim` optional dependencies;
 2. run `mmcore install` (or alternatively one of the methods described [here](https://pymmcore-plus.github.io/pymmcore-plus/install/#installing-micro-manager-device-adapters)).
-3. run the container via `mimir sim`.
+3. run the session via `mimir sim`.
 
 <details open>
 <summary>uv (reccomended)</summary>
@@ -96,7 +96,7 @@ uv pip install redsun-mimir[sim]
 # install micro-manager device adapters
 mmcore install --test-adapters
 
-# run the example container via command line
+# run the example session from the command line
 mimir sim
 ```
 
@@ -112,7 +112,7 @@ pip install redsun-mimir[sim]
 # install micro-manager device adapters
 mmcore install --test-adapters
 
-# run the example container via command line
+# run the example session from the command line
 mimir sim
 ```
 </details>
@@ -141,7 +141,7 @@ napari's settings, but nothing sets a stylesheet on the application, so the
 layer list, the layer controls and the rest of the Qt chrome keep their default
 look.
 
-The shipped containers declare the hook themselves, so `mimir sim` and
+The shipped sessions declare the hook themselves, so `mimir sim` and
 `mimir uc2` need no `hooks:` section.
 
 ## Services
@@ -173,8 +173,10 @@ services:
 and `roi`, comma-separated; without it none are.
 
 ```python
-class MimirSimulator(MimirApp, config=_CONFIG):
-    mmcamera = declare_device(MMCamera, service="camera1_ioc")
+class MimirSimulator(MimirApp):
+    config = Path(__file__).parent / "full_configuration.yaml"
+
+    mmcamera: Annotated[AsDevice[MMCamera], Declare(service="camera1_ioc")]
 ```
 
 A service reads its prefix from the environment the session launches it with,
@@ -187,77 +189,103 @@ storage:
   base_dir: "D:/mimir-data"   # optional; the user data directory otherwise
 ```
 
+## Session classes
+
+The two examples are session classes. `MimirApp`, a `QtSession`, declares the
+presenters, the views and the napari hook, and links them in `wire`; a
+subclass adds its devices and its own session file:
+
+```python
+from pathlib import Path
+from typing import Annotated
+
+from redsun import AsDevice, Declare
+
+from redsun_mimir.device import MockLightDevice
+from redsun_mimir.device.mmcore import MMCamera, MMStage
+
+
+class MimirSimulator(MimirApp):
+    config = Path(__file__).parent / "full_configuration.yaml"
+
+    mmcamera: Annotated[AsDevice[MMCamera], Declare(service="camera1_ioc")]
+    XY: Annotated[AsDevice[MMStage], Declare(service="xy_stage")]
+    laser: AsDevice[MockLightDevice]
+```
+
+The session reads these annotations while it runs, so the classes they name
+are imported normally, not under `if TYPE_CHECKING:`.
+
+A component never names another component's class. A view asks for what it
+needs in `setup`, through a protocol in `redsun_mimir.protocols`, and the
+session hands it the component that matches: `DetectorView` and `ImageView`
+ask for `DescribesDetectors`, `MotorView` for `DescribesMotors`, `LightView`
+for `DescribesLights`, and `DetectorPresenter` for `HoldsDeferrals`, which
+`AcquisitionPresenter` satisfies. A presenter offering plans has a `plan_map`;
+`AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
+`live_median_scan`, and `AcquisitionPresenter` runs both.
+
 ## Wiring a session from YAML
 
-The shipped containers declare their connections in `wire()`. A session built
-only from a configuration file has no `wire()` to override, so it must declare
-them in a `wiring:` section: **without one the components build and connect to
-nothing.**
+The shipped sessions make their links in `wire()`. A session built only from a
+configuration file has no `wire()` to override, so it names its links in a
+`wiring:` section, each signal mapped to one slot or a list of them. Without
+one the components build and link to nothing.
 
-Do not add this section to a configuration that already backs a container class
-with a `wire()` method. The two are applied one after the other, so every rule
-would connect a second time and each slot would run twice per emission.
+Do not add this section to a configuration that already backs a session class
+with a `wire()` method. The session makes both sets of links, so each link
+would be made twice and each slot would run twice per emission.
 
 ```yaml
 wiring:
-  - from: det_ctrl.sig_new_data
-    to: img_widget.update_layers
-  - from: median_ctrl.median
-    to: img_widget.update_layers
-  - from: median_ctrl.filtered
-    to: img_widget.update_layers
-  - from: det_widget.sig_property_changed
-    to: det_ctrl.set
-  - from: det_ctrl.sig_new_configuration
-    to: det_widget.on_new_configuration
-  - from: det_ctrl.sig_new_configuration
-    to: img_widget.on_new_configuration
-  - from: img_widget.sig_roi_drawn
-    to: det_widget.on_roi_drawn
-  - from: det_widget.sig_roi_selection
-    to: img_widget.set_roi_selection
-  - from: det_widget.sig_roi_edited
-    to: img_widget.set_roi_box
-  - from: motor_widget.sig_motor_move
-    to: motor_ctrl.move
-  - from: light_widget.sig_toggle_light_request
-    to: light_ctrl.trigger
-  - from: light_widget.sig_intensity_request
-    to: light_ctrl.set
-  - from: acq_widget.sig_launch_plan_request
-    to: acq_ctrl.launch_plan
-  - from: acq_widget.sig_stop_plan_request
-    to: acq_ctrl.stop_plan
-  - from: acq_widget.sig_pause_resume_request
-    to: acq_ctrl.pause_or_resume_plan
-  - from: acq_widget.sig_action_request
-    to: acq_ctrl.toggle_action_event
-  - from: acq_ctrl.sig_plan_done
-    to: acq_widget.on_plan_done
-  - from: acq_ctrl.sig_action_done
-    to: acq_widget.on_action_done
-  - from: acq_widget.sig_base_dir_request
-    to: acq_ctrl.set_base_dir
-  - from: acq_ctrl.sig_base_dir_changed
-    to: acq_widget.on_base_dir_changed
-  - from: acq_ctrl.sig_pre_launch_notify
-    to: median_ctrl.clear_medians
-  - from: acq_ctrl.sig_pre_launch_notify
-    to: path_provider.set_plan
-  - from: acq_ctrl.sig_plan_done
-    to: path_provider.reset_plan
-  - from: acq_ctrl.sig_base_dir_changed
-    to: path_provider.set_base_dir
+  det_ctrl.sig_new_data: img_widget.update_layers
+  median_ctrl.median: img_widget.update_layers
+  median_ctrl.filtered: img_widget.update_layers
+  det_widget.sig_property_changed: det_ctrl.set
+  det_ctrl.sig_new_configuration:
+    - det_widget.on_new_configuration
+    - img_widget.on_new_configuration
+  img_widget.sig_roi_drawn: det_widget.on_roi_drawn
+  det_widget.sig_roi_selection: img_widget.set_roi_selection
+  det_widget.sig_roi_edited: img_widget.set_roi_box
+  motor_widget.sig_motor_move: motor_ctrl.move
+  light_widget.sig_toggle_light_request: light_ctrl.trigger
+  light_widget.sig_intensity_request: light_ctrl.set
+  acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan
+  acq_widget.sig_stop_plan_request: acq_ctrl.stop_plan
+  acq_widget.sig_pause_resume_request: acq_ctrl.pause_or_resume_plan
+  acq_ctrl.sig_plan_done:
+    - acq_widget.on_plan_done
+    - path_provider.reset_plan
+  acq_ctrl.sig_pre_launch_notify:
+    - median_ctrl.clear_medians
+    - path_provider.set_plan
+  acq_widget.sig_base_dir_request: path_provider.set_base_dir
+  path_provider.sig_base_dir_changed: acq_widget.on_base_dir_changed
+  acq_ctrl.sig_locks_changed:
+    - det_widget.set_locked
+    - motor_widget.set_locked
+    - light_widget.set_locked
 ```
 
 Component names are the keys used under `devices:`, `presenters:` and `views:`;
-port names are the signal attributes and the names the slots declare. The three
-rules reaching `path_provider` go to the session's own path provider, which is
-what names the directory a capture is written to.
+port names are the signal attributes and the names the slots declare.
+`path_provider` is the session's own path provider, which names the directory
+a capture is written to and refuses a new one while a plan runs.
 
-There is no rule feeding `motor_widget.update_setpoint`: the motor view
-subscribes to the axis readbacks themselves, so its labels track the stage even
-when a plan is what moved it.
+A session file cannot make three kinds of link, because a path there is
+`component.port` and cannot reach an object a component holds:
+
+- `acq_widget.sig_action_request` to `acq_ctrl.actions.request` and
+  `median_ctrl.actions.request`, which start and stop a plan's actions;
+- `acq_ctrl.actions.sig_changed` and `median_ctrl.actions.sig_changed` to
+  `acq_widget.on_action_changed`, which sets the action buttons;
+- each motor axis readback to `motor_widget.update_setpoint`, which keeps the
+  position labels current.
+
+Without them the plans start and stop but their action buttons do nothing,
+and the motor labels do not move. The session classes in
+`redsun_mimir.configurations` make all three in `wire()`.
 
 ## Features
 
@@ -266,7 +294,8 @@ when a plan is what moved it.
   opens an editor and shows a box over its layer. Drag the box or type the
   numbers, each follows the other; Full fills in the whole sensor, OK applies.
   A change asked for during a plan lands between two of its messages.
-- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
+- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). `MedianPresenter` offers the plan, `live_median_scan`, and follows every run of it. The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
+- A run carries the document callbacks its plan lists, then the ones the user leaves ticked in the plan's list; no callback follows runs it was not given.
 - Every capture and every scan is a run of its own, nested in the live plan's run, with the run it serves and the scan it follows named on its start document.
 - The session's log records in a view of their own, from `redsun`.
 - Image visualization leveraging [`napari`](https://github.com/napari/napari).

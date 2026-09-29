@@ -19,11 +19,93 @@ Dates are specified in the format `DD-MM-YYYY`.
   board once at startup, so a session opens on where the board left its
   steppers. A board answering no position leaves the axis at zero and logs a
   warning.
+- `DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
+  `HoldsDeferrals` (`redsun_mimir.protocols`) - what a component asks for in
+  `setup` to reach the one describing the detectors, the motors or the light
+  sources, or the one whose engine applies deferred changes.
+- `MedianPresenter.plan_map`, `MedianPresenter.live_median_scan`,
+  `MedianPresenter.square_scan`, `MedianPresenter.actions` - the median
+  presenter offers the background scan plan, lists itself as that plan's
+  callback, and holds the `ActionManager` the plan waits on.
+- `AcquisitionPresenter.plan_map`, `AcquisitionPresenter.setup`,
+  `AcquisitionPresenter.actions`, `AcquisitionPresenter.plan_deferrals` - the
+  acquisition presenter offers `live_stream`, collects the plans of every
+  component with a `plan_map` in `setup`, and runs them all.
+- `capture` (`redsun_mimir.presenter.acquisition`) - flies prepared detectors
+  to disk in a nested run, until a given plan returns when one is given.
+- `AcquisitionView.on_action_changed` - sets an action button of the running
+  plan from the state its `ActionManager` reports.
 
 ### Changed
 
 - `MotorView` takes the 100.0 default step size its documentation names, not
   10.0.
+
+### Changed (breaking)
+
+- `redsun` 0.14.0 is the minimum version, in the dependencies and the `pyqt`
+  and `pyside` extras.
+- `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter`,
+  `MedianPresenter`, `MotorPresenter` take `name` and then `devices` by
+  keyword, and inherit no base class:
+
+  ```python
+  MotorPresenter("motor_ctrl", devices=devices, timeout=2.0)
+  ```
+
+- `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are
+  `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
+  for `AcquisitionView`, the centre for `ImageView`, the right dock for the
+  rest. Each builds its controls in `setup`.
+- `DetectorPresenter.detector_descriptors`,
+  `DetectorPresenter.detector_readings`,
+  `DetectorPresenter.detector_layer_specs` replace `devices_description`,
+  `devices_configuration` and `layer_specs`;
+  `MotorPresenter.motor_descriptors`, `MotorPresenter.motor_readings` replace
+  `devices_description` and `devices_readings`;
+  `LightPresenter.light_descriptors`, `LightPresenter.light_readings` replace
+  `device_description` and `device_configuration`. Each reads the devices
+  when called.
+- `DetectorPresenter.setup` takes the component satisfying `HoldsDeferrals`,
+  or none.
+- `AcquisitionPresenter.launch_plan` takes the names of the callbacks the user
+  attached. A run gets the callbacks its plan lists, then those, for that run
+  only.
+- `AcquisitionView.sig_launch_plan_request` carries the names of the attached
+  callbacks as its third argument. `AcquisitionView` lists every plan of the
+  session, each with the callbacks it can run with.
+- `live_stream` and `live_median_scan` are continuous plans started and
+  stopped from one toggle. Their actions are `PlanAction`s: `STREAM`
+  (`redsun_mimir.presenter.acquisition`), `SCAN` and `STREAM_ONCE`
+  (`redsun_mimir.presenter.median`).
+- `AcquisitionView.sig_base_dir_request` is linked to the session path
+  provider's `set_base_dir`, and `AcquisitionView.on_base_dir_changed` takes
+  the `Path` the provider announces.
+- `DetectorView.on_new_configuration` shows the value the device read back.
+- `MotorView` no longer subscribes to the axis readbacks; the example sessions
+  link each readback to `MotorView.update_setpoint`.
+- The example sessions are `QtSession` classes, and their files drop
+  `frontend: pyqt`. A `wiring:` section maps each signal to one slot or a
+  list of them.
+
+### Removed
+
+- `redsun_mimir.providers`, with every key in it, `PLAN_SPECS` and
+  `MOTOR_READBACKS` included.
+- `ScanAction`, `StreamAction` (`redsun_mimir.presenter`).
+- `HasAsyncShutdown` (`redsun_mimir.protocols`); the session awaits each
+  device's `shutdown`.
+- `LightPresenter.shutdown`, `MotorPresenter.shutdown`.
+- `AcquisitionPresenter.live_median_scan`,
+  `AcquisitionPresenter.square_scan`, now on `MedianPresenter`.
+- `AcquisitionPresenter.set_base_dir`,
+  `AcquisitionPresenter.sig_base_dir_changed`,
+  `AcquisitionPresenter.sig_action_done`,
+  `AcquisitionPresenter.toggle_action_event`,
+  `AcquisitionPresenter.clear_and_notify`, and the `callbacks` keyword of
+  `AcquisitionPresenter`.
+- `AcquisitionView.on_action_done`.
+- `register_providers` and `inject_dependencies` on every presenter and view.
 
 ### Fixed
 
