@@ -1,22 +1,33 @@
 from __future__ import annotations
 
+from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
+import bluesky.plan_stubs as bps
 import numpy as np
+import redsun.engine.plan_stubs as rps
+from bluesky.preprocessors import set_run_key_decorator
+from bluesky.utils import MsgGenerator  # noqa: TC002
 from event_model import DocumentRouter
+from ophyd_async.core import TriggerInfo
 from psygnal import Signal, SignalGroup
 from redsun import DeviceMapping, slot
+from redsun.engine.actions import ActionManager, PlanAction, continuous
 from redsun.log import Loggable
 from redsun.writers import Writer, WriterError
 
-from redsun_mimir.common import MEDIAN_SCAN_STREAM
+from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
+from redsun_mimir.presenter.acquisition import capture, prepare_and_declare
+from redsun_mimir.protocols import MotorProtocol, ReadableFlyer  # noqa: TC001
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from typing import TypedDict
 
     import numpy.typing as npt
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor, RunStop, StreamResource
+    from redsun import PlanEntry
 
     class FramePosition(TypedDict):
         """Where one frame of a scan's stack was taken."""
@@ -32,10 +43,20 @@ if TYPE_CHECKING:
     Positions = list[FramePosition]
 
 
+#: Run key giving the background scan a document cycle of its own, apart from
+#: the enclosing live run.
+_MEDIAN_RUN_KEY = "median_scan"
+
 _MEDIAN_SUFFIX = "_median"
 _SCAN_SUFFIX = "_scan"
 _FILTERED_SUFFIX = "_filtered"
 _BUFFER_SUFFIX = "-buffer"
+
+#: The action of `live_median_scan` scanning the background.
+SCAN = PlanAction(name="scan", description="Trigger a scan movement.")
+
+#: The action of `live_median_scan` writing a fixed number of frames to disk.
+STREAM_ONCE = PlanAction(name="stream", description="Stream frames to disk.")
 
 
 def plain(value: Any) -> Any:
@@ -79,8 +100,11 @@ class MedianPresenter(DocumentRouter, Loggable):
       by the cached median and published on ``frames.filtered`` as a layer
       of their own.
 
+    It offers the plan feeding it, `live_median_scan`, and lists itself as
+    that plan's callback, so every run of the plan reaches it.
+
     State is keyed by run, so nested runs never mix. Every document reaches
-    the writer before this presenter, except ``stop``, which reaches it
+    the writer before this presenter, except `stop`, which reaches it
     after, so the stack written there still finds its run open.
 
     Parameters
@@ -92,6 +116,7 @@ class MedianPresenter(DocumentRouter, Loggable):
     def __init__(self, name: str, *, devices: DeviceMapping) -> None:
         super().__init__()
         self.name = name
+        self.actions = ActionManager()
 
         # instance=self so the session can name this presenter as the
         # publisher of either member rather than the group
@@ -126,6 +151,165 @@ class MedianPresenter(DocumentRouter, Loggable):
         self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
         # run uid -> one record per scan event, in the order they arrived
         self._positions: dict[str, Positions] = {}
+
+    def plan_map(self) -> Mapping[str, PlanEntry]:
+        """Return the plan this presenter offers, with itself as its callback."""
+        return {
+            "live_median_scan": {"plan": self.live_median_scan, "callbacks": [self]}
+        }
+
+    @continuous
+    def live_median_scan(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        motor: MotorProtocol,
+        step: float = 5.0,
+        scan_frames: int = 40,
+        stream_frames: int = 10,
+        /,
+        scan: PlanAction = SCAN,
+        stream: PlanAction = STREAM_ONCE,
+    ) -> MsgGenerator[None]:
+        """Perform live data collection with temporal median filtering.
+
+        Detectors emit frames at their live-view rate from the start. The
+        `scan` action moves the motor in a square over x and y, collecting
+        `scan_frames / 4` frames per side; this presenter computes their
+        median when that run ends. The `stream` action flies the detectors to
+        disk for `stream_frames` frames, as a run nested in this one whose
+        start document names this run as `parent` and the last scan's run as
+        `median_scan`; this presenter writes that scan's stack into the store
+        the capture names.
+
+        Parameters
+        ----------
+        detectors
+            The detectors to collect from.
+        motor
+            The motor to scan with. Must expose `x` and `y` axes.
+        step
+            The motor step per frame, in the motor's units.
+        scan_frames
+            The number of frames to collect for the median, a quarter of
+            them per side of the square.
+        stream_frames
+            The number of frames to stream to disk per `stream` action.
+
+        Raises
+        ------
+        TypeError
+            If `motor` does not expose `x` and `y` axes.
+        """
+        if not {"x", "y"}.issubset(motor.axis.keys()):
+            raise TypeError(
+                "The provided motor must expose 'x' and 'y' MotorAxis attributes."
+            )
+
+        live_stream = "live_stream"
+        stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
+
+        restage = True
+        scan_run: str | None = None
+
+        parent = yield from bps.open_run()
+
+        # every live frame travels as an Event document so this presenter
+        # can divide it by the background median and publish the result
+        for det in detectors:
+            yield from bps.monitor(det.buffer, name=LIVE_VIEW_STREAM)
+
+        while True:
+            if restage:
+                # preparing starts the live view and hands each detector the
+                # store its next capture writes; the capture declares it
+                yield from bps.stage_all(*detectors)
+                yield from prepare_and_declare(
+                    detectors, stream_prepare_info, live_stream, declare=False
+                )
+                restage = False
+
+            name = yield from self.actions.wait(scan, stream)
+            try:
+                if name == scan.name:
+                    scan_run = yield from rps.lock_wrapper(
+                        self.square_scan(
+                            detectors, motor, step, scan_frames // 4, parent=parent
+                        ),
+                        motor,
+                        *detectors,
+                    )
+                else:
+                    self.logger.debug("Start writing")
+                    yield from rps.lock_wrapper(
+                        capture(
+                            detectors, live_stream, parent=parent, median_scan=scan_run
+                        ),
+                        *detectors,
+                    )
+                    restage = True
+                    self.logger.debug("Writing complete")
+            finally:
+                self.actions.done(name)
+
+    @set_run_key_decorator(_MEDIAN_RUN_KEY)  # type: ignore[untyped-decorator]
+    def square_scan(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        motor: MotorProtocol,
+        step: float,
+        frames_per_side: int,
+        *,
+        parent: str | None = None,
+    ) -> MsgGenerator[str]:
+        """Collect a background stack by moving the motor in a square.
+
+        The stack is emitted as Event documents in a nested run, so this
+        presenter can accumulate the frames and compute the median when that
+        run stops. The sides are x, y, -x, -y, with *frames_per_side* frames
+        along each. A frame is taken where the motor already stands and before
+        every move, so the stack starts at the position the scan was asked
+        from and the last move closes the square back onto it. Every frame
+        goes in an event of its own, with the axis positions it was taken at;
+        the event's `seq_num` is the frame's place in the stack, the
+        `frame_id` those positions are written under. Returns the run's uid.
+
+        Parameters
+        ----------
+        parent
+            The uid of the run this scan serves, recorded on its start
+            document.
+        """
+        x = motor.axis["x"]
+        y = motor.axis["y"]
+
+        uid: str = yield from bps.open_run(
+            md={"purpose": MEDIAN_SCAN_STREAM, "parent": parent}
+        )
+        square = [
+            (axis, direction)
+            for axis, direction in ((x, step), (y, step), (x, -step), (y, -step))
+            for _ in range(frames_per_side)
+        ]
+        for frame, (axis, direction) in enumerate(square, start=1):
+            # a detector taking frames continuously has one ready from
+            # before the previous move; triggering waits for the one taken
+            # where the motor stands now
+            for det in detectors:
+                yield from bps.trigger(det, wait=True)
+            yield from bps.create(name=MEDIAN_SCAN_STREAM)
+            for det in detectors:
+                yield from bps.read(det.buffer)
+            # the axes go in the same event, so each frame carries the
+            # position it was taken at
+            yield from bps.read(motor)
+            yield from bps.save()
+            self.logger.debug(
+                f"Frame {frame}/{len(square)} taken; "
+                f"moving {axis.name} by {direction} steps."
+            )
+            yield from bps.mvr(axis, direction)
+        yield from bps.close_run()
+        return uid
 
     def __call__(self, name: str, doc: dict[str, Any], validate: bool = False) -> Any:
         """Dispatch *doc* to the writer, then to this presenter.

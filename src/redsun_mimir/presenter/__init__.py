@@ -1,4 +1,4 @@
-from .acquisition import AcquisitionPresenter, ScanAction, StreamAction
+from .acquisition import AcquisitionPresenter
 from .detector import DetectorPresenter
 from .light import LightPresenter
 from .median import MedianPresenter
@@ -10,6 +10,4 @@ __all__ = [
     "LightPresenter",
     "MedianPresenter",
     "MotorPresenter",
-    "ScanAction",
-    "StreamAction",
 ]

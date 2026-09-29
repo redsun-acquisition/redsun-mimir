@@ -27,7 +27,6 @@ from redsun.aio import get_shared_loop
 from redsun.path_provider import SessionPathProvider
 from redsun.services import Service
 from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
-from redsun.virtual import VirtualContainer
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCamera, MMStage
@@ -174,12 +173,6 @@ def _reset_mmcore() -> Generator[None, None, None]:
     """
     yield
     Core.instance().reset()
-
-
-@pytest.fixture
-def virtual_container() -> VirtualContainer:
-    """Fresh VirtualContainer for each test."""
-    return VirtualContainer()
 
 
 class FakeDetector(StandardReadable):

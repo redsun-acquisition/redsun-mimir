@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import bluesky.plan_stubs as bps
 import redsun.engine.plan_stubs as rps
 from bluesky.preprocessors import set_run_key_decorator
 from bluesky.utils import MsgGenerator, RequestAbort
 from ophyd_async.core import TriggerInfo
-from redsun.engine import DEFERRALS, Deferrals, RunEngine
-from redsun.engine.actions import Action, continous
+from psygnal import Signal
+from redsun import CallbackType, DeviceMapping, HasPlans, slot
+from redsun.engine import Deferrals, RunEngine
+from redsun.engine.actions import ActionManager, PlanAction, continuous
 from redsun.log import Loggable
-from redsun.presenter import Presenter
 from redsun.presenter.plan_spec import (
     PlanSpec,
     UnresolvableAnnotationError,
@@ -21,47 +21,25 @@ from redsun.presenter.plan_spec import (
     create_plan_spec,
     resolve_arguments,
 )
-from redsun.virtual import Signal, slot
 
-from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
-from redsun_mimir.protocols import (  # noqa: TC001
-    MotorProtocol,
-    ReadableFlyer,
-)
-from redsun_mimir.providers import PLAN_SPECS
+from redsun_mimir.common import LIVE_VIEW_STREAM
+from redsun_mimir.protocols import ReadableFlyer  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from concurrent.futures import Future
-    from typing import Any
 
-    from ophyd_async.core import Device
-    from redsun.engine.actions import SRLatch
-    from redsun.virtual import VirtualContainer
+    from redsun import PlanEntry
 
-#: Run key giving the background scan a document cycle of its own, apart from
-#: the enclosing live run.
-_MEDIAN_RUN_KEY = "median_scan"
+#: Run key giving a capture a document cycle of its own, apart from the
+#: enclosing live run.
 _CAPTURE_RUN_KEY = "capture"
 
-
-@dataclass
-class ScanAction(Action):
-    """Action triggering a motor scan during live acquisition."""
-
-    name: str = "scan"
-    description: str = "Trigger a scan movement."
-
-
-@dataclass
-class StreamAction(Action):
-    """Action toggling data streaming to a Zarr store during live acquisition."""
-
-    name: str = "stream"
-    description: str = "Toggle data streaming to disk."
-    frames: int | None = 100
-    togglable: bool = True
-    toggle_states: tuple[str, str] = ("start", "stop")
+#: The action of `live_stream` writing frames to disk.
+STREAM = PlanAction(
+    name="stream",
+    description="Toggle data streaming to disk.",
+    toggle_states=("start", "stop"),
+)
 
 
 def prepare_and_declare(
@@ -77,7 +55,7 @@ def prepare_and_declare(
     Preparing starts live acquisition and hands each detector the sink it
     will write through; the write window opens at kickoff, so frames reach
     viewers but not storage until then. Staging is left to the caller, so
-    several device groups can share one ``stage_all`` call.
+    several device groups can share one `stage_all` call.
     """
     for det in detectors:
         yield from bps.prepare(det, trigger_info, wait=True)
@@ -95,334 +73,127 @@ def teardown_acquisition(
     yield from bps.unstage_all(*detectors)
 
 
-class AcquisitionPresenter(Presenter, Loggable):
-    """Presenter owning the run engine and the plans it launches.
+@set_run_key_decorator(_CAPTURE_RUN_KEY)  # type: ignore[untyped-decorator]
+def capture(
+    detectors: Sequence[ReadableFlyer],
+    stream_name: str,
+    *,
+    parent: str,
+    median_scan: str | None = None,
+    until: MsgGenerator[None] | None = None,
+) -> MsgGenerator[str]:
+    """Fly the prepared detectors to disk in a nested run and return its uid.
 
-    Parameters
-    ----------
-    callbacks : list[str] | None, optional
-        Names of the document callbacks to subscribe on the run engine.
-        ``None`` subscribes every callback the container registered; an
-        empty list subscribes none.
+    The start document names *parent*, the run served, and *median_scan*,
+    the scan whose stack goes into the store this capture names. With
+    *until* the window stays open until that plan returns. The detectors are
+    left unstaged for the next capture.
+    """
+    uid: str = yield from bps.open_run(
+        md={"purpose": "capture", "parent": parent, "median_scan": median_scan}
+    )
+    yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+    yield from bps.kickoff_all(*detectors, wait=True)
+    if until is not None:
+        yield from until
+    yield from teardown_acquisition(detectors, stream_name)
+    yield from bps.close_run()
+    return uid
 
-    Attributes
-    ----------
-    sig_pre_launch_notify : Signal[str]
-        Emitted with the plan's name before it launches.
-    sig_base_dir_changed : Signal[str]
-        Emitted with the new directory when a request to change where a run
-        writes is accepted.
-    sig_plan_done : Signal[None]
-        Emitted when a non-togglable plan completes.
-    sig_action_done : Signal[str]
-        Emitted with the action's name when its event is cleared.
-    sig_locks_changed : Signal[frozenset[str]]
-        Emitted with the names of the devices a plan holds, whenever they
-        change. A scan locks its motor and detectors, a capture its detectors.
+
+class AcquisitionPresenter(Loggable):
+    """Presenter owning the run engine and running every plan of the session.
+
+    It offers `live_stream` itself, and runs the plans of every component
+    with a `plan_map`. A run gets the document callbacks its plan lists,
+    then the ones the user attached to it; no callback follows the engine
+    between runs.
     """
 
     sig_pre_launch_notify = Signal(str)
-    sig_plan_done = Signal()
-    sig_base_dir_changed = Signal(str)
-    sig_action_done = Signal(str)
-    sig_locks_changed = Signal(frozenset)
+    """Emitted with the plan's name before it launches."""
 
-    def __init__(
-        self,
-        name: str,
-        devices: Mapping[str, Device],
-        /,
-        callbacks: list[str] | None = None,
-    ) -> None:
-        super().__init__(name, devices)
-        self.models = devices
+    sig_plan_done = Signal()
+    """Emitted when a plan ends, however it ends."""
+
+    sig_base_dir_changed = Signal(str)
+    """Emitted with the new directory when a request to change where a run
+    writes is accepted."""
+
+    sig_locks_changed = Signal(frozenset)
+    """Emitted with the names of the devices a plan holds, whenever they
+    change. A scan locks its motor and detectors, a capture its detectors."""
+
+    def __init__(self, name: str, *, devices: DeviceMapping) -> None:
+        self.name = name
+        self.devices = devices
         self.engine = RunEngine()
-        self.deferrals = Deferrals(self.engine)
+        self.actions = ActionManager()
+        self._deferrals = Deferrals(self.engine)
 
         self.futures: set[Future[Any]] = set()
-        self.action_map: dict[str, SRLatch] = {}
         self.discard_by_pause = False
         self.engine.sig_locks_changed.connect(self.sig_locks_changed.emit)
-        # None => subscribe whatever the container registered
-        self.expected_callbacks: frozenset[str] | None = (
-            None if callbacks is None else frozenset(callbacks)
-        )
-        self.callback_tokens: dict[str, int] = {}
 
-        self.plans: dict[str, Callable[..., MsgGenerator[Any]]] = {
-            "live_stream": self.live_stream,
-            "live_median_scan": self.live_median_scan,
-        }
+        self.plans: dict[str, PlanEntry] = {}
         self.plan_specs: dict[str, PlanSpec] = {}
-        for plan_name, plan in self.plans.items():
-            spec = self._try_build_plan_spec(plan, devices)
-            if spec is not None:
-                self.plan_specs[plan_name] = spec
-        self._is_single_shot_plan = False
+        self.callbacks: dict[str, CallbackType] = {}
 
-    def _try_build_plan_spec(
+    def plan_deferrals(self) -> Deferrals:
+        """Return the deferrals of this presenter's engine."""
+        return self._deferrals
+
+    def plan_map(self) -> Mapping[str, PlanEntry]:
+        """Return the plan this presenter offers."""
+        return {"live_stream": {"plan": self.live_stream}}
+
+    def setup(
         self,
-        plan: Callable[..., MsgGenerator[Any]],
-        devices: Mapping[str, Device],
-    ) -> PlanSpec | None:
-        """Attempt to build a ``PlanSpec`` for *plan*; return ``None`` on failure."""
-        try:
-            return create_plan_spec(plan, devices)
-        except UnresolvableAnnotationError as exc:
-            self.logger.warning(str(exc))
-            return None
+        providers: Mapping[str, HasPlans],
+        callbacks: Mapping[str, CallbackType],
+    ) -> None:
+        """Collect the plans of every component offering them, and the callbacks.
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register plan specs and the engine's deferrals as providers."""
-        container.provide(PLAN_SPECS, self.plans_specificiers())
-        container.provide(DEFERRALS, self.deferrals)
-        container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Subscribe the engine to the document callbacks the session offers."""
-        for name, callback in container.callbacks.items():
-            if self.expected_callbacks is not None and name not in (
-                self.expected_callbacks
-            ):
-                continue
-            self.callback_tokens[name] = self.engine.subscribe(callback)
-        if self.callback_tokens:
-            self.logger.debug(
-                f"Subscribed callbacks: {', '.join(self.callback_tokens)}"
-            )
-        else:
-            self.logger.warning(
-                "No document callbacks subscribed: live visualization and "
-                "median filtering will produce nothing."
-            )
-
-    def plans_specificiers(self) -> set[PlanSpec]:
-        """Return the specs of the available plans."""
-        return set(self.plan_specs.values())
-
-    @continous
-    def live_median_scan(
-        self,
-        detectors: Sequence[ReadableFlyer],
-        motor: MotorProtocol,
-        step: float = 5.0,
-        scan_frames: int = 40,
-        stream_frames: int = 10,
-        /,
-        # the defaults ARE the plan's UI contract: create_plan_spec
-        # introspects them to build the parameter widgets
-        scan_action: Action = ScanAction(),  # noqa: B008
-        stream_action: Action = StreamAction(togglable=False),  # noqa: B008
-    ) -> MsgGenerator[None]:
-        """Perform live data collection with temporal median filtering.
-
-        Detectors emit frames at their live-view rate from the start. The
-        "scan" action moves the motor in a square over x and y, collecting
-        ``scan_frames / 4`` frames per side; the ``MedianPresenter`` callback
-        computes their median when that run ends. The "stream" action flies
-        the detectors to disk for ``stream_frames`` frames, as a run nested in
-        this one whose start document names this run as ``parent`` and the
-        last scan's run as ``median_scan``; the ``MedianPresenter`` writes
-        that scan's stack into the store the capture names.
-
-        Parameters
-        ----------
-        - detectors: ``Sequence[ReadableFlyer]``
-            - The detectors to collect from.
-        - motor: ``MotorProtocol``
-            - The motor to scan with. Must expose ``x`` and ``y`` axes.
-        - step: ``float``, optional
-            - The motor step per frame, in the motor's units. Default is 5.0.
-        - scan_frames: ``int``, optional
-            - The number of frames to collect for the median. Default is 40,
-            ten per side of the square.
-        - stream_frames: ``int``, optional
-            - The number of frames to stream to disk per stream action.
-            Default is 10.
-
-        Raises
-        ------
-        - ``TypeError``
-            - If `motor` does not expose ``x`` and ``y`` axes.
+        A plan whose signature no plan widget can show is logged and left out.
         """
-        if not {"x", "y"}.issubset(motor.axis.keys()):
-            raise TypeError(
-                "The provided motor must expose 'x' and 'y' MotorAxis attributes."
-            )
-        self.action_map.update(**scan_action.event_map, **stream_action.event_map)
+        for component in providers.values():
+            for plan_name, entry in component.plan_map().items():
+                try:
+                    self.plan_specs[plan_name] = create_plan_spec(
+                        entry["plan"], self.devices
+                    )
+                except (UnresolvableAnnotationError, ValueError) as error:
+                    self.logger.warning(str(error))
+                    continue
+                self.plans[plan_name] = entry
+        self.callbacks = dict(callbacks)
 
-        live_stream = "live_stream"
-        stream_prepare_info = TriggerInfo(number_of_events=stream_frames)
-
-        restage = True
-        scan_run: str | None = None
-
-        parent = yield from bps.open_run()
-
-        # every live frame travels as an Event document so MedianPresenter
-        # can divide it by the background median and publish the result
-        for det in detectors:
-            yield from bps.monitor(det.buffer, name=LIVE_VIEW_STREAM)
-
-        while True:
-            if restage:
-                # preparing starts the live view and hands each detector the
-                # store its next capture writes; the capture declares it
-                yield from bps.stage_all(*detectors)
-                yield from prepare_and_declare(
-                    detectors, stream_prepare_info, live_stream, declare=False
-                )
-                restage = False
-
-            name, event = yield from rps.wait_for_actions(
-                self.action_map, wait_for="set"
-            )
-
-            if name == scan_action.name:
-                scan_run = yield from rps.lock_wrapper(
-                    self.square_scan(
-                        detectors, motor, step, scan_frames // 4, parent=parent
-                    ),
-                    motor,
-                    *detectors,
-                )
-
-            elif name == stream_action.name:
-                self.logger.debug("Start writing")
-                yield from rps.lock_wrapper(
-                    self.capture(
-                        detectors, live_stream, parent=parent, median_scan=scan_run
-                    ),
-                    *detectors,
-                )
-                restage = True
-                self.logger.debug("Writing complete")
-
-            self.clear_and_notify(name, event)
-
-    @set_run_key_decorator(_MEDIAN_RUN_KEY)  # type: ignore[untyped-decorator]
-    def square_scan(
-        self,
-        detectors: Sequence[ReadableFlyer],
-        motor: MotorProtocol,
-        step: float,
-        frames_per_side: int,
-        *,
-        parent: str | None = None,
-    ) -> MsgGenerator[str]:
-        """Collect a background stack by moving the motor in a square.
-
-        The stack is emitted as Event documents in a nested run, so
-        [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter] can
-        accumulate the frames and compute the median when that run stops.
-        The sides are x, y, -x, -y, with *frames_per_side* frames along
-        each. A frame is taken where the motor already stands and before
-        every move, so the stack starts at the position the scan was asked
-        from and the last move closes the square back onto it. Every frame
-        goes in an event of its own, with the axis positions it was taken at;
-        the event's ``seq_num`` is the frame's place in the stack, the
-        ``frame_id`` those positions are written under. Returns the run's
-        uid.
-
-        Parameters
-        ----------
-        parent : str, optional
-            The uid of the run this scan serves, recorded on its start
-            document.
-        """
-        # TODO: handle the case of failure in motor movement or detector gracefully;
-        # probably best to wrap any exception in try-except.
-        x = motor.axis["x"]
-        y = motor.axis["y"]
-
-        uid: str = yield from bps.open_run(
-            md={"purpose": MEDIAN_SCAN_STREAM, "parent": parent}
-        )
-        square = [
-            (axis, direction)
-            for axis, direction in ((x, step), (y, step), (x, -step), (y, -step))
-            for _ in range(frames_per_side)
-        ]
-        for frame, (axis, direction) in enumerate(square, start=1):
-            # a detector taking frames continuously has one ready from
-            # before the previous move; triggering waits for the one taken
-            # where the motor stands now
-            for det in detectors:
-                yield from bps.trigger(det, wait=True)
-            yield from bps.create(name=MEDIAN_SCAN_STREAM)
-            for det in detectors:
-                yield from bps.read(det.buffer)
-            # the axes go in the same event, so each frame carries the
-            # position it was taken at
-            yield from bps.read(motor)
-            yield from bps.save()
-            self.logger.debug(
-                f"Frame {frame}/{len(square)} taken; "
-                f"moving {axis.name} by {direction} steps."
-            )
-            yield from bps.mvr(axis, direction)
-        yield from bps.close_run()
-        return uid
-
-    @set_run_key_decorator(_CAPTURE_RUN_KEY)  # type: ignore[untyped-decorator]
-    def capture(
-        self,
-        detectors: Sequence[ReadableFlyer],
-        stream_name: str,
-        *,
-        parent: str,
-        median_scan: str | None = None,
-        until_reset: bool = False,
-    ) -> MsgGenerator[str]:
-        """Fly the prepared detectors to disk in a nested run and return its uid.
-
-        The start document names *parent*, the run served, and *median_scan*,
-        the scan whose stack goes into the store this capture names. With
-        *until_reset* the window stays open until the action that opened it
-        is toggled off. The detectors are left unstaged for the next capture.
-        """
-        uid: str = yield from bps.open_run(
-            md={"purpose": "capture", "parent": parent, "median_scan": median_scan}
-        )
-        yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
-        yield from bps.kickoff_all(*detectors, wait=True)
-        if until_reset:
-            yield from rps.wait_for_actions(self.action_map, wait_for="reset")
-        yield from teardown_acquisition(detectors, stream_name)
-        yield from bps.close_run()
-        return uid
-
-    @continous(togglable=True)
+    @continuous
     def live_stream(
         self,
         detectors: Sequence[ReadableFlyer],
         frames: int = 10,
         write_forever: bool = False,
         /,
-        # the default IS the plan's UI contract (see live_median_scan)
-        stream_action: Action = StreamAction(),  # noqa: B008
+        stream: PlanAction = STREAM,
     ) -> MsgGenerator[None]:
         """Perform live data collection and optionally store data to disk.
 
         The `stream` action streams the acquired frames to a Zarr store for
         `frames` frames, as a run nested in this one whose start document
-        names this run as ``parent``. Live visualization continues meanwhile.
+        names this run as `parent`. Live visualization continues meanwhile.
 
         Parameters
         ----------
-        - detectors: ``Sequence[ReadableFlyer]``
-            - The detectors to collect from.
-            - Must also implement the `Preparable` and `Flyable` protocols.
-        - frames: ``int``, optional
-            - The number of frames to stream to disk. Default is 10.
-        - write_forever: ``bool``, optional
-            - If True, stream until the `stream` action is toggled off,
-            ignoring `frames`. Default is False.
+        detectors
+            The detectors to collect from.
+        frames
+            The number of frames to stream to disk.
+        write_forever
+            Stream until the `stream` action is released, ignoring `frames`.
         """
         stream_name = "live_stream"
         trigger_info = TriggerInfo(number_of_events=0 if write_forever else frames)
-
-        self.action_map.update(**stream_action.event_map)
 
         parent = yield from bps.open_run()
 
@@ -438,66 +209,65 @@ class AcquisitionPresenter(Presenter, Loggable):
             yield from prepare_and_declare(
                 detectors, trigger_info, stream_name, declare=False
             )
-            name, current_action = yield from rps.wait_for_actions(
-                self.action_map, wait_for="set"
-            )
-            self.logger.debug("Start writing")
-            yield from rps.lock_wrapper(
-                self.capture(
-                    detectors, stream_name, parent=parent, until_reset=write_forever
-                ),
-                *detectors,
-            )
-            self.logger.debug("Writing complete")
-            self.clear_and_notify(name, current_action)
+            name = yield from self.actions.wait(stream)
+            try:
+                self.logger.debug("Start writing")
+                yield from rps.lock_wrapper(
+                    capture(
+                        detectors,
+                        stream_name,
+                        parent=parent,
+                        until=(
+                            self.actions.wait_released(stream)
+                            if write_forever
+                            else None
+                        ),
+                    ),
+                    *detectors,
+                )
+                self.logger.debug("Writing complete")
+            finally:
+                self.actions.done(name)
 
     @slot
-    def launch_plan(self, plan_name: str, param_values: Mapping[str, Any]) -> None:
+    def launch_plan(
+        self,
+        plan_name: str,
+        param_values: Mapping[str, Any],
+        attached: Sequence[str] = (),
+    ) -> None:
         """Launch *plan_name* with the parameter values the UI collected.
 
-        Refused, with a warning, while another plan runs.
+        The run gets the callbacks its plan lists, then those named in
+        *attached*, for this run only. Refused, with a warning, while another
+        plan runs.
         """
         if self.futures:
             self.logger.warning(f"A plan is running; {plan_name!r} not launched")
             return
-        # an action's latch lives on the action instance, which the plan's
-        # default arguments share across launches: one left set by a stop
-        # would fire the action as soon as the next launch waits on it
-        for latch in self.action_map.values():
-            latch.reset()
-        self.action_map.clear()
-        plan = self.plans[plan_name]
+        entry = self.plans[plan_name]
         spec = self.plan_specs[plan_name]
 
-        resolved = resolve_arguments(spec, param_values, self.models)
+        resolved = resolve_arguments(spec, param_values, self.devices)
         args, kwargs = collect_arguments(spec, resolved)
+        # a DocumentRouter is callable as (name, doc), but not typed as bluesky asks
+        subs: list[Any] = [
+            *entry.get("callbacks", ()),
+            *(self.callbacks[n] for n in attached),
+        ]
 
         self.sig_pre_launch_notify.emit(plan_name)
-        fut = self.engine(plan(*args, **kwargs))
+        fut = self.engine(entry["plan"](*args, **kwargs), subs)
         self.futures.add(fut)
         fut.add_done_callback(self._notify_plan_done)
         fut.add_done_callback(self._discard_future)
 
     def _notify_plan_done(self, fut: Future[Any]) -> None:
-        """Emit ``sig_plan_done`` when a plan future settles.
+        """Emit `sig_plan_done` when a plan future settles.
 
         The signal carries no payload, so the future is dropped.
         """
         self.sig_plan_done.emit()
-
-    def clear_and_notify(self, name: str, event: SRLatch) -> None:
-        """Reset *event* and emit ``sig_action_done`` with *name*."""
-        event.reset()
-        self.sig_action_done.emit(name)
-
-    @slot
-    def toggle_action_event(self, action_name: str, state: bool) -> None:
-        """Set or reset the latch of *action_name*, on the engine's loop."""
-        event = self.action_map[action_name]
-        if state:
-            self.engine.loop.call_soon_threadsafe(event.set)
-        else:
-            self.engine.loop.call_soon_threadsafe(event.reset)
 
     @slot
     def pause_or_resume_plan(self, pause: bool) -> None:
@@ -535,7 +305,7 @@ class AcquisitionPresenter(Presenter, Loggable):
         self.engine.stop()
 
     def shutdown(self) -> None:
-        """Abort the running plan, if any, without emitting ``sig_plan_done``."""
+        """Abort the running plan, if any, without emitting `sig_plan_done`."""
         if len(self.futures) > 0:
             self.logger.debug("Aborting running plan(s) during presenter shutdown.")
             with self.sig_plan_done.blocked():
