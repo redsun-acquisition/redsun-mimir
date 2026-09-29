@@ -1012,7 +1012,7 @@ class TestAcquisitionPresenter:
         assert len(engine.plans) == 1
         assert inspect.isgenerator(engine.plans[0])
 
-    def test_a_togglable_plan_announces_its_end(
+    def test_a_continuous_plan_announces_its_end(
         self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
         """Announce the end of a continuous plan."""

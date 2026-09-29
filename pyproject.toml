@@ -204,6 +204,13 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+# a session reads its annotations while running, so what they name is imported
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "redsun.qt.QtSession",
+    "redsun_mimir.configurations._base.MimirApp",
+]
+
 [tool.tox]
 requires = ["tox>=4.28", "tox-uv-bare>=1.36"]
 env_list = ["lint", "mypy-pyqt", "mypy-pyside", "tests"]

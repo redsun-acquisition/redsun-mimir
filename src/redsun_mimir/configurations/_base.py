@@ -1,11 +1,12 @@
-"""The container both example sessions are built on."""
+"""The session both examples are built on."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Annotated
 
-from redsun.containers import declare_hook, declare_presenter, declare_view
-from redsun.qt import QtAppContainer
+from redsun import AsHook, AsPresenter, AsView, Serves
+from redsun.qt import QtHook, QtSession
 from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.hooks import NapariApplication
@@ -29,15 +30,17 @@ from ._wiring import (
     wire_motor,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from redsun import Link
+
 __all__ = ["MimirApp"]
 
 COMMON_CONFIG = Path(__file__).parent / "common_configuration.yaml"
 
-# one object at both points: the application it builds is the one it styles
-_napari_app = NapariApplication()
 
-
-class MimirApp(QtAppContainer, config=COMMON_CONFIG):
+class MimirApp(QtSession):
     """Every part of a Mimir session that does not depend on the hardware.
 
     A session subclasses this, declares its devices and names their
@@ -45,34 +48,35 @@ class MimirApp(QtAppContainer, config=COMMON_CONFIG):
     their wiring come from here.
     """
 
-    create_application = declare_hook(_napari_app)
-    configure_application = declare_hook(_napari_app)
+    config = COMMON_CONFIG
 
-    median_ctrl = declare_presenter(MedianPresenter, from_config="median_ctrl")
-    det_ctrl = declare_presenter(DetectorPresenter, from_config="det_ctrl")
-    acq_ctrl = declare_presenter(AcquisitionPresenter, from_config="acq_ctrl")
-    light_ctrl = declare_presenter(LightPresenter, from_config="light_ctrl")
-    motor_ctrl = declare_presenter(MotorPresenter, from_config="motor_ctrl")
+    napari: Annotated[
+        AsHook[NapariApplication],
+        Serves(QtHook.CREATE_APPLICATION, QtHook.CONFIGURE_APPLICATION),
+    ]
 
-    acq_widget = declare_view(AcquisitionView, from_config="acq_widget")
-    img_widget = declare_view(ImageView, from_config="img_widget")
-    det_widget = declare_view(DetectorView, from_config="det_widget")
-    light_widget = declare_view(LightView, from_config="light_widget")
-    motor_widget = declare_view(MotorView, from_config="motor_widget")
-    logs = declare_view(LogView)
+    median_ctrl: AsPresenter[MedianPresenter]
+    det_ctrl: AsPresenter[DetectorPresenter]
+    acq_ctrl: AsPresenter[AcquisitionPresenter]
+    light_ctrl: AsPresenter[LightPresenter]
+    motor_ctrl: AsPresenter[MotorPresenter]
 
-    def wire(self) -> None:
-        """Connect the presenters to the views."""
-        wire_detector(self, self.det_ctrl, self.det_widget, self.img_widget)
-        wire_median(self, self.median_ctrl, self.img_widget)
-        wire_motor(self, self.motor_ctrl, self.motor_widget)
-        wire_light(self, self.light_ctrl, self.light_widget)
-        wire_acquisition(
-            self,
-            self.acq_ctrl,
-            self.acq_widget,
-            median=self.median_ctrl,
+    acq_widget: AsView[AcquisitionView]
+    img_widget: AsView[ImageView]
+    det_widget: AsView[DetectorView]
+    light_widget: AsView[LightView]
+    motor_widget: AsView[MotorView]
+    logs: AsView[LogView]
+
+    def wire(self) -> Iterator[Link]:
+        """Link the presenters to the views."""
+        yield from wire_detector(self.det_ctrl, self.det_widget, self.img_widget)
+        yield from wire_median(self.median_ctrl, self.img_widget)
+        yield from wire_motor(self.motor_ctrl, self.motor_widget)
+        yield from wire_light(self.light_ctrl, self.light_widget)
+        yield from wire_acquisition(
+            self.acq_ctrl, self.acq_widget, self.median_ctrl, self.path_provider
         )
-        wire_locks(
-            self, self.acq_ctrl, self.motor_widget, self.light_widget, self.det_widget
+        yield from wire_locks(
+            self.acq_ctrl, self.motor_widget, self.light_widget, self.det_widget
         )

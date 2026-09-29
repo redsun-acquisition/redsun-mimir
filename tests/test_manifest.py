@@ -3,7 +3,7 @@
 ``src/redsun_mimir/redsun.yaml`` is the contract between this bundle and
 redsun's plugin discovery: a class that is not listed is invisible, and an
 entry that does not resolve breaks discovery for the whole bundle. Neither
-failure mode is observable from the shipped example containers, which
+failure mode is observable from the shipped example sessions, which
 declare their components directly - which is precisely how five of the six
 device entries came to name classes that no longer existed.
 """
@@ -12,14 +12,11 @@ from __future__ import annotations
 
 import importlib
 import inspect
-import pkgutil
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any
 
 import pytest
 import yaml
-from redsun.presenter import Presenter
-from redsun.view.qt import QtView
 
 import redsun_mimir.presenter
 import redsun_mimir.view
@@ -33,13 +30,8 @@ SECTIONS = ("devices", "presenters", "views")
 #: class, so it is checked on its own rather than walked with the rest.
 MANIFEST_SECTIONS = (*SECTIONS, "services")
 
-#: Classes that are deliberately absent from the manifest: abstract bases and
-#: components composed inside another device rather than declared top-level.
-UNLISTED: frozenset[str] = frozenset(
-    {
-        "MMBaseCameraDevice",
-    }
-)
+#: Public names that are not components: a widget a view is built from.
+UNLISTED: frozenset[str] = frozenset({"SettingsControlWidget"})
 
 
 def _manifest() -> dict[str, dict[str, Any]]:
@@ -52,25 +44,6 @@ def _entries() -> Iterator[tuple[str, str, str]]:
     for section in SECTIONS:
         for key, path in manifest.get(section, {}).items():
             yield section, key, path
-
-
-def _public_classes(package: Any, base: type) -> dict[str, type]:
-    """Return every concrete *base* subclass defined inside *package*."""
-    found: dict[str, type] = {}
-    for info in pkgutil.walk_packages(package.__path__, f"{package.__name__}."):
-        module = importlib.import_module(info.name)
-        found.update(
-            {
-                name: obj
-                for name, obj in vars(module).items()
-                if inspect.isclass(obj)
-                and issubclass(obj, base)
-                and obj is not base
-                and obj.__module__.startswith(package.__name__)
-                and not name.startswith("_")
-            }
-        )
-    return found
 
 
 def test_manifest_has_expected_sections() -> None:
@@ -100,17 +73,17 @@ def test_manifest_entry_resolves(section: str, key: str, path: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("package", "base", "section"),
+    ("package", "section"),
     [
-        (redsun_mimir.presenter, Presenter, "presenters"),
-        (redsun_mimir.view, QtView, "views"),
+        (redsun_mimir.presenter, "presenters"),
+        (redsun_mimir.view, "views"),
     ],
     ids=["presenters", "views"],
 )
-def test_every_component_is_listed(package: Any, base: type, section: str) -> None:
-    """No presenter or view ships without a manifest entry."""
+def test_every_component_is_listed(package: Any, section: str) -> None:
+    """List in the manifest every presenter and view the package exports."""
     listed = {path.partition(":")[2] for path in _manifest().get(section, {}).values()}
-    defined = set(_public_classes(package, base)) - UNLISTED
+    defined = set(package.__all__) - UNLISTED
     assert defined <= listed, (
         f"defined but missing from redsun.yaml[{section}]: {sorted(defined - listed)}"
     )
