@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     import numpy as np
     from bluesky.protocols import Descriptor, Reading
     from ophyd_async.core import AsyncStatus, SignalR, SignalRW
+    from redsun.engine import Deferrals
 
 
 class LayerSpec(TypedDict):
@@ -140,8 +141,64 @@ class ReadableFlyer(
     """Protocol for detectors that fly and write stream assets."""
 
 
+@runtime_checkable
+class DescribesDetectors(Protocol):
+    """A component describing the detectors of the session."""
+
+    def detector_descriptors(self) -> dict[str, Descriptor]:
+        """Return the configuration descriptors of every detector, by data key."""
+        ...
+
+    def detector_readings(self) -> dict[str, Reading[Any]]:
+        """Return the current configuration readings of every detector, by data key."""
+        ...
+
+    def detector_layer_specs(self) -> dict[str, LayerSpec]:
+        """Return the shape and dtype of the layer each detector feeds, by name."""
+        ...
+
+
+@runtime_checkable
+class DescribesMotors(Protocol):
+    """A component describing the motors of the session."""
+
+    def motor_descriptors(self) -> dict[str, Descriptor]:
+        """Return the descriptors of every motor axis, by data key."""
+        ...
+
+    def motor_readings(self) -> dict[str, Reading[Any]]:
+        """Return the current readings of every motor axis, by data key."""
+        ...
+
+
+@runtime_checkable
+class DescribesLights(Protocol):
+    """A component describing the light sources of the session."""
+
+    def light_descriptors(self) -> dict[str, Descriptor]:
+        """Return the descriptors of every light source, by data key."""
+        ...
+
+    def light_readings(self) -> dict[str, Reading[Any]]:
+        """Return the current readings of every light source, by data key."""
+        ...
+
+
+@runtime_checkable
+class HoldsDeferrals(Protocol):
+    """A component running plans, whose engine applies deferred changes."""
+
+    def plan_deferrals(self) -> Deferrals:
+        """Return the deferrals of the engine running the plans."""
+        ...
+
+
 __all__ = [
+    "DescribesDetectors",
+    "DescribesLights",
+    "DescribesMotors",
     "DetectorProtocol",
+    "HoldsDeferrals",
     "LayerSpec",
     "LightProtocol",
     "MotorProtocol",

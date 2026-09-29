@@ -5,18 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 from event_model import DocumentRouter
 from psygnal import Signal
-from redsun import DeviceMapping, provides, slot
+from redsun import DeviceMapping, slot
 from redsun.aio import run_coro
-from redsun.engine import Deferrals  # noqa: TC002
 from redsun.log import Loggable
 
 from redsun_mimir.common import Roi
-from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.providers import (
-    DetectorDescriptors,
-    DetectorLayerSpecs,
-    DetectorReadings,
-)
+from redsun_mimir.protocols import DetectorProtocol, HoldsDeferrals
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -24,6 +18,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from event_model.documents import Event, EventDescriptor
     from ophyd_async.core import SignalRW
+    from redsun.engine import Deferrals
 
     from redsun_mimir.protocols import LayerSpec
 
@@ -159,12 +154,11 @@ class DetectorPresenter(DocumentRouter, Loggable):
             self.sig_new_data.emit(readings)
         return doc
 
-    def setup(self, deferrals: Deferrals | None = None) -> None:
-        """Take the engine's deferrals, if a presenter here owns an engine."""
-        self._deferrals = deferrals
+    def setup(self, plans: HoldsDeferrals | None = None) -> None:
+        """Take the deferrals of the engine running the plans, if one does."""
+        self._deferrals = None if plans is None else plans.plan_deferrals()
 
-    @provides
-    def layer_specs(self) -> DetectorLayerSpecs:
+    def detector_layer_specs(self) -> dict[str, LayerSpec]:
         """Return the layer spec of every detector.
 
         A layer is the size of the sensor, whatever the ROI: a cropped frame
@@ -175,18 +169,16 @@ class DetectorPresenter(DocumentRouter, Loggable):
             width, height = run_coro(device.sensor_size.get_value())
             dtype = run_coro(device.pixel_dtype.get_value())
             specs[device.name] = {"shape": (int(height), int(width)), "dtype": dtype}
-        return DetectorLayerSpecs(specs)
+        return specs
 
-    @provides
-    def devices_configuration(self) -> DetectorReadings:
+    def detector_readings(self) -> dict[str, Reading[Any]]:
         """Return the configuration readings of every detector."""
         result: dict[str, Reading[Any]] = {}
         for device in self.detectors.values():
             result.update(run_coro(device.read_configuration()))
-        return DetectorReadings(result)
+        return result
 
-    @provides
-    def devices_description(self) -> DetectorDescriptors:
+    def detector_descriptors(self) -> dict[str, Descriptor]:
         """Return the configuration descriptors of every detector.
 
         A setting this presenter cannot write has `:readonly` appended to
@@ -202,7 +194,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
                         "source": f"{descriptor['source']}:readonly",
                     }
                 result[key] = descriptor
-        return DetectorDescriptors(result)
+        return result
 
     @slot
     async def set(self, detector: str, property: str, value: Any) -> None:

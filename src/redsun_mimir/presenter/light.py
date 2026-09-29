@@ -3,12 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from redsun import DeviceMapping, provides, slot
+from redsun import DeviceMapping, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
 
 from redsun_mimir.protocols import LightProtocol
-from redsun_mimir.providers import LightConfiguration, LightDescription
 
 if TYPE_CHECKING:
     from typing import Any
@@ -50,23 +49,21 @@ class LightPresenter(Loggable):
             names = ", ".join(light.name for light in self._lights.values())
             self.logger.debug(f"Found devices: {names}")
 
-    @provides
-    def device_configuration(self) -> LightConfiguration:
+    def light_readings(self) -> dict[str, Reading[Any]]:
         """Return every light's configuration and current readings, by data key."""
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
             result.update(run_coro(light.read_configuration()))
             result.update(run_coro(light.read()))
-        return LightConfiguration(result)
+        return result
 
-    @provides
-    def device_description(self) -> LightDescription:
+    def light_descriptors(self) -> dict[str, Descriptor]:
         """Return every light's configuration and reading descriptors, by data key."""
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
             result.update(run_coro(light.describe_configuration()))
             result.update(run_coro(light.describe()))
-        return LightDescription(result)
+        return result
 
     @slot
     async def trigger(self, name: str) -> None:

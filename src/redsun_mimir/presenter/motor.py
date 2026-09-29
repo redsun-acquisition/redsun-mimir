@@ -3,12 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from redsun import DeviceMapping, provides, slot
+from redsun import DeviceMapping, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
 
 from redsun_mimir.protocols import MotorProtocol
-from redsun_mimir.providers import MotorDescription, MotorReadings
 
 if TYPE_CHECKING:
     from typing import Any
@@ -54,21 +53,19 @@ class MotorPresenter(Loggable):
 
         self.logger.info("Initialized")
 
-    @provides
-    def devices_readings(self) -> MotorReadings:
+    def motor_readings(self) -> dict[str, Reading[Any]]:
         """Return the current readings of every motor, by data key."""
         result: dict[str, Reading[Any]] = {}
         for device in self._motors.values():
             result.update(run_coro(device.read()))
-        return MotorReadings(result)
+        return result
 
-    @provides
-    def devices_description(self) -> MotorDescription:
+    def motor_descriptors(self) -> dict[str, Descriptor]:
         """Return the descriptors of every motor, by data key."""
         result: dict[str, Descriptor] = {}
         for device in self._motors.values():
             result.update(run_coro(device.describe()))
-        return MotorDescription(result)
+        return result
 
     def devices_readbacks(self) -> dict[str, SignalR[float]]:
         """Return the readback signal of every motor axis, by data key."""

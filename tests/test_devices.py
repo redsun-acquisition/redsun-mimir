@@ -86,11 +86,8 @@ class TestUC2LaserDevice:
         assert isinstance(laser, LightProtocol)
         assert await laser.binary.get_value() is False
 
-        presenter = LightPresenter("light_ctrl", {laser.name: laser})
-        try:
-            assert f"{laser.name}-intensity" in presenter.device_description()
-        finally:
-            presenter.shutdown()
+        presenter = LightPresenter("light_ctrl", devices={laser.name: laser})
+        assert f"{laser.name}-intensity" in presenter.light_descriptors()
 
     async def test_turning_on_keeps_an_intensity_set_while_off(
         self, uc2_service: Service
