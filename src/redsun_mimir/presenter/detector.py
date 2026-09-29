@@ -3,30 +3,27 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Descriptor  # noqa: TC002
 from event_model import DocumentRouter
+from psygnal import Signal
+from redsun import DeviceMapping, provides, slot
 from redsun.aio import run_coro
-from redsun.engine import DEFERRALS
+from redsun.engine import Deferrals  # noqa: TC002
 from redsun.log import Loggable
-from redsun.presenter import Presenter
-from redsun.virtual import Signal, slot
 
 from redsun_mimir.common import Roi
 from redsun_mimir.protocols import DetectorProtocol
 from redsun_mimir.providers import (
-    DETECTOR_DESCRIPTORS,
-    DETECTOR_LAYER_SPECS,
-    DETECTOR_READINGS,
+    DetectorDescriptors,
+    DetectorLayerSpecs,
+    DetectorReadings,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from bluesky.protocols import Reading
+    from bluesky.protocols import Descriptor, Reading
     from event_model.documents import Event, EventDescriptor
-    from ophyd_async.core import Device, SignalRW
-    from redsun.engine import Deferrals
-    from redsun.virtual import VirtualContainer
+    from ophyd_async.core import SignalRW
 
     from redsun_mimir.protocols import LayerSpec
 
@@ -49,42 +46,40 @@ def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
     return {signal.name.removeprefix(f"{detector.name}-"): signal for signal in signals}
 
 
-class DetectorPresenter(Presenter, DocumentRouter, Loggable):
+class DetectorPresenter(DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
     Live frames arrive as Event documents, the plan having put each
-    detector's buffer signal under ``bps.monitor``, so every displayed frame
+    detector's buffer signal under `bps.monitor`, so every displayed frame
     is part of the run and ordered against its other documents. Frames are
     forwarded raw: [`MedianPresenter`][redsun_mimir.presenter.MedianPresenter]
     publishes the corrected ones on a signal of its own, as a separate layer.
 
     Parameters
     ----------
-    timeout : float | None, optional
-        Timeout in seconds for async configuration calls; ``None`` means ``1.0``.
-
-    Attributes
-    ----------
-    sig_new_configuration : Signal[str, str, object]
-        Emitted after a detector setting is applied, with the detector name,
-        the canonical key of the setting and its new value.
-    sig_new_data : Signal[dict[str, Reading[Any]]]
-        Emitted for every live frame carried by an Event document. Beside the
-        ``<detector>-buffer`` reading travels ``<detector>-roi``, a `Roi`
-        naming the sensor region the frame was taken with.
+    timeout
+        Timeout in seconds for async configuration calls; `None` means `1.0`.
     """
 
     sig_new_configuration = Signal(str, str, object)
+    """Emitted after a detector setting is applied, with the detector name,
+    the canonical key of the setting and its new value."""
+
     sig_new_data = Signal(object)
+    """Emitted for every live frame carried by an Event document, as a
+    `dict[str, Reading[Any]]`. Beside the `<detector>-buffer` reading travels
+    `<detector>-roi`, a `Roi` naming the sensor region the frame was taken
+    with."""
 
     def __init__(
         self,
         name: str,
-        devices: Mapping[str, Device],
-        /,
+        *,
+        devices: DeviceMapping,
         timeout: float | None = 1.0,
     ) -> None:
-        super().__init__(name, devices)
+        super().__init__()
+        self.name = name
         self.timeout = timeout or 1.0
         self.detectors: dict[str, DetectorProtocol] = {
             name: device
@@ -164,19 +159,12 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             self.sig_new_data.emit(readings)
         return doc
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register detector info, signals and callbacks with the container."""
-        container.provide(DETECTOR_DESCRIPTORS, self.devices_description())
-        container.provide(DETECTOR_READINGS, self.devices_configuration())
-        container.provide(DETECTOR_LAYER_SPECS, self.layer_specs())
-        container.register_signals(self)
-        container.register_callbacks(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
+    def setup(self, deferrals: Deferrals | None = None) -> None:
         """Take the engine's deferrals, if a presenter here owns an engine."""
-        self._deferrals = container.try_require(DEFERRALS)
+        self._deferrals = deferrals
 
-    def layer_specs(self) -> dict[str, LayerSpec]:
+    @provides
+    def layer_specs(self) -> DetectorLayerSpecs:
         """Return the layer spec of every detector.
 
         A layer is the size of the sensor, whatever the ROI: a cropped frame
@@ -187,19 +175,21 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
             width, height = run_coro(device.sensor_size.get_value())
             dtype = run_coro(device.pixel_dtype.get_value())
             specs[device.name] = {"shape": (int(height), int(width)), "dtype": dtype}
-        return specs
+        return DetectorLayerSpecs(specs)
 
-    def devices_configuration(self) -> dict[str, Reading[Any]]:
+    @provides
+    def devices_configuration(self) -> DetectorReadings:
         """Return the configuration readings of every detector."""
         result: dict[str, Reading[Any]] = {}
         for device in self.detectors.values():
             result.update(run_coro(device.read_configuration()))
-        return result
+        return DetectorReadings(result)
 
-    def devices_description(self) -> dict[str, Descriptor]:
+    @provides
+    def devices_description(self) -> DetectorDescriptors:
         """Return the configuration descriptors of every detector.
 
-        A setting this presenter cannot write has ``:readonly`` appended to
+        A setting this presenter cannot write has `:readonly` appended to
         its source, which the settings tree shows as a label.
         """
         result: dict[str, Descriptor] = {}
@@ -212,7 +202,7 @@ class DetectorPresenter(Presenter, DocumentRouter, Loggable):
                         "source": f"{descriptor['source']}:readonly",
                     }
                 result[key] = descriptor
-        return result
+        return DetectorDescriptors(result)
 
     @slot
     async def set(self, detector: str, property: str, value: Any) -> None:

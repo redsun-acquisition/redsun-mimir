@@ -4,23 +4,19 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from event_model import DocumentRouter
-from psygnal import SignalGroup
+from psygnal import Signal, SignalGroup
+from redsun import DeviceMapping, slot
 from redsun.log import Loggable
-from redsun.presenter import Presenter
-from redsun.virtual import Signal, slot
 from redsun.writers import Writer, WriterError
 
 from redsun_mimir.common import MEDIAN_SCAN_STREAM
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from typing import TypedDict
 
     import numpy.typing as npt
     from bluesky.protocols import Reading
     from event_model.documents import Event, EventDescriptor, RunStop, StreamResource
-    from ophyd_async.core import Device
-    from redsun.virtual import VirtualContainer
 
     class FramePosition(TypedDict):
         """Where one frame of a scan's stack was taken."""
@@ -66,7 +62,7 @@ class FrameSignals(SignalGroup, strict=True):
     filtered = Signal(object)
 
 
-class MedianPresenter(Presenter, DocumentRouter, Loggable):
+class MedianPresenter(DocumentRouter, Loggable):
     """Background-median filtering, driven by documents.
 
     A square scan collects a stack of frames off-target; their per-pixel
@@ -89,27 +85,19 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
 
     Parameters
     ----------
-    devices : Mapping[str, Device]
-        Only those exposing a ``buffer`` signal are tracked.
-
-    Attributes
-    ----------
-    frames : FrameSignals
-        The ``median`` and ``filtered`` streams, each carrying a
-        ``dict[str, Reading[Any]]``.
+    devices
+        Only those exposing a `buffer` signal are tracked.
     """
 
-    def __init__(
-        self,
-        name: str,
-        devices: Mapping[str, Device],
-        /,
-    ) -> None:
-        super().__init__(name, devices)
+    def __init__(self, name: str, *, devices: DeviceMapping) -> None:
+        super().__init__()
+        self.name = name
 
-        # instance=self so the container can name this presenter as the
+        # instance=self so the session can name this presenter as the
         # publisher of either member rather than the group
         self.frames = FrameSignals(instance=self)
+        """The `median` and `filtered` streams, each carrying a
+        `dict[str, Reading[Any]]`."""
 
         #: data keys of the buffers whose frames this presenter takes
         self._sources: set[str] = {
@@ -138,11 +126,6 @@ class MedianPresenter(Presenter, DocumentRouter, Loggable):
         self._frames: dict[tuple[str, str], list[npt.NDArray[Any]]] = {}
         # run uid -> one record per scan event, in the order they arrived
         self._positions: dict[str, Positions] = {}
-
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register this presenter as a signal owner and document callback."""
-        container.register_signals(self)
-        container.register_callbacks(self)
 
     def __call__(self, name: str, doc: dict[str, Any], validate: bool = False) -> Any:
         """Dispatch *doc* to the writer, then to this presenter.

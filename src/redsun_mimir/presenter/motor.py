@@ -3,49 +3,46 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from redsun import DeviceMapping, provides, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
-from redsun.presenter import Presenter
-from redsun.virtual import slot
 
-from redsun_mimir.protocols import HasAsyncShutdown, MotorProtocol
-from redsun_mimir.providers import MOTOR_DESCRIPTION, MOTOR_READBACKS, MOTOR_READINGS
+from redsun_mimir.protocols import MotorProtocol
+from redsun_mimir.providers import MotorDescription, MotorReadings
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import Device, SignalR
-    from redsun.virtual import VirtualContainer
+    from ophyd_async.core import SignalR
 
 
-class MotorPresenter(Presenter, Loggable):
+class MotorPresenter(Loggable):
     """Presenter for manual motor stage positioning.
 
     `move` is a coroutine connected directly to the requesting signal, so the
     emitting thread never waits for the device. Moves are serialised per
     device: a stage writing several coordinates on every set cannot have two
-    in flight at once. Positions are not announced; the axis readbacks are
-    published as [`MOTOR_READBACKS`][redsun_mimir.providers.MOTOR_READBACKS]
-    for whoever displays them. The devices satisfying
-    [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] are taken at
-    initialisation, and an axis is reached as ``axis[name]`` on its device.
+    in flight at once. Positions are not announced; `devices_readbacks`
+    returns the axis readback signals for whoever displays them. The devices
+    satisfying [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] are
+    taken at initialisation, and an axis is reached as `axis[name]` on its
+    device.
 
     Parameters
     ----------
-    timeout :
-        Timeout for motor operations in seconds; ``None`` means ``2.0``.
+    timeout
+        Timeout for motor operations in seconds; `None` means `2.0`.
     """
 
     def __init__(
         self,
         name: str,
-        devices: Mapping[str, Device],
-        /,
+        *,
+        devices: DeviceMapping,
         timeout: float | None = None,
     ) -> None:
-        super().__init__(name, devices)
+        self.name = name
         self._timeout = timeout or 2.0
 
         self._motors: dict[str, MotorProtocol] = {
@@ -57,19 +54,21 @@ class MotorPresenter(Presenter, Loggable):
 
         self.logger.info("Initialized")
 
-    def devices_readings(self) -> dict[str, Reading[Any]]:
+    @provides
+    def devices_readings(self) -> MotorReadings:
         """Return the current readings of every motor, by data key."""
         result: dict[str, Reading[Any]] = {}
         for device in self._motors.values():
             result.update(run_coro(device.read()))
-        return result
+        return MotorReadings(result)
 
-    def devices_description(self) -> dict[str, Descriptor]:
+    @provides
+    def devices_description(self) -> MotorDescription:
         """Return the descriptors of every motor, by data key."""
         result: dict[str, Descriptor] = {}
         for device in self._motors.values():
             result.update(run_coro(device.describe()))
-        return result
+        return MotorDescription(result)
 
     def devices_readbacks(self) -> dict[str, SignalR[float]]:
         """Return the readback signal of every motor axis, by data key."""
@@ -88,16 +87,3 @@ class MotorPresenter(Presenter, Loggable):
         async with self._locks[motor]:
             movable = self._motors[motor].axis[axis]
             await movable.set((await movable.locate())["readback"] + delta)
-
-    def shutdown(self) -> None:
-        """Shut down every motor device that supports it."""
-        for device in self._motors.values():
-            if isinstance(device, HasAsyncShutdown):
-                run_coro(device.shutdown())
-
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the motor readings, descriptors, readbacks and signals."""
-        container.provide(MOTOR_READINGS, self.devices_readings())
-        container.provide(MOTOR_DESCRIPTION, self.devices_description())
-        container.provide(MOTOR_READBACKS, self.devices_readbacks())
-        container.register_signals(self)
