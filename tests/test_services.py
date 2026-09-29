@@ -55,7 +55,7 @@ class FakeBoard:
     def reset_input_buffer(self) -> None:
         pass
 
-    def write(self, packet: bytes) -> int:
+    async def write(self, packet: bytes) -> int:
         self.written.append(packet)
         request = msgspec.json.decode(packet)
         if request.get("task") == "/motor_get":
@@ -78,7 +78,7 @@ class FakeBoard:
             self._answers.append(b'{"steppers": [], "qid": %d}--' % qid)
         return len(packet)
 
-    def read_until(self, expected: bytes = b"") -> bytes:
+    async def read_until(self, expected: bytes = b"") -> bytes:
         return self._answers.pop(0) if self._answers else b""
 
     def close(self) -> None:
@@ -573,14 +573,14 @@ async def test_no_property_is_read_from_the_camera_while_it_sequences(
     assert camera.pixel_dtype.get().name == "uint8"
 
 
-def test_the_board_reset_runs_on_a_port_with_no_board(
+async def test_the_board_reset_runs_on_a_port_with_no_board(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The DTR/RTS toggling and the wait for the board's answer, without the delays."""
+    """Toggle DTR and RTS and wait for the board's answer, without the delays."""
     monkeypatch.setattr(uc2_controller, "RESET_HOLD", 0.0)
     monkeypatch.setattr(uc2_controller, "RESET_SETTLE", 0.0)
 
-    serial = uc2_controller.open_board("loop://", 115200, 0.01)
+    serial = await uc2_controller.open_board("loop://", 115200, 0.01)
     try:
         assert serial.is_open
         assert serial.rts is False

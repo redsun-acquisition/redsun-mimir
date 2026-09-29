@@ -54,8 +54,8 @@ dev = [
     "pytest-qt>=4.5.0",
 ]
 uc2 = [
+    "oxiserial>=0.2.0",
     "pymmcore-plus>=0.18.1",
-    "pyserial>=3.5",
 ]
 pyqt = [
     "napari[pyqt6]>=0.9.1",
@@ -90,8 +90,8 @@ pyside = [
     "redsun[pyside]>=0.14.0",
 ]
 uc2 = [
+    "oxiserial>=0.2.0",
     "pymmcore-plus>=0.18.1",
-    "pyserial>=3.5",
 ]
 sim = [
     "redsun-mimir[pyqt]",

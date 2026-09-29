@@ -49,6 +49,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `redsun` 0.14.0 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
+- The `uc2` extra requires `oxiserial` 0.2.0 in place of `pyserial`.
+  `redsun_mimir.services.uc2_controller` talks to the board through
+  `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
+  `open_board` is a coroutine.
 - `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter`,
   `MedianPresenter`, `MotorPresenter` take `name` and then `devices` by
   keyword, and inherit no base class:

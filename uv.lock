@@ -3139,6 +3139,44 @@ pva = [
 ]
 
 [[package]]
+name = "oxiserial"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/5e/2e97a0918da157743e6f8c8b85e9a2b3fa9d050076d922dcd304fc98bf2f/oxiserial-0.2.0.tar.gz", hash = "sha256:8a785bf308d1961654e42205a044c203dd3a338c160b40ad5588ba0f4b21c93b", size = 99859, upload-time = "2026-09-29T20:56:52.343Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/18/960c6bf0bf080b73d1c088c6257a2f39fa47359c19874a0e62da2c3f5d62/oxiserial-0.2.0-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2b845292d1ae7d9a8d58661474e8db18046e373437c8904121b63153ede884e3", size = 591451, upload-time = "2026-09-29T20:56:20.484Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/e2/791e7dad08ebf2ecfc973aafb3bb26fb2c2d0c1d22671323606272bdcbf3/oxiserial-0.2.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:499140220dba8ebf3e0c047a160020725b4abc40c4c8cd03eac0d76e82fdcffa", size = 596837, upload-time = "2026-09-29T20:56:21.698Z" },
+    { url = "https://files.pythonhosted.org/packages/09/45/634a8da3a6e09258fc8225bbc0c9b5320676090cc56dc64ea17d0dd94b68/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5e531589093ad4f7a47cc3a9770fd17c6b01a4cb9aa1253fd67f3dcab0244626", size = 668517, upload-time = "2026-09-29T20:56:22.645Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/b3/1bdad8a9b85ca64569d5bb37f15f1230c9a63084f6051bae27c9b3ed1fe0/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:3a341f4496d918841e0b7a20411ee2e0f5d75687243429d6d67c051850699179", size = 659358, upload-time = "2026-09-29T20:56:23.596Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/51/df1d821b8e1f599f84c6100faca20967273238a9af96e62e658d336bf098/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:b4f1bd37b4daaba059ad87b5c6037a4b559363485130a72d7b6231d2d4187a96", size = 712055, upload-time = "2026-09-29T20:56:24.644Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/32/a9c77dedeb0bf826177953b83b8282f63a0771599ef1fbf69de2efec52bd/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:4e83ad3be9f3c1b214bf9cd7b8365463eb7adedf054d5f81980ee20e320b7f53", size = 824155, upload-time = "2026-09-29T20:56:25.736Z" },
+    { url = "https://files.pythonhosted.org/packages/30/46/0c0c6de065f5e35b5e074e9e1ad5fb8ba870de37be9b64f38162d6ee7865/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:12167feda59d2bd10d70eb3640a4490bea496c66d68f78c0563fa191240669cc", size = 681210, upload-time = "2026-09-29T20:56:26.702Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/f5/153b22f3fdc07e645fd3ee2ebe86a673827595339853cd45e13de9db5848/oxiserial-0.2.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c1513c8307afe67eeb182cac075d0f7ee099b709c6332ede1d061d83675a48b0", size = 656551, upload-time = "2026-09-29T20:56:27.848Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/41/55bff12c2da551dcdd4fe3e2a0d2813d56ffc31ccf5f4ece5ffaafb3cb4d/oxiserial-0.2.0-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:0b99bd1a8deb39bc9a52dc1942414581c47f48983285f7fadbad10ce8dbfa46d", size = 845389, upload-time = "2026-09-29T20:56:28.847Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/f0/ae2c8131b6fc28c4ba78343fedab670eaf3c6eea54e8b802b17ab9e07dce/oxiserial-0.2.0-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:0773ed794715185ffcf218419507e0da77f046dba47f7dab99f97d7279609b7d", size = 935167, upload-time = "2026-09-29T20:56:29.925Z" },
+    { url = "https://files.pythonhosted.org/packages/67/14/b4862b365477adc078ed17ac7976894b7c00cd857d5a09d8066a956a4ca7/oxiserial-0.2.0-cp311-abi3-musllinux_1_2_i686.whl", hash = "sha256:935601853a1dcba3bc7c79c984a172651b7aa6affd3df05050da88992a844577", size = 916316, upload-time = "2026-09-29T20:56:31.043Z" },
+    { url = "https://files.pythonhosted.org/packages/12/89/29b7ed81067bbb93274925df3c7835628f860428ce9ff302d8e96330db51/oxiserial-0.2.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1be18d20d44a09170b8c856fea2fbd6879acbd86f699762f58a421962592feea", size = 872126, upload-time = "2026-09-29T20:56:32.011Z" },
+    { url = "https://files.pythonhosted.org/packages/04/6d/726fb71a77262993c5071e597ee97bf7c64e06f3cda47e19abd069b0bb94/oxiserial-0.2.0-cp311-abi3-win32.whl", hash = "sha256:40348d228ff6e67e170f68fa38db9cde83bf46ed4c9001a995763b572e06ca0a", size = 412816, upload-time = "2026-09-29T20:56:33.199Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/0f/41aa43ff45866f781f9e04663e1c10be7dbbf2c5999fb36a951e5ea244ee/oxiserial-0.2.0-cp311-abi3-win_amd64.whl", hash = "sha256:daa0bf225628ef05d4e273480d4a6f0a5b2b478fdc08c65c1885ea865b7ae6ad", size = 457637, upload-time = "2026-09-29T20:56:34.198Z" },
+    { url = "https://files.pythonhosted.org/packages/94/37/2014d7d3cd5ab64c1ebd3fc8f5e7659d9cacb412ed33cb3cede3b4d1c63b/oxiserial-0.2.0-cp311-abi3-win_arm64.whl", hash = "sha256:afb07b4b767c53e4b22154df4c34c2cf86496279178d4cf7b0f6e91f20d8f0e6", size = 442186, upload-time = "2026-09-29T20:56:35.136Z" },
+    { url = "https://files.pythonhosted.org/packages/71/a2/fbff65671668a2feffe33dbe8f991aee2003c31ab5dedbb3a269bc81be09/oxiserial-0.2.0-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:6f6066313e17c68485a92a76d3d010715850edfd92af11fff27b58a9889486c9", size = 592749, upload-time = "2026-09-29T20:56:36.369Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/84/d5429bbc25effc546afc3bb77f0a8c44c051734d1126507f1391a01f7873/oxiserial-0.2.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:46b0dcf1162b7aa1bc9b2681171caa6100a30604554a6b39de95eaff3b2e58e1", size = 586565, upload-time = "2026-09-29T20:56:37.464Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/37/506220a5501b887c00c3a7f622c5e211d7497c3ab8444e82af61fdc2b5a1/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:48147398001850dc57a3ef6abe937d5982a1a16bb1c9c06f9181138af0c8a953", size = 658162, upload-time = "2026-09-29T20:56:38.393Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/bd/f2e9b55f28858b7a58d7c50ec3df45808ed71cd70263f47768e37e4f027f/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:7fb4018ee60f2c309697f874e8315e191602b5f04e052a5ad139d98093a2c948", size = 648413, upload-time = "2026-09-29T20:56:39.383Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/eb/196105ec8de51d4037abe75e8768bdf2882c95eb93f0fcdfaba32852c403/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:6dd0b6acacee07c30bb13d36f87a463f978e9c133345688599214d14556eda4c", size = 699036, upload-time = "2026-09-29T20:56:40.441Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/5d/6c754089033a735766cf373ca36ca75fd539a24b4a148a46cdb6b5fb0c7b/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:4e84232c5244315e079bc1060ed0fdc78a532e040d91730dc775e07621c6cbd7", size = 813283, upload-time = "2026-09-29T20:56:41.38Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/35/9564197dace2dbcb9a459da2f88114c12a780f1b05af6afd3e7e2f8f09b4/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:c8721752eaedd436de30b09276690454addb0df1ec5196d038fc9a95ec8821b4", size = 674034, upload-time = "2026-09-29T20:56:42.411Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/af/6785f0ecbbb1d5f443c81c2d7c7d288aa64e5fa97eeaab741a971a82c08b/oxiserial-0.2.0-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9ab729c3a782756148337b69f2af809a790ed61da7a45ca20bf46a659f39bd98", size = 644592, upload-time = "2026-09-29T20:56:43.798Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/44/b45e728aa4a2a4e0b968c2146a8ac975aafcc3f58eb8ff4180a8aeb5f610/oxiserial-0.2.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:937f33470d9c68ddb04000ce9bf497077c4ddf9fdcf296b9dd679870ae0fcf02", size = 835775, upload-time = "2026-09-29T20:56:44.83Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/b0/5694f930226deab6cb71dea5fb91a442291faafaa51133ef89193b16e963/oxiserial-0.2.0-cp314-cp314t-musllinux_1_2_armv7l.whl", hash = "sha256:b4ab35284f9d6580e7ebb64065b99d0cc59e7a04c8c4c5af715d315b6dddaa74", size = 924704, upload-time = "2026-09-29T20:56:45.825Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/8a/eb68fdce9bcc75a58250438e199036c12c52c48c9be2efdd300c0008b6d3/oxiserial-0.2.0-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:7ef6545f7865ae17ff4686cc92c18e22e6243d848cdd9852a94f0d44067de930", size = 902943, upload-time = "2026-09-29T20:56:46.85Z" },
+    { url = "https://files.pythonhosted.org/packages/08/8e/a14a0d65b12c5ffbc4cd4b8770fc3425c8097542700b541393692994f114/oxiserial-0.2.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9419cb1e5393b61e2927234e789c22cb2231af0ce24daa47239124cdf6319db1", size = 860766, upload-time = "2026-09-29T20:56:47.864Z" },
+    { url = "https://files.pythonhosted.org/packages/53/52/d20ad5bae2af33107735d61d245a42e7642af4d34baa074b1d77a29809f4/oxiserial-0.2.0-cp314-cp314t-win32.whl", hash = "sha256:7b2274952e324d3a72244cf9d38f293b2927d32e6d44ae43723bd49f73f28983", size = 404473, upload-time = "2026-09-29T20:56:48.899Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/e9/fbca6ffa64ecbf251d257d917dabca2d07007a03f4d20a2942ed790ac647/oxiserial-0.2.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e88ed3876175642073b64ba226ac772f559dc5bc0b9ccad10cae84cf2e80c27e", size = 449228, upload-time = "2026-09-29T20:56:49.768Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/a7/995573704b1eb7ab183a3c052a27a8fd08dd258658a213b51670a99c4349/oxiserial-0.2.0-cp314-cp314t-win_arm64.whl", hash = "sha256:ffa505de1b7815c0eb0cfe8a633e2b5f986f6d6dbc6cb5863ceaa40c23571872", size = 431531, upload-time = "2026-09-29T20:56:51.084Z" },
+]
+
+[[package]]
 name = "p4p"
 version = "4.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4397,8 +4435,8 @@ sim = [
     { name = "redsun", extra = ["pyqt"] },
 ]
 uc2 = [
+    { name = "oxiserial" },
     { name = "pymmcore-plus" },
-    { name = "pyserial" },
 ]
 
 [package.dev-dependencies]
@@ -4409,9 +4447,9 @@ dev = [
     { name = "coverage" },
     { name = "mypy" },
     { name = "napari", extra = ["pyqt6"] },
+    { name = "oxiserial" },
     { name = "prek" },
     { name = "pymmcore-plus" },
-    { name = "pyserial" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-qt" },
@@ -4440,8 +4478,8 @@ tox = [
     { name = "tox-uv-bare" },
 ]
 uc2 = [
+    { name = "oxiserial" },
     { name = "pymmcore-plus" },
-    { name = "pyserial" },
 ]
 
 [package.metadata]
@@ -4453,9 +4491,9 @@ requires-dist = [
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'sim'", specifier = ">=0.9.1" },
     { name = "napari", extras = ["pyside6"], marker = "extra == 'pyside'", specifier = ">=0.9.1" },
     { name = "ophyd-async", extras = ["pva"], specifier = ">=0.21.2" },
+    { name = "oxiserial", marker = "extra == 'uc2'", specifier = ">=0.2.0" },
     { name = "pymmcore-plus", marker = "extra == 'sim'", specifier = ">=0.18.1" },
     { name = "pymmcore-plus", marker = "extra == 'uc2'", specifier = ">=0.18.1" },
-    { name = "pyserial", marker = "extra == 'uc2'", specifier = ">=3.5" },
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'pyqt'", specifier = ">=0.14.0" },
     { name = "redsun", extras = ["pyqt"], marker = "extra == 'sim'", specifier = ">=0.14.0" },
     { name = "redsun", extras = ["pyside"], marker = "extra == 'pyside'", specifier = ">=0.14.0" },
@@ -4469,9 +4507,9 @@ dev = [
     { name = "coverage", specifier = ">=7.16.1" },
     { name = "mypy", specifier = ">=2.3.0" },
     { name = "napari", extras = ["pyqt6"], specifier = ">=0.9.1" },
+    { name = "oxiserial", specifier = ">=0.2.0" },
     { name = "prek", specifier = ">=0.5.0" },
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
-    { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-qt", specifier = ">=4.5.0" },
@@ -4498,8 +4536,8 @@ sim = [
 ]
 tox = [{ name = "tox-uv-bare", specifier = ">=1.36.0" }]
 uc2 = [
+    { name = "oxiserial", specifier = ">=0.2.0" },
     { name = "pymmcore-plus", specifier = ">=0.18.1" },
-    { name = "pyserial", specifier = ">=3.5" },
 ]
 
 [[package]]
