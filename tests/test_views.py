@@ -263,6 +263,7 @@ class TestImageViewRoi:
         try:
             yield view
         finally:
+            view.shutdown()
             view.close()
 
     def test_dragging_the_box_announces_a_roi_and_changes_nothing_else(
@@ -713,6 +714,7 @@ class TestImageViewTheme:
             # which takes it from the same settings the stylesheet does
             assert view.viewer_model.theme == "dark"
         finally:
+            view.shutdown()
             view.close()
 
 

@@ -9,7 +9,7 @@ from napari._qt.qt_viewer import QtViewer
 from napari.components import ViewerModel
 from napari.layers import LayerLock
 from psygnal import Signal
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtWidgets
 from redsun import Placement, slot
 from redsun.log import Loggable
 from redsun.qt import Central
@@ -164,11 +164,9 @@ class ImageView(QtWidgets.QWidget, Loggable):
 
         self.logger.info("Initialized")
 
-    def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # noqa: D102
-        # Unregister the embedded viewer/qt-viewer providers on teardown
+    def shutdown(self) -> None:
+        """Unregister the napari providers of the embedded viewer."""
         self._provider_disposer.cleanup()
-        if event is not None:
-            super().closeEvent(event)
 
     def setup(self, detectors: DescribesDetectors) -> None:
         """Create one image layer per detector *detectors* describes."""

@@ -33,6 +33,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   component with a `plan_map` in `setup`, and runs them all.
 - `capture` (`redsun_mimir.plans`) - flies prepared detectors to disk in a
   nested run, until a given plan returns when one is given.
+- `ImageView.shutdown` - unregisters the napari providers of the embedded
+  viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
   plan from the state its `ActionManager` reports.
 - `AcquisitionPresenter.request_action` - passes an action request to the
@@ -123,12 +125,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   `AcquisitionPresenter`.
 - `AcquisitionView.on_action_done`.
 - `AcquisitionPresenter.discard_by_pause`.
+- `ImageView.closeEvent`, replaced by `ImageView.shutdown`.
 - `register_providers` and `inject_dependencies` on every presenter and view.
 
 ### Fixed
 
 - `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it
   pauses, and when a paused plan is stopped.
+- `ImageView` unregisters its napari providers when the session shuts down.
+  A docked view is not sent a close event when the window closes.
 - `redsun_mimir.services.mmcore_camera` uncrops the camera before it writes a
   `roi` reaching outside the one it reads, so a camera capping the width at
   what is left of the sensor beyond its offset, such as a `DahengGalaxy` one,
