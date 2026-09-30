@@ -47,6 +47,7 @@ def wire_detector(
     yield image.sig_roi_drawn, view.on_roi_drawn
     yield view.sig_roi_selection, image.set_roi_selection
     yield view.sig_roi_edited, image.set_roi_box
+    yield ctrl.sig_frames_written, view.on_frames_written
 
 
 def wire_median(ctrl: MedianPresenter, image: ImageView) -> Iterator[Link]:

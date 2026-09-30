@@ -16,7 +16,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from bluesky.protocols import Descriptor, Reading
-    from event_model.documents import Event, EventDescriptor
+    from event_model.documents import (
+        Event,
+        EventDescriptor,
+        StreamDatum,
+        StreamResource,
+    )
     from ophyd_async.core import SignalRW
     from redsun.engine import Deferrals
 
@@ -66,6 +71,10 @@ class DetectorPresenter(DocumentRouter, Loggable):
     `<detector>-roi`, a `Roi` naming the sensor region the frame was taken
     with."""
 
+    sig_frames_written = Signal(str, int)
+    """Emitted with a detector's name and the frames its capture has written so
+    far, each time a collect reports more."""
+
     def __init__(
         self,
         name: str,
@@ -79,6 +88,9 @@ class DetectorPresenter(DocumentRouter, Loggable):
         self.detectors = detectors
         #: buffer data keys this presenter forwards, by descriptor uid
         self._live_streams: dict[str, list[str]] = {}
+        #: detector writing each stream resource, and the frames it wrote
+        self._writer_of: dict[str, str] = {}
+        self._written: dict[str, int] = {}
         self._buffer_keys = {
             detector.buffer.name for detector in self.detectors.values()
         }
@@ -130,6 +142,22 @@ class DetectorPresenter(DocumentRouter, Loggable):
         keys = [key for key in doc["data_keys"] if key in self._buffer_keys]
         if keys:
             self._live_streams[doc["uid"]] = keys
+
+    def stream_resource(self, doc: StreamResource) -> None:
+        """Start counting the frames a tracked detector writes to a new resource."""
+        if doc["data_key"] in self.detectors:
+            self._writer_of[doc["uid"]] = doc["data_key"]
+            self._written[doc["uid"]] = 0
+
+    def stream_datum(self, doc: StreamDatum) -> None:
+        """Add the frames a collect reports, and announce the new total."""
+        resource = doc["stream_resource"]
+        detector = self._writer_of.get(resource)
+        if detector is None:
+            return
+        indices = doc["indices"]
+        self._written[resource] += indices["stop"] - indices["start"]
+        self.sig_frames_written.emit(detector, self._written[resource])
 
     def event(self, doc: Event) -> Event:
         """Forward the raw frames of a live event to the viewer."""

@@ -204,6 +204,8 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self.roi_panel = self._roi_panel(readings)
         if self.roi_panel is not None:
             layout.addWidget(self.roi_panel)
+        self.written_label = QtWidgets.QLabel(self)
+        layout.addWidget(self.written_label)
         self.setLayout(layout)
 
     def set_locked(self, locked: bool) -> None:
@@ -323,6 +325,19 @@ class DetectorView(QtWidgets.QWidget, Loggable):
         """
         for detector, widget in self.settings_controls.items():
             widget.set_locked(detector in names)
+
+    @slot
+    def on_frames_written(self, detector: str, count: int) -> None:
+        """Show how many frames *detector*'s capture has written so far."""
+        widget = self.settings_controls.get(detector)
+        if widget is not None:
+            widget.written_label.setText(f"Written: {count} frames")
+
+    @slot
+    def clear_frames_written(self, plan: str) -> None:
+        """Clear every count of written frames, as the plan *plan* starts."""
+        for widget in self.settings_controls.values():
+            widget.written_label.clear()
 
     @slot
     def on_roi_drawn(self, detector: str, roi: Roi) -> None:

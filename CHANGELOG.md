@@ -32,7 +32,16 @@ Dates are specified in the format `DD-MM-YYYY`.
   acquisition presenter offers `live_stream`, collects the plans of every
   component with a `plan_map` in `setup`, and runs them all.
 - `capture` (`redsun_mimir.plans`) - flies prepared detectors to disk in a
-  nested run, until a given plan returns when one is given.
+  nested run, until a given plan returns when one is given, and collects them
+  every `FLUSH_PERIOD` seconds while they write.
+- `collect_while_waiting`, `FLUSH_PERIOD` (`redsun_mimir.plans`) - runs a plan
+  that waits, collecting the detectors each time it has slept `FLUSH_PERIOD`
+  seconds.
+- `DetectorPresenter.sig_frames_written` - the frames a detector's capture has
+  written so far, counted from the run's `StreamDatum` documents.
+- `DetectorView.on_frames_written`, `DetectorView.clear_frames_written` - show
+  a detector's count of written frames under its settings, cleared when a plan
+  starts.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
@@ -73,6 +82,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `prepare_and_declare` and `teardown_acquisition` move from
   `redsun_mimir.presenter.acquisition` to `redsun_mimir.plans`.
+- `teardown_acquisition` (`redsun_mimir.plans`) collects the detectors every
+  `FLUSH_PERIOD` seconds until they complete, rather than once after.
 - `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are
   `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
   for `AcquisitionView`, the centre for `ImageView`, the right dock for the
