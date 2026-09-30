@@ -27,6 +27,7 @@ src/redsun_mimir/
   configurations/  # runnable example sessions (_full_simulation, _full_uc2)
                    #   + their .yaml session files, _base.py (MimirApp), _wiring.py
   common/          # what every layer shares: Roi, the stream names
+  plans.py         # plan stubs several presenters' plans are built from
   protocols.py     # structural protocols, those components ask each other for included
   hooks.py         # NapariApplication, FONT_SIZE
   utils/napari/    # napari callbacks, overlay, stylesheet
@@ -165,6 +166,8 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   value shared by type.** It asks in `setup` for a protocol from
   `protocols.py` (`DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
   `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
+  A presenter module imports no other presenter module: plan stubs more than
+  one presenter uses live in `redsun_mimir.plans`.
   Nothing here uses `redsun.provides`. What the session itself hands out,
   such as `DeviceMapping`, the path provider or the document callbacks, is
   still asked for by type.

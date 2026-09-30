@@ -31,8 +31,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   `AcquisitionPresenter.actions`, `AcquisitionPresenter.plan_deferrals` - the
   acquisition presenter offers `live_stream`, collects the plans of every
   component with a `plan_map` in `setup`, and runs them all.
-- `capture` (`redsun_mimir.presenter.acquisition`) - flies prepared detectors
-  to disk in a nested run, until a given plan returns when one is given.
+- `capture` (`redsun_mimir.plans`) - flies prepared detectors to disk in a
+  nested run, until a given plan returns when one is given.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
   plan from the state its `ActionManager` reports.
 - `AcquisitionPresenter.request_action` - passes an action request to the
@@ -67,6 +67,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   MotorPresenter("motor_ctrl", motors={"XY": stage}, timeout=2.0)
   ```
 
+- `prepare_and_declare` and `teardown_acquisition` move from
+  `redsun_mimir.presenter.acquisition` to `redsun_mimir.plans`.
 - `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are
   `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
   for `AcquisitionView`, the centre for `ImageView`, the right dock for the

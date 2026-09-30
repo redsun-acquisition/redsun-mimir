@@ -17,7 +17,7 @@ from redsun.log import Loggable
 from redsun.writers import Writer, WriterError
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM
-from redsun_mimir.presenter.acquisition import capture, prepare_and_declare
+from redsun_mimir.plans import capture, prepare_and_declare
 from redsun_mimir.protocols import (  # noqa: TC001
     HasBuffer,
     MotorProtocol,
