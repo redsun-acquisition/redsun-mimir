@@ -23,10 +23,9 @@ from ophyd_async.core import (
 from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
 from qtpy.QtWidgets import QApplication
+from redsun import Launch
 from redsun.aio import get_shared_loop
 from redsun.path_provider import SessionPathProvider
-from redsun.services import Service
-from redsun.services._transports import PV_ACCESS, TRANSPORTS, PVAccess
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCamera, MMStage
@@ -35,22 +34,15 @@ from redsun_mimir.services.mmcore_stage import READY as STAGE_READY
 from redsun_mimir.services.uc2_controller import READY as UC2_READY
 
 if TYPE_CHECKING:
-    from typing import Protocol
-
-    class ServiceFactory(Protocol):
-        """Launches one service for the duration of a test."""
-
-        def __call__(
-            self, name: str, prefix: str, module: str, ready: str, *args: str
-        ) -> Service: ...
-
     import asyncio
-    from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
+    from collections.abc import AsyncGenerator, AsyncIterator, Generator
     from pathlib import Path
 
     from bluesky.protocols import StreamAsset
     from event_model import DataKey
     from qtpy.QtCore import QCoreApplication
+    from redsun.services import Service
+    from redsun.testing import StartService
 
 #: PV prefix the camera service serves under while the tests run.
 CAMERA_PREFIX = "MIMIR-TESTCAM:"
@@ -260,84 +252,60 @@ async def motor_stage() -> FakeXYStage:
 
 
 @pytest.fixture
-def service(monkeypatch: pytest.MonkeyPatch) -> Iterator[ServiceFactory]:
-    """Return a factory launching one service, stopped when the test ends.
-
-    Each test gets its own transport object: the one a session holds adds the
-    loopback to this process's address list once, and the list is cleared here
-    between tests.
-    """
-    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "")
-    monkeypatch.setitem(TRANSPORTS, PV_ACCESS, PVAccess())
-    started: list[Service] = []
-
-    def launch(name: str, prefix: str, module: str, ready: str, *args: str) -> Service:
-        running = Service(
-            name,
-            prefix=prefix,
-            module=module,
-            args=list(args),
-            ready=ready,
-            transport=PV_ACCESS,
-            stop_timeout=10,
-        )
-        running.start()
-        started.append(running)
-        return running
-
-    yield launch
-    for running in started:
-        running.stop()
-
-
-@pytest.fixture
-def camera_service(service: ServiceFactory) -> Service:
+def camera_service(start_service: StartService) -> Service:
     """Launch the camera service on the demo adapter."""
-    return service(
+    return start_service(
         "camera1",
-        CAMERA_PREFIX,
-        "redsun_mimir.services.mmcore_camera",
-        READY,
-        "--adapter",
-        "DemoCamera",
-        "--device",
-        "DCam",
-        "--properties",
-        "Binning",
+        Launch(
+            "redsun_mimir.services.mmcore_camera",
+            prefix=CAMERA_PREFIX,
+            ready=READY,
+            args=[
+                "--adapter",
+                "DemoCamera",
+                "--device",
+                "DCam",
+                "--properties",
+                "Binning",
+            ],
+            stop_timeout=10,
+        ),
+        transport="pv-access",
     )
 
 
 @pytest.fixture
-def stage_service(service: ServiceFactory) -> Service:
+def stage_service(start_service: StartService) -> Service:
     """Launch the stage service on the demo XY stage."""
-    return service(
+    return start_service(
         "XY",
-        STAGE_PREFIX,
-        "redsun_mimir.services.mmcore_stage",
-        STAGE_READY,
-        "--adapter",
-        "DemoCamera",
-        "--device",
-        "DXYStage",
-        "--axes",
-        "x,y",
+        Launch(
+            "redsun_mimir.services.mmcore_stage",
+            prefix=STAGE_PREFIX,
+            ready=STAGE_READY,
+            args=["--adapter", "DemoCamera", "--device", "DXYStage", "--axes", "x,y"],
+            stop_timeout=10,
+        ),
+        transport="pv-access",
     )
 
 
 @pytest.fixture
-def uc2_service(service: ServiceFactory) -> Service:
+def uc2_service(start_service: StartService) -> Service:
     """Launch the UC2 service on a serial port that answers nothing.
 
     Nothing is there to restart, so the service skips the board's reset.
     """
-    return service(
+    return start_service(
         "uc2",
-        UC2_PREFIX,
-        "redsun_mimir.services.uc2_controller",
-        UC2_READY,
-        "--port",
-        "loop://",
-        "--no-reset",
+        Launch(
+            "redsun_mimir.services.uc2_controller",
+            prefix=UC2_PREFIX,
+            ready=UC2_READY,
+            args=["--port", "loop://", "--no-reset"],
+            stop_timeout=10,
+        ),
+        transport="pv-access",
     )
 
 
