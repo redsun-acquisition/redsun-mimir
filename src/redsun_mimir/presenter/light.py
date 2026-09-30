@@ -79,4 +79,4 @@ class LightPresenter(Loggable):
         if await light.binary.get_value():
             self.logger.warning(f"{name!r} is a binary light source; intensity ignored")
             return
-        await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
+        await light.intensity.set(intensity, timeout=self._timeout)
