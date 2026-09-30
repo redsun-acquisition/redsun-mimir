@@ -46,6 +46,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- `napari` 0.9.2 and `msgspec` 0.22.0 are the minimum versions, `napari` in
+  the `pyqt` and `pyside` extras too.
 - `MotorView` takes the 100.0 default step size its documentation names, not
   10.0.
 
