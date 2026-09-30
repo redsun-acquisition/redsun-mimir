@@ -22,6 +22,7 @@ from redsun.engine import Deferrals, RunEngine
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
 from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.plans import capture
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
@@ -1071,3 +1072,27 @@ class TestAcquisitionPresenter:
             controller.futures.discard(running)
 
         assert engine.plans == []
+
+
+class TestCapture:
+    """Tests for the plan stub flying detectors to disk."""
+
+    def test_an_open_capture_collects_while_it_waits(
+        self, fake_flyer: FakeFlyer
+    ) -> None:
+        """Collect what was written while the window waits, not only at its close."""
+
+        def waiting() -> MsgGenerator[None]:
+            for _ in range(3):
+                yield from bps.sleep(0.25)
+
+        simulator = RunEngineSimulator()
+        simulator.add_handler("wait", lambda msg: True)
+
+        messages = simulator.simulate_plan(
+            capture([fake_flyer], "stream", parent="live", until=waiting())
+        )
+
+        commands = [msg.command for msg in messages]
+        window = commands[commands.index("kickoff") : commands.index("complete")]
+        assert "collect" in window
