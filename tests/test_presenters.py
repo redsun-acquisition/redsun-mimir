@@ -1003,6 +1003,20 @@ class TestAcquisitionPresenter:
 
         assert ended == [True]
 
+    def test_a_paused_plan_does_not_announce_its_end(
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+    ) -> None:
+        """Keep quiet when the future of a run settles because the plan paused."""
+        settled = FakeFuture()
+        controller.engine = FakeEngine(settled, state="paused")  # type: ignore[assignment]
+        ended: list[bool] = []
+        controller.sig_plan_done.connect(lambda: ended.append(True))
+
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        settled.settle()
+
+        assert ended == []
+
     def test_a_wrapped_plan_locks_its_devices_until_it_ends(
         self,
         controller: AcquisitionPresenter,

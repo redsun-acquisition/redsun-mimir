@@ -122,10 +122,13 @@ Dates are specified in the format `DD-MM-YYYY`.
   `AcquisitionPresenter.clear_and_notify`, and the `callbacks` keyword of
   `AcquisitionPresenter`.
 - `AcquisitionView.on_action_done`.
+- `AcquisitionPresenter.discard_by_pause`.
 - `register_providers` and `inject_dependencies` on every presenter and view.
 
 ### Fixed
 
+- `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it
+  pauses, and when a paused plan is stopped.
 - `redsun_mimir.services.mmcore_camera` uncrops the camera before it writes a
   `roi` reaching outside the one it reads, so a camera capping the width at
   what is left of the sensor beyond its offset, such as a `DahengGalaxy` one,

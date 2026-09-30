@@ -65,7 +65,6 @@ class AcquisitionPresenter(Loggable):
         self._deferrals = Deferrals(self.engine)
 
         self.futures: set[Future[Any]] = set()
-        self.discard_by_pause = False
         self.engine.sig_locks_changed.connect(self.sig_locks_changed.emit)
 
         self.plans: dict[str, PlanEntry] = {}
@@ -197,10 +196,7 @@ class AcquisitionPresenter(Loggable):
 
         self.sig_pre_launch_notify.emit(plan_name)
         self._running = plan_name
-        fut = self.engine(entry["plan"](*args, **kwargs), subs)
-        self.futures.add(fut)
-        fut.add_done_callback(self._notify_plan_done)
-        fut.add_done_callback(self._discard_future)
+        self._watch(self.engine(entry["plan"](*args, **kwargs), subs))
 
     @slot
     def request_action(self, name: str, on: bool) -> None:
@@ -215,38 +211,38 @@ class AcquisitionPresenter(Loggable):
             return
         owner.actions.request(name, on)
 
-    def _notify_plan_done(self, fut: Future[Any]) -> None:
-        """Emit `sig_plan_done` when a plan future settles.
-
-        The signal carries no payload, so the future is dropped.
-        """
-        self.sig_plan_done.emit()
-
     @slot
     def pause_or_resume_plan(self, pause: bool) -> None:
         """Pause the running plan, or resume it when *pause* is false."""
         if pause:
-            self.discard_by_pause = True
             self.engine.request_pause(defer=True)
         else:
-            # when resuming, the previous
-            # future has beend discarded;
-            # we store the new future again
-            fut = self.engine.resume()
-            self.futures.add(fut)
-            fut.add_done_callback(self._discard_future)
+            self._watch(self.engine.resume())
 
     @slot
     def stop_plan(self) -> None:
-        """Stop the running plan, if any."""
+        """Stop the running plan, paused or not, if any."""
         if self.engine.state == "idle":
             self.logger.debug("No plan to stop")
             return
-        self.engine.stop()
+        self._watch(self.engine.stop())
+
+    def _watch(self, fut: Future[Any]) -> None:
+        self.futures.add(fut)
+        fut.add_done_callback(self._finished)
+
+    def _finished(self, fut: Future[Any]) -> None:
+        """Emit `sig_plan_done` once no future is left and the plan is not paused.
+
+        Pausing settles the future of the run, so a paused plan has not ended.
+        """
+        self.futures.discard(fut)
+        if not self.futures and self.engine.state != "paused":
+            self.sig_plan_done.emit()
 
     def shutdown(self) -> None:
         """Abort the running plan, if any, without emitting `sig_plan_done`."""
-        if len(self.futures) > 0:
+        if self.futures or self.engine.state == "paused":
             self.logger.debug("Aborting running plan(s) during presenter shutdown.")
             with self.sig_plan_done.blocked():
                 # temporarily suppress the RequestAbort
@@ -259,14 +255,6 @@ class AcquisitionPresenter(Loggable):
                     self.engine.abort()
                 finally:
                     bluesky_log.removeFilter(_SuppressRequestAbort())
-
-    def _discard_future(self, fut: Future[Any]) -> None:
-        # TODO: consider emitting a result
-        # if the plan was not paused
-        # and it also discards the future from the set
-        if self.discard_by_pause:
-            self.discard_by_pause = False
-        self.futures.discard(fut)
 
 
 class _SuppressRequestAbort(logging.Filter):
