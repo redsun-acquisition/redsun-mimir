@@ -179,7 +179,9 @@ class ImageView(QtWidgets.QWidget, Loggable):
         out, and hidden until a selection is asked for.
         """
         for name, spec in specs.items():
-            self.logger.debug(f"Creating layer for {name} with spec {spec}")
+            self.logger.debug(f"Creating layer for {name}:")
+            for key, value in spec.items():
+                self.logger.debug(f"  {key}: {value}")
             self._rois[name] = Roi(0, 0, spec["shape"][1], spec["shape"][0])
             self._add_layer(name, spec["shape"], np.dtype(spec["dtype"]))
 

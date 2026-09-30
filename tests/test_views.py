@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -250,6 +251,24 @@ class TestDetectorViewRoi:
 
         assert panel.applied == Roi(1, 1, 3, 2)
         assert not panel.ok_button.isEnabled()
+
+
+@needs_opengl
+def test_a_new_layer_is_logged_one_setting_per_line(
+    parent: QtWidgets.QWidget, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Log the layer made for a detector with each of its settings on a line."""
+    view = ImageView("image_view", parent)
+    caplog.set_level(logging.DEBUG, logger="redsun")
+    try:
+        view.setup_layers({"cam": {"shape": (4, 6), "dtype": "uint8"}})
+    finally:
+        view.shutdown()
+        view.close()
+
+    messages = [record.getMessage() for record in caplog.records]
+    first = messages.index("Creating layer for cam:")
+    assert messages[first + 1 : first + 3] == ["  shape: (4, 6)", "  dtype: uint8"]
 
 
 @needs_opengl
