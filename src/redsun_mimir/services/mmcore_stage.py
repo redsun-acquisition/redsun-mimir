@@ -21,14 +21,12 @@ from fastcs.controllers import Controller
 from fastcs.datatypes import Float
 from fastcs.logging import logger
 from pymmcore_plus import CMMCorePlus
+from redsun.services import configure_logging
 
-from ._process import controller_id, identity_arguments, serve, session_logging
+from ._process import controller_id, identity_arguments, serve
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-#: Printed once a client can reach the stage's PVs.
-READY: Final = "mmcore stage ready"
 
 #: Seconds between two reads of a position.
 POLL_PERIOD: Final = 0.2
@@ -149,12 +147,12 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "stage")
     options = parser.parse_args(argv)
 
-    session_logging()
+    configure_logging()
     axes = [axis.strip() for axis in str(options.axes).split(",") if axis.strip()]
     controller: Any = build_controller(
         options.adapter, options.device, options.name, axes
     )
-    asyncio.run(serve(controller, controller_id(options), READY))
+    asyncio.run(serve(controller, controller_id(options)))
     return 0
 
 

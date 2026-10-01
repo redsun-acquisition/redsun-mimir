@@ -1,28 +1,23 @@
-"""What every mimir service does around its ``fastcs`` controller.
+"""What every mimir service does around its `fastcs` controller.
 
-A service is launched by a session, told its name and its PV prefix through
-the environment, and stopped by closing its standard input.
+A service takes its name, its PV prefix, its ready text and its stop request
+from the session that launched it, through `redsun.services`.
 """
 
 from __future__ import annotations
 
 import asyncio
 import faulthandler
-import os
-import sys
 from typing import TYPE_CHECKING, Final
 
 from fastcs.control_system import FastCS
-from fastcs.logging import logger
 from fastcs.transports.epics.pva.transport import EpicsPVATransport
+from redsun.services import identity, ready_when_reachable, wait_for_stop
 
 if TYPE_CHECKING:
     import argparse
 
     from fastcs.controllers import Controller
-
-#: Where the readiness check looks for the controller it just served.
-LOOPBACK: Final = "127.0.0.1"
 
 #: Seconds a service may take to become ready, or to stop once asked, before
 #: it writes every thread's stack to its output. Below the 15 s a session
@@ -30,27 +25,18 @@ LOOPBACK: Final = "127.0.0.1"
 STALL_DUMP: Final = 10.0
 
 
-def session_logging() -> None:
-    """Log as JSON lines the session rebuilds into records of its own.
-
-    A serialized ``loguru`` record keeps its level, time, logger name and
-    traceback; a plain line would arrive as DEBUG text.
-    """
-    logger.remove()
-    logger.add(sys.stdout, serialize=True, level="INFO")
-
-
 def identity_arguments(parser: argparse.ArgumentParser, default_name: str) -> None:
-    """Add the name and prefix a session gives a service through its environment."""
+    """Add the name and prefix a session gives a service it launches."""
+    me = identity()
     parser.add_argument(
         "--prefix",
-        default=os.environ.get("REDSUN_SERVICE_PREFIX", ""),
-        help="PV prefix, REDSUN_SERVICE_PREFIX unless given",
+        default=me.prefix if me else "",
+        help="PV prefix, the session's unless given",
     )
     parser.add_argument(
         "--name",
-        default=os.environ.get("REDSUN_SERVICE_NAME", default_name),
-        help="name of this service, REDSUN_SERVICE_NAME unless given",
+        default=me.name if me else default_name,
+        help="name of this service, the session's unless given",
     )
 
 
@@ -62,43 +48,20 @@ def controller_id(options: argparse.Namespace) -> str:
     return str(options.prefix).rstrip(":") or str(options.name)
 
 
-async def announce_when_reachable(prefix: str, ready: str) -> None:
-    """Print *ready* once the controller's PVI record answers.
+async def serve(controller: Controller, prefix: str) -> None:
+    """Serve *controller* over PVA until the session asks this service to stop.
 
-    The check looks on the loopback interface, since the session's search
-    list is set on its own process, not this one.
-    """
-    from p4p.client.asyncio import Context
-
-    with Context("pva", conf={"EPICS_PVA_ADDR_LIST": LOOPBACK}) as client:
-        while True:
-            try:
-                await asyncio.wait_for(client.get(f"{prefix}:PVI"), timeout=1.0)
-            except TimeoutError:
-                continue
-            except Exception as error:  # noqa: BLE001
-                # the session waits for the line this prints, so a failure
-                # here would otherwise show up only as its own timeout
-                logger.warning(f"Readiness check failed, retrying: {error}")
-                continue
-            break
-    print(ready, flush=True)
-
-
-async def serve(controller: Controller, prefix: str, ready: str) -> None:
-    """Serve *controller* over PVA until this process's standard input closes.
-
-    ``FastCS.run`` installs signal handlers POSIX only and watches no input,
+    `FastCS.run` installs signal handlers on POSIX only and watches no input,
     so the serving task is cancelled here instead.
     """
     faulthandler.dump_traceback_later(STALL_DUMP)
     controller.set_path([prefix])
     control_system = FastCS(controller, [EpicsPVATransport()])
     serving = asyncio.ensure_future(control_system.serve(interactive=False))
-    announcing = asyncio.ensure_future(announce_when_reachable(prefix, ready))
+    announcing = asyncio.ensure_future(ready_when_reachable(f"{prefix}:PVI"))
     announcing.add_done_callback(lambda _: faulthandler.cancel_dump_traceback_later())
 
-    await asyncio.to_thread(sys.stdin.read)
+    await wait_for_stop()
 
     faulthandler.dump_traceback_later(STALL_DUMP)
     announcing.cancel()

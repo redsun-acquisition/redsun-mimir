@@ -29,9 +29,6 @@ from redsun.path_provider import SessionPathProvider
 
 from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCamera, MMStage
-from redsun_mimir.services.mmcore_camera import READY
-from redsun_mimir.services.mmcore_stage import READY as STAGE_READY
-from redsun_mimir.services.uc2_controller import READY as UC2_READY
 
 if TYPE_CHECKING:
     import asyncio
@@ -52,6 +49,11 @@ STAGE_PREFIX = "MIMIR-TESTXY:"
 
 #: PV prefix the YouSeeToo service serves under while the tests run.
 UC2_PREFIX = "MIMIR-TEST-UC2:"
+
+#: Text each service prints once ready, as `redsun.yaml` declares it.
+CAMERA_READY = "mmcore camera ready"
+STAGE_READY = "mmcore stage ready"
+UC2_READY = "uc2 controller ready"
 
 #: Seconds a device may take to connect. A service of its own has to start
 #: first, and several of them do while the whole suite runs.
@@ -259,7 +261,7 @@ def camera_service(start_service: StartService) -> Service:
         Launch(
             "redsun_mimir.services.mmcore_camera",
             prefix=CAMERA_PREFIX,
-            ready=READY,
+            ready=CAMERA_READY,
             args=[
                 "--adapter",
                 "DemoCamera",

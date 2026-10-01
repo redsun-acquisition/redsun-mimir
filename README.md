@@ -73,7 +73,7 @@ PVAccess at the service's prefix.
 | `mmcore-stage` | one Micro-Manager stage | `--adapter`, `--device`, `--axes` |
 | `youseetoo-controller` | the openUC2 board's serial port | `--port`, `--baudrate` |
 
-`--properties` lists, comma-separated, the camera properties to publish
+`properties` lists, comma-separated, the camera properties to publish
 besides `exposure` and `roi`; none by default.
 
 ```yaml
@@ -83,7 +83,10 @@ services:
     plugin_name: redsun-mimir
     plugin_id: mmcore-camera
     prefix: "MIMIR-CAM1:"
-    args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
+    args:
+      adapter: DemoCamera
+      device: DCam
+      properties: Binning
 
 storage:
   base_dir: "D:/mimir-data"   # optional; the user data directory otherwise

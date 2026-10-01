@@ -73,6 +73,11 @@ Dates are specified in the format `DD-MM-YYYY`.
   the `pyqt` and `pyside` extras too.
 - `MotorView` takes the 100.0 default step size its documentation names, not
   10.0.
+- `redsun_mimir.services.mmcore_camera`, `mmcore_stage` and `uc2_controller`
+  take their name, prefix, ready text and stop request from
+  `redsun.services`, and log at the level the session records at.
+- The session files write each service's `args` as options.
+- `redsun` 0.14.3 is the minimum version.
 
 ### Changed (breaking)
 
@@ -136,6 +141,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Removed
 
+- `READY` (`redsun_mimir.services.mmcore_camera`, `mmcore_stage`,
+  `uc2_controller`); `redsun.yaml` holds each service's ready text.
 - `redsun_mimir.providers`, with every key in it, `PLAN_SPECS` and
   `MOTOR_READBACKS` included.
 - `ScanAction`, `StreamAction` (`redsun_mimir.presenter`).

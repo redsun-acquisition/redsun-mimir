@@ -22,8 +22,9 @@ from fastcs.datatypes import Float, Int
 from fastcs.logging import logger
 from fastcs.util import ONCE
 from oxiserial.aio import serial_for_url
+from redsun.services import configure_logging
 
-from ._process import controller_id, identity_arguments, serve, session_logging
+from ._process import controller_id, identity_arguments, serve
 from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, read_positions, set_laser
 
 if TYPE_CHECKING:
@@ -32,9 +33,6 @@ if TYPE_CHECKING:
     from oxiserial.aio import Serial
 
     from ._uc2_serial import SerialPort
-
-#: Printed once a client can reach the board's PVs.
-READY: Final = "uc2 controller ready"
 
 #: The axes a board carries, in the order they are served.
 AXES: Final = ("x", "y", "z")
@@ -206,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "uc2")
     options = parser.parse_args(argv)
 
-    session_logging()
+    configure_logging()
     asyncio.run(run(options))
     return 0
 
@@ -217,7 +215,7 @@ async def run(options: argparse.Namespace) -> None:
         options.port, options.baudrate, options.timeout, reset=not options.no_reset
     )
     controller = UC2Controller(serial)
-    await serve(controller, controller_id(options), READY)
+    await serve(controller, controller_id(options))
 
 
 if __name__ == "__main__":
