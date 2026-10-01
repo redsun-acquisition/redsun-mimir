@@ -23,7 +23,7 @@ from fastcs.logging import logger
 from pymmcore_plus import CMMCorePlus
 from redsun.services import configure_logging
 
-from ._process import controller_id, identity_arguments, serve
+from ._process import controller_id, identity_arguments, run, serve
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -152,8 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     controller: Any = build_controller(
         options.adapter, options.device, options.name, axes
     )
-    asyncio.run(serve(controller, controller_id(options)))
-    return 0
+    return run(serve(controller, controller_id(options)))
 
 
 if __name__ == "__main__":
