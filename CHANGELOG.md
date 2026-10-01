@@ -62,7 +62,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed (breaking)
 
-- `redsun` 0.14.1 is the minimum version, in the dependencies and the `pyqt`
+- `redsun` 0.14.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
 - The `uc2` extra requires `oxiserial` 0.2.0 in place of `pyserial`.
   `redsun_mimir.services.uc2_controller` talks to the board through
