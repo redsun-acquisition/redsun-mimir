@@ -54,6 +54,15 @@ Other ways to get the adapters are in the
 [`pymmcore-plus` docs](https://pymmcore-plus.github.io/pymmcore-plus/install/#installing-micro-manager-device-adapters).
 `mimir uc2` runs the session for the real board.
 
+<p align="center">
+  <img src="images/mimir-sim.png" alt="The mimir sim window" width="100%">
+  <br>
+  <em><code>mimir sim</code> running <code>live_stream</code> on the Micro-Manager
+  demo camera: acquisition controls on the left, the napari viewer in the
+  centre, detector, light and motor controls on the right, the session log
+  below.</em>
+</p>
+
 ## Services
 
 A session starts and stops each service; its device reaches the service over

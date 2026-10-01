@@ -89,3 +89,4 @@ venv/
 .claude/settings.local.json
 .claude/plans
 *.png
+!images/*.png
