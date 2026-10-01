@@ -51,6 +51,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   stored, when the session closes or the next plan starts.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
+- `LogsAction` (`redsun_mimir.view`) - the Logs entry of a View menu, opening
+  the session's log in a window of its own. The example sessions declare it
+  in place of the log view docked at the bottom.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
   plan from the state its `ActionManager` reports.
 - `AcquisitionPresenter.request_action` - passes an action request to the

@@ -59,8 +59,7 @@ Other ways to get the adapters are in the
   <br>
   <em><code>mimir sim</code> running <code>live_stream</code> on the Micro-Manager
   demo camera: acquisition controls on the left, the napari viewer in the
-  centre, detector, light and motor controls on the right, the session log
-  below.</em>
+  centre, detector, light and motor controls on the right.</em>
 </p>
 
 ## Services
@@ -225,7 +224,8 @@ A file can only address `component.port`, so two links need a session class:
   ticked, and no others.
 - Zarr v3 storage with [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr),
   written by the camera's service.
-- Manual control of light sources and motors, and a log view from `redsun`.
+- Manual control of light sources and motors.
+- The session log in its own window, from View > Logs.
 - Extensible with further `redsun` components.
 
 ## Contributing

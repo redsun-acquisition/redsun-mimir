@@ -34,3 +34,4 @@ views:
   detector: redsun_mimir.view.detector:DetectorView
   motor: redsun_mimir.view.motor:MotorView
   light: redsun_mimir.view.light:LightView
+  logs: redsun_mimir.view.logs:LogsAction
