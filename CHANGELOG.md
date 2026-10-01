@@ -45,6 +45,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   plan, as the engine announces them.
 - `AcquisitionView.on_progress` - shows the running plan's progress scopes on
   its page.
+- `MedianPresenter.square_scan` shows the frames it has taken as a progress
+  scope named `scan`, against the whole square.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running

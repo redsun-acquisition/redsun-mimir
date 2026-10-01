@@ -663,6 +663,34 @@ class TestMedianPresenter:
             ("set", "xystage-axis-y"),
         ]
 
+    def test_the_square_scan_reports_each_frame_it_takes(
+        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+    ) -> None:
+        """Report each frame of the scan against the whole square, inside its run."""
+        presenter = MedianPresenter("median_ctrl", sources={})
+        simulator = RunEngineSimulator()
+        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+
+        messages = simulator.simulate_plan(
+            presenter.square_scan([fake_detector], motor_stage, 5.0, 2)
+        )
+
+        commands = [msg.command for msg in messages]
+        updates = [
+            (msg.kwargs["current"], msg.kwargs["target"], msg.kwargs["unit"])
+            for msg in messages
+            if msg.command == "update_progress" and not msg.kwargs["done"]
+        ]
+        assert updates == [(frame, 8, "frames") for frame in range(1, 9)]
+        assert (
+            commands.index("open_run")
+            < commands.index("declare_progress")
+            < commands.index("trigger")
+        )
+        finished = len(commands) - 1 - commands[::-1].index("update_progress")
+        assert messages[finished].kwargs["done"]
+        assert finished < commands.index("close_run")
+
 
 class TestDetectorPresenter:
     """Tests for DetectorPresenter."""
