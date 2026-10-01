@@ -37,11 +37,6 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `collect_while_waiting`, `FLUSH_PERIOD` (`redsun_mimir.plans`) - runs a plan
   that waits, collecting the detectors each time it has slept `FLUSH_PERIOD`
   seconds.
-- `DetectorPresenter.sig_frames_written` - the frames a detector's capture has
-  written so far, counted from the run's `StreamDatum` documents.
-- `DetectorView.on_frames_written`, `DetectorView.clear_frames_written` - show
-  a detector's count of written frames under its settings, cleared when a plan
-  starts.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running

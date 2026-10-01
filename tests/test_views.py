@@ -253,24 +253,6 @@ class TestDetectorViewRoi:
         assert not panel.ok_button.isEnabled()
 
 
-async def test_the_frames_written_are_shown_until_the_next_plan(
-    parent: QtWidgets.QWidget, fake_detector: FakeDetector
-) -> None:
-    """Show a detector's count of written frames, and clear it when a plan starts."""
-    view = DetectorView("det_widget", parent)
-    view.setup_ui(
-        await fake_detector.describe_configuration(),
-        await fake_detector.read_configuration(),
-    )
-    label = view.settings_controls["cam"].written_label
-
-    view.on_frames_written("cam", 12)
-    assert label.text() == "Written: 12 frames"
-
-    view.clear_frames_written("live_stream")
-    assert label.text() == ""
-
-
 @needs_opengl
 def test_a_new_layer_is_logged_one_setting_per_line(
     parent: QtWidgets.QWidget, caplog: pytest.LogCaptureFixture

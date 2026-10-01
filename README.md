@@ -250,7 +250,6 @@ wiring:
   img_widget.sig_roi_drawn: det_widget.on_roi_drawn
   det_widget.sig_roi_selection: img_widget.set_roi_selection
   det_widget.sig_roi_edited: img_widget.set_roi_box
-  det_ctrl.sig_frames_written: det_widget.on_frames_written
   motor_widget.sig_motor_move: motor_ctrl.move
   light_widget.sig_toggle_light_request: light_ctrl.trigger
   light_widget.sig_intensity_request: light_ctrl.set
@@ -264,7 +263,6 @@ wiring:
   acq_ctrl.sig_pre_launch_notify:
     - median_ctrl.clear_medians
     - path_provider.set_plan
-    - det_widget.clear_frames_written
   acq_widget.sig_base_dir_request: path_provider.set_base_dir
   path_provider.sig_base_dir_changed: acq_widget.on_base_dir_changed
   acq_ctrl.sig_locks_changed:

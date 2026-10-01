@@ -684,38 +684,6 @@ class TestDetectorPresenter:
         assert not described["cam-exposure"]["source"].endswith(":readonly")
         assert not described["cam-roi"]["source"].endswith(":readonly")
 
-    def test_the_frames_a_capture_writes_are_counted_per_detector(
-        self, controller: DetectorPresenter, fake_detector: FakeDetector
-    ) -> None:
-        """Count the frames each collect reports, from zero for every new capture."""
-        written: list[tuple[str, int]] = []
-        controller.sig_frames_written.connect(lambda *args: written.append(args))
-
-        def resource(uid: str, data_key: str) -> None:
-            controller("stream_resource", {"uid": uid, "data_key": data_key})
-
-        def datum(resource_uid: str, start: int, stop: int) -> None:
-            controller(
-                "stream_datum",
-                {
-                    "uid": f"{resource_uid}/{start}",
-                    "stream_resource": resource_uid,
-                    "indices": {"start": start, "stop": stop},
-                    "seq_nums": {"start": start + 1, "stop": stop + 1},
-                    "descriptor": "desc",
-                },
-            )
-
-        resource("first", fake_detector.name)
-        datum("first", 0, 5)
-        datum("first", 5, 12)
-        resource("second", fake_detector.name)
-        datum("second", 0, 3)
-        resource("other", "not-a-detector")
-        datum("other", 0, 4)
-
-        assert written == [("cam", 5), ("cam", 12), ("cam", 3)]
-
     def test_live_events_are_forwarded_raw(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
