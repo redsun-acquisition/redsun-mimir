@@ -2,13 +2,13 @@
 
 The board acknowledges a command, answers a query for where its steppers
 stand, and reports no laser power back. One port carries every axis and
-laser, so a command is sent under a lock, and ``pyserial`` blocks, so a
-caller keeps these calls off its event loop.
+laser, so a command and its answers are exchanged under a lock. The port's
+reads and writes are awaited, so none of this blocks the event loop.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 import msgspec
 
@@ -21,9 +21,8 @@ from ._uc2_actions import (
 )
 
 if TYPE_CHECKING:
-    from threading import Lock
-
-    from serial import Serial
+    from asyncio import Lock
+    from collections.abc import Awaitable
 
 
 #: Nanometres in the micrometre a position is commanded in.
@@ -39,6 +38,31 @@ AXIS_ID: Final[dict[str, int]] = {"x": 1, "y": 2, "z": 3}
 POSITION_QUERY: Final[bytes] = b'{"task":"/motor_get"}'
 
 
+class SerialPort(Protocol):
+    """What the protocol needs of a port: `oxiserial.aio.Serial` is one."""
+
+    @property
+    def is_open(self) -> bool:
+        """Whether the port is open."""
+        ...
+
+    def reset_input_buffer(self) -> None:
+        """Discard what the port has received and not read."""
+        ...
+
+    def write(self, data: bytes) -> Awaitable[int]:
+        """Send *data*, answering how many bytes went out."""
+        ...
+
+    def read_until(self, expected: bytes) -> Awaitable[bytes]:
+        """Read until *expected* or the port's timeout."""
+        ...
+
+    def close(self) -> None:
+        """Close the port."""
+        ...
+
+
 def clean(raw: bytes) -> str:
     """Return the document in *raw*, without the board's framing.
 
@@ -51,19 +75,21 @@ def clean(raw: bytes) -> str:
     return text[opened : closed + 1] if 0 <= opened < closed else ""
 
 
-def read_positions(serial: Serial, lock: Lock, factor: int) -> dict[int, float]:
+async def read_positions(
+    serial: SerialPort, lock: Lock, factor: int
+) -> dict[int, float]:
     """Ask the board where its steppers stand, keyed by stepper id.
 
     *factor* is the nanometres in the unit a position is wanted in, as
     `move_axis` takes it; `AXIS_ID` names the id of each axis.
     """
-    with lock:
+    async with lock:
         serial.reset_input_buffer()
-        written = serial.write(POSITION_QUERY)
-        if written is None or written != len(POSITION_QUERY):
+        written = await serial.write(POSITION_QUERY)
+        if written != len(POSITION_QUERY):
             raise RuntimeError("Failed to write to serial port.")
 
-        answer = clean(serial.read_until(expected=b"--"))
+        answer = clean(await serial.read_until(expected=b"--"))
         if not answer:
             raise RuntimeError("Failed to read from serial port.")
         try:
@@ -76,11 +102,11 @@ def read_positions(serial: Serial, lock: Lock, factor: int) -> dict[int, float]:
         }
 
 
-def move_axis(
-    serial: Serial, lock: Lock, axis_id: int, factor: int, value: float
+async def move_axis(
+    serial: SerialPort, lock: Lock, axis_id: int, factor: int, value: float
 ) -> None:
     """Command one axis to *value* and consume both acknowledgements."""
-    with lock:
+    async with lock:
         serial.reset_input_buffer()
         steps = int(value * factor / MOTOR_STEP)
         action = MotorAction(
@@ -88,11 +114,11 @@ def move_axis(
             qid=axis_id,
         )
         packet = msgspec.json.encode(action)
-        written = serial.write(packet)
-        if written is None or written != len(packet):
+        written = await serial.write(packet)
+        if written != len(packet):
             raise RuntimeError("Failed to write to serial port.")
 
-        resp_str = clean(serial.read_until(expected=b"--"))
+        resp_str = clean(await serial.read_until(expected=b"--"))
         if not resp_str:
             raise RuntimeError("Failed to read from serial port.")
         try:
@@ -102,7 +128,7 @@ def move_axis(
         if response.qid != axis_id:
             raise RuntimeError(f"Invalid response from motor. Received: {response}")
 
-        motor_resp_str = clean(serial.read_until(expected=b"--"))
+        motor_resp_str = clean(await serial.read_until(expected=b"--"))
         if not motor_resp_str:
             raise RuntimeError("Failed to read motor response from serial port.")
         try:
@@ -116,17 +142,19 @@ def move_axis(
             )
 
 
-def set_laser(serial: Serial, lock: Lock, laser_id: int, qid: int, value: int) -> None:
+async def set_laser(
+    serial: SerialPort, lock: Lock, laser_id: int, qid: int, value: int
+) -> None:
     """Command a laser to *value* and consume its acknowledgement."""
-    with lock:
+    async with lock:
         serial.reset_input_buffer()
         action = LaserAction(id=laser_id, qid=qid, value=value)
         packet = msgspec.json.encode(action)
-        written = serial.write(packet)
-        if written is None or written != len(packet):
+        written = await serial.write(packet)
+        if written != len(packet):
             raise RuntimeError("Failed to write to serial port.")
 
-        resp_str = clean(serial.read_until(expected=b"}"))
+        resp_str = clean(await serial.read_until(expected=b"}"))
         if not resp_str:
             raise RuntimeError("Failed to read from serial port.")
         response = msgspec.json.decode(resp_str, type=Acknowledge)

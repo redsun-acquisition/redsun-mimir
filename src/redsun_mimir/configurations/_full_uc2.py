@@ -2,28 +2,28 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Annotated
 
-from redsun.containers import declare_device
+from redsun import AsDevice, Declare
 
-if TYPE_CHECKING:
-    from redsun.qt import QtAppContainer
+from redsun_mimir.device.mmcore import MMCamera
+from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
 
-_CONFIG = Path(__file__).parent / "uc2_full_configuration.yaml"
+from ._base import MimirApp
 
 
-def build_uc2_container() -> QtAppContainer:
-    """Return the UC2 container, unbuilt, so it can be inspected."""
-    from redsun_mimir.device.mmcore import MMCamera
-    from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
+class MimirMicroscope(MimirApp):
+    """The UC2 microscope session: a Micro-Manager camera and a UC2 board."""
 
-    from ._base import MimirApp
+    config = Path(__file__).parent / "uc2_full_configuration.yaml"
 
-    class MimirMicroscope(MimirApp, config=_CONFIG):
-        iscat = declare_device(MMCamera, service="camera_ioc")
-        stage = declare_device(UC2MotorDevice, service="uc2_board")
-        laser = declare_device(UC2LaserDevice, service="uc2_board", from_config="laser")
+    iscat: Annotated[AsDevice[MMCamera], Declare(service="camera_ioc")]
+    stage: Annotated[AsDevice[UC2MotorDevice], Declare(service="uc2_board")]
+    laser: Annotated[AsDevice[UC2LaserDevice], Declare(service="uc2_board")]
 
+
+def build_uc2_container() -> MimirMicroscope:
+    """Return the UC2 session, unbuilt, so it can be inspected."""
     return MimirMicroscope(log_level=logging.DEBUG)
 
 

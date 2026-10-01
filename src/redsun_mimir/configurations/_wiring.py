@@ -1,8 +1,8 @@
-"""Connections shared by the example containers.
+"""Links shared by the example sessions.
 
-Each helper takes the components it connects, not the container, so every
-port is checked against the class declaring it; through the container each
-component would be ``Any``.
+Each helper takes the components it links, not the session, so every port is
+checked against the class declaring it, and yields each link for the session
+to make.
 """
 
 from __future__ import annotations
@@ -10,7 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from redsun.containers import AppContainer
+    from collections.abc import Iterator
+
+    from redsun import Link
+    from redsun.path_provider import SessionPathProvider
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
@@ -34,77 +37,76 @@ __all__ = [
 
 
 def wire_detector(
-    app: AppContainer,
-    ctrl: DetectorPresenter,
-    view: DetectorView,
-    image: ImageView,
-) -> None:
-    """Connect the detector presenter, its settings view, and the viewer."""
-    app.connect(ctrl.sig_new_data, image.update_layers)
-    app.connect(view.sig_property_changed, ctrl.set)
-    app.connect(ctrl.sig_new_configuration, view.on_new_configuration)
-    app.connect(ctrl.sig_new_configuration, image.on_new_configuration)
-    app.connect(image.sig_roi_drawn, view.on_roi_drawn)
-    app.connect(view.sig_roi_selection, image.set_roi_selection)
-    app.connect(view.sig_roi_edited, image.set_roi_box)
+    ctrl: DetectorPresenter, view: DetectorView, image: ImageView
+) -> Iterator[Link]:
+    """Link the detector presenter, its settings view, and the viewer."""
+    yield ctrl.sig_new_data, image.update_layers
+    yield view.sig_property_changed, ctrl.set
+    yield ctrl.sig_new_configuration, view.on_new_configuration
+    yield ctrl.sig_new_configuration, image.on_new_configuration
+    yield image.sig_roi_drawn, view.on_roi_drawn
+    yield view.sig_roi_selection, image.set_roi_selection
+    yield view.sig_roi_edited, image.set_roi_box
+    yield ctrl.sig_frames_written, view.on_frames_written
 
 
-def wire_median(app: AppContainer, ctrl: MedianPresenter, image: ImageView) -> None:
+def wire_median(ctrl: MedianPresenter, image: ImageView) -> Iterator[Link]:
     """Route both median streams to the viewer, each as its own layer."""
-    app.connect(ctrl.frames.median, image.update_layers)
-    app.connect(ctrl.frames.filtered, image.update_layers)
+    yield ctrl.frames.median, image.update_layers
+    yield ctrl.frames.filtered, image.update_layers
 
 
-def wire_motor(app: AppContainer, ctrl: MotorPresenter, view: MotorView) -> None:
-    """Connect stage step requests.
+def wire_motor(ctrl: MotorPresenter, view: MotorView) -> Iterator[Link]:
+    """Link stage step requests, and every axis readback to its label.
 
-    There is no return path: the view subscribes to the axis readbacks
-    itself, so it follows moves the presenter never made.
+    The labels follow the readbacks, not the presenter, so they show moves
+    the presenter never made.
     """
-    app.connect(view.sig_motor_move, ctrl.move)
+    yield view.sig_motor_move, ctrl.move
+    for readback in ctrl.devices_readbacks().values():
+        yield readback, view.update_setpoint
 
 
-def wire_light(app: AppContainer, ctrl: LightPresenter, view: LightView) -> None:
-    """Connect the light source controls."""
-    app.connect(view.sig_toggle_light_request, ctrl.trigger)
-    app.connect(view.sig_intensity_request, ctrl.set)
+def wire_light(ctrl: LightPresenter, view: LightView) -> Iterator[Link]:
+    """Link the light source controls."""
+    yield view.sig_toggle_light_request, ctrl.trigger
+    yield view.sig_intensity_request, ctrl.set
 
 
 def wire_acquisition(
-    app: AppContainer,
     ctrl: AcquisitionPresenter,
     view: AcquisitionView,
-    median: MedianPresenter | None = None,
-) -> None:
-    """Connect run control, and the plan lifecycle to whoever tracks it.
+    median: MedianPresenter,
+    paths: SessionPathProvider,
+) -> Iterator[Link]:
+    """Link run control, the plans' actions, and the plan lifecycle.
 
-    The session's path provider takes the plan name, which names the files a
-    run writes, and the base directory, which the view lets a user choose
-    between runs. *median* is optional since not every container declares it.
+    The view asks the acquisition presenter for an action, which passes the
+    request to the component offering the running plan, and follows the
+    actions of both components offering plans. The path provider takes the plan name, which names
+    the files a run writes, and the base directory, which the view lets a
+    user choose while no plan runs.
     """
-    app.connect(view.sig_launch_plan_request, ctrl.launch_plan)
-    app.connect(view.sig_stop_plan_request, ctrl.stop_plan)
-    app.connect(view.sig_pause_resume_request, ctrl.pause_or_resume_plan)
-    app.connect(view.sig_action_request, ctrl.toggle_action_event)
-    app.connect(ctrl.sig_plan_done, view.on_plan_done)
-    app.connect(ctrl.sig_action_done, view.on_action_done)
+    yield view.sig_launch_plan_request, ctrl.launch_plan
+    yield view.sig_stop_plan_request, ctrl.stop_plan
+    yield view.sig_pause_resume_request, ctrl.pause_or_resume_plan
+    yield ctrl.sig_plan_done, view.on_plan_done
+    yield view.sig_action_request, ctrl.request_action
+    for actions in (ctrl.actions, median.actions):
+        yield actions.sig_changed, view.on_action_changed
 
-    app.connect(view.sig_base_dir_request, ctrl.set_base_dir)
-    app.connect(ctrl.sig_base_dir_changed, view.on_base_dir_changed)
+    yield view.sig_base_dir_request, paths.set_base_dir
+    yield paths.sig_base_dir_changed, view.on_base_dir_changed
 
-    app.connect(ctrl.sig_pre_launch_notify, app.path_provider.set_plan)
-    app.connect(ctrl.sig_plan_done, app.path_provider.reset_plan)
-    app.connect(ctrl.sig_base_dir_changed, app.path_provider.set_base_dir)
+    yield ctrl.sig_pre_launch_notify, paths.set_plan
+    yield ctrl.sig_plan_done, paths.reset_plan
 
-    if median is not None:
-        app.connect(ctrl.sig_pre_launch_notify, median.clear_medians)
+    yield ctrl.sig_pre_launch_notify, median.clear_medians
 
 
 def wire_locks(
-    app: AppContainer,
-    ctrl: AcquisitionPresenter,
-    *views: MotorView | LightView | DetectorView,
-) -> None:
+    ctrl: AcquisitionPresenter, *views: MotorView | LightView | DetectorView
+) -> Iterator[Link]:
     """Disable, in each view, the controls of the devices a running plan holds."""
     for view in views:
-        app.connect(ctrl.sig_locks_changed, view.set_locked)
+        yield ctrl.sig_locks_changed, view.set_locked

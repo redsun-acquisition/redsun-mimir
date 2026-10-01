@@ -13,9 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-import time
 from dataclasses import dataclass
-from threading import Lock
 from typing import TYPE_CHECKING, Any, Final
 
 from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
@@ -23,13 +21,17 @@ from fastcs.controllers import Controller
 from fastcs.datatypes import Float, Int
 from fastcs.logging import logger
 from fastcs.util import ONCE
-from serial import Serial, serial_for_url
+from oxiserial.aio import serial_for_url
 
 from ._process import controller_id, identity_arguments, serve, session_logging
 from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, read_positions, set_laser
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from oxiserial.aio import Serial
+
+    from ._uc2_serial import SerialPort
 
 #: Printed once a client can reach the board's PVs.
 READY: Final = "uc2 controller ready"
@@ -72,7 +74,7 @@ class SerialIO(AttributeIO[Any, SerialRef]):
     reads the last value the board acknowledged.
     """
 
-    def __init__(self, serial: Serial, lock: Lock) -> None:
+    def __init__(self, serial: SerialPort, lock: asyncio.Lock) -> None:
         super().__init__()
         self._serial = serial
         self._lock = lock
@@ -81,18 +83,11 @@ class SerialIO(AttributeIO[Any, SerialRef]):
         """Send *value* to the board, and adopt it once it is acknowledged."""
         ref = attr.io_ref
         if ref.axis:
-            await asyncio.to_thread(
-                move_axis,
-                self._serial,
-                self._lock,
-                AXIS_ID[ref.axis],
-                UM_TO_NM,
-                float(value),
+            await move_axis(
+                self._serial, self._lock, AXIS_ID[ref.axis], UM_TO_NM, float(value)
             )
         else:
-            await asyncio.to_thread(
-                set_laser, self._serial, self._lock, ref.laser, ref.laser, int(value)
-            )
+            await set_laser(self._serial, self._lock, ref.laser, ref.laser, int(value))
         if isinstance(attr, AttrR):
             await attr.update(value)
 
@@ -107,9 +102,7 @@ class SerialIO(AttributeIO[Any, SerialRef]):
         if not ref.axis:
             return
         try:
-            positions = await asyncio.to_thread(
-                read_positions, self._serial, self._lock, UM_TO_NM
-            )
+            positions = await read_positions(self._serial, self._lock, UM_TO_NM)
         except (RuntimeError, OSError) as error:
             logger.warning(f"Board reported no position for {ref.axis!r}: {error}")
             return
@@ -151,9 +144,12 @@ class UC2Controller(Controller):
     """
 
     def __init__(
-        self, serial: Serial, axes: Iterable[str] = AXES, lasers: Iterable[int] = (1,)
+        self,
+        serial: SerialPort,
+        axes: Iterable[str] = AXES,
+        lasers: Iterable[int] = (1,),
     ) -> None:
-        io = SerialIO(serial, Lock())
+        io = SerialIO(serial, asyncio.Lock())
         super().__init__(ios=[io])
         self._serial = serial
 
@@ -173,23 +169,23 @@ class UC2Controller(Controller):
             self._serial.close()
 
 
-def open_board(
+async def open_board(
     port: str, baudrate: int, timeout: float, *, reset: bool = True
 ) -> Serial:
     """Open the port and restart the board on it, waiting for its setup to end.
 
-    *port* is anything ``pyserial`` opens by url, a device name such as
-    ``COM4`` included. Without *reset* the port is only opened.
+    *port* is anything `oxiserial` opens by url, a device name such as `COM4`
+    or `loop://` included. Without *reset* the port is only opened.
     """
     serial = serial_for_url(port, baudrate=baudrate, timeout=timeout)
     if not reset:
         return serial
     serial.dtr = False
     serial.rts = True
-    time.sleep(RESET_HOLD)
+    await asyncio.sleep(RESET_HOLD)
     serial.rts = False
-    time.sleep(RESET_SETTLE)
-    answer = serial.read_until(expected=RESET_DONE)
+    await asyncio.sleep(RESET_SETTLE)
+    answer = await serial.read_until(expected=RESET_DONE)
     if answer:
         logger.info(f"Board restarted: {answer.decode(errors='ignore').strip()}")
     return serial
@@ -210,13 +206,17 @@ def main(argv: list[str] | None = None) -> int:
     options = parser.parse_args(argv)
 
     session_logging()
-    controller = UC2Controller(
-        open_board(
-            options.port, options.baudrate, options.timeout, reset=not options.no_reset
-        )
-    )
-    asyncio.run(serve(controller, controller_id(options), READY))
+    asyncio.run(run(options))
     return 0
+
+
+async def run(options: argparse.Namespace) -> None:
+    """Open the board as *options* say, and serve it until the session stops it."""
+    serial = await open_board(
+        options.port, options.baudrate, options.timeout, reset=not options.no_reset
+    )
+    controller = UC2Controller(serial)
+    await serve(controller, controller_id(options), READY)
 
 
 if __name__ == "__main__":

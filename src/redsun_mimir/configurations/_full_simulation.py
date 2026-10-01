@@ -2,30 +2,30 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Annotated
 
-from redsun.containers import declare_device
+from redsun import AsDevice, Declare
 
-if TYPE_CHECKING:
-    from redsun.qt import QtAppContainer
+from redsun_mimir.device import MockLightDevice
+from redsun_mimir.device.mmcore import MMCamera, MMStage
 
-_CONFIG = Path(__file__).parent / "full_configuration.yaml"
+from ._base import MimirApp
 
 
-def build_simulation_container() -> QtAppContainer:
-    """Return the simulation container, unbuilt, so it can be inspected."""
-    from redsun_mimir.device import MockLightDevice
-    from redsun_mimir.device.mmcore import MMCamera, MMStage
+class MimirSimulator(MimirApp):
+    """The simulation session: demo camera and stages, mock light sources."""
 
-    from ._base import MimirApp
+    config = Path(__file__).parent / "full_configuration.yaml"
 
-    class MimirSimulator(MimirApp, config=_CONFIG):
-        mmcamera = declare_device(MMCamera, service="camera1_ioc")
-        XY = declare_device(MMStage, service="xy_stage")
-        Z = declare_device(MMStage, service="z_stage")
-        laser = declare_device(MockLightDevice, from_config="laser")
-        led = declare_device(MockLightDevice, from_config="led")
+    mmcamera: Annotated[AsDevice[MMCamera], Declare(service="camera1_ioc")]
+    XY: Annotated[AsDevice[MMStage], Declare(service="xy_stage")]
+    Z: Annotated[AsDevice[MMStage], Declare(service="z_stage")]
+    laser: AsDevice[MockLightDevice]
+    led: AsDevice[MockLightDevice]
 
+
+def build_simulation_container() -> MimirSimulator:
+    """Return the simulation session, unbuilt, so it can be inspected."""
     return MimirSimulator(log_level=logging.DEBUG)
 
 

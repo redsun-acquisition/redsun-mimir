@@ -3,7 +3,6 @@
 # so the two must not share one.
 
 schema_version: 1.0
-frontend: pyqt
 
 presenters:
   median_ctrl: {}

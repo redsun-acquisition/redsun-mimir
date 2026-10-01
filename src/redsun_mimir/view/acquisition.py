@@ -1,64 +1,56 @@
 from __future__ import annotations
 
+from collections.abc import Mapping  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from psygnal import Signal
 from qtpy import QtCore, QtGui
 from qtpy import QtWidgets as QtW
+from redsun import CallbackType, DeviceMapping, HasPlans, Placement, slot
+from redsun.engine.actions import ActionState
 from redsun.log import Loggable
-from redsun.path_provider import PATH_PROVIDER
-from redsun.view import ViewPosition
-from redsun.view.qt import QtView
+from redsun.path_provider import SessionPathProvider  # noqa: TC002
+from redsun.presenter.plan_spec import UnresolvableAnnotationError, create_plan_spec
+from redsun.qt import Dock
 from redsun.view.qt.utils import PlanInfoDialog, PlanWidget, create_plan_widget
-from redsun.virtual import Signal, slot
-
-from redsun_mimir.providers import PLAN_SPECS
 
 if TYPE_CHECKING:
-    from redsun.presenter.plan_spec import PlanSpec
-    from redsun.virtual import VirtualContainer
+    from pathlib import Path
+
+    from redsun import PlanEntry
+    from redsun.view.qt.utils import ActionButton
 
 
-class AcquisitionView(QtView, Loggable):
+class AcquisitionView(QtW.QWidget, Loggable):
     """View for plan selection, parameter input, and run control.
 
-    Lists the plans of
-    [`AcquisitionPresenter`][redsun_mimir.presenter.AcquisitionPresenter],
-    with their parameters and run, pause and stop controls.
-
-    Attributes
-    ----------
-    sig_launch_plan_request : Signal[str, dict[str, Any]]
-        Emitted when the user starts a plan, with its name and resolved
-        parameters.
-    sig_stop_plan_request : Signal
-        Emitted when the user stops the plan.
-    sig_pause_resume_request : Signal[bool]
-        Emitted with ``True`` to pause, ``False`` to resume.
-    sig_action_request : Signal[str, bool]
-        Emitted when the user triggers an action button, with the action name
-        and its toggle state.
-    sig_base_dir_request : Signal[str]
-        Emitted with the directory the user picked for a run to write under.
+    Lists every plan of the session, chosen from a list, with its
+    parameters, the document callbacks to run it with, and run, pause and
+    stop controls.
     """
 
-    sig_launch_plan_request = Signal(str, object)
+    placement: Placement = Dock("left")
+
+    sig_launch_plan_request = Signal(str, object, object)
+    """Emitted when the user starts a plan, with its name, its parameter
+    values and the names of the callbacks the user attached to it."""
+
     sig_stop_plan_request = Signal()
+    """Emitted when the user stops the plan."""
+
     sig_pause_resume_request = Signal(bool)
+    """Emitted with `True` to pause, `False` to resume."""
+
     sig_action_request = Signal(str, bool)
+    """Emitted when the user presses an action button, with the action name
+    and whether the button is pressed."""
+
     sig_base_dir_request = Signal(str)
+    """Emitted with the directory the user picked for a run to write under."""
 
-    @property
-    def view_position(self) -> ViewPosition:
-        """The position in the main view."""
-        return ViewPosition.LEFT
-
-    def __init__(
-        self,
-        name: str,
-        /,
-    ) -> None:
-        super().__init__(name)
-        self.plans_info: dict[str, str] = {}
+    def __init__(self, name: str, parent: QtW.QWidget) -> None:
+        super().__init__(parent)
+        self.name = name
 
         self.root_layout = QtW.QVBoxLayout(self)
 
@@ -117,14 +109,45 @@ class AcquisitionView(QtView, Loggable):
         )
         self.setLayout(self.root_layout)
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the view's signals with the container."""
-        container.register_signals(self)
+    def setup(
+        self,
+        providers: Mapping[str, HasPlans],
+        callbacks: Mapping[str, CallbackType],
+        devices: DeviceMapping,
+        paths: SessionPathProvider,
+    ) -> None:
+        """Build one control widget per plan, and show where a run writes.
 
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the plan controls, and show where a run writes."""
-        self.base_dir_label.setText(str(container.require(PATH_PROVIDER).base_dir))
-        self.setup_ui(container.require(PLAN_SPECS))
+        A plan whose signature no plan widget can show is logged and left out.
+        Every callback a plan does not list starts attached to it.
+        """
+        self.base_dir_label.setText(str(paths.base_dir))
+        entries: dict[str, PlanEntry] = {}
+        for component in providers.values():
+            entries.update(component.plan_map())
+        for plan_name in sorted(entries):
+            entry = entries[plan_name]
+            try:
+                spec = create_plan_spec(entry["plan"], devices)
+            except (UnresolvableAnnotationError, ValueError) as error:
+                self.logger.warning(str(error))
+                continue
+            self.plans_combobox.addItem(plan_name)
+            plan_widget = create_plan_widget(
+                spec,
+                toggle_callback=self._on_plan_toggled,
+                pause_callback=self._on_plan_maybe_paused,
+                action_clicked_callback=self._on_action_clicked,
+                action_toggled_callback=self._on_action_toggled,
+                plan_callbacks=entry.get("callbacks", ()),
+                available_callbacks=callbacks,
+                attached_callbacks=None,
+            )
+            self.stack_widget.addWidget(plan_widget.group_box)
+            self.plan_widgets[plan_name] = plan_widget
+            self._wire_device_validation(plan_widget)
+
+        self.stack_widget.setCurrentIndex(0)
 
     def _on_base_dir_clicked(self) -> None:
         """Ask for a directory, and request it as the one a run writes under."""
@@ -141,27 +164,9 @@ class AcquisitionView(QtView, Loggable):
         )
 
     @slot
-    def on_base_dir_changed(self, base_dir: str) -> None:
+    def on_base_dir_changed(self, base_dir: Path) -> None:
         """Show the directory a run writes under."""
-        self.base_dir_label.setText(base_dir)
-
-    def setup_ui(self, specs: set[PlanSpec]) -> None:
-        """Build one control widget per plan, sorted by name."""
-        for spec in sorted(specs, key=lambda s: s.name):
-            self.plans_combobox.addItem(spec.name)
-            plan_widget = create_plan_widget(
-                spec,
-                run_callback=self._on_plan_launch,
-                toggle_callback=self._on_plan_toggled,
-                pause_callback=self._on_plan_maybe_paused,
-                action_clicked_callback=self._on_action_clicked,
-                action_toggled_callback=self._on_action_toggled,
-            )
-            self.stack_widget.addWidget(plan_widget.group_box)
-            self.plan_widgets[spec.name] = plan_widget
-            self._wire_device_validation(plan_widget)
-
-        self.stack_widget.setCurrentIndex(0)
+        self.base_dir_label.setText(str(base_dir))
 
     def _current_plan(self) -> str:
         """Return the plan running, or the one selected while none runs."""
@@ -179,7 +184,9 @@ class AcquisitionView(QtView, Loggable):
         plan_widget.toggle(toggled)
         if toggled:
             self._mark_running(plan)
-            self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
+            self.sig_launch_plan_request.emit(
+                plan, plan_widget.parameters, plan_widget.attached_callbacks
+            )
         else:
             self.sig_stop_plan_request.emit()
 
@@ -188,52 +195,41 @@ class AcquisitionView(QtView, Loggable):
         self.plan_widgets[self._current_plan()].pause(paused)
         self.sig_pause_resume_request.emit(paused)
 
-    def _on_plan_launch(self) -> None:
-        plan = self.plans_combobox.currentText()
-        plan_widget = self.plan_widgets[plan]
-        plan_widget.setEnabled(False)
-        plan_widget.enable_actions(False)
-        self._mark_running(plan)
-        self.sig_launch_plan_request.emit(plan, plan_widget.parameters)
-
     @slot
     def on_plan_done(self) -> None:
-        """Re-enable the controls of the plan that ran, the selector and the root."""
+        """Show the plan that ran as stopped, and free the selector and the root."""
         plan = self._current_plan()
         self._running = None
         self.plans_combobox.setEnabled(True)
         self.base_dir_btn.setEnabled(True)
+        self.plan_widgets[plan].toggle(False)
         self.plan_widgets[plan].setEnabled(True)
-        self.plan_widgets[plan].enable_actions(False)
 
     @slot
-    def on_action_done(self, action_name: str) -> None:
-        """Restore the button of *action_name* once its event is cleared."""
-        plan_widget = self.plan_widgets[self._current_plan()]
-        action_button = plan_widget.get_action_button(action_name)
-        if action_button:
-            if action_button.action.togglable:
-                action_button.setEnabled(True)
-                if action_button.isChecked():
-                    action_button.blockSignals(True)
-                    action_button.setChecked(False)
-                    action_button.blockSignals(False)
-            else:
-                if plan_widget.actions_group:
-                    plan_widget.actions_group.setEnabled(True)
+    def on_action_changed(self, name: str, state: str) -> None:
+        """Set the button of the action *name* of the current plan to *state*.
+
+        Disabled and released when idle, enabled when offered, and kept
+        enabled while running only if it is a toggle, so it can be released.
+        """
+        button = self.plan_widgets[self._current_plan()].get_action_button(name)
+        if button is not None:
+            self._set_action_button(button, state)
+
+    def _set_action_button(self, button: ActionButton, state: str) -> None:
+        match state:
+            case ActionState.IDLE:
+                button.setEnabled(False)
+                button.release()
+            case ActionState.OFFERED:
+                button.setEnabled(True)
+            case ActionState.RUNNING:
+                button.setEnabled(button.isCheckable())
 
     def _on_action_clicked(self, action_name: str) -> None:
-        group = self.plan_widgets[self._current_plan()].actions_group
-        if group:
-            group.setEnabled(False)
         self.sig_action_request.emit(action_name, True)
 
     def _on_action_toggled(self, checked: bool, action_name: str) -> None:
-        if not checked:
-            plan_widget = self.plan_widgets[self._current_plan()]
-            action_button = plan_widget.get_action_button(action_name)
-            if action_button:
-                action_button.setEnabled(False)
         self.sig_action_request.emit(action_name, checked)
 
     def _wire_device_validation(self, plan_widget: PlanWidget) -> None:

@@ -3,33 +3,25 @@
 from __future__ import annotations
 
 import gc
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
 from bluesky.utils import MsgGenerator
+from event_model import DocumentRouter
 from napari._app_model import get_app_model
 from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
 from napari.settings import get_settings
 from qtpy import QtWidgets
-from redsun.engine.actions import continous
-from redsun.path_provider import PATH_PROVIDER, SessionPathProvider
-from redsun.presenter.plan_spec import create_plan_spec
-from redsun.virtual import ProviderKey, VirtualContainer
+from redsun.engine.actions import PlanAction, continuous
+from redsun.path_provider import SessionPathProvider
 
 from redsun_mimir.common import Roi
 from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
-from redsun_mimir.providers import (
-    LIGHT_CONFIGURATION,
-    LIGHT_DESCRIPTION,
-    MOTOR_DESCRIPTION,
-    MOTOR_READBACKS,
-    MOTOR_READINGS,
-    PLAN_SPECS,
-)
 from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
@@ -46,6 +38,7 @@ if TYPE_CHECKING:
     from bluesky.protocols import Reading
     from qtpy.QtCore import QCoreApplication
     from qtpy.QtWidgets import QApplication
+    from redsun import PlanEntry
 
     from redsun_mimir.device._mocks import MockLightDevice
 
@@ -59,48 +52,53 @@ def _reading(key: str, value: float) -> dict[str, Reading[Any]]:
     return {key: {"value": value, "timestamp": 0.0}}
 
 
-def _make_container(*bindings: tuple[ProviderKey[Any], Any]) -> VirtualContainer:
-    container = VirtualContainer()
-    for key, value in bindings:
-        container.provide(key, value)
-    return container
+#: A toggle action of the stream plan below.
+STREAM = PlanAction(name="stream", toggle_states=("start", "stop"))
+
+#: A clicked action of the stream plan below.
+SNAP = PlanAction(name="snap")
+
+#: A document callback no plan lists.
+VIEWER = DocumentRouter()
 
 
-async def _build_motor_view(widget: MotorView, motor: FakeXYStage) -> VirtualContainer:
-    """Drive the real build order: register_providers then inject_dependencies."""
-    container = _make_container(
-        (MOTOR_READINGS, await motor.read()),
-        (MOTOR_DESCRIPTION, await motor.describe()),
-        (
-            MOTOR_READBACKS,
-            {a.name: a.movable_logic.readback for a in motor.axis.values()},
-        ),
-    )
-    widget.register_providers(container)
-    widget.inject_dependencies(container)
-    return container
+class Plans:
+    """Offers two continuous plans; `scan` carries a callback of its own."""
+
+    def __init__(self, own: DocumentRouter) -> None:
+        self.own = own
+
+    @continuous
+    def stream(
+        self, frames: int = 1, stream: PlanAction = STREAM, snap: PlanAction = SNAP
+    ) -> MsgGenerator[None]:
+        yield from ()
+
+    @continuous
+    def scan(self, frames: int = 1) -> MsgGenerator[None]:
+        yield from ()
+
+    def plan_map(self) -> dict[str, PlanEntry]:
+        return {
+            "stream": {"plan": self.stream},
+            "scan": {"plan": self.scan, "callbacks": [self.own]},
+        }
 
 
-async def _build_light_view(
-    widget: LightView, *devices: MockLightDevice
-) -> VirtualContainer:
-    """Drive the real build order: register_providers then inject_dependencies."""
-    # mirrors LightPresenter.device_configuration/_description: the view needs
-    # both the config signals (wavelength) and the readables (intensity)
-    configuration: dict[str, Any] = {}
-    description: dict[str, Any] = {}
-    for device in devices:
-        configuration.update(await device.read_configuration())
-        configuration.update(await device.read())
-        description.update(await device.describe_configuration())
-        description.update(await device.describe())
-    container = _make_container(
-        (LIGHT_CONFIGURATION, configuration),
-        (LIGHT_DESCRIPTION, description),
-    )
-    widget.register_providers(container)
-    widget.inject_dependencies(container)
-    return container
+@pytest.fixture
+def parent(qapp: QCoreApplication) -> QtWidgets.QWidget:
+    """Return a widget for a view to be built in."""
+    return QtWidgets.QWidget()
+
+
+def build_motor_view(widget: MotorView, motor: FakeXYStage) -> None:
+    """Build *widget* from a presenter describing *motor*."""
+    widget.setup(MotorPresenter("motor_ctrl", motors={motor.name: motor}))
+
+
+def build_light_view(widget: LightView, *devices: MockLightDevice) -> None:
+    """Build *widget* from a presenter describing *devices*."""
+    widget.setup(LightPresenter("light_ctrl", lights={d.name: d for d in devices}))
 
 
 @pytest.mark.parametrize(
@@ -155,9 +153,9 @@ class TestDetectorViewRoi:
 
     @pytest.fixture
     async def view(
-        self, qapp: QApplication, fake_detector: FakeDetector
+        self, parent: QtWidgets.QWidget, fake_detector: FakeDetector
     ) -> DetectorView:
-        view = DetectorView("det_widget")
+        view = DetectorView("det_widget", parent)
         view.setup_ui(
             await fake_detector.describe_configuration(),
             await fake_detector.read_configuration(),
@@ -255,17 +253,54 @@ class TestDetectorViewRoi:
         assert not panel.ok_button.isEnabled()
 
 
+async def test_the_frames_written_are_shown_until_the_next_plan(
+    parent: QtWidgets.QWidget, fake_detector: FakeDetector
+) -> None:
+    """Show a detector's count of written frames, and clear it when a plan starts."""
+    view = DetectorView("det_widget", parent)
+    view.setup_ui(
+        await fake_detector.describe_configuration(),
+        await fake_detector.read_configuration(),
+    )
+    label = view.settings_controls["cam"].written_label
+
+    view.on_frames_written("cam", 12)
+    assert label.text() == "Written: 12 frames"
+
+    view.clear_frames_written("live_stream")
+    assert label.text() == ""
+
+
+@needs_opengl
+def test_a_new_layer_is_logged_one_setting_per_line(
+    parent: QtWidgets.QWidget, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Log the layer made for a detector with each of its settings on a line."""
+    view = ImageView("image_view", parent)
+    caplog.set_level(logging.DEBUG, logger="redsun")
+    try:
+        view.setup_layers({"cam": {"shape": (4, 6), "dtype": "uint8"}})
+    finally:
+        view.shutdown()
+        view.close()
+
+    messages = [record.getMessage() for record in caplog.records]
+    first = messages.index("Creating layer for cam:")
+    assert messages[first + 1 : first + 3] == ["  shape: (4, 6)", "  dtype: uint8"]
+
+
 @needs_opengl
 class TestImageViewRoi:
     """Tests for the selection box on a detector's layer."""
 
     @pytest.fixture
-    def view(self, qapp: QCoreApplication) -> Iterator[ImageView]:
-        view = ImageView("image_view")
+    def view(self, parent: QtWidgets.QWidget) -> Iterator[ImageView]:
+        view = ImageView("image_view", parent)
         view.setup_layers({"cam": {"shape": (4, 6), "dtype": "uint8"}})
         try:
             yield view
         finally:
+            view.shutdown()
             view.close()
 
     def test_dragging_the_box_announces_a_roi_and_changes_nothing_else(
@@ -411,34 +446,43 @@ class TestAcquisitionView:
     """Tests for the plan selector and its controls."""
 
     @pytest.fixture
-    def view(self, qapp: QApplication, tmp_path: Path) -> AcquisitionView:
-        @continous(togglable=True)
-        def stream(frames: int = 1) -> MsgGenerator[None]:
-            yield from ()
+    def plans(self) -> Plans:
+        return Plans(DocumentRouter())
 
-        def scan(frames: int = 1) -> MsgGenerator[None]:
-            yield from ()
-
-        view = AcquisitionView("acq_widget")
-        view.inject_dependencies(
-            _make_container(
-                (PATH_PROVIDER, SessionPathProvider(base_dir=tmp_path)),
-                (
-                    PLAN_SPECS,
-                    {create_plan_spec(stream, {}), create_plan_spec(scan, {})},
-                ),
-            )
+    @pytest.fixture
+    def view(
+        self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path
+    ) -> AcquisitionView:
+        view = AcquisitionView("acq_widget", parent)
+        view.setup(
+            {"plans": plans},
+            {"viewer": VIEWER, "median": plans.own},
+            {},
+            SessionPathProvider(base_dir=tmp_path),
         )
         return view
+
+    def test_a_folder_chosen_while_idle_is_shown_once_the_provider_moves(
+        self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path
+    ) -> None:
+        """Show the folder the path provider moved to at the view's request."""
+        paths = SessionPathProvider(base_dir=tmp_path)
+        view = AcquisitionView("acq_widget", parent)
+        view.setup({"plans": plans}, {}, {}, paths)
+        view.sig_base_dir_request.connect(paths.set_base_dir)
+        paths.sig_base_dir_changed.connect(view.on_base_dir_changed)
+
+        view.sig_base_dir_request.emit(str(tmp_path / "elsewhere"))
+
+        assert view.base_dir_label.text() == str(tmp_path / "elsewhere")
 
     def test_the_selector_is_held_on_the_plan_that_runs(
         self, view: AcquisitionView
     ) -> None:
-        """Switching plans mid-run would re-enable the wrong page."""
+        """Hold the selector and the root folder until the running plan is done."""
         view.plans_combobox.setCurrentText("scan")
-        view.plan_widgets["scan"].run_button.click()
+        view.plan_widgets["scan"].run_button.setChecked(True)
         assert not view.plans_combobox.isEnabled()
-        assert not view.plan_widgets["scan"].group_box.isEnabled()
         assert not view.base_dir_btn.isEnabled()
         assert view.open_dir_btn.isEnabled()
 
@@ -446,34 +490,58 @@ class TestAcquisitionView:
         view.on_plan_done()
 
         assert view.plans_combobox.isEnabled()
-        assert view.plan_widgets["scan"].group_box.isEnabled()
         assert view.base_dir_btn.isEnabled()
+        assert not view.plan_widgets["scan"].run_button.isChecked()
 
-    def test_a_stream_holds_the_selector_until_it_is_done(
+    def test_a_run_carries_the_callbacks_the_user_attached(
         self, view: AcquisitionView
     ) -> None:
+        """Send with a plan the callbacks attached to it, not the ones it lists."""
+        sent: list[tuple[str, Any, Any]] = []
+        view.sig_launch_plan_request.connect(lambda *args: sent.append(args))
+        view.plans_combobox.setCurrentText("scan")
+
+        view.plan_widgets["scan"].run_button.setChecked(True)
+
+        assert sent == [("scan", {"frames": 1}, ["viewer"])]
+
+    def test_an_action_button_follows_the_state_of_its_action(
+        self, view: AcquisitionView
+    ) -> None:
+        """Enable a button while offered, and release it silently once idle."""
+        asked: list[tuple[str, bool]] = []
+        view.sig_action_request.connect(lambda *args: asked.append(args))
         view.plans_combobox.setCurrentText("stream")
         view.plan_widgets["stream"].run_button.setChecked(True)
-        assert not view.plans_combobox.isEnabled()
+        buttons = view.plan_widgets["stream"].action_buttons
 
-        view.plan_widgets["stream"].run_button.setChecked(False)
-        view.on_plan_done()
+        view.on_action_changed("stream", "offered")
+        view.on_action_changed("snap", "offered")
+        assert buttons["stream"].isEnabled()
+        buttons["stream"].setChecked(True)
+        view.on_action_changed("stream", "running")
+        view.on_action_changed("snap", "running")
+        assert buttons["stream"].isEnabled()
+        assert not buttons["snap"].isEnabled()
+        view.on_action_changed("stream", "idle")
 
-        assert view.plans_combobox.isEnabled()
+        assert not buttons["stream"].isEnabled()
+        assert not buttons["stream"].isChecked()
+        assert asked == [("stream", True)]
 
 
 class TestMotorView:
     """Tests for MotorView."""
 
     @pytest.fixture
-    def widget(self) -> MotorView:
-        return MotorView("motor_view")
+    def widget(self, parent: QtWidgets.QWidget) -> MotorView:
+        return MotorView("motor_view", parent)
 
     async def test_build_creates_one_group_per_axis(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
-        """The UI is derived from the ``<device>-axis-<name>`` reading keys."""
-        await _build_motor_view(widget, motor_stage)
+        """Build one group per motor from the `<device>-axis-<name>` keys."""
+        build_motor_view(widget, motor_stage)
 
         assert "xystage" in widget._groups
         for axis in ("x", "y"):
@@ -485,7 +553,8 @@ class TestMotorView:
     async def test_a_locked_motor_disables_its_jog_controls_and_keeps_its_readout(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
-        await _build_motor_view(widget, motor_stage)
+        """Disable a locked motor's jog controls and keep its readout updating."""
+        build_motor_view(widget, motor_stage)
 
         widget.set_locked(frozenset({"xystage"}))
         widget.update_setpoint(_reading("xystage-axis-x", 7.5))
@@ -499,18 +568,19 @@ class TestMotorView:
         assert widget._buttons["button:xystage:x:up"].isEnabled()
 
     async def test_step_size_comes_from_the_view(
-        self, widget: MotorView, motor_stage: FakeXYStage
+        self, parent: QtWidgets.QWidget, motor_stage: FakeXYStage
     ) -> None:
-        """Step size is the view's own parameter, not a device property."""
-        widget = MotorView("motor_view", step_size=2.5)
-        await _build_motor_view(widget, motor_stage)
+        """Take the step size from the view, not from a device property."""
+        widget = MotorView("motor_view", parent, step_size=2.5)
+        build_motor_view(widget, motor_stage)
 
         assert widget._steps["step:xystage:x"].value() == pytest.approx(2.5)
 
     async def test_update_setpoint_refreshes_label(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
-        await _build_motor_view(widget, motor_stage)
+        """Write an axis reading into its position label."""
+        build_motor_view(widget, motor_stage)
 
         widget.update_setpoint(_reading("xystage-axis-x", 7.5))
         assert widget._labels["pos:xystage:x"].text().startswith("7.50")
@@ -529,13 +599,8 @@ class TestMotorView:
         direction_up: bool,
         expected: float,
     ) -> None:
-        """The step size travels as-is, whatever the position label says.
-
-        The label is not read at all: if it were, two clicks arriving before it
-        refreshed would both compute the same absolute target and the second
-        would move nothing.
-        """
-        await _build_motor_view(widget, motor_stage)
+        """Send the step size as a displacement, whatever the position label says."""
+        build_motor_view(widget, motor_stage)
         widget.update_setpoint(_reading("xystage-axis-x", 123.0))
 
         received: list[tuple[str, str, float]] = []
@@ -550,42 +615,19 @@ class TestMotorView:
         assert (motor, axis) == ("xystage", "x")
         assert delta == pytest.approx(expected)
 
-    async def test_label_follows_a_move_the_presenter_never_made(
-        self,
-        widget: MotorView,
-        motor_stage: FakeXYStage,
-        virtual_container: VirtualContainer,
-    ) -> None:
-        """The label reports the axis, not the last request the view sent.
-
-        The axis is moved directly, exactly as a plan running in the
-        `RunEngine` would move it: nothing passes through the presenter, and
-        the label still tracks it.
-        """
-        presenter = MotorPresenter("motor_ctrl", {"xystage": motor_stage})
-        presenter.register_providers(virtual_container)
-        widget.register_providers(virtual_container)
-        widget.inject_dependencies(virtual_container)
-
-        assert "motor_view" in virtual_container.signals
-
-        await motor_stage.axis["x"].set(3.25)
-        assert widget._labels["pos:xystage:x"].text().startswith("3.25")
-
-        presenter.shutdown()
-
 
 class TestLightView:
     """Tests for LightView."""
 
     @pytest.fixture
-    def widget(self) -> LightView:
-        return LightView("light_view")
+    def widget(self, parent: QtWidgets.QWidget) -> LightView:
+        return LightView("light_view", parent)
 
     async def test_build_creates_button_and_slider(
         self, widget: LightView, mock_laser: MockLightDevice
     ) -> None:
-        await _build_light_view(widget, mock_laser)
+        """Build a button and a slider for a light with an intensity."""
+        build_light_view(widget, mock_laser)
 
         assert "laser" in widget._groups
         assert "on:laser" in widget._buttons
@@ -594,7 +636,8 @@ class TestLightView:
     async def test_only_a_locked_light_disables_its_controls(
         self, widget: LightView, mock_laser: MockLightDevice
     ) -> None:
-        await _build_light_view(widget, mock_laser)
+        """Disable the controls of a locked light only."""
+        build_light_view(widget, mock_laser)
 
         widget.set_locked(frozenset({"another_light"}))
         assert widget._buttons["on:laser"].isEnabled()
@@ -607,8 +650,8 @@ class TestLightView:
     async def test_binary_source_gets_no_slider(
         self, widget: LightView, mock_binary_led: MockLightDevice
     ) -> None:
-        """A binary source offers on/off and nothing else."""
-        await _build_light_view(widget, mock_binary_led)
+        """Build no slider for a binary source."""
+        build_light_view(widget, mock_binary_led)
 
         assert "on:binary_led" in widget._buttons
         assert "power:binary_led" not in widget._sliders
@@ -616,7 +659,8 @@ class TestLightView:
     async def test_slider_range_follows_device_limits(
         self, widget: LightView, mock_laser: MockLightDevice
     ) -> None:
-        await _build_light_view(widget, mock_laser)
+        """Size the slider from the device's limits."""
+        build_light_view(widget, mock_laser)
 
         slider = widget._sliders["power:laser"]
         assert (slider.minimum(), slider.maximum()) == (0.0, 100.0)
@@ -627,14 +671,16 @@ class TestLightView:
         mock_led: MockLightDevice,
         mock_laser: MockLightDevice,
     ) -> None:
-        await _build_light_view(widget, mock_led, mock_laser)
+        """Build one group per light."""
+        build_light_view(widget, mock_led, mock_laser)
 
         assert {"led", "laser"} <= set(widget._groups)
 
     async def test_toggle_emits_and_relabels(
         self, widget: LightView, mock_led: MockLightDevice
     ) -> None:
-        await _build_light_view(widget, mock_led)
+        """Ask for a toggle and relabel the button."""
+        build_light_view(widget, mock_led)
 
         received: list[str] = []
         widget.sig_toggle_light_request.connect(received.append)
@@ -653,7 +699,8 @@ class TestLightView:
     async def test_slider_change_emits_intensity_request(
         self, widget: LightView, mock_laser: MockLightDevice
     ) -> None:
-        await _build_light_view(widget, mock_laser)
+        """Ask for the intensity a slider is moved to."""
+        build_light_view(widget, mock_laser)
 
         received: list[tuple[str, Any]] = []
         widget.sig_intensity_request.connect(
@@ -667,7 +714,7 @@ class TestLightView:
     async def test_non_numeric_intensity_is_rejected(
         self, widget: LightView, mock_led: MockLightDevice
     ) -> None:
-        """The view has no binary branch: a non-numeric dtype must raise."""
+        """Raise `TypeError` for an intensity that is not a number."""
         readings: dict[str, Any] = {
             **await mock_led.read_configuration(),
             **await mock_led.read(),
@@ -684,35 +731,18 @@ class TestLightView:
         with pytest.raises(TypeError, match="'number' or 'integer'"):
             widget.setup_ui(readings, description)
 
-    async def test_registers_signals_on_the_container(
-        self,
-        widget: LightView,
-        mock_led: MockLightDevice,
-        virtual_container: VirtualContainer,
-    ) -> None:
-        presenter = LightPresenter("light_ctrl", {"led": mock_led})
-        presenter.register_providers(virtual_container)
-        widget.register_providers(virtual_container)
-        widget.inject_dependencies(virtual_container)
-
-        assert "light_view" in virtual_container.signals
-
 
 @needs_opengl
 class TestImageViewTheme:
     """Tests for styling the embedded napari viewer."""
 
-    def test_it_carries_no_stylesheet_of_its_own(self) -> None:
-        """The view is styled by the application, never by itself.
-
-        A stylesheet set on the widget would win over the application's and
-        pin the view to the theme it was built under. The application is not
-        restyled here: that repolishes every widget earlier tests left
-        behind, napari canvases included, and has crashed the interpreter.
-        """
+    def test_it_carries_no_stylesheet_of_its_own(
+        self, parent: QtWidgets.QWidget
+    ) -> None:
+        """Carry no stylesheet, so the application's one styles the view."""
         get_settings().appearance.theme = "dark"
 
-        view = ImageView("image_view")
+        view = ImageView("image_view", parent)
 
         try:
             assert view.styleSheet() == ""
@@ -721,6 +751,7 @@ class TestImageViewTheme:
             # which takes it from the same settings the stylesheet does
             assert view.viewer_model.theme == "dark"
         finally:
+            view.shutdown()
             view.close()
 
 

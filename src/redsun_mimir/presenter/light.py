@@ -3,24 +3,19 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from redsun import DevicesOf, slot
 from redsun.aio import run_coro
 from redsun.log import Loggable
-from redsun.presenter import Presenter
-from redsun.virtual import slot
 
-from redsun_mimir.protocols import HasAsyncShutdown, LightProtocol
-from redsun_mimir.providers import LIGHT_CONFIGURATION, LIGHT_DESCRIPTION
+from redsun_mimir.protocols import LightProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from typing import Any
 
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import Device
-    from redsun.virtual import VirtualContainer
 
 
-class LightPresenter(Presenter, Loggable):
+class LightPresenter(Loggable):
     """Presenter for light source control.
 
     Forwards toggle and intensity requests from
@@ -28,25 +23,21 @@ class LightPresenter(Presenter, Loggable):
 
     Parameters
     ----------
-    timeout :
-        Status wait timeout in seconds; ``None`` means ``2.0``.
+    timeout
+        Status wait timeout in seconds; `None` means `2.0`.
     """
 
     def __init__(
         self,
         name: str,
-        devices: Mapping[str, Device],
-        /,
+        *,
+        lights: DevicesOf[LightProtocol],
         timeout: float | None = None,
     ) -> None:
-        super().__init__(name, devices)
+        self.name = name
         self._timeout: float = timeout or 2.0
 
-        self._lights: dict[str, LightProtocol] = {
-            name: device
-            for name, device in devices.items()
-            if isinstance(device, LightProtocol)
-        }
+        self._lights = lights
         self._locks = {name: asyncio.Lock() for name in self._lights}
         if not self._lights:
             self.logger.warning("No device found.")
@@ -54,7 +45,7 @@ class LightPresenter(Presenter, Loggable):
             names = ", ".join(light.name for light in self._lights.values())
             self.logger.debug(f"Found devices: {names}")
 
-    def device_configuration(self) -> dict[str, Reading[Any]]:
+    def light_readings(self) -> dict[str, Reading[Any]]:
         """Return every light's configuration and current readings, by data key."""
         result: dict[str, Reading[Any]] = {}
         for light in self._lights.values():
@@ -62,19 +53,13 @@ class LightPresenter(Presenter, Loggable):
             result.update(run_coro(light.read()))
         return result
 
-    def device_description(self) -> dict[str, Descriptor]:
+    def light_descriptors(self) -> dict[str, Descriptor]:
         """Return every light's configuration and reading descriptors, by data key."""
         result: dict[str, Descriptor] = {}
         for light in self._lights.values():
             result.update(run_coro(light.describe_configuration()))
             result.update(run_coro(light.describe()))
         return result
-
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the light readings, descriptors and signals with the container."""
-        container.provide(LIGHT_CONFIGURATION, self.device_configuration())
-        container.provide(LIGHT_DESCRIPTION, self.device_description())
-        container.register_signals(self)
 
     @slot
     async def trigger(self, name: str) -> None:
@@ -94,10 +79,4 @@ class LightPresenter(Presenter, Loggable):
         if await light.binary.get_value():
             self.logger.warning(f"{name!r} is a binary light source; intensity ignored")
             return
-        await asyncio.wait_for(light.intensity.set(intensity), timeout=self._timeout)
-
-    def shutdown(self) -> None:
-        """Shut down every light device that supports it."""
-        for light in self._lights.values():
-            if isinstance(light, HasAsyncShutdown):
-                run_coro(light.shutdown())
+        await light.intensity.set(intensity, timeout=self._timeout)

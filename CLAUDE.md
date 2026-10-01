@@ -24,11 +24,11 @@ src/redsun_mimir/
                    #   youseetoo/ - UC2 motor and laser clients (no CI coverage)
   presenter/       # acquisition, detector, light, median, motor
   view/            # Qt/napari widgets: acquisition, detector, image, light, motor
-  configurations/  # runnable example containers (_full_simulation, _full_uc2)
+  configurations/  # runnable example sessions (_full_simulation, _full_uc2)
                    #   + their .yaml session files, _base.py (MimirApp), _wiring.py
   common/          # what every layer shares: Roi, the stream names
-  protocols.py     # bundle-local structural protocols
-  providers.py     # provider keys
+  plans.py         # plan stubs several presenters' plans are built from
+  protocols.py     # structural protocols, those components ask each other for included
   hooks.py         # NapariApplication, FONT_SIZE
   utils/napari/    # napari callbacks, overlay, stylesheet
 tests/             # flat: conftest.py + test_<subsystem>.py
@@ -39,7 +39,7 @@ pyproject.toml     # all tool config: pytest, ruff, mypy, coverage, tox
 The entry point
 `[project.entry-points."redsun.plugins"] redsun-mimir = "redsun.yaml"` is what
 `redsun`'s plugin discovery reads. `mimir <sim|uc2>` (`__main__.py`) launches
-the example containers.
+the example sessions.
 
 ## Build & validate
 
@@ -152,11 +152,32 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   manifest entry in the same commit.
 - Devices are `ophyd-async` devices. Hardware access is async; no threads for
   I/O. `DeviceMap` comes from `ophyd_async.core`.
-- Presenter constructors lead with exactly `(name, devices)`, view constructors
-  with `(name)`. The framework checks the positional shape at discovery and the
-  protocol with `isinstance` on the built instance. Do not inherit
-  `PPresenter`/`PView`: property descriptors shadow instance attributes at
-  runtime. Data members exposed to the framework are read-only properties.
+- A presenter's constructor takes `name` and then keywords only. A presenter
+  driving devices asks for `DevicesOf[P]`, the devices satisfying one protocol
+  from `protocols.py`, and never filters a mapping itself:
+  `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)`,
+  `MotorPresenter(motors=...)`, `MedianPresenter(sources=...)`.
+  `AcquisitionPresenter` and `AcquisitionView` take `DeviceMapping`, since any
+  device may fill a plan's parameters. A view is a `QWidget` with
+  a `placement`, whose constructor starts with `(name, parent)`. Components
+  inherit no `redsun` base class: the session fills every parameter by type
+  and checks the built instance by shape.
+- **A component never names another component's class and never receives a
+  value shared by type.** It asks in `setup` for a protocol from
+  `protocols.py` (`DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
+  `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
+  A presenter module imports no other presenter module: plan stubs more than
+  one presenter uses live in `redsun_mimir.plans`.
+  Nothing here uses `redsun.provides`. What the session itself hands out,
+  such as `DeviceMapping`, the path provider or the document callbacks, is
+  still asked for by type.
+- A component offering plans has a `plan_map` and holds, as `actions`, the
+  `ActionManager` its plans wait on. `MedianPresenter` offers
+  `live_median_scan` and lists itself as its callback; `AcquisitionPresenter`
+  offers `live_stream`, collects every plan in `setup` and runs them all,
+  giving each run its plan's callbacks and the ones the user attached, for
+  that run only. It passes an action request to the `HasActions` component
+  offering the running plan.
 - **The bundle writes acquisition bytes in the service owning the hardware**,
   not in the session: the camera service writes the capture window with
   `acquire-zarr`, and the device reports it with `StreamResource`/`StreamDatum`.
@@ -174,9 +195,9 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   and `MMCamera` merges its properties into `read_configuration` itself.
 - A plan collecting a `StandardDetector` pre-declares the stream with
   `bps.declare_stream(det, name=..., collect=True)` before `bps.collect`.
-- Device build failures are logged and skipped; presenter and view build
-  failures abort the app. A device that cannot reach its hardware fails at
-  build rather than half-initialising.
+- A device, presenter or view that fails to build is logged and skipped, and
+  the session runs with the rest. A device that cannot reach its hardware
+  fails at build rather than half-initialising.
 - `youseetoo/` talks to real serial hardware and cannot be covered in CI. Its
   service is exercised against a `loop://` port (with `--no-reset`) and a fake
   board answering the protocol; the board itself is tested by hand (see the
@@ -216,8 +237,9 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   computed once where it is first known (usually `__init__`); private
   behaviour is an ordinary underscored method.
 - psygnal signal attributes are `sig_snake_case`, never `sigCamelCase`.
-  Signals sharing a name across components are told apart by owner:
-  `find_signals(container, names, owner=...)`.
+- A session's `wire` yields each link as a signal and the slot it reaches, and
+  the session makes it. The helpers in `configurations/_wiring.py` are
+  generators taking the components they link.
 - **A `__slots__` class owning a psygnal `Signal` needs `__weakref__` among its
   slots.** psygnal refers to an owner weakly and falls back silently to a
   strong reference, on which the owner is never collected.
@@ -278,9 +300,11 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   `device/_mocks.py`, ophyd-async `mock=True` connect, and the Micro-Manager
   demo adapters through `pymmcore-plus`. Anything requiring a serial port or a
   real camera is out of scope for CI.
-- The example containers in `configurations/` are shipped artifacts, so
-  smoke-test them with mock devices (build the container, assert its
-  components come up) rather than leaving them to manual runs.
+- The example sessions in `configurations/` are shipped artifacts, so
+  smoke-test them (build the session on the demo services, assert its
+  components come up and its links are made) rather than leaving them to
+  manual runs. `mock: true` does not work for them: the camera's signals come
+  from its service at connect.
 - Prefer the public interface. For a multi-step lifecycle write one happy-path
   test driving the whole sequence and asserting the observable end state, then
   small focused tests for the unhappy paths.

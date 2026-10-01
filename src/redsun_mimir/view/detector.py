@@ -3,20 +3,19 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from bluesky.protocols import Descriptor, Reading  # noqa: TC002
+from psygnal import Signal
 from qtpy import QtWidgets
+from redsun import Placement, slot
 from redsun.log import Loggable
+from redsun.qt import Dock
 from redsun.utils.descriptors import parse_key
-from redsun.view import ViewPosition
-from redsun.view.qt import QtView
 from redsun.view.qt.treeview import DescriptorTreeView
-from redsun.virtual import Signal, slot
 
 from redsun_mimir.common import Roi
-from redsun_mimir.providers import DETECTOR_DESCRIPTORS, DETECTOR_READINGS
+from redsun_mimir.protocols import DescribesDetectors  # noqa: TC001
 
 if TYPE_CHECKING:
-    from redsun.virtual import VirtualContainer
+    from bluesky.protocols import Descriptor, Reading
 
 
 class RoiPanel(QtWidgets.QWidget):
@@ -205,6 +204,8 @@ class SettingsControlWidget(QtWidgets.QWidget):
         self.roi_panel = self._roi_panel(readings)
         if self.roi_panel is not None:
             layout.addWidget(self.roi_panel)
+        self.written_label = QtWidgets.QLabel(self)
+        layout.addWidget(self.written_label)
         self.setLayout(layout)
 
     def set_locked(self, locked: bool) -> None:
@@ -234,45 +235,34 @@ class SettingsControlWidget(QtWidgets.QWidget):
         return RoiPanel((width, height), Roi.parse(str(roi["value"])), self)
 
 
-class DetectorView(QtView, Loggable):
+class DetectorView(QtWidgets.QWidget, Loggable):
     """View for interactive detector settings control.
 
-    One property panel per detector in a tabbed widget; edits go to
-    [`DetectorPresenter`][redsun_mimir.presenter.DetectorPresenter] over the
-    virtual bus. Images are shown by [`ImageView`][redsun_mimir.view.ImageView],
-    which shares only the bus with this view: the region drawn there reaches
-    the ROI panel over it, an edit in the panel reaches the box the same
-    way, and only OK sends a region to the camera, as a property change
-    like any other.
-
-    Attributes
-    ----------
-    sig_property_changed : Signal[str, str, Any]
-        Emitted when the user changes a detector property, with the detector
-        name, the property name and the new value.
-    sig_roi_selection : Signal[str, bool]
-        Emitted when the user asks to select a region on a detector's image,
-        or stops: the detector name, and whether the box is wanted.
-    sig_roi_edited : Signal[str, Roi]
-        Emitted when the user edits the region in a detector's panel, for
-        the box on its image to follow.
+    One property panel per detector in a tabbed widget; edits go out on
+    `sig_property_changed`. Images are shown by
+    [`ImageView`][redsun_mimir.view.ImageView], which shares only signals
+    with this view: the region drawn there reaches the ROI panel over one,
+    an edit in the panel reaches the box the same way, and only OK sends a
+    region to the camera, as a property change like any other.
     """
 
+    placement: Placement = Dock("right")
+
     sig_property_changed = Signal(str, str, object)
+    """Emitted when the user changes a detector property, with the detector
+    name, the property name and the new value."""
+
     sig_roi_selection = Signal(str, bool)
+    """Emitted when the user asks to select a region on a detector's image,
+    or stops: the detector name, and whether the box is wanted."""
+
     sig_roi_edited = Signal(str, object)
+    """Emitted with the detector name and a `Roi` when the user edits the
+    region in a detector's panel, for the box on its image to follow."""
 
-    @property
-    def view_position(self) -> ViewPosition:
-        """The position in the main view."""
-        return ViewPosition.RIGHT
-
-    def __init__(
-        self,
-        name: str,
-        /,
-    ) -> None:
-        super().__init__(name)
+    def __init__(self, name: str, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self.name = name
 
         self.settings_tab_widget = QtWidgets.QTabWidget()
         self.settings_tab_widget.setMinimumWidth(300)
@@ -286,16 +276,9 @@ class DetectorView(QtView, Loggable):
 
         self.logger.info("Initialized")
 
-    def register_providers(self, container: VirtualContainer) -> None:
-        """Register the view's signals with the container."""
-        container.register_signals(self)
-
-    def inject_dependencies(self, container: VirtualContainer) -> None:
-        """Build the settings panels from the detector presenter's snapshots."""
-        self.setup_ui(
-            container.require(DETECTOR_DESCRIPTORS),
-            container.require(DETECTOR_READINGS),
-        )
+    def setup(self, detectors: DescribesDetectors) -> None:
+        """Build the settings panels of every detector *detectors* describes."""
+        self.setup_ui(detectors.detector_descriptors(), detectors.detector_readings())
 
     def setup_ui(
         self,
@@ -344,6 +327,19 @@ class DetectorView(QtView, Loggable):
             widget.set_locked(detector in names)
 
     @slot
+    def on_frames_written(self, detector: str, count: int) -> None:
+        """Show how many frames *detector*'s capture has written so far."""
+        widget = self.settings_controls.get(detector)
+        if widget is not None:
+            widget.written_label.setText(f"Written: {count} frames")
+
+    @slot
+    def clear_frames_written(self, plan: str) -> None:
+        """Clear every count of written frames, as the plan *plan* starts."""
+        for widget in self.settings_controls.values():
+            widget.written_label.clear()
+
+    @slot
     def on_roi_drawn(self, detector: str, roi: Roi) -> None:
         """Fill *detector*'s editor with the region dragged on its image."""
         widget = self.settings_controls.get(detector)
@@ -352,17 +348,16 @@ class DetectorView(QtView, Loggable):
 
     @slot
     def on_new_configuration(self, detector: str, key: str, value: Any) -> None:
-        """Clear the pending edit for *key* once the presenter applied it.
+        """Show *value*, what the device read back, for the setting *key*.
 
-        Reached only after a successful ``set``: a failure is logged by the
-        presenter and leaves the pending value in place. *key* is the
-        ``name-property`` key of the setting, *value* what the device reads
-        back.
+        Settles an edit pending on *key*, the `name-property` key of the
+        setting. Reached only after a successful `set`: a failure is logged
+        by the presenter and leaves the pending value in place.
         """
         widget = self.settings_controls.get(detector)
         if widget is None:
             self.logger.warning(f"No settings panel for detector {detector!r}")
             return
-        widget.tree_view.confirm_change(key, True)
+        widget.tree_view.set_value(key, value)
         if key == f"{detector}-roi" and widget.roi_panel is not None:
             widget.roi_panel.apply(Roi.parse(str(value)))

@@ -18,26 +18,21 @@ from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
-from redsun.engine import DEFERRALS, Deferrals, RunEngine
-from redsun.engine.actions import SRLatch
-from redsun.virtual import VirtualContainer
-from redsun.writers._base import root_attributes
+from redsun.engine import Deferrals, RunEngine
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
 from redsun_mimir.device._mocks import MockLightDevice
+from redsun_mimir.plans import capture
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
-from redsun_mimir.presenter.median import MedianPresenter
+from redsun_mimir.presenter.median import SCAN, MedianPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
-from redsun_mimir.protocols import DetectorProtocol
-from redsun_mimir.providers import (
-    DETECTOR_DESCRIPTORS,
-    DETECTOR_LAYER_SPECS,
-    LIGHT_CONFIGURATION,
-    MOTOR_DESCRIPTION,
-    MOTOR_READBACKS,
-    MOTOR_READINGS,
+from redsun_mimir.protocols import (
+    DescribesDetectors,
+    DescribesLights,
+    DescribesMotors,
+    DetectorProtocol,
 )
 from tests.conftest import FakeDetector, FakeFlyer, FakeXYStage
 
@@ -54,143 +49,27 @@ if TYPE_CHECKING:
     from ophyd_async.core import SignalRW
 
 
-class TestMotorPresenter:
-    """Tests for MotorPresenter."""
-
-    @pytest.fixture
-    def controller(
-        self, motor_stage: FakeXYStage
-    ) -> Generator[MotorPresenter, None, None]:
-        ctrl = MotorPresenter("motor_presenter", {motor_stage.name: motor_stage})
-        yield ctrl
-        ctrl.shutdown()
-
-    def test_register_providers(
-        self, controller: MotorPresenter, virtual_container: VirtualContainer
-    ) -> None:
-        """register_providers() binds the motor snapshots to their keys."""
-        controller.register_providers(virtual_container)
-        readings = virtual_container.require(MOTOR_READINGS)
-        description = virtual_container.require(MOTOR_DESCRIPTION)
-        readbacks = virtual_container.require(MOTOR_READBACKS)
-        assert any("xystage" in k for k in readings)
-        assert any("xystage" in k for k in description)
-        assert set(readbacks) == set(readings)
-
-    async def test_move_applies_a_delta(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """move() displaces the axis from wherever it currently is."""
-        await controller.move(motor_stage.name, "x", 10.0)
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
-
-    async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:
-        """move() on a name that is not a tracked motor raises KeyError."""
-        with pytest.raises(KeyError):
-            await controller.move("does-not-exist", "x", 1.0)
-
-    async def test_concurrent_steps_all_apply(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Two moves issued together are two displacements, not one.
-
-        The emitter no longer blocks, so both requests are in flight at once.
-        Without the per-device lock each would read the same starting position
-        and the second would overwrite rather than add.
-        """
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.move(motor_stage.name, "x", 10.0),
-        )
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(20.0)
-
-    async def test_opposite_steps_cancel_out(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """A reversal issued mid-move nets to zero rather than racing."""
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.move(motor_stage.name, "x", -10.0),
-        )
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(0.0)
-
-    def test_shutdown_does_not_raise(self, motor_stage: FakeXYStage) -> None:
-        """shutdown() completes even for a device with no async shutdown."""
-        ctrl = MotorPresenter("motor_presenter", {motor_stage.name: motor_stage})
-        ctrl.shutdown()  # must not raise
-
-
-class TestLightPresenter:
-    """Tests for LightPresenter."""
-
-    @pytest.fixture
-    def devices(
-        self, mock_led: MockLightDevice, mock_laser: MockLightDevice
-    ) -> dict[str, MockLightDevice]:
-        return {"led": mock_led, "laser": mock_laser}
-
-    @pytest.fixture
-    def controller(self, devices: dict[str, MockLightDevice]) -> LightPresenter:
-        return LightPresenter("light_presenter", devices)
-
-    def test_register_providers(
-        self, controller: LightPresenter, virtual_container: VirtualContainer
-    ) -> None:
-        """register_providers() binds the light snapshots to their keys."""
-        controller.register_providers(virtual_container)
-        cfg = virtual_container.require(LIGHT_CONFIGURATION)
-        assert any("led" in k for k in cfg)
-
-    async def test_trigger_toggles_led(
-        self, controller: LightPresenter, mock_led: MockLightDevice
-    ) -> None:
-        """trigger() toggles the target light source (async method)."""
-        assert await mock_led.enabled.get_value() is False
-        await controller.trigger("led")
-        assert await mock_led.enabled.get_value() is True
-        await controller.trigger("led")
-        assert await mock_led.enabled.get_value() is False
-
-    async def test_set_intensity(
-        self, controller: LightPresenter, mock_laser: MockLightDevice
-    ) -> None:
-        """set() updates the intensity of the target light source (async method)."""
-        await controller.set("laser", 75.0)
-        assert await mock_laser.intensity.get_value() == pytest.approx(75.0)
-
-    async def test_binary_source_refuses_intensity(
-        self, mock_binary_led: MockLightDevice
-    ) -> None:
-        """A binary source keeps the signal but ignores requests to set it."""
-        ctrl = LightPresenter("light_presenter", {"binary_led": mock_binary_led})
-
-        await ctrl.set("binary_led", 42.0)
-
-        assert await mock_binary_led.intensity.get_value() == pytest.approx(0.0)
-
-    async def test_binary_source_still_toggles(
-        self, mock_binary_led: MockLightDevice
-    ) -> None:
-        """Only intensity is refused; on/off is the whole point of the device."""
-        ctrl = LightPresenter("light_presenter", {"binary_led": mock_binary_led})
-
-        await ctrl.trigger("binary_led")
-
-        assert await mock_binary_led.enabled.get_value() is True
-
-    def test_non_light_devices_are_excluded(self, motor_stage: FakeXYStage) -> None:
-        """A device that does not satisfy LightProtocol is not included in _lights."""
-        devices: dict[str, Any] = {"motor": motor_stage}
-        ctrl = LightPresenter("light_presenter", devices)
-        assert "motor" not in ctrl._lights
+def root_attributes(store: Path) -> dict[str, Any]:
+    """Return the attributes a Zarr v3 array or group at *store* carries."""
+    attributes: dict[str, Any] = json.loads((store / "zarr.json").read_text())[
+        "attributes"
+    ]
+    return attributes
 
 
 async def set_roi(detector: DetectorProtocol, roi: tuple[int, int, int, int]) -> None:
     """Crop *detector* to *roi*, given as ``x, y, width, height``."""
     await detector.roi.set(str(Roi(*roi)))
+
+
+class EngineHolder:
+    """Holds the deferrals of an engine, as the presenter running plans does."""
+
+    def __init__(self, engine: RunEngine) -> None:
+        self.deferrals = Deferrals(engine)
+
+    def plan_deferrals(self) -> Deferrals:
+        return self.deferrals
 
 
 class FakeFuture:
@@ -214,9 +93,11 @@ class FakeEngine:
         self.future = future
         self.state = state
         self.plans: list[Any] = []
+        self.subs: list[list[Any]] = []
 
-    def __call__(self, plan: Any) -> FakeFuture:
+    def __call__(self, plan: Any, subs: list[Any] | None = None) -> FakeFuture:
         self.plans.append(plan)
+        self.subs.append(subs or [])
         return self.future
 
     def stop(self) -> None:
@@ -236,22 +117,118 @@ class _MedianSource:
     buffer: SignalRW[np.ndarray]
 
 
+class TestMotorPresenter:
+    """Tests for MotorPresenter."""
+
+    @pytest.fixture
+    def controller(
+        self, motor_stage: FakeXYStage
+    ) -> Generator[MotorPresenter, None, None]:
+        yield MotorPresenter("motor_presenter", motors={motor_stage.name: motor_stage})
+
+    def test_describes_its_motors(self, controller: MotorPresenter) -> None:
+        """Describe every axis, and return a readback for each axis read."""
+        assert isinstance(controller, DescribesMotors)
+        readings = controller.motor_readings()
+        assert any("xystage" in k for k in readings)
+        assert any("xystage" in k for k in controller.motor_descriptors())
+        assert set(controller.devices_readbacks()) == set(readings)
+
+    async def test_move_applies_a_delta(
+        self, controller: MotorPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """Move an axis by a delta from wherever it stands."""
+        await controller.move(motor_stage.name, "x", 10.0)
+
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
+
+    async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:
+        """Raise `KeyError` for a motor the presenter does not track."""
+        with pytest.raises(KeyError):
+            await controller.move("does-not-exist", "x", 1.0)
+
+    async def test_concurrent_steps_all_apply(
+        self, controller: MotorPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """Apply both of two moves issued together, one after the other."""
+        await asyncio.gather(
+            controller.move(motor_stage.name, "x", 10.0),
+            controller.move(motor_stage.name, "x", 10.0),
+        )
+
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(20.0)
+
+    async def test_opposite_steps_cancel_out(
+        self, controller: MotorPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """Net two opposite moves issued together to zero."""
+        await asyncio.gather(
+            controller.move(motor_stage.name, "x", 10.0),
+            controller.move(motor_stage.name, "x", -10.0),
+        )
+
+        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(0.0)
+
+
+class TestLightPresenter:
+    """Tests for LightPresenter."""
+
+    @pytest.fixture
+    def devices(
+        self, mock_led: MockLightDevice, mock_laser: MockLightDevice
+    ) -> dict[str, MockLightDevice]:
+        return {"led": mock_led, "laser": mock_laser}
+
+    @pytest.fixture
+    def controller(self, devices: dict[str, MockLightDevice]) -> LightPresenter:
+        return LightPresenter("light_presenter", lights=devices)
+
+    def test_describes_its_lights(self, controller: LightPresenter) -> None:
+        """Describe and read every light source."""
+        assert isinstance(controller, DescribesLights)
+        assert any("led" in k for k in controller.light_readings())
+        assert any("led" in k for k in controller.light_descriptors())
+
+    async def test_trigger_toggles_led(
+        self, controller: LightPresenter, mock_led: MockLightDevice
+    ) -> None:
+        """Toggle a light source on and off."""
+        assert await mock_led.enabled.get_value() is False
+        await controller.trigger("led")
+        assert await mock_led.enabled.get_value() is True
+        await controller.trigger("led")
+        assert await mock_led.enabled.get_value() is False
+
+    async def test_set_intensity(
+        self, controller: LightPresenter, mock_laser: MockLightDevice
+    ) -> None:
+        """Set the intensity of a light source."""
+        await controller.set("laser", 75.0)
+        assert await mock_laser.intensity.get_value() == pytest.approx(75.0)
+
+    async def test_binary_source_refuses_intensity(
+        self, mock_binary_led: MockLightDevice
+    ) -> None:
+        """Ignore an intensity asked of a binary source."""
+        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
+
+        await ctrl.set("binary_led", 42.0)
+
+        assert await mock_binary_led.intensity.get_value() == pytest.approx(0.0)
+
+    async def test_binary_source_still_toggles(
+        self, mock_binary_led: MockLightDevice
+    ) -> None:
+        """Toggle a binary source."""
+        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
+
+        await ctrl.trigger("binary_led")
+
+        assert await mock_binary_led.enabled.get_value() is True
+
+
 class TestMedianPresenter:
     """Tests for the document-driven MedianPresenter."""
-
-    def test_instantiation_tracks_only_buffered_devices(
-        self, motor_stage: FakeXYStage
-    ) -> None:
-        """Only devices exposing a `buffer` are tracked."""
-        buf = soft_signal_rw(
-            np.ndarray, initial_value=np.zeros((2, 2)), name="cam-buffer"
-        )
-        devices: dict[str, Any] = {
-            "cam": _MedianSource(buffer=buf),
-            "motor": motor_stage,
-        }
-        presenter = MedianPresenter("median_presenter", devices)
-        assert presenter._sources == {"cam-buffer"}
 
     @staticmethod
     def capture(presenter: MedianPresenter, store: Path, scan_run: str | None) -> None:
@@ -335,19 +312,12 @@ class TestMedianPresenter:
     async def test_document_flow_computes_writes_and_emits_median(
         self, tmp_path: Path, motor_stage: FakeXYStage
     ) -> None:
-        """descriptor->events->stop produces the median, emits it once, writes it.
-
-        The scan and the capture are runs nested in the live plan's; the store
-        is the one the capture names, and the scan's stack lands in it as a key
-        of its own once the capture stops, naming the scan it came from and
-        carrying one record per frame, its id and the axis positions it was
-        taken at.
-        """
+        """Emit the median once and write the stack, with its positions, to the capture's store."""
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         received: list[dict[str, Any]] = []
         presenter.frames.median.connect(received.append)
         engine = RunEngine()
@@ -388,12 +358,12 @@ class TestMedianPresenter:
     async def test_a_capture_before_the_scan_gets_no_stack(
         self, tmp_path: Path
     ) -> None:
-        """A capture with no scan behind it names no scan and takes nothing."""
+        """Write no stack for a capture with no scan behind it."""
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         engine = RunEngine()
         engine.subscribe(presenter)
 
@@ -412,11 +382,12 @@ class TestMedianPresenter:
     async def test_shutdown_closes_a_store_the_run_left_open(
         self, tmp_path: Path
     ) -> None:
+        """Close at shutdown a store a capture left open, so its stack is readable."""
         frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
         store = tmp_path / "acquisition.zarr"
         buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
         engine = RunEngine()
         engine.subscribe(presenter)
         presenter("start", {"uid": "outer", "time": 0.0})
@@ -462,18 +433,14 @@ class TestMedianPresenter:
     async def test_live_frames_are_divided_by_the_cached_median(
         self, tmp_path: Path
     ) -> None:
-        """After a scan, live frames are corrected and published as their own layer.
-
-        This is the whole point of the presenter: cache the background stack,
-        reduce it to a median, then divide every subsequent live frame by it.
-        """
+        """Divide live frames by the cached median and publish them as their own layer."""
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -542,19 +509,14 @@ class TestMedianPresenter:
     async def test_monitor_drives_the_correction_through_the_run_engine(
         self, tmp_path: Path
     ) -> None:
-        """End-to-end: bps.monitor turns live frames into corrected documents.
-
-        Pins the whole pipeline the presenter exists for - scan documents in,
-        median out, then every monitored live frame divided by it - against a
-        real RunEngine rather than hand-built documents.
-        """
+        """Correct monitored live frames on a real engine after a scan."""
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -591,14 +553,14 @@ class TestMedianPresenter:
         np.testing.assert_allclose(values[-1], np.full((4, 4), 4.0))
 
     async def test_live_frames_without_a_median_are_not_emitted(self) -> None:
-        """Before any scan there is no background to divide by."""
+        """Emit no corrected frame before any scan."""
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
             name="cam-buffer",
         )
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         filtered: list[dict[str, Any]] = []
         presenter.frames.filtered.connect(filtered.append)
@@ -628,7 +590,7 @@ class TestMedianPresenter:
         assert filtered == []
 
     async def test_descriptor_ignores_unrelated_sources(self, tmp_path: Path) -> None:
-        """A descriptor whose data_keys do not include a tracked buffer is ignored."""
+        """Ignore a stream carrying no tracked buffer."""
         buf = soft_signal_rw(
             np.ndarray,
             initial_value=np.zeros((4, 4), dtype="uint16"),
@@ -636,7 +598,7 @@ class TestMedianPresenter:
         )
         other = soft_signal_rw(float, initial_value=0.0, name="other-signal")
         devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
-        presenter = MedianPresenter("median_presenter", devices)
+        presenter = MedianPresenter("median_presenter", sources=devices)
 
         received: list[dict[str, Any]] = []
         presenter.frames.median.connect(received.append)
@@ -655,6 +617,37 @@ class TestMedianPresenter:
         assert received == []
         assert presenter.medians == {}
 
+    def test_the_square_scan_takes_a_frame_before_every_move(
+        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+    ) -> None:
+        """Take a frame before every move, so the stack starts where the motor stands."""
+        presenter = MedianPresenter("median_ctrl", sources={})
+        simulator = RunEngineSimulator()
+        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+
+        messages = simulator.simulate_plan(
+            presenter.square_scan([fake_detector], motor_stage, 5.0, 1)
+        )
+
+        assert [
+            (msg.command, getattr(msg.obj, "name", None))
+            for msg in messages
+            if msg.command in {"trigger", "save", "set"}
+        ] == [
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-x"),
+            ("trigger", "cam"),
+            ("save", None),
+            ("set", "xystage-axis-y"),
+        ]
+
 
 class TestDetectorPresenter:
     """Tests for DetectorPresenter."""
@@ -663,43 +656,70 @@ class TestDetectorPresenter:
     def controller(
         self, fake_detector: FakeDetector
     ) -> Generator[DetectorPresenter, None, None]:
-        yield DetectorPresenter("det_ctrl", {fake_detector.name: fake_detector})
+        yield DetectorPresenter(
+            "det_ctrl", detectors={fake_detector.name: fake_detector}
+        )
 
     def test_instantiation(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
-        """Controller identifies the detector device and its buffer key."""
+        """Track the detector and the data key of its buffer."""
         assert fake_detector.name in controller.detectors
         assert fake_detector.buffer.name in controller._buffer_keys
 
-    def test_register_providers(
-        self, controller: DetectorPresenter, virtual_container: VirtualContainer
-    ) -> None:
-        """register_providers() populates detector providers on the container."""
-        controller.register_providers(virtual_container)
-        specs = virtual_container.require(DETECTOR_LAYER_SPECS)
-        assert "cam" in specs
+    def test_describes_its_detectors(self, controller: DetectorPresenter) -> None:
+        """Describe, read and lay out every detector."""
+        assert isinstance(controller, DescribesDetectors)
+        assert "cam" in controller.detector_layer_specs()
+        assert "cam-exposure" in controller.detector_readings()
 
     def test_a_setting_the_presenter_cannot_write_is_described_read_only(
-        self, controller: DetectorPresenter, virtual_container: VirtualContainer
+        self, controller: DetectorPresenter
     ) -> None:
-        """The settings tree greys a source ending in ``:readonly``."""
-        controller.register_providers(virtual_container)
-        described = virtual_container.require(DETECTOR_DESCRIPTORS)
+        """Append `:readonly` to the source of a setting the presenter cannot write."""
+        described = controller.detector_descriptors()
 
         assert described["cam-sensor_size"]["source"].endswith(":readonly")
         assert not described["cam-pixel_dtype"]["source"].endswith(":readonly")
         assert not described["cam-exposure"]["source"].endswith(":readonly")
         assert not described["cam-roi"]["source"].endswith(":readonly")
 
+    def test_the_frames_a_capture_writes_are_counted_per_detector(
+        self, controller: DetectorPresenter, fake_detector: FakeDetector
+    ) -> None:
+        """Count the frames each collect reports, from zero for every new capture."""
+        written: list[tuple[str, int]] = []
+        controller.sig_frames_written.connect(lambda *args: written.append(args))
+
+        def resource(uid: str, data_key: str) -> None:
+            controller("stream_resource", {"uid": uid, "data_key": data_key})
+
+        def datum(resource_uid: str, start: int, stop: int) -> None:
+            controller(
+                "stream_datum",
+                {
+                    "uid": f"{resource_uid}/{start}",
+                    "stream_resource": resource_uid,
+                    "indices": {"start": start, "stop": stop},
+                    "seq_nums": {"start": start + 1, "stop": stop + 1},
+                    "descriptor": "desc",
+                },
+            )
+
+        resource("first", fake_detector.name)
+        datum("first", 0, 5)
+        datum("first", 5, 12)
+        resource("second", fake_detector.name)
+        datum("second", 0, 3)
+        resource("other", "not-a-detector")
+        datum("other", 0, 4)
+
+        assert written == [("cam", 5), ("cam", 12), ("cam", 3)]
+
     def test_live_events_are_forwarded_raw(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
-        """Frames arrive as Event documents and are forwarded unmodified.
-
-        Median correction belongs to MedianPresenter, which publishes it on
-        its own signal as a separate layer.
-        """
+        """Forward the frames of a live event unmodified."""
         key = fake_detector.buffer.name
         received: list[dict[str, Any]] = []
         controller.sig_new_data.connect(received.append)
@@ -727,8 +747,8 @@ class TestDetectorPresenter:
     def test_a_frame_is_forwarded_with_the_roi_it_was_taken_with(
         self, fake_detector: FakeDetector
     ) -> None:
-        """A cropped frame is placed by its ROI, so the two travel together."""
-        presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
+        """Forward a frame with the ROI it was taken with."""
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
         received: list[dict[str, Any]] = []
         presenter.sig_new_data.connect(received.append)
         presenter.descriptor(
@@ -759,8 +779,8 @@ class TestDetectorPresenter:
     def test_shutdown_stops_following_the_rois(
         self, fake_detector: FakeDetector
     ) -> None:
-        """No subscription outlives the presenter, so none is left pending."""
-        presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
+        """Stop following the ROIs at shutdown."""
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
         received: list[dict[str, Any]] = []
         presenter.sig_new_data.connect(received.append)
         presenter.descriptor(
@@ -791,16 +811,19 @@ class TestDetectorPresenter:
     def test_a_layer_is_the_size_of_the_sensor_whatever_the_roi(
         self, fake_detector: FakeDetector
     ) -> None:
+        """Size a layer as the whole sensor, whatever the ROI."""
         run_coro(set_roi(fake_detector, (1, 1, 3, 2)))
 
-        specs = DetectorPresenter("det_ctrl", {"cam": fake_detector}).layer_specs()
+        specs = DetectorPresenter(
+            "det_ctrl", detectors={"cam": fake_detector}
+        ).detector_layer_specs()
 
         assert specs["cam"]["shape"] == (4, 6)
 
     def test_events_from_unknown_streams_are_ignored(
         self, controller: DetectorPresenter
     ) -> None:
-        """An event whose descriptor was never routed emits nothing."""
+        """Ignore an event whose descriptor was never routed."""
         received: list[dict[str, Any]] = []
         controller.sig_new_data.connect(received.append)
 
@@ -814,13 +837,12 @@ class TestDetectorPresenter:
         assert received == []
 
     async def test_a_roi_change_during_a_plan_lands_between_two_messages(
-        self, fake_detector: FakeDetector, virtual_container: VirtualContainer
+        self, fake_detector: FakeDetector
     ) -> None:
-        """Applied inside a point, a ROI would put two frame shapes in one stream."""
+        """Apply a ROI asked for during a plan between two of its messages."""
         engine = RunEngine()
-        virtual_container.provide(DEFERRALS, Deferrals(engine))
-        presenter = DetectorPresenter("det_ctrl", {"cam": fake_detector})
-        presenter.inject_dependencies(virtual_container)
+        presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
+        presenter.setup(EngineHolder(engine))
         announced: list[tuple[str, str, Any]] = []
         presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
         # a message the test holds open, so the change cannot land before the
@@ -854,7 +876,7 @@ class TestDetectorPresenter:
         fake_detector: FakeDetector,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """A write the device refuses reaches the log, not the caller's slot."""
+        """Log a setting the device refuses, and announce nothing."""
         received: list[tuple[str, str, Any]] = []
         controller.sig_new_configuration.connect(
             lambda d, k, v: received.append((d, k, v))
@@ -868,7 +890,7 @@ class TestDetectorPresenter:
     async def test_set_exposure_emits_new_configuration(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
     ) -> None:
-        """set() applies the setting and emits sig_new_configuration."""
+        """Apply a setting and announce its new value."""
         received: list[tuple[str, str, Any]] = []
         controller.sig_new_configuration.connect(
             lambda d, k, v: received.append((d, k, v))
@@ -893,132 +915,90 @@ class TestAcquisitionPresenter:
     def controller(
         self, devices: dict[str, Any]
     ) -> Generator[AcquisitionPresenter, None, None]:
-        ctrl = AcquisitionPresenter("acq_ctrl", devices)
+        ctrl = AcquisitionPresenter("acq_ctrl", devices=devices)
+        ctrl.setup({ctrl.name: ctrl}, {})
         yield ctrl
         ctrl.shutdown()
 
-    def test_a_directory_request_is_announced_when_no_plan_runs(
-        self, controller: AcquisitionPresenter
+    def test_setup_collects_the_plans_of_every_component(
+        self, devices: dict[str, Any]
     ) -> None:
-        """The session's path provider learns where a run writes from here."""
-        announced: list[str] = []
-        controller.sig_base_dir_changed.connect(announced.append)
-
-        controller.set_base_dir("D:/mimir-data")
-
-        assert announced == ["D:/mimir-data"]
-
-    def test_a_directory_request_during_a_plan_is_refused(
-        self, controller: AcquisitionPresenter
-    ) -> None:
-        """A run's files belong under one root, so the change waits for it.
-
-        The path provider refuses such a change itself, raising into whatever
-        emitted it; this keeps the request from reaching it at all.
-        """
-        announced: list[str] = []
-        controller.sig_base_dir_changed.connect(announced.append)
-        running: Future[None] = Future()
-        controller.futures.add(running)
+        """Collect the plans of every component offering them, its own included."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={})
         try:
-            controller.set_base_dir("D:/mimir-data")
-        finally:
-            # the presenter reads this set to know a plan is in flight, and
-            # its own shutdown reads it too
-            controller.futures.discard(running)
-
-        assert announced == []
-
-    def test_registered_callbacks_are_subscribed_by_default(
-        self,
-        devices: dict[str, Any],
-        virtual_container: VirtualContainer,
-    ) -> None:
-        """Every registered document callback reaches the engine.
-
-        Live visualization and median filtering are document-driven, so a
-        callback that is registered but never subscribed is a silently blank
-        viewer - which is exactly what an empty default produced.
-        """
-        detector = DetectorPresenter("det_ctrl", devices)
-        median = MedianPresenter("median_ctrl", devices)
-        acquisition = AcquisitionPresenter("acq_ctrl", devices)
-        try:
-            for presenter in (detector, median, acquisition):
-                presenter.register_providers(virtual_container)
-            # only the acquisition presenter still has one: the others lost
-            # theirs with the connections they used to make
-            acquisition.inject_dependencies(virtual_container)
-
-            assert set(virtual_container.callbacks) == {"det_ctrl", "median_ctrl"}
-            assert set(acquisition.callback_tokens) == set(virtual_container.callbacks)
+            acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
         finally:
             acquisition.shutdown()
 
-    def test_explicit_callback_list_restricts_the_selection(
-        self,
-        devices: dict[str, Any],
-        virtual_container: VirtualContainer,
-    ) -> None:
-        """An explicit list still wins; an empty list subscribes nothing."""
-        detector = DetectorPresenter("det_ctrl", devices)
-        median = MedianPresenter("median_ctrl", devices)
-        acquisition = AcquisitionPresenter("acq_ctrl", devices, callbacks=["det_ctrl"])
-        try:
-            for presenter in (detector, median, acquisition):
-                presenter.register_providers(virtual_container)
-            # only the acquisition presenter still has one: the others lost
-            # theirs with the connections they used to make
-            acquisition.inject_dependencies(virtual_container)
+        assert set(acquisition.plan_specs) == {"live_stream", "live_median_scan"}
 
-            assert set(acquisition.callback_tokens) == {"det_ctrl"}
+    def test_a_plan_no_device_can_fill_is_left_out(self) -> None:
+        """Leave out a plan asking for a device the session does not have."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices={})
+        try:
+            acquisition.setup({"acq_ctrl": acquisition}, {})
         finally:
             acquisition.shutdown()
 
-    def test_plan_specs_built_for_both_plans_with_matching_devices(
-        self, controller: AcquisitionPresenter
+        assert acquisition.plan_specs == {}
+
+    def test_a_run_gets_the_callbacks_of_its_plan_then_the_attached_ones(
+        self,
+        devices: dict[str, Any],
+        fake_flyer: FakeFlyer,
+        motor_stage: FakeXYStage,
     ) -> None:
-        """Both live_stream and live_median_scan get a PlanSpec when devices match."""
-        assert set(controller.plan_specs) == {"live_stream", "live_median_scan"}
+        """Subscribe for each run only its plan's callbacks and the attached ones."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
+        detector = DetectorPresenter(
+            "det_ctrl", detectors={fake_flyer.name: fake_flyer}
+        )
+        acquisition.setup(
+            {"acq_ctrl": acquisition, "median_ctrl": median},
+            {"det_ctrl": detector, "median_ctrl": median},
+        )
+        first, second = FakeFuture(), FakeFuture()
+        engine = FakeEngine(first)
+        acquisition.engine = engine  # type: ignore[assignment]
 
-    def test_plan_specs_empty_without_matching_devices(self) -> None:
-        """A required Sequence[ReadableFlyer]/MotorProtocol param with no match skips the plan."""
-        ctrl = AcquisitionPresenter("acq_ctrl", {})
-        assert ctrl.plan_specs == {}
+        acquisition.launch_plan(
+            "live_median_scan",
+            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
+            ["det_ctrl"],
+        )
+        first.settle()
+        engine.future = second
+        acquisition.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        second.settle()
 
-    def test_the_square_scan_takes_a_frame_before_every_move(
-        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+        assert engine.subs == [[median, detector], []]
+
+    def test_an_action_reaches_the_component_offering_the_running_plan(
+        self,
+        devices: dict[str, Any],
+        fake_flyer: FakeFlyer,
+        motor_stage: FakeXYStage,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """The stack starts where the motor stands; the last move closes the square."""
-        presenter = AcquisitionPresenter("acq_ctrl", {})
-        simulator = RunEngineSimulator()
-        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+        """Pass an action request to the actions of the running plan's component."""
+        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
+        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
+        acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
+        acquisition.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
+        acquisition.launch_plan(
+            "live_median_scan",
+            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
+        )
+        waiting = median.actions.wait(SCAN)
+        next(waiting)
 
-        try:
-            messages = simulator.simulate_plan(
-                presenter.square_scan([fake_detector], motor_stage, 5.0, 1)
-            )
-        finally:
-            presenter.shutdown()
+        acquisition.request_action("scan", True)
 
-        assert [
-            (msg.command, getattr(msg.obj, "name", None))
-            for msg in messages
-            if msg.command in {"trigger", "save", "set"}
-        ] == [
-            ("trigger", "cam"),
-            ("save", None),
-            ("set", "xystage-axis-x"),
-            ("trigger", "cam"),
-            ("save", None),
-            ("set", "xystage-axis-y"),
-            ("trigger", "cam"),
-            ("save", None),
-            ("set", "xystage-axis-x"),
-            ("trigger", "cam"),
-            ("save", None),
-            ("set", "xystage-axis-y"),
-        ]
+        wait_message = next(waiting)
+        assert wait_message.args[0]["scan"].is_set()
+        assert "refused" not in caplog.text
 
     def test_launch_plan_argument_round_trip_and_pre_launch_notify(
         self,
@@ -1026,29 +1006,9 @@ class TestAcquisitionPresenter:
         fake_flyer: FakeFlyer,
         motor_stage: FakeXYStage,
     ) -> None:
-        """launch_plan() resolves UI values into real devices and fires sig_pre_launch_notify.
-
-        The real ``RunEngine`` is swapped for a recording stub: plan
-        functions are lazy generators, so building the call is enough to
-        exercise ``resolve_arguments``/``collect_arguments`` without
-        actually driving bluesky messages through a background thread.
-        """
-
-        class _FakeFuture:
-            def add_done_callback(self, callback: Any) -> None:
-                del callback
-
-        calls: list[Any] = []
-
-        class _FakeEngine:
-            def __call__(self, plan: Any) -> _FakeFuture:
-                calls.append(plan)
-                return _FakeFuture()
-
-            def abort(self) -> None:
-                """No-op: satisfies AcquisitionPresenter.shutdown()'s abort path."""
-
-        controller.engine = _FakeEngine()  # type: ignore[assignment]
+        """Resolve the values the view sends into a plan, and announce its name first."""
+        engine = FakeEngine(FakeFuture())
+        controller.engine = engine  # type: ignore[assignment]
 
         notified: list[str] = []
         controller.sig_pre_launch_notify.connect(notified.append)
@@ -1059,13 +1019,13 @@ class TestAcquisitionPresenter:
         )
 
         assert notified == ["live_stream"]
-        assert len(calls) == 1
-        assert inspect.isgenerator(calls[0])
+        assert len(engine.plans) == 1
+        assert inspect.isgenerator(engine.plans[0])
 
-    def test_a_togglable_plan_announces_its_end(
+    def test_a_continuous_plan_announces_its_end(
         self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
-        """The path provider and the view learn a stream ended, not only a scan."""
+        """Announce the end of a continuous plan."""
         settled = FakeFuture()
         controller.engine = FakeEngine(settled)  # type: ignore[assignment]
         ended: list[bool] = []
@@ -1076,12 +1036,27 @@ class TestAcquisitionPresenter:
 
         assert ended == [True]
 
+    def test_a_paused_plan_does_not_announce_its_end(
+        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+    ) -> None:
+        """Keep quiet when the future of a run settles because the plan paused."""
+        settled = FakeFuture()
+        controller.engine = FakeEngine(settled, state="paused")  # type: ignore[assignment]
+        ended: list[bool] = []
+        controller.sig_plan_done.connect(lambda: ended.append(True))
+
+        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        settled.settle()
+
+        assert ended == []
+
     def test_a_wrapped_plan_locks_its_devices_until_it_ends(
         self,
         controller: AcquisitionPresenter,
         fake_detector: FakeDetector,
         motor_stage: FakeXYStage,
     ) -> None:
+        """Announce the devices a wrapped plan locks, then none once it ends."""
         seen: list[frozenset[str]] = []
         controller.sig_locks_changed.connect(seen.append)
 
@@ -1094,6 +1069,7 @@ class TestAcquisitionPresenter:
     def test_a_failing_wrapped_plan_unlocks(
         self, controller: AcquisitionPresenter, motor_stage: FakeXYStage
     ) -> None:
+        """Unlock the devices of a wrapped plan that fails."""
         seen: list[frozenset[str]] = []
         controller.sig_locks_changed.connect(seen.append)
 
@@ -1109,7 +1085,7 @@ class TestAcquisitionPresenter:
     def test_stopping_an_idle_engine_is_nothing(
         self, controller: AcquisitionPresenter
     ) -> None:
-        """A Stop after a plan ended on its own must not raise into a Qt slot."""
+        """Do nothing when asked to stop an idle engine."""
         controller.engine = FakeEngine(FakeFuture(), state="idle")  # type: ignore[assignment]
 
         controller.stop_plan()
@@ -1117,7 +1093,7 @@ class TestAcquisitionPresenter:
     def test_a_launch_while_a_plan_runs_is_refused(
         self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
-        """A second plan would take the running one's action latches with it."""
+        """Refuse to launch a plan while another runs."""
         engine = FakeEngine(FakeFuture())
         controller.engine = engine  # type: ignore[assignment]
         running: Future[None] = Future()
@@ -1129,21 +1105,26 @@ class TestAcquisitionPresenter:
 
         assert engine.plans == []
 
-    def test_a_latch_left_set_by_a_stop_does_not_fire_the_next_launch(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
+
+class TestCapture:
+    """Tests for the plan stub flying detectors to disk."""
+
+    def test_an_open_capture_collects_while_it_waits(
+        self, fake_flyer: FakeFlyer
     ) -> None:
-        controller.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
-        stale = SRLatch()
-        stale.set()
-        controller.action_map["stream"] = stale
+        """Collect what was written while the window waits, not only at its close."""
 
-        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+        def waiting() -> MsgGenerator[None]:
+            for _ in range(3):
+                yield from bps.sleep(0.25)
 
-        assert not stale.is_set()
+        simulator = RunEngineSimulator()
+        simulator.add_handler("wait", lambda msg: True)
 
-    def test_toggle_action_event_unknown_action_raises(
-        self, controller: AcquisitionPresenter
-    ) -> None:
-        """toggle_action_event() on a name with no registered latch raises KeyError."""
-        with pytest.raises(KeyError):
-            controller.toggle_action_event("does-not-exist", True)
+        messages = simulator.simulate_plan(
+            capture([fake_flyer], "stream", parent="live", until=waiting())
+        )
+
+        commands = [msg.command for msg in messages]
+        window = commands[commands.index("kickoff") : commands.index("complete")]
+        assert "collect" in window
