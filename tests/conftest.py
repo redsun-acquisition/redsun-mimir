@@ -304,7 +304,7 @@ def uc2_service(start_service: StartService) -> Service:
             "redsun_mimir.services.uc2_controller",
             prefix=UC2_PREFIX,
             ready=UC2_READY,
-            args=["--port", "loop://", "--no-reset"],
+            args=["--port", "loop://", "--no-reset", "--timeout", "0.1"],
             stop_timeout=10,
         ),
         transport="pv-access",
