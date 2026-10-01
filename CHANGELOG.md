@@ -47,6 +47,8 @@ Dates are specified in the format `DD-MM-YYYY`.
   its page.
 - `MedianPresenter.square_scan` shows the frames it has taken as a progress
   scope named `scan`, against the whole square.
+- `MedianPresenter` logs a warning when it drops a scan stack no capture has
+  stored, when the session closes or the next plan starts.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running

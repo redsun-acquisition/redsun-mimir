@@ -394,6 +394,47 @@ class TestMedianPresenter:
         )
         assert written["shape"] == [3, 4, 4]
 
+    @pytest.mark.parametrize(
+        ("captured", "ending", "warned"),
+        [
+            (False, "shutdown", True),
+            (False, "next plan", True),
+            (True, "shutdown", False),
+            (True, "next plan", False),
+        ],
+    )
+    async def test_a_scan_stack_never_written_is_warned_about(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        captured: bool,
+        ending: str,
+        warned: bool,
+    ) -> None:
+        """Warn when a scan stack is dropped unwritten, at shutdown or the next plan, and not once written."""
+        frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
+        buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
+        presenter = MedianPresenter("median_presenter", sources=devices)
+        engine = RunEngine()
+        engine.subscribe(presenter)
+
+        presenter("start", {"uid": "outer", "time": 0.0})
+        scan_run = self.scan_uid(engine(self.scan(buf, frames)).result(timeout=30))
+        if captured:
+            self.capture(presenter, tmp_path / "acquisition.zarr", scan_run)
+        if ending == "shutdown":
+            presenter.shutdown()
+        else:
+            presenter.clear_medians("live_median_scan")
+
+        dropped = [
+            record
+            for record in caplog.records
+            if record.levelname == "WARNING" and "never written" in record.getMessage()
+        ]
+        assert bool(dropped) is warned
+
     async def test_shutdown_closes_a_store_the_run_left_open(
         self, tmp_path: Path
     ) -> None:

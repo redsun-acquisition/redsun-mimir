@@ -137,6 +137,8 @@ class MedianPresenter(DocumentRouter, Loggable):
         #: the scan run, the stack and the positions each median came from,
         #: until a store takes them
         self._stacks: dict[str, tuple[str, npt.NDArray[Any], Positions]] = {}
+        #: sources whose kept stack no store has received yet
+        self._unwritten: set[str] = set()
 
         # descriptor uid -> (run uid, sources) for the accumulating scan stream
         self._scan_streams: dict[str, tuple[str, list[str]]] = {}
@@ -330,12 +332,22 @@ class MedianPresenter(DocumentRouter, Loggable):
         """Forget every cached median and stack before a new plan."""
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
+        self._warn_unwritten(f"{plan_name!r} started before any capture")
         self.medians.clear()
         self._stacks.clear()
 
     def shutdown(self) -> None:
         """Close what the writer left open, so every store stays readable."""
+        self._warn_unwritten("the session closed before any capture")
         self._writer.shutdown()
+
+    def _warn_unwritten(self, reason: str) -> None:
+        """Warn about every kept stack no store received, then forget them."""
+        for source in sorted(self._unwritten):
+            self.logger.warning(
+                f"Scan stack for {_base_name(source)!r} never written: {reason}"
+            )
+        self._unwritten.clear()
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Route a stream to be accumulated or corrected."""
@@ -423,6 +435,7 @@ class MedianPresenter(DocumentRouter, Loggable):
             median = np.median(stack, axis=0).astype(stack.dtype)
             self.medians[source] = median
             self._stacks[source] = (run, stack, positions)
+            self._unwritten.add(source)
             self.logger.debug(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
@@ -471,3 +484,5 @@ class MedianPresenter(DocumentRouter, Loggable):
             # a run that named no store yet is the usual case, a scan before
             # the stream; the stack is kept and written once one is named
             self.logger.debug(f"Scan stack for {detector!r} not written: {error}")
+        else:
+            self._unwritten.discard(source)
