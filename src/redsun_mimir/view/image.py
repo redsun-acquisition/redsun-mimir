@@ -155,6 +155,9 @@ class ImageView(QtWidgets.QWidget, Loggable):
         splitter.addWidget(self._qt_viewer)
         splitter.setStretchFactor(0, 0)  # left panel: fixed preferred size
         splitter.setStretchFactor(1, 1)  # canvas: takes all remaining space
+        # a collapsed panel leaves only a handle too thin to find, with no
+        # other way to bring it back
+        splitter.setCollapsible(0, False)
 
         main_layout = QtWidgets.QHBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)

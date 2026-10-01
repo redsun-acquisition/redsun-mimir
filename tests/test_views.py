@@ -14,7 +14,7 @@ from napari._app_model import get_app_model
 from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
 from napari.settings import get_settings
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from redsun.engine import ProgressState
 from redsun.engine.actions import PlanAction, continuous
 from redsun.path_provider import SessionPathProvider
@@ -252,6 +252,26 @@ class TestDetectorViewRoi:
 
         assert panel.applied == Roi(1, 1, 3, 2)
         assert not panel.ok_button.isEnabled()
+
+
+@needs_opengl
+def test_the_layer_panel_cannot_be_dragged_away(parent: QtWidgets.QWidget) -> None:
+    """Keep the layer panel on screen when its splitter is dragged to the edge."""
+    view = ImageView("image_view", parent)
+    view.resize(900, 600)
+    view.show()
+    splitter = view.findChild(
+        QtWidgets.QSplitter, options=QtCore.Qt.FindChildOption.FindDirectChildrenOnly
+    )
+    try:
+        assert splitter is not None
+        splitter.setSizes([0, 900])
+        QtWidgets.QApplication.processEvents()
+
+        assert splitter.sizes()[0] > 0
+    finally:
+        view.shutdown()
+        view.close()
 
 
 @needs_opengl
