@@ -5,159 +5,68 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/redsun-mimir.svg?color=green)](https://python.org)
 [![codecov](https://codecov.io/gh/redsun-acquisition/redsun-mimir/branch/main/graph/badge.svg)](https://codecov.io/gh/redsun-acquisition/redsun-mimir)
 
-Bundle of [`redsun`](https://github.com/redsun-acquisition/redsun) components for the openUC2 "Mimir" microscope
+[`redsun`](https://github.com/redsun-acquisition/redsun) components for Mimir,
+a portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy)
+(iSCAT) in development, with a hardware controller by [openUC2](https://openuc2.com/).
 
-## About `mimir`
-
-Mimir is the codename for an in-development portable [interferometric scattering microscope](https://en.wikipedia.org/wiki/Interferometric_scattering_microscopy) (iSCAT), with an hardware controller developed by [openUC2](https://openuc2.com/). The hardware is driven from separate processes: [`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) for the camera and the stages, [`oxiserial`](https://pypi.org/project/oxiserial/) for the openUC2 board. Each runs as a `redsun` service and is reached over PVAccess, served by [`fastcs`](https://github.com/DiamondLightSource/FastCS).
-
-`redsun-mimir` is a bundle of components developed to target the specific hardware and software requirements for real-time acquisition with said microscope.
+Each piece of hardware runs in its own process, as a `redsun` service served
+over PVAccess by [`fastcs`](https://github.com/DiamondLightSource/FastCS):
+[`pymmcore-plus`](https://pymmcore-plus.github.io/pymmcore-plus/) drives the
+camera and stages, [`oxiserial`](https://pypi.org/project/oxiserial/) the
+openUC2 board.
 
 > [!NOTE]
-> This bundle has been used as a staging ground for development in cohesion with the main framework. Some components may be moved to `redsun` itself to be provided as built-in functionalities. Expect breaking changes as the framework evolves.
+> The bundle is a staging ground for `redsun`: some components may move into
+> the framework. Expect breaking changes.
 
 > [!WARNING]
-> The `youseetoo` module has not been fully tested and there is currently no known way of testing it in a continous integration. The service is exercised against a `loop://` serial port, which answers nothing; the board itself is untested. Ensure you can pre-emptively test the components locally.
+> The `youseetoo` module (openUC2 board) is tested only against a `loop://`
+> serial port that answers nothing; the board itself is untested in CI. Test it
+> locally before relying on it.
 
-## Installation
+## Install
 
-It is **strongly reccomended** to install `redsun-mimir` in a virtual environment.
-
-<details open>
-<summary>uv (reccomended)</summary>
-
-> Be sure to [install `uv`](https://docs.astral.sh/uv/getting-started/installation/) first.
+In a virtual environment:
 
 ```bash
-# create the venv
-uv venv --python 3.11
-
-# activate the environment in...
-# ... linux
-source .venv/bin/activate
-
-# ... windows
-.venv\Scripts\activate
-
-uv pip install redsun-mimir
+uv venv --python 3.11      # or: python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+uv pip install redsun-mimir  # or: pip install redsun-mimir
 ```
 
-</details>
-
-<details>
-<summary>pip</summary>
-
-> You should have Python installed in your machine.
-
-```bash
-# create the venv
-python -m venv .venv
-
-# activate the environment in...
-# ... linux
-source .venv/bin/activate
-
-# ... windows
-.venv\Scripts\activate
-
-pip install redsun-mimir
-```
-</details>
-
-### Installing from source
-
-`redsun-mimir` is developed via `uv`; you can clone the repository and install development dependencies:
+From source, with [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
 git clone https://github.com/redsun-acquisition/redsun-mimir
-
 cd redsun-mimir
-
 uv sync
 ```
 
-## Running the simulation session
-
-`redsun-mimir` comes with a simple simulation environment with simulated devices for demonstration purposes.
-
-To run it, you have to:
-
-1. install the package in your virtual environment by adding the `sim` optional dependencies;
-2. run `mmcore install` (or alternatively one of the methods described [here](https://pymmcore-plus.github.io/pymmcore-plus/install/#installing-micro-manager-device-adapters)).
-3. run the session via `mimir sim`.
-
-<details open>
-<summary>uv (reccomended)</summary>
+## Run the simulation
 
 ```bash
-# in your virtual environment
-uv pip install redsun-mimir[sim]
-
-# install micro-manager device adapters
-mmcore install --test-adapters
-
-# run the example session from the command line
+uv pip install "redsun-mimir[sim]"  # or pip
+mmcore install --test-adapters      # Micro-Manager demo adapters
 mimir sim
 ```
 
-</details>
-
-<details>
-<summary>pip</summary>
-
-```bash
-# in your virtual environment
-pip install redsun-mimir[sim]
-
-# install micro-manager device adapters
-mmcore install --test-adapters
-
-# run the example session from the command line
-mimir sim
-```
-</details>
-
-## Installing the napari application hook
-
-`ImageView` embeds a napari viewer but carries no stylesheet of its own: it is
-styled by the application it is built under. `NapariApplication` supplies that
-application. It serves two hook points, returning the application napari itself
-would build (`create_application`) and putting napari's stylesheet on it
-(`configure_application`).
-
-A session built only from a configuration file installs it in a `hooks:`
-section. One entry serves both points, so a YAML anchor keeps it a single
-provider instance:
-
-```yaml
-hooks:
-  create_application: &napari
-    provider: "redsun_mimir.hooks:NapariApplication"
-  configure_application: *napari
-```
-
-Without it the viewer still works and its canvas still follows the theme in
-napari's settings, but nothing sets a stylesheet on the application, so the
-layer list, the layer controls and the rest of the Qt chrome keep their default
-look.
-
-The shipped sessions declare the hook themselves, so `mimir sim` and
-`mimir uc2` need no `hooks:` section.
+Other ways to get the adapters are in the
+[`pymmcore-plus` docs](https://pymmcore-plus.github.io/pymmcore-plus/install/#installing-micro-manager-device-adapters).
+`mimir uc2` runs the session for the real board.
 
 ## Services
 
-Every piece of hardware runs in its own process. A service owns the driver, a
-`redsun` session starts and stops it, and the device in the session talks to it
-over PVAccess. The bundle ships three:
+A session starts and stops each service; its device reaches the service over
+PVAccess at the service's prefix.
 
-| service | what it owns | arguments |
+| service | owns | arguments |
 | --- | --- | --- |
 | `mmcore-camera` | one Micro-Manager camera | `--adapter`, `--device`, `--properties` |
 | `mmcore-stage` | one Micro-Manager stage | `--adapter`, `--device`, `--axes` |
 | `youseetoo-controller` | the openUC2 board's serial port | `--port`, `--baudrate` |
 
-A session declares them beside its devices, and each device names the service
-it belongs to:
+`--properties` lists, comma-separated, the camera properties to publish
+besides `exposure` and `roi`; none by default.
 
 ```yaml
 services:
@@ -167,33 +76,22 @@ services:
     plugin_id: mmcore-camera
     prefix: "MIMIR-CAM1:"
     args: ["--adapter", "DemoCamera", "--device", "DCam", "--properties", "Binning"]
-```
 
-`--properties` names the camera's own properties to publish beside `exposure`
-and `roi`, comma-separated; without it none are.
-
-```python
-class MimirSimulator(MimirApp):
-    config = Path(__file__).parent / "full_configuration.yaml"
-
-    mmcamera: Annotated[AsDevice[MMCamera], Declare(service="camera1_ioc")]
-```
-
-A service reads its prefix from the environment the session launches it with,
-and the device connects at that prefix, so the session file names it once.
-
-The directory a capture goes to is a session setting:
-
-```yaml
 storage:
   base_dir: "D:/mimir-data"   # optional; the user data directory otherwise
 ```
 
+A device names its service, so the prefix is written once:
+
+```python
+mmcamera: Annotated[AsDevice[MMCamera], Declare(service="camera1_ioc")]
+```
+
 ## Session classes
 
-The two examples are session classes. `MimirApp`, a `QtSession`, declares the
-presenters, the views and the napari hook, and links them in `wire`; a
-subclass adds its devices and its own session file:
+`MimirApp`, a `QtSession`, declares the presenters, views and napari hook and
+links them in `wire()`. The two examples subclass it with their devices and
+session file:
 
 ```python
 from pathlib import Path
@@ -213,30 +111,45 @@ class MimirSimulator(MimirApp):
     laser: AsDevice[MockLightDevice]
 ```
 
-The session reads these annotations while it runs, so the classes they name
-are imported normally, not under `if TYPE_CHECKING:`.
+The session reads these annotations at run time, so import the classes they
+name normally, not under `if TYPE_CHECKING:`.
 
-A component never names another component's class. A view asks for what it
-needs in `setup`, through a protocol in `redsun_mimir.protocols`, and the
-session hands it the component that matches: `DetectorView` and `ImageView`
-ask for `DescribesDetectors`, `MotorView` for `DescribesMotors`, `LightView`
-for `DescribesLights`, and `DetectorPresenter` for `HoldsDeferrals`, which
-`AcquisitionPresenter` satisfies. The same holds for devices: a presenter
-asks for `DevicesOf[P]` and is given only the devices satisfying `P`, such as
-`DetectorProtocol` for `DetectorPresenter`. A presenter offering plans has a `plan_map`;
-`AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
-`live_median_scan`, and `AcquisitionPresenter` runs both.
+Components never name each other's classes:
+
+- A view asks in `setup` for a protocol from `redsun_mimir.protocols`:
+  `DetectorView` and `ImageView` for `DescribesDetectors`, `MotorView` for
+  `DescribesMotors`, `LightView` for `DescribesLights`. `DetectorPresenter`
+  asks for `HoldsDeferrals`, which `AcquisitionPresenter` satisfies.
+- A presenter asks for `DevicesOf[P]` and gets only the devices satisfying
+  `P`, such as `DetectorProtocol` for `DetectorPresenter`.
+- `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
+  `live_median_scan`, and `AcquisitionPresenter` runs both.
+
+## The napari hook
+
+`ImageView` embeds a napari viewer and takes its stylesheet from the
+application. `NapariApplication` serves two hook points: it creates the
+application napari would build (`create_application`) and puts napari's
+stylesheet on it (`configure_application`). The shipped sessions declare it.
+A session built only from a file needs a `hooks:` section, one provider for
+both points:
+
+```yaml
+hooks:
+  create_application: &napari
+    provider: "redsun_mimir.hooks:NapariApplication"
+  configure_application: *napari
+```
+
+Without it the viewer works and its canvas follows napari's theme, but the
+layer list, layer controls and other Qt widgets keep the default look.
 
 ## Wiring a session from YAML
 
-The shipped sessions make their links in `wire()`. A session built only from a
-configuration file has no `wire()` to override, so it names its links in a
-`wiring:` section, each signal mapped to one slot or a list of them. Without
-one the components build and link to nothing.
-
-Do not add this section to a configuration that already backs a session class
-with a `wire()` method. The session makes both sets of links, so each link
-would be made twice and each slot would run twice per emission.
+The session classes make their links in `wire()`. A session built only from a
+file lists them under `wiring:`, each signal mapped to one slot or a list.
+Without it the components link to nothing. Never add it to a file that backs a
+session class with `wire()`: every link would be made twice.
 
 ```yaml
 wiring:
@@ -272,59 +185,51 @@ wiring:
     - light_widget.set_locked
 ```
 
-Component names are the keys used under `devices:`, `presenters:` and `views:`;
-port names are the signal attributes and the names the slots declare.
-`path_provider` is the session's own path provider, which names the directory
-a capture is written to and refuses a new one while a plan runs.
+Names are the keys under `devices:`, `presenters:` and `views:`, then the
+signal or slot. `path_provider` is the session's path provider: it names the
+directory a capture goes to and refuses a new one while a plan runs.
+`acq_ctrl.request_action` passes an action request to the component offering
+the running plan.
 
-`acq_ctrl.request_action` passes an action request to the component
-offering the plan that runs.
-
-A session file cannot make two kinds of link, because a path there is
-`component.port` and cannot reach an object a component holds:
+A file can only address `component.port`, so two links need a session class:
 
 - `acq_ctrl.actions.sig_changed` and `median_ctrl.actions.sig_changed` to
-  `acq_widget.on_action_changed`, which sets the action buttons;
-- each motor axis readback to `motor_widget.update_setpoint`, which keeps the
-  position labels current.
-
-Without them the action buttons are never enabled, and the motor labels do
-not move. The session classes in `redsun_mimir.configurations` make both in
-`wire()`.
+  `acq_widget.on_action_changed`; without it the action buttons stay disabled.
+- each motor axis readback to `motor_widget.update_setpoint`; without it the
+  position labels do not move.
 
 ## Features
 
-- Live data capture.
-- Region of interest chosen on the image: Select ROI in a detector's settings
-  opens an editor and shows a box over its layer. Drag the box or type the
-  numbers, each follows the other; Full fills in the whole sensor, OK applies.
-  A change asked for during a plan lands between two of its messages.
-- Median computation based on square-scan movement for background noise reduction following the procedure described in this [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607). `MedianPresenter` offers the plan, `live_median_scan`, and follows every run of it. The scan's stack of frames is written beside the next capture as `<detector>_scan`; the median stays in memory.
-- A run carries the document callbacks its plan lists, then the ones the user leaves ticked in the plan's list; no callback follows runs it was not given.
-- Every capture and every scan is a run of its own, nested in the live plan's run, with the run it serves and the scan it follows named on its start document.
-- The session's log records in a view of their own, from `redsun`.
-- Image visualization leveraging [`napari`](https://github.com/napari/napari).
-- Data storage in Zarr v3 format via [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr), written by the camera's own service.
-- Manual control of light source and motor drivers.
-- Fully extensible via additional components following the `redsun` framework.
+- Live acquisition, shown with [`napari`](https://github.com/napari/napari).
+- Region of interest: Select ROI opens an editor and a box over the detector's
+  layer. Drag the box or type the numbers; Full selects the whole sensor, OK
+  applies. A change asked for during a plan lands between two of its messages.
+- Background removal by the median of a square scan, following this
+  [paper](https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-26-46607):
+  `MedianPresenter` offers `live_median_scan`. The scan's frames are written
+  beside the next capture as `<detector>_scan`; the median stays in memory.
+- Progress bars on the acquisition page, for a scan and for a capture of a
+  set number of frames or of frames until stopped.
+- Each capture and scan is a run of its own, nested in the live run; its start
+  document names the run it serves and the scan it follows.
+- A run gets the document callbacks its plan lists plus those the user leaves
+  ticked, and no others.
+- Zarr v3 storage with [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr),
+  written by the camera's service.
+- Manual control of light sources and motors, and a log view from `redsun`.
+- Extensible with further `redsun` components.
 
 ## Contributing
 
-Contributions are very welcome. Tests can be run with [pytest], please ensure
-the coverage at least stays the same before you submit a pull request.
+Contributions are welcome. Run the tests with [pytest](https://docs.pytest.org/en/stable/)
+and keep coverage at least where it is.
 
 ## License
 
-Distributed under the terms of the [Apache Software License 2.0] license,
-`redsun-mimir` is free and open source software
+[Apache Software License 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+`redsun-mimir` is free and open source software.
 
 ## Issues
 
-If you encounter any problems, please [file an issue] along with a detailed description.
-
-[Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
-[file an issue]: https://github.com/redsun-acquisition/redsun-mimir/issues
-[Redsun]: https://github.com/redsun-acquisition/redsun
-[pytest]: https://docs.pytest.org/en/stable/
-[pip]: https://pypi.org/project/pip/
-[PyPI]: https://pypi.org/
+[File an issue](https://github.com/redsun-acquisition/redsun-mimir/issues) with
+a detailed description.
