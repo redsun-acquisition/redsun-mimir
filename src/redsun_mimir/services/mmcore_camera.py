@@ -28,18 +28,16 @@ from fastcs.datatypes import Bool, Enum, Float, Int, String, Waveform
 from fastcs.logging import logger
 from fastcs.methods import scan
 from pymmcore_plus import CMMCorePlus
+from redsun.services import configure_logging
 
 from redsun_mimir.common import Roi
 
-from ._process import controller_id, identity_arguments, serve, session_logging
+from ._process import controller_id, identity_arguments, serve
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
 
     from numpy.typing import NDArray
-
-#: Printed once a client can reach the camera's PVs.
-READY: Final = "mmcore camera ready"
 
 #: Micro-Manager's ``PixelType`` for each numpy dtype a camera reads out in.
 #: Colour types are left out: a frame of one is not a 2D array.
@@ -813,7 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     identity_arguments(parser, "camera")
     options = parser.parse_args(argv)
 
-    session_logging()
+    configure_logging()
     controller = build_controller(
         options.adapter,
         options.device,
@@ -821,7 +819,7 @@ def main(argv: list[str] | None = None) -> int:
         options.name,
         [name for name in options.properties.split(",") if name],
     )
-    asyncio.run(serve(controller, controller_id(options), READY))
+    asyncio.run(serve(controller, controller_id(options)))
     return 0
 
 

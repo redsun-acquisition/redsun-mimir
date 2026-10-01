@@ -8,12 +8,15 @@ services:
     plugin_name: redsun-mimir
     plugin_id: mmcore-camera
     prefix: "MIMIR-ISCAT:"
-    args: ["--adapter", "DahengGalaxy", "--device", "DahengCamera"]
+    args:
+      adapter: DahengGalaxy
+      device: DahengCamera
   uc2_board:
     plugin_name: redsun-mimir
     plugin_id: youseetoo-controller
     prefix: "MIMIR-UC2:"
-    args: ["--port", "COM4"]
+    args:
+      port: COM4
 
 devices:
   laser:

@@ -51,12 +51,6 @@ def test_manifest_has_expected_sections() -> None:
     assert set(manifest) == set(MANIFEST_SECTIONS)
 
 
-def test_a_service_entry_names_the_readiness_line_its_module_prints() -> None:
-    entry: dict[str, str] = _manifest()["services"]["mmcore-camera"]
-    module = importlib.import_module(entry["module"])
-    assert entry["ready"] == module.READY
-
-
 @pytest.mark.parametrize(
     ("section", "key", "path"),
     [pytest.param(s, k, p, id=f"{s}:{k}") for s, k, p in _entries()],
