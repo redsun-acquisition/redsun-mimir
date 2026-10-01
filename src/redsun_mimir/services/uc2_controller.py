@@ -82,6 +82,7 @@ class SerialIO(AttributeIO[Any, SerialRef]):
     async def send(self, attr: AttrW[Any, SerialRef], value: Any) -> None:
         """Send *value* to the board, and adopt it once it is acknowledged."""
         ref = attr.io_ref
+        logger.debug(f"Board command: {ref.axis or ref.laser} to {value}")
         if ref.axis:
             await move_axis(
                 self._serial, self._lock, AXIS_ID[ref.axis], UM_TO_NM, float(value)

@@ -154,7 +154,8 @@ class AcquisitionPresenter(Loggable):
             )
             name = yield from self.actions.wait(stream)
             try:
-                self.logger.debug("Start writing")
+                names = ", ".join(det.name for det in detectors)
+                self.logger.info(f"live_stream: writing {names} to disk")
                 yield from rps.lock_wrapper(
                     capture(
                         detectors,
@@ -168,7 +169,7 @@ class AcquisitionPresenter(Loggable):
                     ),
                     *detectors,
                 )
-                self.logger.debug("Writing complete")
+                self.logger.info(f"live_stream: finished writing {names}")
             finally:
                 self.actions.done(name)
 
@@ -199,6 +200,7 @@ class AcquisitionPresenter(Loggable):
             *(self.callbacks[n] for n in attached),
         ]
 
+        self.logger.info(f"Launching {plan_name!r}")
         self.sig_pre_launch_notify.emit(plan_name)
         self._running = plan_name
         self._watch(self.engine(entry["plan"](*args, **kwargs), subs))
@@ -220,8 +222,10 @@ class AcquisitionPresenter(Loggable):
     def pause_or_resume_plan(self, pause: bool) -> None:
         """Pause the running plan, or resume it when *pause* is false."""
         if pause:
+            self.logger.info(f"Pausing {self._running!r}")
             self.engine.request_pause(defer=True)
         else:
+            self.logger.info(f"Resuming {self._running!r}")
             self._watch(self.engine.resume())
 
     @slot
@@ -230,6 +234,7 @@ class AcquisitionPresenter(Loggable):
         if self.engine.state == "idle":
             self.logger.debug("No plan to stop")
             return
+        self.logger.info(f"Stopping {self._running!r}")
         self._watch(self.engine.stop())
 
     def _watch(self, fut: Future[Any]) -> None:
@@ -243,6 +248,7 @@ class AcquisitionPresenter(Loggable):
         """
         self.futures.discard(fut)
         if not self.futures and self.engine.state != "paused":
+            self.logger.info(f"{self._running!r} ended")
             self.sig_plan_done.emit()
 
     def shutdown(self) -> None:

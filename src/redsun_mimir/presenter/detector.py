@@ -213,6 +213,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
                 self.logger.error(f"Failed to set {obj.name} to {value!r}: {error}")
                 return
             new_reading = await obj.read()
+            self.logger.info(f"{obj.name} set to {new_reading[obj.name]['value']!r}")
             self.sig_new_configuration.emit(
                 detector, obj.name, new_reading[obj.name]["value"]
             )

@@ -574,9 +574,11 @@ class MMCameraController(Controller):
     async def _on_acquire(self, acquiring: bool) -> None:
         """Start or stop the thread grabbing frames."""
         if acquiring:
+            logger.info("Acquisition started")
             await self._start_grabbing()
         else:
             await self._stop_grabbing()
+            logger.info("Acquisition stopped")
 
     def wait_until_idle(self, timeout: float | None = None) -> bool:
         """Block until the grabbing thread stops, and return whether it did.
@@ -620,6 +622,7 @@ class MMCameraController(Controller):
         if not capturing:
             await asyncio.to_thread(self._close_store)
             await self.captured.update(self._written)
+            logger.info(f"Capture closed: {self._written} frames written")
             return
         if self._store is not None:
             return
@@ -629,11 +632,15 @@ class MMCameraController(Controller):
         self._written = 0
         self._window_full = False
         self._store = FrameStore(self.file_path.get(), self.data_key.get(), frame)
+        logger.info(
+            f"Capture opened: {self.data_key.get()!r} in {self.file_path.get()}"
+        )
 
     async def _end_capture(self) -> None:
         """Finish a window that has written every frame it was asked for."""
         await asyncio.to_thread(self._close_store)
         await self.captured.update(self._written)
+        logger.info(f"Capture complete: {self._written} frames written")
         await self.capture.update(False)
 
     async def _stop_grabbing(self) -> None:

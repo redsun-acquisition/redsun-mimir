@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Final
 from fastcs.attributes import AttributeIO, AttributeIORef, AttrR, AttrRW, AttrW
 from fastcs.controllers import Controller
 from fastcs.datatypes import Float
+from fastcs.logging import logger
 from pymmcore_plus import CMMCorePlus
 
 from ._process import controller_id, identity_arguments, serve, session_logging
@@ -65,6 +66,7 @@ class StageIO(AttributeIO[float, AxisRef]):
         concurrent move on the sibling axis would put this one back where it
         started.
         """
+        logger.debug(f"Moving {attr.io_ref.axis} to {value}")
         async with self._moving:
             await asyncio.to_thread(self._move, attr.io_ref.axis, float(value))
         if isinstance(attr, AttrR):

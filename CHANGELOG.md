@@ -51,6 +51,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   stored, when the session closes or the next plan starts.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
+- `LogsAction` (`redsun_mimir.view`) - the Logs entry of a View menu, opening
+  the session's log in a window of its own. The example sessions declare it
+  in place of the log view docked at the bottom.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
   plan from the state its `ActionManager` reports.
 - `AcquisitionPresenter.request_action` - passes an action request to the
@@ -62,6 +65,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- Plans launched, paused, resumed, stopped and ended, captures, medians,
+  detector settings, light switches and motor moves are logged at `INFO`;
+  the camera service logs acquisition and each capture it opens and closes.
+  Stage and board commands are logged at `DEBUG`.
 - `napari` 0.9.2 and `msgspec` 0.22.0 are the minimum versions, `napari` in
   the `pyqt` and `pyside` extras too.
 - `MotorView` takes the 100.0 default step size its documentation names, not
@@ -151,6 +158,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `ImageView` keeps its layer panel on screen when its splitter is dragged to
+  the edge; a collapsed panel could not be brought back.
 - `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it
   pauses, and when a paused plan is stopped.
 - `ImageView` unregisters its napari providers when the session shuts down.

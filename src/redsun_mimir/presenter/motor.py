@@ -76,4 +76,5 @@ class MotorPresenter(Loggable):
         # axis would carry a stale value for this one and revert it
         async with self._locks[motor]:
             movable = self._motors[motor].axis[axis]
+            self.logger.info(f"Moving {movable.name} by {delta}")
             await movable.set((await movable.locate())["readback"] + delta)

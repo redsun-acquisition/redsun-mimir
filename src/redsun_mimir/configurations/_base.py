@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Annotated
 
 from redsun import AsHook, AsPresenter, AsView, Serves
 from redsun.qt import QtHook, QtSession
-from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
@@ -19,6 +18,7 @@ from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ImageView
 from redsun_mimir.view.light import LightView
+from redsun_mimir.view.logs import LogsAction
 from redsun_mimir.view.motor import MotorView
 
 from ._wiring import (
@@ -66,7 +66,7 @@ class MimirApp(QtSession):
     det_widget: AsView[DetectorView]
     light_widget: AsView[LightView]
     motor_widget: AsView[MotorView]
-    logs: AsView[LogView]
+    logs: AsView[LogsAction]
 
     def wire(self) -> Iterator[Link]:
         """Link the presenters to the views."""
