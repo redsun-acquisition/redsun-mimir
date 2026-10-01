@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from pathlib import Path
 
-    from bluesky.utils import MsgGenerator
+    from bluesky.utils import Msg, MsgGenerator
     from event_model.documents import (
         Event,
         EventDescriptor,
@@ -115,6 +115,21 @@ class _MedianSource:
     """
 
     buffer: SignalRW[np.ndarray]
+
+
+def simulate_capture(plan: MsgGenerator[Any], written: int = 5) -> list[Msg]:
+    """Run *plan* in a simulator answering waits as done and indices as *written*."""
+
+    def index(msg: Msg) -> list[Future[int]]:
+        future: Future[int] = Future()
+        future.set_result(written)
+        return [future]
+
+    simulator = RunEngineSimulator()
+    simulator.add_handler("wait", lambda msg: True)
+    simulator.add_handler("wait_for", index)
+    messages: list[Msg] = simulator.simulate_plan(plan)
+    return messages
 
 
 class TestMotorPresenter:
@@ -888,6 +903,25 @@ class TestAcquisitionPresenter:
         yield ctrl
         ctrl.shutdown()
 
+    def test_the_engines_progress_is_passed_on(
+        self, controller: AcquisitionPresenter
+    ) -> None:
+        """Pass on each progress announcement of the engine a plan runs on."""
+        received: list[list[tuple[str, float | None]]] = []
+        controller.sig_progress.connect(
+            lambda scopes: received.append([(s.name, s.current) for s in scopes])
+        )
+
+        def plan() -> MsgGenerator[None]:
+            yield from rps.declare_progress("cam")
+            yield from rps.update_progress("cam", current=3, initial=0, target=4)
+            yield from rps.update_progress("cam", done=True)
+
+        controller.engine(plan()).result(timeout=10)
+
+        assert [("cam", 3.0)] in received
+        assert received[-1] == []
+
     def test_setup_collects_the_plans_of_every_component(
         self, devices: dict[str, Any]
     ) -> None:
@@ -1086,13 +1120,53 @@ class TestCapture:
             for _ in range(3):
                 yield from bps.sleep(0.25)
 
-        simulator = RunEngineSimulator()
-        simulator.add_handler("wait", lambda msg: True)
-
-        messages = simulator.simulate_plan(
+        messages = simulate_capture(
             capture([fake_flyer], "stream", parent="live", until=waiting())
         )
 
         commands = [msg.command for msg in messages]
         window = commands[commands.index("kickoff") : commands.index("complete")]
         assert "collect" in window
+
+    def test_a_bounded_capture_follows_its_detector(
+        self, fake_flyer: FakeFlyer
+    ) -> None:
+        """Follow each detector's completion with a progress scope named after it."""
+        messages = simulate_capture(capture([fake_flyer], "stream", parent="live"))
+
+        commands = [msg.command for msg in messages]
+        followed = messages[commands.index("monitor_progress")]
+        assert commands.index("complete") < commands.index("monitor_progress")
+        assert followed.kwargs["name"] == "cam"
+        assert "declare_progress" not in commands
+
+    def test_an_open_capture_counts_the_frames_written(
+        self, fake_flyer: FakeFlyer
+    ) -> None:
+        """Count the frames written after each collect, and close the count before completing."""
+
+        def waiting() -> MsgGenerator[None]:
+            for _ in range(3):
+                yield from bps.sleep(0.25)
+
+        messages = simulate_capture(
+            capture([fake_flyer], "stream", parent="live", until=waiting()),
+            written=7,
+        )
+
+        progress = [
+            (msg.command, msg.kwargs.get("current"), msg.kwargs.get("done"))
+            for msg in messages
+            if msg.command in {"declare_progress", "update_progress", "complete"}
+        ]
+        assert progress == [
+            ("declare_progress", None, None),
+            ("update_progress", 7, False),
+            ("update_progress", None, True),
+            ("complete", None, None),
+        ]
+        assert {
+            msg.kwargs["unit"]
+            for msg in messages
+            if msg.command == "update_progress" and not msg.kwargs["done"]
+        } == {"frames"}

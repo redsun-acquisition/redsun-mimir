@@ -90,6 +90,7 @@ def wire_acquisition(
     yield view.sig_stop_plan_request, ctrl.stop_plan
     yield view.sig_pause_resume_request, ctrl.pause_or_resume_plan
     yield ctrl.sig_plan_done, view.on_plan_done
+    yield ctrl.sig_progress, view.on_progress
     yield view.sig_action_request, ctrl.request_action
     for actions in (ctrl.actions, median.actions):
         yield actions.sig_changed, view.on_action_changed

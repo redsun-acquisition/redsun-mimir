@@ -15,6 +15,7 @@ from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
 from napari.settings import get_settings
 from qtpy import QtWidgets
+from redsun.engine import ProgressState
 from redsun.engine.actions import PlanAction, continuous
 from redsun.path_provider import SessionPathProvider
 
@@ -443,6 +444,31 @@ class TestAcquisitionView:
             SessionPathProvider(base_dir=tmp_path),
         )
         return view
+
+    def test_progress_is_shown_on_the_page_of_the_plan(
+        self, view: AcquisitionView
+    ) -> None:
+        """Show each progress scope on the page of the plan in the selector."""
+        page = view.plan_widgets[view.plans_combobox.currentText()]
+        assert page.progress_group is not None
+        frames = ProgressState(
+            name="cam",
+            parent=None,
+            current=412.0,
+            initial=None,
+            target=None,
+            unit="frames",
+            precision=None,
+            fraction=None,
+            time_elapsed=None,
+            time_remaining=None,
+        )
+
+        view.on_progress((frames,))
+        assert not page.progress_group.isHidden()
+
+        view.on_progress(())
+        assert page.progress_group.isHidden()
 
     def test_a_folder_chosen_while_idle_is_shown_once_the_provider_moves(
         self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path

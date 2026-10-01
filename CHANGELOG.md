@@ -33,10 +33,18 @@ Dates are specified in the format `DD-MM-YYYY`.
   component with a `plan_map` in `setup`, and runs them all.
 - `capture` (`redsun_mimir.plans`) - flies prepared detectors to disk in a
   nested run, until a given plan returns when one is given, and collects them
-  every `FLUSH_PERIOD` seconds while they write.
+  every `FLUSH_PERIOD` seconds while they write. Each detector's written
+  frames are a progress scope named after it: a capture of a set number of
+  frames follows the detector's `complete`, an open one counts the frames
+  after each collect.
 - `collect_while_waiting`, `FLUSH_PERIOD` (`redsun_mimir.plans`) - runs a plan
   that waits, collecting the detectors each time it has slept `FLUSH_PERIOD`
-  seconds.
+  seconds, and shows each detector's count of written frames as a progress
+  scope while the plan runs.
+- `AcquisitionPresenter.sig_progress` - the progress scopes of the running
+  plan, as the engine announces them.
+- `AcquisitionView.on_progress` - shows the running plan's progress scopes on
+  its page.
 - `ImageView.shutdown` - unregisters the napari providers of the embedded
   viewer.
 - `AcquisitionView.on_action_changed` - sets an action button of the running
@@ -78,7 +86,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `prepare_and_declare` and `teardown_acquisition` move from
   `redsun_mimir.presenter.acquisition` to `redsun_mimir.plans`.
 - `teardown_acquisition` (`redsun_mimir.plans`) collects the detectors every
-  `FLUSH_PERIOD` seconds until they complete, rather than once after.
+  `FLUSH_PERIOD` seconds until they complete, rather than once after. With
+  `follow=True` each detector's completion is shown as a progress scope.
 - `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are
   `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
   for `AcquisitionView`, the centre for `ImageView`, the right dock for the

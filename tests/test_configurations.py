@@ -74,6 +74,7 @@ SIMULATION_LINKS = {
     ("acq_widget.sig_stop_plan_request", "acq_ctrl.stop_plan"),
     ("acq_widget.sig_pause_resume_request", "acq_ctrl.pause_or_resume_plan"),
     ("acq_ctrl.sig_plan_done", "acq_widget.on_plan_done"),
+    ("acq_ctrl.sig_progress", "acq_widget.on_progress"),
     ("acq_widget.sig_action_request", "acq_ctrl.request_action"),
     ("acq_ctrl.sig_changed", "acq_widget.on_action_changed"),
     ("median_ctrl.sig_changed", "acq_widget.on_action_changed"),
