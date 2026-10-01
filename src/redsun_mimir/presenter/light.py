@@ -70,7 +70,7 @@ class LightPresenter(Loggable):
             light = self._lights[name]
             await asyncio.wait_for(light.trigger(), timeout=self._timeout)
             state = await light.enabled.get_value()
-            self.logger.debug(f"Toggled {name!r} -> enabled={state}")
+            self.logger.info(f"{name!r} switched {'on' if state else 'off'}")
 
     @slot
     async def set(self, name: str, intensity: float) -> None:

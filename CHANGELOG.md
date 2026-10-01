@@ -65,6 +65,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed
 
+- Plans launched, paused, resumed, stopped and ended, captures, medians,
+  detector settings, light switches and motor moves are logged at `INFO`;
+  the camera service logs acquisition and each capture it opens and closes.
+  Stage and board commands are logged at `DEBUG`.
 - `napari` 0.9.2 and `msgspec` 0.22.0 are the minimum versions, `napari` in
   the `pyqt` and `pyside` extras too.
 - `MotorView` takes the 100.0 default step size its documentation names, not

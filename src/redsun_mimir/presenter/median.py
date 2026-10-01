@@ -236,7 +236,8 @@ class MedianPresenter(DocumentRouter, Loggable):
                         *detectors,
                     )
                 else:
-                    self.logger.debug("Start writing")
+                    names = ", ".join(det.name for det in detectors)
+                    self.logger.info(f"live_median_scan: writing {names} to disk")
                     yield from rps.lock_wrapper(
                         capture(
                             detectors, live_stream, parent=parent, median_scan=scan_run
@@ -244,7 +245,7 @@ class MedianPresenter(DocumentRouter, Loggable):
                         *detectors,
                     )
                     restage = True
-                    self.logger.debug("Writing complete")
+                    self.logger.info(f"live_median_scan: finished writing {names}")
             finally:
                 self.actions.done(name)
 
@@ -306,9 +307,13 @@ class MedianPresenter(DocumentRouter, Loggable):
             yield from rps.update_progress(
                 SCAN.name, current=frame, initial=0, target=len(square), unit="frames"
             )
+            # once per frame: formatted only when debug records are kept
             self.logger.debug(
-                f"Frame {frame}/{len(square)} taken; "
-                f"moving {axis.name} by {direction} steps."
+                "Frame %d/%d taken; moving %s by %s steps.",
+                frame,
+                len(square),
+                axis.name,
+                direction,
             )
             yield from bps.mvr(axis, direction)
         yield from rps.update_progress(SCAN.name, done=True)
@@ -436,7 +441,7 @@ class MedianPresenter(DocumentRouter, Loggable):
             self.medians[source] = median
             self._stacks[source] = (run, stack, positions)
             self._unwritten.add(source)
-            self.logger.debug(
+            self.logger.info(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
             )

@@ -279,7 +279,8 @@ class ImageView(QtWidgets.QWidget, Loggable):
             if roi is not None and img.shape[:2] != (roi.height, roi.width):
                 # a frame taken before the ROI changed, as the one a monitor
                 # reports first: placing it would paint the old region back
-                self.logger.debug(f"Dropping a {img.shape} frame for a {roi} ROI")
+                # once per frame: formatted only when debug records are kept
+                self.logger.debug("Dropping a %s frame for a %s ROI", img.shape, roi)
                 continue
             if layer.data.dtype != img.dtype:
                 layer.data = np.zeros(layer.data.shape, dtype=img.dtype)
