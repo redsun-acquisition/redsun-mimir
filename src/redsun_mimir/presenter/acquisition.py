@@ -57,6 +57,10 @@ class AcquisitionPresenter(Loggable):
     """Emitted with the names of the devices a plan holds, whenever they
     change. A scan locks its motor and detectors, a capture its detectors."""
 
+    sig_progress = Signal(tuple)
+    """Emitted with every progress scope of the running plan, as the engine
+    announces them; an empty tuple once none is left."""
+
     def __init__(self, name: str, *, devices: DeviceMapping) -> None:
         self.name = name
         self.devices = devices
@@ -66,6 +70,7 @@ class AcquisitionPresenter(Loggable):
 
         self.futures: set[Future[Any]] = set()
         self.engine.sig_locks_changed.connect(self.sig_locks_changed.emit)
+        self.engine.sig_progress.connect(self.sig_progress.emit)
 
         self.plans: dict[str, PlanEntry] = {}
         self.plan_specs: dict[str, PlanSpec] = {}

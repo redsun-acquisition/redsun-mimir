@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from redsun import PlanEntry
+    from redsun.engine import ProgressState
     from redsun.view.qt.utils import ActionButton
 
 
@@ -194,6 +195,11 @@ class AcquisitionView(QtW.QWidget, Loggable):
         self.logger.debug(f"Plan pause toggled: {paused}")
         self.plan_widgets[self._current_plan()].pause(paused)
         self.sig_pause_resume_request.emit(paused)
+
+    @slot
+    def on_progress(self, scopes: tuple[ProgressState, ...]) -> None:
+        """Show the progress scopes of the running plan on its page."""
+        self.plan_widgets[self._current_plan()].show_progress(scopes)
 
     @slot
     def on_plan_done(self) -> None:

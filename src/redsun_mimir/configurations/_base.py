@@ -80,4 +80,3 @@ class MimirApp(QtSession):
         yield from wire_locks(
             self.acq_ctrl, self.motor_widget, self.light_widget, self.det_widget
         )
-        yield self.acq_ctrl.sig_pre_launch_notify, self.det_widget.clear_frames_written

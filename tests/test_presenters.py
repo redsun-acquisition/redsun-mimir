@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from pathlib import Path
 
-    from bluesky.utils import MsgGenerator
+    from bluesky.utils import Msg, MsgGenerator
     from event_model.documents import (
         Event,
         EventDescriptor,
@@ -115,6 +115,21 @@ class _MedianSource:
     """
 
     buffer: SignalRW[np.ndarray]
+
+
+def simulate_capture(plan: MsgGenerator[Any], written: int = 5) -> list[Msg]:
+    """Run *plan* in a simulator answering waits as done and indices as *written*."""
+
+    def index(msg: Msg) -> list[Future[int]]:
+        future: Future[int] = Future()
+        future.set_result(written)
+        return [future]
+
+    simulator = RunEngineSimulator()
+    simulator.add_handler("wait", lambda msg: True)
+    simulator.add_handler("wait_for", index)
+    messages: list[Msg] = simulator.simulate_plan(plan)
+    return messages
 
 
 class TestMotorPresenter:
@@ -378,6 +393,47 @@ class TestMedianPresenter:
             (tmp_path / "second.zarr" / "cam_scan" / "zarr.json").read_text()
         )
         assert written["shape"] == [3, 4, 4]
+
+    @pytest.mark.parametrize(
+        ("captured", "ending", "warned"),
+        [
+            (False, "shutdown", True),
+            (False, "next plan", True),
+            (True, "shutdown", False),
+            (True, "next plan", False),
+        ],
+    )
+    async def test_a_scan_stack_never_written_is_warned_about(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        captured: bool,
+        ending: str,
+        warned: bool,
+    ) -> None:
+        """Warn when a scan stack is dropped unwritten, at shutdown or the next plan, and not once written."""
+        frames = [np.full((4, 4), i, dtype="uint16") for i in range(3)]
+        buf = soft_signal_rw(np.ndarray, initial_value=frames[0], name="cam-buffer")
+        devices: dict[str, Any] = {"cam": _MedianSource(buffer=buf)}
+        presenter = MedianPresenter("median_presenter", sources=devices)
+        engine = RunEngine()
+        engine.subscribe(presenter)
+
+        presenter("start", {"uid": "outer", "time": 0.0})
+        scan_run = self.scan_uid(engine(self.scan(buf, frames)).result(timeout=30))
+        if captured:
+            self.capture(presenter, tmp_path / "acquisition.zarr", scan_run)
+        if ending == "shutdown":
+            presenter.shutdown()
+        else:
+            presenter.clear_medians("live_median_scan")
+
+        dropped = [
+            record
+            for record in caplog.records
+            if record.levelname == "WARNING" and "never written" in record.getMessage()
+        ]
+        assert bool(dropped) is warned
 
     async def test_shutdown_closes_a_store_the_run_left_open(
         self, tmp_path: Path
@@ -648,6 +704,34 @@ class TestMedianPresenter:
             ("set", "xystage-axis-y"),
         ]
 
+    def test_the_square_scan_reports_each_frame_it_takes(
+        self, fake_detector: FakeDetector, motor_stage: FakeXYStage
+    ) -> None:
+        """Report each frame of the scan against the whole square, inside its run."""
+        presenter = MedianPresenter("median_ctrl", sources={})
+        simulator = RunEngineSimulator()
+        simulator.add_handler("locate", lambda msg: {"readback": 0.0, "setpoint": 0.0})
+
+        messages = simulator.simulate_plan(
+            presenter.square_scan([fake_detector], motor_stage, 5.0, 2)
+        )
+
+        commands = [msg.command for msg in messages]
+        updates = [
+            (msg.kwargs["current"], msg.kwargs["target"], msg.kwargs["unit"])
+            for msg in messages
+            if msg.command == "update_progress" and not msg.kwargs["done"]
+        ]
+        assert updates == [(frame, 8, "frames") for frame in range(1, 9)]
+        assert (
+            commands.index("open_run")
+            < commands.index("declare_progress")
+            < commands.index("trigger")
+        )
+        finished = len(commands) - 1 - commands[::-1].index("update_progress")
+        assert messages[finished].kwargs["done"]
+        assert finished < commands.index("close_run")
+
 
 class TestDetectorPresenter:
     """Tests for DetectorPresenter."""
@@ -683,38 +767,6 @@ class TestDetectorPresenter:
         assert not described["cam-pixel_dtype"]["source"].endswith(":readonly")
         assert not described["cam-exposure"]["source"].endswith(":readonly")
         assert not described["cam-roi"]["source"].endswith(":readonly")
-
-    def test_the_frames_a_capture_writes_are_counted_per_detector(
-        self, controller: DetectorPresenter, fake_detector: FakeDetector
-    ) -> None:
-        """Count the frames each collect reports, from zero for every new capture."""
-        written: list[tuple[str, int]] = []
-        controller.sig_frames_written.connect(lambda *args: written.append(args))
-
-        def resource(uid: str, data_key: str) -> None:
-            controller("stream_resource", {"uid": uid, "data_key": data_key})
-
-        def datum(resource_uid: str, start: int, stop: int) -> None:
-            controller(
-                "stream_datum",
-                {
-                    "uid": f"{resource_uid}/{start}",
-                    "stream_resource": resource_uid,
-                    "indices": {"start": start, "stop": stop},
-                    "seq_nums": {"start": start + 1, "stop": stop + 1},
-                    "descriptor": "desc",
-                },
-            )
-
-        resource("first", fake_detector.name)
-        datum("first", 0, 5)
-        datum("first", 5, 12)
-        resource("second", fake_detector.name)
-        datum("second", 0, 3)
-        resource("other", "not-a-detector")
-        datum("other", 0, 4)
-
-        assert written == [("cam", 5), ("cam", 12), ("cam", 3)]
 
     def test_live_events_are_forwarded_raw(
         self, controller: DetectorPresenter, fake_detector: FakeDetector
@@ -920,6 +972,25 @@ class TestAcquisitionPresenter:
         yield ctrl
         ctrl.shutdown()
 
+    def test_the_engines_progress_is_passed_on(
+        self, controller: AcquisitionPresenter
+    ) -> None:
+        """Pass on each progress announcement of the engine a plan runs on."""
+        received: list[list[tuple[str, float | None]]] = []
+        controller.sig_progress.connect(
+            lambda scopes: received.append([(s.name, s.current) for s in scopes])
+        )
+
+        def plan() -> MsgGenerator[None]:
+            yield from rps.declare_progress("cam")
+            yield from rps.update_progress("cam", current=3, initial=0, target=4)
+            yield from rps.update_progress("cam", done=True)
+
+        controller.engine(plan()).result(timeout=10)
+
+        assert [("cam", 3.0)] in received
+        assert received[-1] == []
+
     def test_setup_collects_the_plans_of_every_component(
         self, devices: dict[str, Any]
     ) -> None:
@@ -1118,13 +1189,53 @@ class TestCapture:
             for _ in range(3):
                 yield from bps.sleep(0.25)
 
-        simulator = RunEngineSimulator()
-        simulator.add_handler("wait", lambda msg: True)
-
-        messages = simulator.simulate_plan(
+        messages = simulate_capture(
             capture([fake_flyer], "stream", parent="live", until=waiting())
         )
 
         commands = [msg.command for msg in messages]
         window = commands[commands.index("kickoff") : commands.index("complete")]
         assert "collect" in window
+
+    def test_a_bounded_capture_follows_its_detector(
+        self, fake_flyer: FakeFlyer
+    ) -> None:
+        """Follow each detector's completion with a progress scope named after it."""
+        messages = simulate_capture(capture([fake_flyer], "stream", parent="live"))
+
+        commands = [msg.command for msg in messages]
+        followed = messages[commands.index("monitor_progress")]
+        assert commands.index("complete") < commands.index("monitor_progress")
+        assert followed.kwargs["name"] == "cam"
+        assert "declare_progress" not in commands
+
+    def test_an_open_capture_counts_the_frames_written(
+        self, fake_flyer: FakeFlyer
+    ) -> None:
+        """Count the frames written after each collect, and close the count before completing."""
+
+        def waiting() -> MsgGenerator[None]:
+            for _ in range(3):
+                yield from bps.sleep(0.25)
+
+        messages = simulate_capture(
+            capture([fake_flyer], "stream", parent="live", until=waiting()),
+            written=7,
+        )
+
+        progress = [
+            (msg.command, msg.kwargs.get("current"), msg.kwargs.get("done"))
+            for msg in messages
+            if msg.command in {"declare_progress", "update_progress", "complete"}
+        ]
+        assert progress == [
+            ("declare_progress", None, None),
+            ("update_progress", 7, False),
+            ("update_progress", None, True),
+            ("complete", None, None),
+        ]
+        assert {
+            msg.kwargs["unit"]
+            for msg in messages
+            if msg.command == "update_progress" and not msg.kwargs["done"]
+        } == {"frames"}

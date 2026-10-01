@@ -137,6 +137,8 @@ class MedianPresenter(DocumentRouter, Loggable):
         #: the scan run, the stack and the positions each median came from,
         #: until a store takes them
         self._stacks: dict[str, tuple[str, npt.NDArray[Any], Positions]] = {}
+        #: sources whose kept stack no store has received yet
+        self._unwritten: set[str] = set()
 
         # descriptor uid -> (run uid, sources) for the accumulating scan stream
         self._scan_streams: dict[str, tuple[str, list[str]]] = {}
@@ -266,7 +268,9 @@ class MedianPresenter(DocumentRouter, Loggable):
         from and the last move closes the square back onto it. Every frame
         goes in an event of its own, with the axis positions it was taken at;
         the event's `seq_num` is the frame's place in the stack, the
-        `frame_id` those positions are written under. Returns the run's uid.
+        `frame_id` those positions are written under. The frames taken are
+        shown as a progress scope named after the `scan` action. Returns the
+        run's uid.
 
         Parameters
         ----------
@@ -285,6 +289,7 @@ class MedianPresenter(DocumentRouter, Loggable):
             for axis, direction in ((x, step), (y, step), (x, -step), (y, -step))
             for _ in range(frames_per_side)
         ]
+        yield from rps.declare_progress(SCAN.name)
         for frame, (axis, direction) in enumerate(square, start=1):
             # a detector taking frames continuously has one ready from
             # before the previous move; triggering waits for the one taken
@@ -298,11 +303,15 @@ class MedianPresenter(DocumentRouter, Loggable):
             # position it was taken at
             yield from bps.read(motor)
             yield from bps.save()
+            yield from rps.update_progress(
+                SCAN.name, current=frame, initial=0, target=len(square), unit="frames"
+            )
             self.logger.debug(
                 f"Frame {frame}/{len(square)} taken; "
                 f"moving {axis.name} by {direction} steps."
             )
             yield from bps.mvr(axis, direction)
+        yield from rps.update_progress(SCAN.name, done=True)
         yield from bps.close_run()
         return uid
 
@@ -323,12 +332,22 @@ class MedianPresenter(DocumentRouter, Loggable):
         """Forget every cached median and stack before a new plan."""
         if self.medians:
             self.logger.debug(f"Clearing cached medians before {plan_name!r}")
+        self._warn_unwritten(f"{plan_name!r} started before any capture")
         self.medians.clear()
         self._stacks.clear()
 
     def shutdown(self) -> None:
         """Close what the writer left open, so every store stays readable."""
+        self._warn_unwritten("the session closed before any capture")
         self._writer.shutdown()
+
+    def _warn_unwritten(self, reason: str) -> None:
+        """Warn about every kept stack no store received, then forget them."""
+        for source in sorted(self._unwritten):
+            self.logger.warning(
+                f"Scan stack for {_base_name(source)!r} never written: {reason}"
+            )
+        self._unwritten.clear()
 
     def descriptor(self, doc: EventDescriptor) -> None:
         """Route a stream to be accumulated or corrected."""
@@ -416,6 +435,7 @@ class MedianPresenter(DocumentRouter, Loggable):
             median = np.median(stack, axis=0).astype(stack.dtype)
             self.medians[source] = median
             self._stacks[source] = (run, stack, positions)
+            self._unwritten.add(source)
             self.logger.debug(
                 f"Median computed for {source!r}: "
                 f"{len(frames)} frames, shape {median.shape}"
@@ -464,3 +484,5 @@ class MedianPresenter(DocumentRouter, Loggable):
             # a run that named no store yet is the usual case, a scan before
             # the stream; the stack is kept and written once one is named
             self.logger.debug(f"Scan stack for {detector!r} not written: {error}")
+        else:
+            self._unwritten.discard(source)
