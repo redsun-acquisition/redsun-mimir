@@ -33,6 +33,7 @@ src/redsun_mimir/
   utils/napari/    # napari callbacks, overlay, stylesheet
 tests/             # flat: conftest.py + test_<subsystem>.py
 scripts/mypy_qt.py # mypy with the qtpy flags for the binding QT_API names
+scripts/screenshot.py # the README picture of mimir sim, images/mimir-sim.png
 pyproject.toml     # all tool config: pytest, ruff, mypy, coverage, tox
 ```
 
