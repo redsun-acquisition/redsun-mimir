@@ -24,7 +24,7 @@ from fastcs.util import ONCE
 from oxiserial.aio import serial_for_url
 from redsun.services import configure_logging
 
-from ._process import controller_id, identity_arguments, serve
+from ._process import controller_id, identity_arguments, run, serve
 from ._uc2_serial import AXIS_ID, UM_TO_NM, move_axis, read_positions, set_laser
 
 if TYPE_CHECKING:
@@ -205,11 +205,10 @@ def main(argv: list[str] | None = None) -> int:
     options = parser.parse_args(argv)
 
     configure_logging()
-    asyncio.run(run(options))
-    return 0
+    return run(serve_board(options))
 
 
-async def run(options: argparse.Namespace) -> None:
+async def serve_board(options: argparse.Namespace) -> None:
     """Open the board as *options* say, and serve it until the session stops it."""
     serial = await open_board(
         options.port, options.baudrate, options.timeout, reset=not options.no_reset

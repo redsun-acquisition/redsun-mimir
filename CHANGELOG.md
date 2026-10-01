@@ -83,6 +83,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `redsun` 0.14.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
+- `run` (`redsun_mimir.services.uc2_controller`) is `serve_board`.
 - The `uc2` extra requires `oxiserial` 0.2.0 in place of `pyserial`.
   `redsun_mimir.services.uc2_controller` talks to the board through
   `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
@@ -165,6 +166,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- A service run on its own and stopped with Ctrl+C exits with code 0 and no
+  traceback.
 - `ImageView` keeps its layer panel on screen when its splitter is dragged to
   the edge; a collapsed panel could not be brought back.
 - `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it

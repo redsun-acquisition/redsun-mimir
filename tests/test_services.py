@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import threading
 import time
 from queue import Queue
@@ -16,6 +17,7 @@ from redsun.services import Service
 from redsun_mimir.common import Roi
 from redsun_mimir.device.youseetoo import UC2LaserDevice, UC2MotorDevice
 from redsun_mimir.services import uc2_controller
+from redsun_mimir.services._process import run
 from redsun_mimir.services.mmcore_camera import MMCameraController, uncrop
 from redsun_mimir.services.uc2_controller import UC2Controller
 
@@ -235,6 +237,12 @@ class FakeCore:
 
     def getImageHeight(self) -> int:
         return self.roi[3]
+
+
+async def interrupted_while_serving() -> None:
+    """Receive Ctrl+C while serving, as a service run alone does."""
+    signal.raise_signal(signal.SIGINT)
+    await asyncio.sleep(TIMEOUT)
 
 
 async def until(
@@ -830,3 +838,8 @@ async def test_a_fault_mid_capture_ends_the_window(
 
     assert camera.capture.get() is False
     assert camera.state.get() == "faulted"
+
+
+def test_ctrl_c_stops_a_service_run_alone_cleanly() -> None:
+    """Stop a service run alone on Ctrl+C with exit code 0 and no traceback."""
+    assert run(interrupted_while_serving()) == 0

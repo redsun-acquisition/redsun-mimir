@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import faulthandler
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from fastcs.control_system import FastCS
 from fastcs.transports.epics.pva.transport import EpicsPVATransport
@@ -16,6 +16,7 @@ from redsun.services import identity, ready_when_reachable, wait_for_stop
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Coroutine
 
     from fastcs.controllers import Controller
 
@@ -49,7 +50,7 @@ def controller_id(options: argparse.Namespace) -> str:
 
 
 async def serve(controller: Controller, prefix: str) -> None:
-    """Serve *controller* over PVA until the session asks this service to stop.
+    """Serve *controller* over PVA until the session, or Ctrl+C, stops this service.
 
     `FastCS.run` installs signal handlers on POSIX only and watches no input,
     so the serving task is cancelled here instead.
@@ -61,10 +62,24 @@ async def serve(controller: Controller, prefix: str) -> None:
     announcing = asyncio.ensure_future(ready_when_reachable(f"{prefix}:PVI"))
     announcing.add_done_callback(lambda _: faulthandler.cancel_dump_traceback_later())
 
-    await wait_for_stop()
+    try:
+        await wait_for_stop()
+    finally:
+        faulthandler.dump_traceback_later(STALL_DUMP)
+        announcing.cancel()
+        serving.cancel()
+        await asyncio.gather(serving, announcing, return_exceptions=True)
+        faulthandler.cancel_dump_traceback_later()
 
-    faulthandler.dump_traceback_later(STALL_DUMP)
-    announcing.cancel()
-    serving.cancel()
-    await asyncio.gather(serving, announcing, return_exceptions=True)
-    faulthandler.cancel_dump_traceback_later()
+
+def run(serving: Coroutine[Any, Any, None]) -> int:
+    """Run *serving* until the session or Ctrl+C stops it; return the exit code.
+
+    Ctrl+C, the way a service run on its own is stopped, counts as a clean
+    stop: `asyncio.run` has cancelled and awaited *serving* before it raises.
+    """
+    try:
+        asyncio.run(serving)
+    except KeyboardInterrupt:
+        pass
+    return 0
