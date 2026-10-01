@@ -113,6 +113,8 @@ redsun-mimir = "redsun.yaml"
 
 [tool.coverage.run]
 source = ["redsun_mimir"]
+# services under test run as child processes; their code is measured there
+patch = ["subprocess"]
 omit = [
     "tests/conftest.py",
 ]
