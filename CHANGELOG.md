@@ -151,6 +151,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `ImageView` keeps its layer panel on screen when its splitter is dragged to
+  the edge; a collapsed panel could not be brought back.
 - `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it
   pauses, and when a paused plan is stopped.
 - `ImageView` unregisters its napari providers when the session shuts down.
