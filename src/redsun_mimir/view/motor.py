@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Descriptor, Reading
 
-_JOG_SPACING = 4
+_CONTROL_SPACING = 4
 
 # napari's stylesheet floors QAbstractSpinBox at a 70px min-width plus 10px of
 # padding either side, so a narrower request is raised to this
@@ -27,7 +27,7 @@ _STEP_HEIGHT = 20
 
 # no min-width: a stylesheet one is written into the widget's minimumWidth when
 # the style is polished, overwriting the size the buttons are given in code
-_JOG_STYLE = "QPushButton#jog { padding: 0px; }"
+_BUTTON_STYLE = "QPushButton#step { padding: 0px; }"
 
 
 def _resized(font: QtGui.QFont, delta: int) -> QtGui.QFont:
@@ -48,8 +48,7 @@ class MotorView(QtWidgets.QWidget, Loggable):
     the motors of the session.
 
     Each axis is one row of its device's group: the axis name, the readback
-    position, and a jog strip carrying the step size between the two buttons
-    that apply it.
+    position, and the step size between the two buttons that apply it.
 
     Parameters
     ----------
@@ -61,9 +60,11 @@ class MotorView(QtWidgets.QWidget, Loggable):
     placement: Placement = Dock("right")
 
     sig_motor_move = Signal(str, str, float)
-    """Emitted when the user requests a stage movement, with the motor name,
-    the axis and the displacement to apply, signed by the direction of the
-    button."""
+    """Emitted when a step button is pressed, with the motor name, the axis
+    and the displacement to apply, signed by the direction of the button."""
+
+    sig_motor_step_stop = Signal(str)
+    """Emitted with the motor name when its step button is released."""
 
     def __init__(
         self,
@@ -78,14 +79,14 @@ class MotorView(QtWidgets.QWidget, Loggable):
         self._buttons: dict[str, QtWidgets.QPushButton] = {}
         self._groups: dict[str, QtWidgets.QGroupBox] = {}
         self._steps: dict[str, QtWidgets.QDoubleSpinBox] = {}
-        # each motor's jog strips, disabled while a plan holds the motor
+        # each motor's step controls, disabled while a plan holds the motor
         self._inputs: dict[str, list[QtWidgets.QWidget]] = {}
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
-        self.setStyleSheet(_JOG_STYLE)
+        self.setStyleSheet(_BUTTON_STYLE)
 
-        self._readout_font = _resized(
+        self._position_font = _resized(
             QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont), 2
         )
 
@@ -119,7 +120,7 @@ class MotorView(QtWidgets.QWidget, Loggable):
                 suffix = f"{name}:{axis}"
                 self._labels["label:" + suffix] = QtWidgets.QLabel(axis, group)
                 self._labels["pos:" + suffix] = QtWidgets.QLabel(f"{0:.2f}", group)
-                self._labels["pos:" + suffix].setFont(self._readout_font)
+                self._labels["pos:" + suffix].setFont(self._position_font)
                 self._labels["pos:" + suffix].setAlignment(
                     QtCore.Qt.AlignmentFlag.AlignRight
                     | QtCore.Qt.AlignmentFlag.AlignVCenter
@@ -129,35 +130,29 @@ class MotorView(QtWidgets.QWidget, Loggable):
                 grid.addWidget(self._labels["label:" + suffix], i, 0)
                 grid.addWidget(self._labels["pos:" + suffix], i, 1)
                 grid.addWidget(self._labels["units:" + suffix], i, 2)
-                grid.addWidget(self._jog_strip(name, axis, units, group), i, 3)
+                grid.addWidget(self._step_controls(name, axis, units, group), i, 3)
 
             self.main_layout.addWidget(group)
 
         self.main_layout.addStretch(1)
 
-    def _jog_strip(
+    def _step_controls(
         self, motor: str, axis: str, units: str, parent: QtWidgets.QWidget
     ) -> QtWidgets.QWidget:
-        """Build the step control and its two jog buttons as one strip.
+        """Build the step size box and its two step buttons as one row.
 
         Parameters
         ----------
-        motor : str
-            Motor device label.
-        axis : str
-            Motor axis.
-        units : str
-            Engineering unit of the axis.
-        parent : QtWidgets.QWidget
-            Widget the strip is built in.
+        units
+            Engineering unit of the axis, shown in the step size tooltip.
         """
         suffix = f"{motor}:{axis}"
-        strip = QtWidgets.QWidget(parent)
-        layout = QtWidgets.QHBoxLayout(strip)
+        row = QtWidgets.QWidget(parent)
+        layout = QtWidgets.QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(_JOG_SPACING)
+        layout.setSpacing(_CONTROL_SPACING)
 
-        step = QtWidgets.QDoubleSpinBox(strip)
+        step = QtWidgets.QDoubleSpinBox(row)
         step.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         step.setDecimals(2)
         step.setRange(0.0, 1e6)
@@ -169,36 +164,36 @@ class MotorView(QtWidgets.QWidget, Loggable):
         step.setFixedSize(_STEP_WIDTH, _STEP_HEIGHT)
         self._steps["step:" + suffix] = step
 
-        side = _STEP_HEIGHT
-        for direction, glyph in (("down", "-"), ("up", "+")):
-            button = QtWidgets.QPushButton(glyph, strip)
-            button.setObjectName("jog")
-            button.setFixedSize(side, side)
+        for direction, sign in (("down", "-"), ("up", "+")):
+            button = QtWidgets.QPushButton(sign, row)
+            button.setObjectName("step")
+            button.setFixedSize(_STEP_HEIGHT, _STEP_HEIGHT)
             button.setFont(_resized(button.font(), 2))
-            button.setToolTip(f"Move {axis} by one step")
-            button.clicked.connect(
-                lambda _, m=motor, a=axis, up=direction == "up": self._step(m, a, up)
+            button.setToolTip(f"Move {axis} by one step, or keep moving while held")
+            button.pressed.connect(
+                lambda m=motor, a=axis, up=direction == "up": self._step(m, a, up)
             )
+            button.released.connect(lambda m=motor: self.sig_motor_step_stop.emit(m))
             self._buttons[f"button:{suffix}:{direction}"] = button
 
         layout.addWidget(self._buttons[f"button:{suffix}:up"])
         layout.addWidget(step)
         layout.addWidget(self._buttons[f"button:{suffix}:down"])
-        self._inputs.setdefault(motor, []).append(strip)
-        return strip
+        self._inputs.setdefault(motor, []).append(row)
+        return row
 
     @slot
     def set_locked(self, names: frozenset[str]) -> None:
         """Disable the controls of the motors in *names*, and enable the rest.
 
-        Positions keep updating: only the jog controls are disabled.
+        Positions keep updating: only the step controls are disabled.
         """
         for device, inputs in self._inputs.items():
             for widget in inputs:
                 widget.setEnabled(device not in names)
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
-        """Move the motor by a step size.
+        """Start stepping the motor by the step size.
 
         Parameters
         ----------

@@ -149,40 +149,52 @@ class TestMotorPresenter:
         assert any("xystage" in k for k in controller.motor_descriptors())
         assert set(controller.devices_readbacks()) == set(readings)
 
-    async def test_move_applies_a_delta(
+    async def test_a_held_step_repeats_until_stopped(
         self, controller: MotorPresenter, motor_stage: FakeXYStage
     ) -> None:
-        """Move an axis by a delta from wherever it stands."""
-        await controller.move(motor_stage.name, "x", 10.0)
+        """Repeat a step until it is stopped, then finish the step in flight."""
+        x = motor_stage.axis["x"]
+        held = asyncio.create_task(controller.move(motor_stage.name, "x", 1.0))
+        async with asyncio.timeout(5):
+            while (await x.locate())["readback"] < 3.0:
+                await asyncio.sleep(0)
+        await controller.stop_step(motor_stage.name)
+        await held
+
+        position = (await x.locate())["readback"]
+        assert position >= 3.0
+        assert position == pytest.approx(round(position))
+
+    async def test_a_tap_moves_one_step(
+        self, controller: MotorPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """Move one step when the stop arrives before the first step lands."""
+        await asyncio.gather(
+            controller.move(motor_stage.name, "x", 10.0),
+            controller.stop_step(motor_stage.name),
+        )
 
         assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
+
+    async def test_a_new_step_takes_over_from_the_held_one(
+        self, controller: MotorPresenter, motor_stage: FakeXYStage
+    ) -> None:
+        """End a held step after its move when another starts, and run the new one."""
+        await asyncio.gather(
+            controller.move(motor_stage.name, "x", 10.0),
+            controller.move(motor_stage.name, "y", 5.0),
+            controller.stop_step(motor_stage.name),
+        )
+
+        x = (await motor_stage.axis["x"].locate())["readback"]
+        y = (await motor_stage.axis["y"].locate())["readback"]
+        assert x == pytest.approx(10.0)
+        assert y == pytest.approx(5.0)
 
     async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:
         """Raise `KeyError` for a motor the presenter does not track."""
         with pytest.raises(KeyError):
             await controller.move("does-not-exist", "x", 1.0)
-
-    async def test_concurrent_steps_all_apply(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Apply both of two moves issued together, one after the other."""
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.move(motor_stage.name, "x", 10.0),
-        )
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(20.0)
-
-    async def test_opposite_steps_cancel_out(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Net two opposite moves issued together to zero."""
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.move(motor_stage.name, "x", -10.0),
-        )
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(0.0)
 
 
 class TestLightPresenter:

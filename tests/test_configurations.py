@@ -65,6 +65,7 @@ SIMULATION_LINKS = {
     ("median_ctrl.median", "img_widget.update_layers"),
     ("median_ctrl.filtered", "img_widget.update_layers"),
     ("motor_widget.sig_motor_move", "motor_ctrl.move"),
+    ("motor_widget.sig_motor_step_stop", "motor_ctrl.stop_step"),
     ("XY.axis-x", "motor_widget.update_setpoint"),
     ("XY.axis-y", "motor_widget.update_setpoint"),
     ("Z.axis-z", "motor_widget.update_setpoint"),

@@ -610,10 +610,10 @@ class TestMotorView:
             assert f"button:xystage:{axis}:up" in widget._buttons
             assert f"button:xystage:{axis}:down" in widget._buttons
 
-    async def test_a_locked_motor_disables_its_jog_controls_and_keeps_its_readout(
+    async def test_a_locked_motor_disables_its_step_controls_and_keeps_its_position(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
-        """Disable a locked motor's jog controls and keep its readout updating."""
+        """Disable a locked motor's step controls and keep its position updating."""
         build_motor_view(widget, motor_stage)
 
         widget.set_locked(frozenset({"xystage"}))
@@ -646,34 +646,39 @@ class TestMotorView:
         assert widget._labels["pos:xystage:x"].text().startswith("7.50")
 
     @pytest.mark.parametrize(
-        ("direction_up", "expected"),
+        ("direction", "expected"),
         [
-            pytest.param(True, 100.0, id="step-up"),
-            pytest.param(False, -100.0, id="step-down"),
+            pytest.param("up", 100.0, id="step-up"),
+            pytest.param("down", -100.0, id="step-down"),
         ],
     )
-    async def test_step_emits_a_displacement_not_a_target(
+    async def test_a_step_starts_on_press_and_stops_on_release(
         self,
         widget: MotorView,
         motor_stage: FakeXYStage,
-        direction_up: bool,
+        direction: str,
         expected: float,
     ) -> None:
-        """Send the step size as a displacement, whatever the position label says."""
+        """Emit a signed step on press and a stop on release."""
         build_motor_view(widget, motor_stage)
         widget.update_setpoint(_reading("xystage-axis-x", 123.0))
+        button = widget._buttons[f"button:xystage:x:{direction}"]
 
-        received: list[tuple[str, str, float]] = []
+        steps: list[tuple[str, str, float]] = []
+        stops: list[str] = []
         widget.sig_motor_move.connect(
-            lambda motor, axis, delta: received.append((motor, axis, delta))
+            lambda motor, axis, delta: steps.append((motor, axis, delta))
         )
+        widget.sig_motor_step_stop.connect(stops.append)
 
-        widget._step("xystage", "x", direction_up=direction_up)
+        button.pressed.emit()
+        assert [(m, a) for m, a, _ in steps] == [("xystage", "x")]
+        assert steps[0][2] == pytest.approx(expected)
+        assert stops == []
 
-        assert len(received) == 1
-        motor, axis, delta = received[0]
-        assert (motor, axis) == ("xystage", "x")
-        assert delta == pytest.approx(expected)
+        button.released.emit()
+        assert len(steps) == 1
+        assert stops == ["xystage"]
 
 
 class TestLightView:

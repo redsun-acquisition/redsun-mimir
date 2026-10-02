@@ -62,6 +62,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   `ActionManager` its plans wait on.
 - `HasBuffer` (`redsun_mimir.protocols`) - a device publishing its latest
   frame, the devices `MedianPresenter` takes.
+- `MotorView.sig_motor_step_stop` - emitted with the motor name when its step
+  button is released.
+- `MotorPresenter.stop_step` - ends the move repeating on a motor.
 
 ### Changed
 
@@ -81,6 +84,12 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Changed (breaking)
 
+- `MotorPresenter.move` repeats its step until `stop_step` is called for
+  the motor or another move starts on it. A session wiring `sig_motor_move`
+  to `move` needs `sig_motor_step_stop` wired to `stop_step`, or the move
+  never ends.
+- `MotorView.sig_motor_move` is emitted when a step button is pressed, not
+  when it is clicked.
 - `redsun` 0.14.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
 - `run` (`redsun_mimir.services.uc2_controller`) is `serve_board`.
