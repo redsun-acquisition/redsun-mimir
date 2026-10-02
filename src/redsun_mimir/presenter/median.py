@@ -429,10 +429,10 @@ class MedianPresenter(DocumentRouter, Loggable):
         """Publish the median of every source of this run and write its stack."""
         run = doc["run_start"]
         positions = self._positions.pop(run, [])
-        for (candidate, source), frames in list(self._frames.items()):
-            if candidate != run:
+        for (run_uid, source), frames in list(self._frames.items()):
+            if run_uid != run:
                 continue
-            del self._frames[(candidate, source)]
+            del self._frames[(run_uid, source)]
             if not frames:
                 continue
 
@@ -456,8 +456,8 @@ class MedianPresenter(DocumentRouter, Loggable):
 
             self._write(source, run, stack, positions)
 
-        for uid, (candidate, _) in list(self._scan_streams.items()):
-            if candidate == run:
+        for uid, (run_uid, _) in list(self._scan_streams.items()):
+            if run_uid == run:
                 del self._scan_streams[uid]
 
     def _write(

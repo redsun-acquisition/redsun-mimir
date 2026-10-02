@@ -117,10 +117,10 @@ class FakeCore:
         #: set while an exposure is in flight, for a layout change to catch
         self.exposing = threading.Event()
         #: an exposure returns only once this is set
-        self.may_expose = threading.Event()
-        self.may_expose.set()
+        self.exposure_allowed = threading.Event()
+        self.exposure_allowed.set()
         #: every layout change the fake was asked for during an exposure
-        self.overlapped: list[str] = []
+        self.calls_during_exposure: list[str] = []
         self._buffer: Queue[NDArray[Any]] = Queue()
 
     def produce(self, frames: int = 1) -> None:
@@ -133,7 +133,7 @@ class FakeCore:
             raise RuntimeError("cannot expose while a sequence acquisition runs")
         self.exposing.set()
         try:
-            self.may_expose.wait(TIMEOUT)
+            self.exposure_allowed.wait(TIMEOUT)
             self.snapped += 1
             return np.full(FRAME_SHAPE, self.snapped, dtype=self.dtype)
         finally:
@@ -230,7 +230,7 @@ class FakeCore:
     def _layout_change(self, call: str) -> None:
         """Record *call* if it reached the camera during an exposure."""
         if self.exposing.is_set():
-            self.overlapped.append(call)
+            self.calls_during_exposure.append(call)
 
     def getImageWidth(self) -> int:
         return self.roi[2]
@@ -288,7 +288,7 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
         client.put(f"{PREFIX}:Acquire", True, timeout=10.0)
         client.put(f"{PREFIX}:FilePath", str(store), timeout=10.0)
         client.put(f"{PREFIX}:NumCapture", CAPTURED_FRAMES, timeout=10.0)
-        window_over = threading.Event()
+        capture_done = threading.Event()
         capturing: list[bool] = []
 
         def on_capture(value: Any) -> None:
@@ -298,12 +298,12 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
             if bool(value):
                 capturing.append(True)
             elif capturing:
-                window_over.set()
+                capture_done.set()
 
         watching = client.monitor(f"{PREFIX}:Capture_RBV", on_capture)
         client.put(f"{PREFIX}:Capture", True, timeout=10.0)
 
-        assert window_over.wait(30.0)
+        assert capture_done.wait(30.0)
         watching.close()
         assert int(client.get(f"{PREFIX}:Captured", timeout=10.0)) == CAPTURED_FRAMES
         assert float(client.get(f"{PREFIX}:Exposure_RBV", timeout=10.0)) == 25.0
@@ -448,7 +448,7 @@ async def test_a_roi_write_waits_for_the_frame_the_camera_is_taking(
     """
     camera, core = controller
     core.sequences = False
-    core.may_expose.clear()
+    core.exposure_allowed.clear()
     await camera.acquire.put(True)
     assert core.exposing.wait(TIMEOUT)
 
@@ -456,11 +456,11 @@ async def test_a_roi_write_waits_for_the_frame_the_camera_is_taking(
     landed, _ = await asyncio.wait({writing}, timeout=0.5)
     assert not landed, "the write reached the camera during an exposure"
 
-    core.may_expose.set()
+    core.exposure_allowed.set()
     await writing
     await camera.acquire.put(False)
 
-    assert core.overlapped == []
+    assert core.calls_during_exposure == []
     assert core.roi == (1, 1, 2, 2)
 
 

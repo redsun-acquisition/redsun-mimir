@@ -23,20 +23,20 @@ if TYPE_CHECKING:
 #: Seconds a service may take to become ready, or to stop once asked, before
 #: it writes every thread's stack to its output. Below the 15 s a session
 #: waits for readiness, so the stacks reach the session's log.
-STALL_DUMP: Final = 10.0
+TRACEBACK_DELAY: Final = 10.0
 
 
 def identity_arguments(parser: argparse.ArgumentParser, default_name: str) -> None:
     """Add the name and prefix a session gives a service it launches."""
-    me = identity()
+    service = identity()
     parser.add_argument(
         "--prefix",
-        default=me.prefix if me else "",
+        default=service.prefix if service else "",
         help="PV prefix, the session's unless given",
     )
     parser.add_argument(
         "--name",
-        default=me.name if me else default_name,
+        default=service.name if service else default_name,
         help="name of this service, the session's unless given",
     )
 
@@ -55,20 +55,20 @@ async def serve(controller: Controller, prefix: str) -> None:
     `FastCS.run` installs signal handlers on POSIX only and watches no input,
     so the serving task is cancelled here instead.
     """
-    faulthandler.dump_traceback_later(STALL_DUMP)
+    faulthandler.dump_traceback_later(TRACEBACK_DELAY)
     controller.set_path([prefix])
     control_system = FastCS(controller, [EpicsPVATransport()])
-    serving = asyncio.ensure_future(control_system.serve(interactive=False))
-    announcing = asyncio.ensure_future(ready_when_reachable(f"{prefix}:PVI"))
-    announcing.add_done_callback(lambda _: faulthandler.cancel_dump_traceback_later())
+    serve_task = asyncio.ensure_future(control_system.serve(interactive=False))
+    ready_task = asyncio.ensure_future(ready_when_reachable(f"{prefix}:PVI"))
+    ready_task.add_done_callback(lambda _: faulthandler.cancel_dump_traceback_later())
 
     try:
         await wait_for_stop()
     finally:
-        faulthandler.dump_traceback_later(STALL_DUMP)
-        announcing.cancel()
-        serving.cancel()
-        await asyncio.gather(serving, announcing, return_exceptions=True)
+        faulthandler.dump_traceback_later(TRACEBACK_DELAY)
+        ready_task.cancel()
+        serve_task.cancel()
+        await asyncio.gather(serve_task, ready_task, return_exceptions=True)
         faulthandler.cancel_dump_traceback_later()
 
 

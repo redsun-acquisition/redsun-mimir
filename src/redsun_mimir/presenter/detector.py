@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 #: The settings a view may change, each named after the signal carrying it, so
 #: a stray port name cannot reach an arbitrary attribute. ``pixel_dtype`` is
 #: not among them: the camera reports it, nobody sets it.
-def _settable_signals(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
+def _writable_settings(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
     """Return the detector's writable settings, keyed as the view names them.
 
     A key is the signal's data key without the device name prefix.
@@ -82,13 +82,13 @@ class DetectorPresenter(DocumentRouter, Loggable):
         self._buffer_keys = {
             detector.buffer.name for detector in self.detectors.values()
         }
-        self._detector_of = {
+        self._detector_by_buffer = {
             detector.buffer.name: name for name, detector in self.detectors.items()
         }
         # the camera's properties come from its service, so they exist only
         # once it has connected, which the build does before presenters
-        self._settables = {
-            name: _settable_signals(detector)
+        self._writable_settings = {
+            name: _writable_settings(detector)
             for name, detector in self.detectors.items()
         }
         #: each detector's ROI as last reported, kept by subscription so a
@@ -96,9 +96,9 @@ class DetectorPresenter(DocumentRouter, Loggable):
         self._rois: dict[str, Roi] = {}
         self._roi_callbacks: dict[str, Callable[[dict[str, Reading[Any]]], None]] = {}
         self._deferrals: Deferrals | None = None
-        run_coro(self._follow_rois())
+        run_coro(self._subscribe_rois())
 
-    async def _follow_rois(self) -> None:
+    async def _subscribe_rois(self) -> None:
         """Read every ROI once, then subscribe to it, on the subscription's loop.
 
         The read places the first frame: a subscription reports its first
@@ -106,19 +106,19 @@ class DetectorPresenter(DocumentRouter, Loggable):
         """
         for name, detector in self.detectors.items():
             self._rois[name] = Roi.parse(await detector.roi.get_value())
-            self._roi_callbacks[name] = partial(self._remember_roi, name)
+            self._roi_callbacks[name] = partial(self._store_roi, name)
             detector.roi.subscribe(self._roi_callbacks[name])
 
-    async def _unfollow_rois(self) -> None:
+    async def _unsubscribe_rois(self) -> None:
         for name, callback in self._roi_callbacks.items():
             self.detectors[name].roi.clear_sub(callback)
         self._roi_callbacks.clear()
 
     def shutdown(self) -> None:
-        """Stop following the ROIs, so no subscription outlives the loop."""
-        run_coro(self._unfollow_rois())
+        """Unsubscribe from the ROIs, so no subscription outlives the loop."""
+        run_coro(self._unsubscribe_rois())
 
-    def _remember_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
+    def _store_roi(self, detector: str, reading: dict[str, Reading[Any]]) -> None:
         text = next(iter(reading.values()))["value"]
         # a PV subscription delivers the record's empty default before the
         # service has published a value; there is no ROI in it to remember
@@ -140,7 +140,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
         for key in keys:
             if key not in doc["data"]:
                 continue
-            detector = self._detector_of[key]
+            detector = self._detector_by_buffer[key]
             readings[f"{detector}-roi"] = {
                 "value": self._rois.get(detector),
                 "timestamp": doc["time"],
@@ -182,9 +182,11 @@ class DetectorPresenter(DocumentRouter, Loggable):
         """
         result: dict[str, Descriptor] = {}
         for name, device in self.detectors.items():
-            settable = {f"{name}-{key}" for key in self._settables.get(name, {})}
+            writable = {
+                f"{name}-{key}" for key in self._writable_settings.get(name, {})
+            }
             for key, descriptor in run_coro(device.describe_configuration()).items():
-                if key not in settable:
+                if key not in writable:
                     descriptor = {
                         **descriptor,
                         "source": f"{descriptor['source']}:readonly",
@@ -201,7 +203,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
         change is deferred to between two engine messages when the session
         has an engine.
         """
-        obj = self._settables.get(detector, {}).get(property)
+        obj = self._writable_settings.get(detector, {}).get(property)
         if obj is None:
             self.logger.error(f"Unknown property {property!r} for {detector!r}")
             return
@@ -220,7 +222,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
 
         if property == "roi" and self._deferrals is not None:
             # a ROI applied inside a point would put frames of two shapes in
-            # one event stream, so it lands between two messages instead
+            # one event stream, so it is applied between two messages instead
             self._deferrals.request(apply)
             return
         await apply()

@@ -78,7 +78,7 @@ class ImageView(QtWidgets.QWidget, Loggable):
     [`napari._qt.qt_viewer.QtViewer`][] embedded as a child widget, bypassing
     napari's ``Window``/``_QtMainWindow`` stack. The layer controls and layer
     list are taken out of ``QtViewer`` into a left panel, without napari's
-    menu bar, status bar or other main-window chrome.
+    menu bar, status bar or other main-window parts.
 
     One image layer is created per detector in
     [`setup`][redsun_mimir.view.ImageView.setup] and updated as frames
@@ -119,14 +119,14 @@ class ImageView(QtWidgets.QWidget, Loggable):
         #: each detector layer's size, (height, width), which a box is clamped to
         self._sensors: dict[str, tuple[int, int]] = {}
         #: whether each detector's box is asked to be visible, kept across deletions
-        self._selecting: dict[str, bool] = {}
+        self._box_visible: dict[str, bool] = {}
 
         # QtViewer is a QSplitter containing the canvas and the dims bar.
-        # It does not carry any main-window chrome (no menu bar, status bar,
+        # It has none of the main-window parts (no menu bar, status bar,
         # activity dialog, etc.), making it safe to embed as a child widget.
         self._qt_viewer = QtViewer(self.viewer_model, show_welcome_screen=False)
 
-        self._provider_disposer = register_embedded_viewer(
+        self._provider_registration = register_embedded_viewer(
             self.viewer_model, self._qt_viewer
         )
 
@@ -169,7 +169,7 @@ class ImageView(QtWidgets.QWidget, Loggable):
 
     def shutdown(self) -> None:
         """Unregister the napari providers of the embedded viewer."""
-        self._provider_disposer.cleanup()
+        self._provider_registration.cleanup()
 
     def setup(self, detectors: DescribesDetectors) -> None:
         """Create one image layer per detector *detectors* describes."""
@@ -204,7 +204,7 @@ class ImageView(QtWidgets.QWidget, Loggable):
         box = ROIInteractionBoxOverlay(
             bounds=((0, 0), shape),
             handles=True,
-            visible=self._selecting.get(name, False),
+            visible=self._box_visible.get(name, False),
         )
         layer._overlays[ROI_BOX] = box
         layer.mouse_drag_callbacks.append(resize_selection_box)
@@ -224,7 +224,7 @@ class ImageView(QtWidgets.QWidget, Loggable):
     @slot
     def set_roi_selection(self, detector: str, enabled: bool) -> None:
         """Show the box on *detector*'s layer and let it be dragged, or hide it."""
-        self._selecting[detector] = enabled
+        self._box_visible[detector] = enabled
         if detector in self.viewer_model.layers:
             self.viewer_model.layers[detector]._overlays[ROI_BOX].visible = enabled
 
@@ -269,8 +269,8 @@ class ImageView(QtWidgets.QWidget, Loggable):
             if name not in self.viewer_model.layers:
                 self.logger.debug(f"Adding new layer for {name}")
                 if name in self._sensors:
-                    # a detector's layer the user deleted: give it back, box
-                    # and all, rather than letting the frame stand in for it
+                    # a detector's layer the user deleted: add it back with its
+                    # box, instead of a plain layer built from the frame
                     self._add_layer(name, self._sensors[name], img.dtype)
                 else:
                     self.viewer_model.add_image(np.zeros_like(img), name=name)

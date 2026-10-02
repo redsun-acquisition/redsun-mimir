@@ -103,7 +103,7 @@ class RoiPanel(QtWidgets.QWidget):
         layout.addWidget(self.editor)
         self.setLayout(layout)
         self._load(applied)
-        self._show()
+        self._update_ok_button()
 
     @property
     def pending(self) -> Roi:
@@ -118,14 +118,14 @@ class RoiPanel(QtWidgets.QWidget):
     def draw(self, roi: Roi) -> None:
         """Fill the editor with *roi*, the region dragged on the image."""
         self._load(roi)
-        self._show()
+        self._update_ok_button()
 
     def apply(self, roi: Roi) -> None:
         """Show *roi* as the region the camera now reads."""
         self.applied = roi
         if not self.editor.isVisible():
             self._load(roi)
-        self._show()
+        self._update_ok_button()
 
     @property
     def _boxes(self) -> tuple[QtWidgets.QSpinBox, ...]:
@@ -138,44 +138,44 @@ class RoiPanel(QtWidgets.QWidget):
         try:
             self.x_box.setValue(roi.x)
             self.y_box.setValue(roi.y)
-            self._fit()
+            self._limit_size_to_sensor()
             self.width_box.setValue(roi.width)
             self.height_box.setValue(roi.height)
         finally:
             for box in self._boxes:
                 box.blockSignals(False)
 
-    def _fit(self) -> None:
+    def _limit_size_to_sensor(self) -> None:
         """Keep width and height inside the sensor from the corner chosen."""
         sensor_width, sensor_height = self.sensor
         self.width_box.setMaximum(sensor_width - self.x_box.value())
         self.height_box.setMaximum(sensor_height - self.y_box.value())
 
-    def _show(self) -> None:
+    def _update_ok_button(self) -> None:
         self.ok_button.setEnabled(self.pending != self.applied)
 
     def _on_select(self, checked: bool) -> None:
         if checked:
             self._load(self.applied)
         self.editor.setVisible(checked)
-        self._show()
+        self._update_ok_button()
         self.sig_selection_toggled.emit(checked)
 
     def _on_edit(self) -> None:
         for box in self._boxes:
             box.blockSignals(True)
         try:
-            self._fit()
+            self._limit_size_to_sensor()
         finally:
             for box in self._boxes:
                 box.blockSignals(False)
-        self._show()
+        self._update_ok_button()
         self.sig_roi_edited.emit(self.pending)
 
     def _on_full(self) -> None:
         width, height = self.sensor
         self._load(Roi(0, 0, width, height))
-        self._show()
+        self._update_ok_button()
         self.sig_roi_edited.emit(self.pending)
 
     def _on_ok(self) -> None:

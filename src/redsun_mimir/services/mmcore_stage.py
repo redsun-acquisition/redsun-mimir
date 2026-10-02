@@ -55,17 +55,17 @@ class StageIO(AttributeIO[float, AxisRef]):
         super().__init__()
         self._core = core
         self._label = label
-        self._moving = asyncio.Lock()
+        self._move_lock = asyncio.Lock()
 
     async def send(self, attr: AttrW[float, AxisRef], value: float) -> None:
         """Move the axis, and read back where it stopped.
 
         One move at a time: a lateral move reads and writes the pair, so a
-        concurrent move on the sibling axis would put this one back where it
+        concurrent move on the other axis would put this one back where it
         started.
         """
         logger.debug(f"Moving {attr.io_ref.axis} to {value}")
-        async with self._moving:
+        async with self._move_lock:
             await asyncio.to_thread(self._move, attr.io_ref.axis, float(value))
         if isinstance(attr, AttrR):
             await self.update(attr)

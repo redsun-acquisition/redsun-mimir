@@ -73,7 +73,7 @@ class EngineHolder:
 
 
 class FakeFuture:
-    """A future the test settles by hand, running the callbacks it was given."""
+    """A future the test finishes by hand, running the callbacks it was given."""
 
     def __init__(self) -> None:
         self.callbacks: list[Callable[[FakeFuture], None]] = []
@@ -81,7 +81,7 @@ class FakeFuture:
     def add_done_callback(self, callback: Callable[[FakeFuture], None]) -> None:
         self.callbacks.append(callback)
 
-    def settle(self) -> None:
+    def finish(self) -> None:
         for callback in self.callbacks:
             callback(self)
 
@@ -897,19 +897,19 @@ class TestDetectorPresenter:
         presenter.setup(EngineHolder(engine))
         announced: list[tuple[str, str, Any]] = []
         presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
-        # a message the test holds open, so the change cannot land before the
+        # a message the test keeps waiting, so the change cannot be applied before the
         # assertions on whatever machine runs them
-        gate = asyncio.Event()
+        release = asyncio.Event()
         entered = threading.Event()
 
         async def hold() -> None:
             entered.set()
-            await gate.wait()
+            await release.wait()
 
-        def held_open() -> MsgGenerator[None]:
+        def blocking_plan() -> MsgGenerator[None]:
             yield from bps.wait_for([hold])
 
-        future = engine(held_open())
+        future = engine(blocking_plan())
         assert await asyncio.to_thread(entered.wait, 5)
 
         await presenter.set("cam", "roi", "1,1,3,2")
@@ -917,7 +917,7 @@ class TestDetectorPresenter:
 
         assert await fake_detector.roi.get_value() == "0,0,6,4"
         assert await fake_detector.exposure.get_value() == 5.0
-        engine.loop.call_soon_threadsafe(gate.set)
+        engine.loop.call_soon_threadsafe(release.set)
         future.result(timeout=5)
         assert await fake_detector.roi.get_value() == "1,1,3,2"
         assert ("cam", "cam-roi", "1,1,3,2") in announced
@@ -1039,10 +1039,10 @@ class TestAcquisitionPresenter:
             {"detectors": [fake_flyer.name], "motor": motor_stage.name},
             ["det_ctrl"],
         )
-        first.settle()
+        first.finish()
         engine.future = second
         acquisition.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        second.settle()
+        second.finish()
 
         assert engine.subs == [[median, detector], []]
 
@@ -1097,27 +1097,27 @@ class TestAcquisitionPresenter:
         self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
         """Announce the end of a continuous plan."""
-        settled = FakeFuture()
-        controller.engine = FakeEngine(settled)  # type: ignore[assignment]
+        run_future = FakeFuture()
+        controller.engine = FakeEngine(run_future)  # type: ignore[assignment]
         ended: list[bool] = []
         controller.sig_plan_done.connect(lambda: ended.append(True))
 
         controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        settled.settle()
+        run_future.finish()
 
         assert ended == [True]
 
     def test_a_paused_plan_does_not_announce_its_end(
         self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
     ) -> None:
-        """Keep quiet when the future of a run settles because the plan paused."""
-        settled = FakeFuture()
-        controller.engine = FakeEngine(settled, state="paused")  # type: ignore[assignment]
+        """Keep quiet when the future of a run completes because the plan paused."""
+        run_future = FakeFuture()
+        controller.engine = FakeEngine(run_future, state="paused")  # type: ignore[assignment]
         ended: list[bool] = []
         controller.sig_plan_done.connect(lambda: ended.append(True))
 
         controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        settled.settle()
+        run_future.finish()
 
         assert ended == []
 

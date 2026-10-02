@@ -203,7 +203,7 @@ class AcquisitionPresenter(Loggable):
         self.logger.info(f"Launching {plan_name!r}")
         self.sig_pre_launch_notify.emit(plan_name)
         self._running = plan_name
-        self._watch(self.engine(entry["plan"](*args, **kwargs), subs))
+        self._track_future(self.engine(entry["plan"](*args, **kwargs), subs))
 
     @slot
     def request_action(self, name: str, on: bool) -> None:
@@ -226,7 +226,7 @@ class AcquisitionPresenter(Loggable):
             self.engine.request_pause(defer=True)
         else:
             self.logger.info(f"Resuming {self._running!r}")
-            self._watch(self.engine.resume())
+            self._track_future(self.engine.resume())
 
     @slot
     def stop_plan(self) -> None:
@@ -235,16 +235,16 @@ class AcquisitionPresenter(Loggable):
             self.logger.debug("No plan to stop")
             return
         self.logger.info(f"Stopping {self._running!r}")
-        self._watch(self.engine.stop())
+        self._track_future(self.engine.stop())
 
-    def _watch(self, fut: Future[Any]) -> None:
+    def _track_future(self, fut: Future[Any]) -> None:
         self.futures.add(fut)
-        fut.add_done_callback(self._finished)
+        fut.add_done_callback(self._on_future_done)
 
-    def _finished(self, fut: Future[Any]) -> None:
+    def _on_future_done(self, fut: Future[Any]) -> None:
         """Emit `sig_plan_done` once no future is left and the plan is not paused.
 
-        Pausing settles the future of the run, so a paused plan has not ended.
+        Pausing completes the future of the run, so a paused plan has not ended.
         """
         self.futures.discard(fut)
         if not self.futures and self.engine.state != "paused":
