@@ -610,10 +610,10 @@ class TestMotorView:
             assert f"button:xystage:{axis}:up" in widget._buttons
             assert f"button:xystage:{axis}:down" in widget._buttons
 
-    async def test_a_locked_motor_disables_its_jog_controls_and_keeps_its_readout(
+    async def test_a_locked_motor_disables_its_step_controls_and_keeps_its_position(
         self, widget: MotorView, motor_stage: FakeXYStage
     ) -> None:
-        """Disable a locked motor's jog controls and keep its readout updating."""
+        """Disable a locked motor's step controls and keep its position updating."""
         build_motor_view(widget, motor_stage)
 
         widget.set_locked(frozenset({"xystage"}))
