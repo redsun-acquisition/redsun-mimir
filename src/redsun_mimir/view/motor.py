@@ -61,9 +61,11 @@ class MotorView(QtWidgets.QWidget, Loggable):
     placement: Placement = Dock("right")
 
     sig_motor_move = Signal(str, str, float)
-    """Emitted when the user requests a stage movement, with the motor name,
-    the axis and the displacement to apply, signed by the direction of the
-    button."""
+    """Emitted when a step button is pressed, with the motor name, the axis
+    and the displacement to apply, signed by the direction of the button."""
+
+    sig_motor_step_stop = Signal(str)
+    """Emitted with the motor name when its step button is released."""
 
     def __init__(
         self,
@@ -175,10 +177,11 @@ class MotorView(QtWidgets.QWidget, Loggable):
             button.setObjectName("jog")
             button.setFixedSize(side, side)
             button.setFont(_resized(button.font(), 2))
-            button.setToolTip(f"Move {axis} by one step")
-            button.clicked.connect(
-                lambda _, m=motor, a=axis, up=direction == "up": self._step(m, a, up)
+            button.setToolTip(f"Move {axis} by one step, or keep moving while held")
+            button.pressed.connect(
+                lambda m=motor, a=axis, up=direction == "up": self._step(m, a, up)
             )
+            button.released.connect(lambda m=motor: self.sig_motor_step_stop.emit(m))
             self._buttons[f"button:{suffix}:{direction}"] = button
 
         layout.addWidget(self._buttons[f"button:{suffix}:up"])
@@ -198,7 +201,7 @@ class MotorView(QtWidgets.QWidget, Loggable):
                 widget.setEnabled(device not in names)
 
     def _step(self, motor: str, axis: str, direction_up: bool) -> None:
-        """Move the motor by a step size.
+        """Start stepping the motor by the step size.
 
         Parameters
         ----------

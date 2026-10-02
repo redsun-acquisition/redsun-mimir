@@ -62,6 +62,7 @@ def wire_motor(ctrl: MotorPresenter, view: MotorView) -> Iterator[Link]:
     the presenter never made.
     """
     yield view.sig_motor_move, ctrl.move
+    yield view.sig_motor_step_stop, ctrl.stop_step
     for readback in ctrl.devices_readbacks().values():
         yield readback, view.update_setpoint
 

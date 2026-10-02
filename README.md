@@ -175,6 +175,7 @@ wiring:
   det_widget.sig_roi_selection: img_widget.set_roi_selection
   det_widget.sig_roi_edited: img_widget.set_roi_box
   motor_widget.sig_motor_move: motor_ctrl.move
+  motor_widget.sig_motor_step_stop: motor_ctrl.stop_step
   light_widget.sig_toggle_light_request: light_ctrl.trigger
   light_widget.sig_intensity_request: light_ctrl.set
   acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan

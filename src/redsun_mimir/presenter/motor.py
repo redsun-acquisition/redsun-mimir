@@ -20,9 +20,10 @@ class MotorPresenter(Loggable):
     """Presenter for manual motor stage positioning.
 
     `move` is a coroutine connected directly to the requesting signal, so the
-    emitting thread never waits for the device. Moves are serialised per
-    device: a stage writing several coordinates on every set cannot have two
-    in flight at once. Positions are not announced; `devices_readbacks`
+    emitting thread never waits for the device. A move repeats until
+    `stop_step` is called for its device. Moves are serialised per device: a
+    stage writing several coordinates on every set cannot have two in flight
+    at once. Positions are not announced; `devices_readbacks`
     returns the axis readback signals for whoever displays them. An axis is
     reached as `axis[name]` on its device.
 
@@ -43,6 +44,7 @@ class MotorPresenter(Loggable):
         self._timeout = timeout or 2.0
         self._motors = motors
         self._locks = {name: asyncio.Lock() for name in self._motors}
+        self._presses = dict.fromkeys(self._motors, 0)
 
         self.logger.info("Initialized")
 
@@ -70,11 +72,28 @@ class MotorPresenter(Loggable):
 
     @slot
     async def move(self, motor: str, axis: str, delta: float) -> None:
-        """Move *axis* of *motor* by *delta*, in the axis' units."""
+        """Move *axis* of *motor* by *delta* repeatedly, in the axis' units.
+
+        Each move starts once the previous one lands. The repetition ends
+        after the move in flight when `stop_step` is called for *motor*, or
+        when another move starts on it.
+        """
+        self._presses[motor] += 1
+        press = self._presses[motor]
         # one lock per device, not per axis: a Micro-Manager XY stage writes
         # both coordinates on every set, so a concurrent move on the sibling
         # axis would carry a stale value for this one and revert it
         async with self._locks[motor]:
             movable = self._motors[motor].axis[axis]
             self.logger.info(f"Moving {movable.name} by {delta}")
-            await movable.set((await movable.locate())["readback"] + delta)
+            while True:
+                await movable.set((await movable.locate())["readback"] + delta)
+                if self._presses[motor] != press:
+                    break
+
+    @slot
+    async def stop_step(self, motor: str) -> None:
+        """End the move repeating on *motor* once its move in flight lands."""
+        # a coroutine, like `move`, so it is queued behind the move it ends:
+        # called on the emitting thread it could run before that move starts
+        self._presses[motor] += 1
