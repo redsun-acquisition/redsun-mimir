@@ -44,7 +44,7 @@ class MotorPresenter(Loggable):
         self._timeout = timeout or 2.0
         self._motors = motors
         self._locks = {name: asyncio.Lock() for name in self._motors}
-        self._presses = dict.fromkeys(self._motors, 0)
+        self._move_ids = dict.fromkeys(self._motors, 0)
 
         self.logger.info("Initialized")
 
@@ -78,17 +78,17 @@ class MotorPresenter(Loggable):
         after the move in flight when `stop_step` is called for *motor*, or
         when another move starts on it.
         """
-        self._presses[motor] += 1
-        press = self._presses[motor]
+        self._move_ids[motor] += 1
+        move_id = self._move_ids[motor]
         # one lock per device, not per axis: a Micro-Manager XY stage writes
-        # both coordinates on every set, so a concurrent move on the sibling
+        # both coordinates on every set, so a concurrent move on the other
         # axis would carry a stale value for this one and revert it
         async with self._locks[motor]:
             movable = self._motors[motor].axis[axis]
             self.logger.info(f"Moving {movable.name} by {delta}")
             while True:
                 await movable.set((await movable.locate())["readback"] + delta)
-                if self._presses[motor] != press:
+                if self._move_ids[motor] != move_id:
                     break
 
     @slot
@@ -96,4 +96,4 @@ class MotorPresenter(Loggable):
         """End the move repeating on *motor* once its move in flight lands."""
         # a coroutine, like `move`, so it is queued behind the move it ends:
         # called on the emitting thread it could run before that move starts
-        self._presses[motor] += 1
+        self._move_ids[motor] += 1
