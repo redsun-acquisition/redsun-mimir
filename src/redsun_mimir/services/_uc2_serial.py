@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 UM_TO_NM: Final[int] = 1_000
 
 #: Nanometres one step of the motor covers.
-MOTOR_STEP: Final[int] = 320
+NM_PER_STEP: Final[int] = 320
 
 #: The stepper each axis is wired to.
 AXIS_ID: Final[dict[str, int]] = {"x": 1, "y": 2, "z": 3}
@@ -63,7 +63,7 @@ class SerialPort(Protocol):
         ...
 
 
-def clean(raw: bytes) -> str:
+def extract_json(raw: bytes) -> str:
     """Return the document in *raw*, without the board's framing.
 
     The board wraps an answer in ``++`` and ``--`` and breaks it over lines.
@@ -76,11 +76,11 @@ def clean(raw: bytes) -> str:
 
 
 async def read_positions(
-    serial: SerialPort, lock: Lock, factor: int
+    serial: SerialPort, lock: Lock, nm_per_unit: int
 ) -> dict[int, float]:
     """Ask the board where its steppers stand, keyed by stepper id.
 
-    *factor* is the nanometres in the unit a position is wanted in, as
+    *nm_per_unit* is the nanometres in the unit a position is wanted in, as
     `move_axis` takes it; `AXIS_ID` names the id of each axis.
     """
     async with lock:
@@ -89,7 +89,7 @@ async def read_positions(
         if written != len(POSITION_QUERY):
             raise RuntimeError("Failed to write to serial port.")
 
-        answer = clean(await serial.read_until(expected=b"--"))
+        answer = extract_json(await serial.read_until(expected=b"--"))
         if not answer:
             raise RuntimeError("Failed to read from serial port.")
         try:
@@ -97,18 +97,18 @@ async def read_positions(
         except msgspec.DecodeError as e:
             raise RuntimeError(f"Failed to decode stepper state: {e}") from e
         return {
-            stepper.id: stepper.position * MOTOR_STEP / factor
+            stepper.id: stepper.position * NM_PER_STEP / nm_per_unit
             for stepper in response.motor.steppers
         }
 
 
 async def move_axis(
-    serial: SerialPort, lock: Lock, axis_id: int, factor: int, value: float
+    serial: SerialPort, lock: Lock, axis_id: int, nm_per_unit: int, value: float
 ) -> None:
     """Command one axis to *value* and consume both acknowledgements."""
     async with lock:
         serial.reset_input_buffer()
-        steps = int(value * factor / MOTOR_STEP)
+        steps = int(value * nm_per_unit / NM_PER_STEP)
         action = MotorAction(
             movement=MotorAction.generate_movement(id=axis_id, position=steps),
             qid=axis_id,
@@ -118,7 +118,7 @@ async def move_axis(
         if written != len(packet):
             raise RuntimeError("Failed to write to serial port.")
 
-        resp_str = clean(await serial.read_until(expected=b"--"))
+        resp_str = extract_json(await serial.read_until(expected=b"--"))
         if not resp_str:
             raise RuntimeError("Failed to read from serial port.")
         try:
@@ -128,7 +128,7 @@ async def move_axis(
         if response.qid != axis_id:
             raise RuntimeError(f"Invalid response from motor. Received: {response}")
 
-        motor_resp_str = clean(await serial.read_until(expected=b"--"))
+        motor_resp_str = extract_json(await serial.read_until(expected=b"--"))
         if not motor_resp_str:
             raise RuntimeError("Failed to read motor response from serial port.")
         try:
@@ -154,7 +154,7 @@ async def set_laser(
         if written != len(packet):
             raise RuntimeError("Failed to write to serial port.")
 
-        resp_str = clean(await serial.read_until(expected=b"}"))
+        resp_str = extract_json(await serial.read_until(expected=b"}"))
         if not resp_str:
             raise RuntimeError("Failed to read from serial port.")
         response = msgspec.json.decode(resp_str, type=Acknowledge)

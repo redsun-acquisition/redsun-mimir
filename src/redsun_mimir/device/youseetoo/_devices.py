@@ -74,7 +74,7 @@ class UC2LaserDevice(StandardReadable, Loggable):
     intensity: A[SignalRW[int], StandardReadableFormat.HINTED_SIGNAL]
 
     def __init__(self, prefix: str, *, wavelength: int = 0, name: str = "") -> None:
-        self._current_intensity = 0
+        self._saved_intensity = 0
         super().__init__(
             name=name,
             connector=fastcs_connector(f"{prefix}{LASER_GROUP}:", self),
@@ -94,10 +94,10 @@ class UC2LaserDevice(StandardReadable, Loggable):
         """
         enabled = await self.enabled.get_value()
         if enabled:
-            self._current_intensity = await self.intensity.get_value()
+            self._saved_intensity = await self.intensity.get_value()
             await self.intensity.set(0)
         elif await self.intensity.get_value() == 0:
-            await self.intensity.set(self._current_intensity)
+            await self.intensity.set(self._saved_intensity)
         await self.enabled.set(not enabled)
 
     async def shutdown(self) -> None:

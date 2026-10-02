@@ -37,7 +37,7 @@ def prepare_and_declare(
     """Prepare detectors and optionally declare their stream.
 
     Preparing starts live acquisition and hands each detector the sink it
-    will write through; the write window opens at kickoff, so frames reach
+    will write through; writing starts at kickoff, so frames reach
     viewers but not storage until then. Staging is left to the caller, so
     several device groups can share one `stage_all` call.
     """
@@ -125,7 +125,7 @@ def capture(
 
     The start document names *parent*, the run served, and *median_scan*,
     the scan whose stack goes into the store this capture names. With
-    *until* the window stays open until that plan returns. The detectors are
+    *until* the capture lasts until that plan returns. The detectors are
     left unstaged for the next capture.
     """
     uid: str = yield from bps.open_run(

@@ -124,7 +124,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
     *without_sequence* runs a callable with no sequence acquisition running,
     for the settings Micro-Manager refuses during one. *layout_changed* is
     handed a frame snapped after a setting that changes what frames look
-    like. *capturing* says whether a capture window is writing, during which
+    like. *capturing* says whether a capture is writing, during which
     the pixel dtype is refused: the store's dtype is fixed when it opens.
     """
 
@@ -177,10 +177,10 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         cropped. A ROI inside goes straight to the camera, and one the camera
         already reads goes nowhere: every write rebuilds the driver's buffers.
         """
-        covered = Roi(*self._core.getROI())
-        if not within(roi, covered):
-            covered = uncrop(self._core)
-        if roi != covered:
+        current = Roi(*self._core.getROI())
+        if not within(roi, current):
+            current = uncrop(self._core)
+        if roi != current:
             self._core.setROI(*roi)
 
     async def update(self, attr: AttrR[Any, CoreRef]) -> None:
@@ -224,7 +224,7 @@ class CoreIO(AttributeIO[Any, CoreRef]):
         if self._capturing():
             raise RuntimeError(
                 "the pixel dtype cannot change while a capture writes; "
-                "the store's dtype was fixed when the window opened"
+                "the store's dtype was fixed when the capture started"
             )
         supported = await asyncio.to_thread(self.pixel_dtypes)
         if dtype not in supported:
@@ -315,7 +315,7 @@ class PropertyIO(AttributeIO[str, PropertyRef]):
 
 
 class FrameStore:
-    """The Zarr store a capture window writes its frames to."""
+    """The Zarr store a capture writes its frames to."""
 
     def __init__(self, uri: str, data_key: str, frame: NDArray[Any]) -> None:
         import acquire_zarr as az
@@ -410,21 +410,22 @@ class MMCameraController(Controller):
         self._grabbed = 0
         self._published = 0
         self._written = 0
-        self._window_full = False
+        self._capture_full = False
         self._store: FrameStore | None = None
-        self._writing = threading.Lock()
+        self._store_lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._grabbing = threading.Event()
         self._stopped = threading.Event()
         self._stopped.set()
-        self._grabber: asyncio.Task[None] | None = None
+        self._grab_task: asyncio.Task[None] | None = None
         self._sequencing = False
         self._camera_lock = threading.Lock()
-        # the grabbing thread takes the camera again as soon as it lets go,
-        # and a lock is not fair, so a write waiting for it can wait for
-        # every frame that follows: whoever wants the camera holds this
-        # first, and the grabbing thread passes through it between frames
-        self._camera_wanted = threading.Lock()
+        # the grabbing thread takes the camera lock again right after it
+        # releases it, and a lock is not fair, so a write waiting for it can
+        # wait for every frame that follows: whoever wants the camera takes
+        # this lock first, and the grabbing thread takes and releases it
+        # between frames
+        self._camera_request_lock = threading.Lock()
         self._error: str | None = None
 
         self.acquire.add_on_update_callback(self._on_acquire)
@@ -593,20 +594,20 @@ class MMCameraController(Controller):
         # a thread that stopped on a fault has set _stopped, but its task is
         # done only once the loop has run the completion callback; a restart
         # asked for in between must not be dropped for a thread that is gone
-        if self._grabber is not None:
-            await self._grabber
+        if self._grab_task is not None:
+            await self._grab_task
         # a fault is what stopped the last thread; starting another is the
         # request to try again, and its state reads so at once
         self._error = None
         self._grabbing.set()
         self._stopped.clear()
-        self._grabber = asyncio.create_task(asyncio.to_thread(self._grab_loop))
+        self._grab_task = asyncio.create_task(asyncio.to_thread(self._grab_loop))
 
     async def _on_file_path(self, path: str) -> None:
-        """Reset ``Captured``: a client names the store before it opens a window.
+        """Reset ``Captured``: a client names the store before it starts a capture.
 
         A client waits for ``Captured`` to grow past what it read while
-        preparing; left at the last window's total, the next would be waited
+        preparing; left at the last capture's total, the next would be waited
         on for twice its frames.
         """
         await asyncio.to_thread(self._reset_written)
@@ -615,7 +616,7 @@ class MMCameraController(Controller):
     async def _on_capture(self, capturing: bool) -> None:
         """Open the store frames are written to, or finish the one open.
 
-        Closing publishes the count too, since an unbounded window ends here.
+        Closing publishes the count too, since an unbounded capture ends here.
         """
         if not capturing:
             await asyncio.to_thread(self._close_store)
@@ -628,14 +629,14 @@ class MMCameraController(Controller):
         if frame is None:
             raise RuntimeError("the camera has taken no frame to size the store from")
         self._written = 0
-        self._window_full = False
+        self._capture_full = False
         self._store = FrameStore(self.file_path.get(), self.data_key.get(), frame)
         logger.info(
             f"Capture opened: {self.data_key.get()!r} in {self.file_path.get()}"
         )
 
     async def _end_capture(self) -> None:
-        """Finish a window that has written every frame it was asked for."""
+        """Finish a capture that has written every frame it was asked for."""
         await asyncio.to_thread(self._close_store)
         await self.captured.update(self._written)
         logger.info(f"Capture complete: {self._written} frames written")
@@ -644,12 +645,12 @@ class MMCameraController(Controller):
     async def _stop_grabbing(self) -> None:
         """Ask the grabbing thread to end, and wait for it."""
         self._grabbing.clear()
-        if self._grabber is not None:
-            await self._grabber
-            self._grabber = None
+        if self._grab_task is not None:
+            await self._grab_task
+            self._grab_task = None
 
     def _reset_written(self) -> None:
-        with self._writing:
+        with self._store_lock:
             self._written = 0
 
     def _close_store(self) -> None:
@@ -659,7 +660,7 @@ class MMCameraController(Controller):
         is closed between its check and its append. Closing writes what the
         store still holds, so it runs off the event loop.
         """
-        with self._writing:
+        with self._store_lock:
             if self._store is not None:
                 self._store.close()
                 self._store = None
@@ -672,7 +673,7 @@ class MMCameraController(Controller):
         camera lock: a driver reached from two threads at once, one exposing
         and one changing what frames look like, can end the process.
         """
-        with self._camera_wanted:
+        with self._camera_request_lock:
             pass
         with self._camera_lock:
             if not self._sequencing:
@@ -682,10 +683,10 @@ class MMCameraController(Controller):
             return self._core.popNextImage()
 
     def grab_once(self) -> NDArray[Any] | None:
-        """Take one frame, and write it if a capture window wants it.
+        """Take one frame, and write it if a capture wants it.
 
         Runs in the grabbing thread and only appends to the store; on the last
-        frame of a bounded window it hands the closing to the event loop
+        frame of a bounded capture it hands the closing to the event loop
         through ``_end_capture``.
         """
         frame = self.take_frame()
@@ -694,20 +695,20 @@ class MMCameraController(Controller):
         self._latest = frame
         self._grabbed += 1
 
-        with self._writing:
+        with self._store_lock:
             store = self._store
-            if store is None or self._window_full:
+            if store is None or self._capture_full:
                 return frame
             store.append(frame)
             self._written += 1
             wanted = self.num_capture.get()
             if wanted and self._written >= wanted:
-                self._window_full = True
-                self._finish_window()
+                self._capture_full = True
+                self._request_capture_end()
         return frame
 
-    def _finish_window(self) -> None:
-        """Ask the event loop to close the window this thread has filled."""
+    def _request_capture_end(self) -> None:
+        """Ask the event loop to end the capture this thread has filled."""
         if self._loop is not None:
             asyncio.run_coroutine_threadsafe(self._end_capture(), self._loop)
 
@@ -722,9 +723,9 @@ class MMCameraController(Controller):
         except Exception as error:  # noqa: BLE001
             self._error = f"{type(error).__name__}: {error}"
             self._grabbing.clear()
-            # a client waits for Capture to fall to know its window is over,
+            # a client waits for Capture to fall to know its capture is over,
             # and no frame will arrive to end it now
-            self._finish_window()
+            self._request_capture_end()
         finally:
             with self._camera_lock:
                 self._stop_sequence()
@@ -736,7 +737,7 @@ class MMCameraController(Controller):
         The check and the read hold the camera lock, so no sequence can start
         between them: on some adapters a read during a sequence ends it.
         """
-        with self._camera_wanted, self._camera_lock:
+        with self._camera_request_lock, self._camera_lock:
             return None if self._sequencing else read()
 
     def _without_sequence(self, apply: Callable[[], None]) -> None:
@@ -746,7 +747,7 @@ class MMCameraController(Controller):
         the frame it is taking to end and takes no other until *apply* is
         done.
         """
-        with self._camera_wanted, self._camera_lock:
+        with self._camera_request_lock, self._camera_lock:
             was_sequencing = self._sequencing
             if was_sequencing:
                 self._stop_sequence()
@@ -761,8 +762,8 @@ class MMCameraController(Controller):
 
         An adapter that refuses one leaves ``take_frame`` exposing per frame.
         """
-        # the flag leads the camera on the way up and trails it on the way
-        # down: the grabbing thread exposes only while the flag is clear,
+        # the flag is set before the sequence starts and cleared after it
+        # stops: the grabbing thread exposes only while the flag is clear,
         # and Micro-Manager refuses an exposure during a sequence
         self._sequencing = True
         try:

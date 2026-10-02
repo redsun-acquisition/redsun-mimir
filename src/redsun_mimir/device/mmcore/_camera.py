@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from event_model import DataKey
     from ophyd_async.core import PathProvider, StreamableDataProvider
 
-#: What a capture window writes, as the documents name it.
 
 #: Seconds ``trigger`` waits for a frame taken after it was called.
 DEFAULT_TIMEOUT: Final = 5.0
@@ -53,7 +52,7 @@ FAULTED: Final = "faulted"
 
 @dataclass
 class ServiceTriggerLogic(DetectorTriggerLogic):
-    """Trigger logic telling the service how many frames the next window writes."""
+    """Trigger logic telling the service how many frames the next capture writes."""
 
     camera: MMCamera
 
@@ -75,13 +74,13 @@ class ServiceTriggerLogic(DetectorTriggerLogic):
         await self.camera.num_capture.set(num)
 
     async def default_trigger_info(self) -> TriggerInfo:
-        """Return the unbounded window a plan without `prepare` gets."""
+        """Return the unbounded capture a plan without `prepare` gets."""
         return TriggerInfo(number_of_events=0)
 
 
 @dataclass
 class ServiceAcquireLogic(DetectorAcquireLogic):
-    """Acquire logic starting and stopping the camera and the window it writes.
+    """Acquire logic starting and stopping the camera and the capture it writes.
 
     The camera takes frames from ``stage`` to ``unstage`` whether or not
     anything is written: a viewer watches the buffer, and a read after a move
@@ -95,39 +94,41 @@ class ServiceAcquireLogic(DetectorAcquireLogic):
         await self.camera.acquire.set(True)
 
     async def start_acquiring(self) -> None:
-        """Open the window frames are written to."""
+        """Start writing frames."""
         await self.camera.capture.set(True)
 
     async def wait_for_idle(self) -> None:
-        """Wait for a bounded window's last frame, or close an unbounded window.
+        """Wait for a bounded capture's last frame, or end an unbounded capture.
 
-        Closing an unbounded window here rather than at unstage keeps the
+        Ending an unbounded capture here rather than at unstage keeps the
         count the documents report equal to the frames on disk.
         """
         if await self.camera.num_capture.get_value():
-            closed = asyncio.ensure_future(
+            capture_ended = asyncio.ensure_future(
                 wait_for_value(self.camera.capture, False, timeout=None)
             )
-            faulted = asyncio.ensure_future(
+            fault_raised = asyncio.ensure_future(
                 wait_for_value(self.camera.state, FAULTED, timeout=None)
             )
             try:
                 await asyncio.wait(
-                    [closed, faulted], return_when=asyncio.FIRST_COMPLETED
+                    [capture_ended, fault_raised], return_when=asyncio.FIRST_COMPLETED
                 )
             finally:
-                closed.cancel()
-                faulted.cancel()
+                capture_ended.cancel()
+                fault_raised.cancel()
                 # a cancelled wait closes its subscription only once it runs
                 # again; a read made before then waits on the closing
                 # subscription's first value, which never comes
-                await asyncio.gather(closed, faulted, return_exceptions=True)
+                await asyncio.gather(
+                    capture_ended, fault_raised, return_exceptions=True
+                )
             await self.camera.faulted()
         else:
             await self.camera.capture.set(False)
 
     async def ensure_stopped(self) -> None:
-        """Close the window and stop the camera."""
+        """End the capture and stop the camera."""
         await self.camera.capture.set(False)
         await self.camera.acquire.set(False)
 
@@ -155,7 +156,7 @@ class ServiceDataLogic(DetectorDataLogic):
             self.camera.data_key.set(datakey_name),
         )
         # the service starts its count over when it is handed a store, and
-        # what is counted from here is what this window writes
+        # what is counted from here is what this capture writes
         await wait_for_value(self.camera.captured, 0, timeout=DEFAULT_TIMEOUT)
         shape, dtype = await frame_shape_and_dtype(self.camera)
 
@@ -197,7 +198,7 @@ class MMCamera(StandardDetector, Loggable):
         PV prefix of the service, ending in ``:``; a device declared with
         ``service=`` receives it from that service.
     path_provider :
-        Where a capture window writes; the session passes its own.
+        Where a capture writes; the session passes its own.
     """
 
     # the filler reads these annotations at runtime to build the signals, so

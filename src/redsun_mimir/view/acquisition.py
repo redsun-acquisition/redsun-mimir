@@ -137,7 +137,7 @@ class AcquisitionView(QtW.QWidget, Loggable):
             plan_widget = create_plan_widget(
                 spec,
                 toggle_callback=self._on_plan_toggled,
-                pause_callback=self._on_plan_maybe_paused,
+                pause_callback=self._on_pause_toggled,
                 action_clicked_callback=self._on_action_clicked,
                 action_toggled_callback=self._on_action_toggled,
                 plan_callbacks=entry.get("callbacks", ()),
@@ -174,7 +174,7 @@ class AcquisitionView(QtW.QWidget, Loggable):
         return self._running or self.plans_combobox.currentText()
 
     def _mark_running(self, plan: str) -> None:
-        """Hold the selector on *plan* and the root folder until it is done."""
+        """Disable the plan selector and the root folder button until *plan* ends."""
         self._running = plan
         self.plans_combobox.setEnabled(False)
         self.base_dir_btn.setEnabled(False)
@@ -191,7 +191,7 @@ class AcquisitionView(QtW.QWidget, Loggable):
         else:
             self.sig_stop_plan_request.emit()
 
-    def _on_plan_maybe_paused(self, paused: bool) -> None:
+    def _on_pause_toggled(self, paused: bool) -> None:
         self.logger.debug(f"Plan pause toggled: {paused}")
         self.plan_widgets[self._current_plan()].pause(paused)
         self.sig_pause_resume_request.emit(paused)

@@ -38,11 +38,11 @@ class LogsAction(QtGui.QAction):
             window.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
             window.setWindowTitle("Logs")
             window.resize(*WINDOW_SIZE)
-            window.destroyed.connect(self._forget_window)
+            window.destroyed.connect(self._on_window_destroyed)
             self._window = window
         self._window.show()
         self._window.raise_()
         self._window.activateWindow()
 
-    def _forget_window(self) -> None:
+    def _on_window_destroyed(self) -> None:
         self._window = None
