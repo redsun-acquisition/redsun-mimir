@@ -137,7 +137,15 @@ def test_a_session_declares_only_its_devices(
         assert layers[Layer.DEVICE] == devices
         assert layers[Layer.PRESENTER] == SHARED_PRESENTERS
         assert layers[Layer.VIEW] == SHARED_VIEWS
-        assert set(session.hooks) == {"create_application", "configure_application"}
+        installed = {
+            point: [type(provider).__name__ for provider in providers]
+            for point, providers in session.hooks.items()
+            if providers
+        }
+        assert installed == {
+            "create_application": ["NapariApplication"],
+            "configure_application": ["NapariStyle"],
+        }
     finally:
         session.shutdown()
 

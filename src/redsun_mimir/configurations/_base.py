@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
-from redsun import AsHook, AsPresenter, AsView, Serves
+from redsun import AsHook, AsPresenter, AsView, Declare, Serves
 from redsun.qt import QtHook, QtSession
+from redsun.qt.styles.napari import NapariStyle
 
-from redsun_mimir.hooks import NapariApplication
+from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
@@ -50,9 +51,11 @@ class MimirApp(QtSession):
 
     config = COMMON_CONFIG
 
-    napari: Annotated[
-        AsHook[NapariApplication],
-        Serves(QtHook.CREATE_APPLICATION, QtHook.CONFIGURE_APPLICATION),
+    napari: Annotated[AsHook[NapariApplication], Serves(QtHook.CREATE_APPLICATION)]
+    style: Annotated[
+        AsHook[NapariStyle],
+        Serves(QtHook.CONFIGURE_APPLICATION),
+        Declare(font_size=FONT_SIZE),
     ]
 
     median_ctrl: AsPresenter[MedianPresenter]

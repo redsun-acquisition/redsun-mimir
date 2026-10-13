@@ -136,24 +136,28 @@ Components never name each other's classes:
 - `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
   `live_median_scan`, and `AcquisitionPresenter` runs both.
 
-## The napari hook
+## The napari hooks
 
 `ImageView` embeds a napari viewer and takes its stylesheet from the
-application. `NapariApplication` serves two hook points: it creates the
-application napari would build (`create_application`) and puts napari's
-stylesheet on it (`configure_application`). The shipped sessions declare it.
-A session built only from a file needs a `hooks:` section, one provider for
-both points:
+application. Two hook providers give it one. `NapariApplication` creates the
+application napari would build (`create_application`), and `redsun`'s
+`NapariStyle` puts napari's stylesheet on it (`configure_application`), dark
+or light as the session's colour scheme reads. The layer list and layer
+controls change with it, and the canvas stays black. The shipped sessions
+declare both. A session built only from a file needs a `hooks:` section:
 
 ```yaml
 hooks:
-  create_application: &napari
+  create_application:
     provider: "redsun_mimir.hooks:NapariApplication"
-  configure_application: *napari
+  configure_application:
+    provider: napari
+    kwargs:
+      font_size: 9
 ```
 
-Without it the viewer works and its canvas follows napari's theme, but the
-layer list, layer controls and other Qt widgets keep the default look.
+Without the second one the viewer works, but the layer list, layer controls
+and other Qt widgets keep the default look.
 
 ## Wiring a session from YAML
 

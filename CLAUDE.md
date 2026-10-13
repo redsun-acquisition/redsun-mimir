@@ -30,7 +30,7 @@ src/redsun_mimir/
   plans.py         # plan stubs several presenters' plans are built from
   protocols.py     # structural protocols, those components ask each other for included
   hooks.py         # NapariApplication, FONT_SIZE
-  utils/napari/    # napari callbacks, overlay, stylesheet
+  utils/napari/    # napari callbacks, overlay
 tests/             # flat: conftest.py + test_<subsystem>.py
 scripts/mypy_qt.py # mypy with the qtpy flags for the binding QT_API names
 scripts/screenshot.py # the README picture of mimir sim, images/mimir-sim.png

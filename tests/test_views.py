@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import gc
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -13,7 +12,6 @@ from event_model import DocumentRouter
 from napari._app_model import get_app_model
 from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
-from napari.settings import get_settings
 from qtpy import QtCore, QtWidgets
 from redsun.engine import ProgressState
 from redsun.engine.actions import PlanAction, continuous
@@ -21,10 +19,9 @@ from redsun.path_provider import SessionPathProvider
 from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.common import Roi
-from redsun_mimir.hooks import FONT_SIZE, NapariApplication
+from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.motor import MotorPresenter
-from redsun_mimir.utils.napari import stylesheet
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
@@ -40,7 +37,6 @@ if TYPE_CHECKING:
 
     from bluesky.protocols import Reading
     from qtpy.QtCore import QCoreApplication
-    from qtpy.QtWidgets import QApplication
     from redsun import PlanEntry
 
     from redsun_mimir.device._mocks import MockLightDevice
@@ -805,16 +801,11 @@ class TestImageViewTheme:
         self, parent: QtWidgets.QWidget
     ) -> None:
         """Carry no stylesheet, so the application's one styles the view."""
-        get_settings().appearance.theme = "dark"
-
         view = ImageView("image_view", parent)
 
         try:
             assert view.styleSheet() == ""
             assert view._qt_viewer.styleSheet() == ""
-            # the canvas and the layer controls read the theme off the model,
-            # which takes it from the same settings the stylesheet does
-            assert view.viewer_model.theme == "dark"
         finally:
             view.shutdown()
             view.close()
@@ -823,26 +814,5 @@ class TestImageViewTheme:
 class TestNapariApplication:
     """Tests for the hook that runs the session on napari's application."""
 
-    @pytest.fixture
-    def hook(self) -> NapariApplication:
-        get_settings().appearance.theme = "dark"
-        return NapariApplication()
-
-    def test_it_supplies_naparis_application(
-        self, hook: NapariApplication, qapp: QCoreApplication
-    ) -> None:
-        assert hook.create_application([]) is qapp
-
-    def test_it_styles_the_whole_application(
-        self, hook: NapariApplication, qapp: QCoreApplication
-    ) -> None:
-        app = cast("QApplication", qapp)
-        # restyling repolishes every live widget, so drop the ones earlier
-        # tests closed but the interpreter has not collected yet
-        gc.collect()
-        app.processEvents()
-
-        hook.configure_application(app)
-
-        assert app.styleSheet() == stylesheet(FONT_SIZE)
-        assert f"font-size: {FONT_SIZE}pt" in app.styleSheet()
+    def test_it_supplies_naparis_application(self, qapp: QCoreApplication) -> None:
+        assert NapariApplication().create_application([]) is qapp

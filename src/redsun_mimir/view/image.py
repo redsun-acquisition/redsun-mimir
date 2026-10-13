@@ -85,7 +85,9 @@ class ImageView(QtWidgets.QWidget, Loggable):
     arrive from the presenter.
 
     The widget sets no stylesheet of its own: a session that wants napari's
-    theme puts napari's QSS on the application.
+    theme puts napari's QSS on the application. The viewer has napari's dark
+    theme whatever theme napari's settings name, so the canvas behind the
+    frames is black under a light stylesheet too.
 
     Each detector layer carries a selection box the user drags by its handles
     to choose a region of the sensor. Dragging changes nothing on the camera:
@@ -114,6 +116,9 @@ class ImageView(QtWidgets.QWidget, Loggable):
             title="viewer-model", ndisplay=2, order=(), axis_labels=()
         )
         self.viewer_model.canvas.grid.enabled = True
+        # napari's settings would choose otherwise, and its light theme
+        # draws the frames on a white canvas
+        self.viewer_model.theme = "dark"
         #: where a detector's frame lands on its layer, from its ROI
         self._rois: dict[str, Roi] = {}
         #: each detector layer's size, (height, width), which a box is clamped to
