@@ -80,10 +80,17 @@ Dates are specified in the format `DD-MM-YYYY`.
   take their name, prefix, ready text and stop request from
   `redsun.services`, and log at the level the session records at.
 - The session files write each service's `args` as options.
-- `redsun` 0.14.3 is the minimum version.
+- `redsun` 0.15.0rc0 is the minimum version.
+- The example sessions install `redsun.qt.styles.napari.NapariStyle` at
+  `configure_application`, at `FONT_SIZE`, so the window follows the colour
+  scheme between napari's dark and light themes.
+- `ImageView` gives its viewer napari's dark theme, in place of the theme in
+  napari's settings, so its canvas is black.
 
 ### Changed (breaking)
 
+- `NapariApplication` serves `create_application` only. A session file names
+  `napari` at `configure_application` for the stylesheet.
 - `MotorPresenter.move` repeats its step until `stop_step` is called for
   the motor or another move starts on it. A session wiring `sig_motor_move`
   to `move` needs `sig_motor_step_stop` wired to `stop_step`, or the move
@@ -151,6 +158,8 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Removed
 
+- `NapariApplication.configure_application`.
+- `stylesheet` (`redsun_mimir.utils.napari`).
 - `READY` (`redsun_mimir.services.mmcore_camera`, `mmcore_stage`,
   `uc2_controller`); `redsun.yaml` holds each service's ready text.
 - `redsun_mimir.providers`, with every key in it, `PLAN_SPECS` and

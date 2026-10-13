@@ -6,30 +6,22 @@ from typing import TYPE_CHECKING, Final, cast
 
 from napari._qt.qt_event_loop import get_qapp
 
-from redsun_mimir.utils.napari import stylesheet
-
 if TYPE_CHECKING:
     from qtpy.QtWidgets import QApplication
 
 __all__ = ["FONT_SIZE", "NapariApplication"]
 
-#: Point size every widget of a session is drawn at.
+#: Point size every widget of a session is drawn at. napari's own size is
+#: larger than a platform gives a Qt application, and would show on every
+#: widget beside the viewer.
 FONT_SIZE: Final = 9
 
 
 class NapariApplication:
-    """Hooks running the session on napari's application, themed like napari.
+    """Hook running the session on napari's application.
 
     ``create_application`` hands the container the application napari itself
-    would build, with its name, icon, identifier and high-DPI attributes;
-    ``configure_application`` puts napari's stylesheet on it, so a window
-    embedding a napari viewer is styled throughout, not only where the viewer
-    sits.
-
-    The stylesheet is read from napari's settings once, as the session
-    starts, at `FONT_SIZE` rather than napari's own size, which is larger
-    than a platform gives a Qt application and would show on every widget
-    beside the viewer.
+    would build, with its name, icon, identifier and high-DPI attributes.
     """
 
     def create_application(self, argv: list[str]) -> QApplication:
@@ -43,7 +35,3 @@ class NapariApplication:
         # py.typed marker in it's shipped files (apparently...).
         # for now we cast it but in the future it should not be
         return cast("QApplication", get_qapp())
-
-    def configure_application(self, app: QApplication) -> None:
-        """Put napari's stylesheet on *app*."""
-        app.setStyleSheet(stylesheet(FONT_SIZE))
