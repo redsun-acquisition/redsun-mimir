@@ -3,7 +3,6 @@ from .detector import DetectorView, SettingsControlWidget
 from .image import ImageView
 from .light import LightView
 from .logs import LogsAction
-from .motor import MotorView
 
 __all__ = [
     "AcquisitionView",
@@ -11,6 +10,5 @@ __all__ = [
     "ImageView",
     "LightView",
     "LogsAction",
-    "MotorView",
     "SettingsControlWidget",
 ]

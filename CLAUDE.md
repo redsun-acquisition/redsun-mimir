@@ -22,8 +22,8 @@ src/redsun_mimir/
                    #   containers.py - ReadableDeviceMap
                    #   mmcore/    - camera and stage clients
                    #   youseetoo/ - UC2 motor and laser clients (no CI coverage)
-  presenter/       # acquisition, detector, light, median, motor
-  view/            # Qt/napari widgets: acquisition, detector, image, light, motor
+  presenter/       # acquisition, detector, light, median
+  view/            # Qt/napari widgets: acquisition, detector, image, light
   configurations/  # runnable example sessions (_full_simulation, _full_uc2)
                    #   + their .yaml session files, _base.py (MimirApp), _wiring.py
   common/          # what every layer shares: Roi, the stream names
@@ -157,7 +157,8 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   driving devices asks for `DevicesOf[P]`, the devices satisfying one protocol
   from `protocols.py`, and never filters a mapping itself:
   `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)`,
-  `MotorPresenter(motors=...)`, `MedianPresenter(sources=...)`.
+  `MedianPresenter(sources=...)`. The stage controls are `redsun`'s built-in
+  `PositionerPresenter` and `PositionerView`, not a Mimir component.
   `AcquisitionPresenter` and `AcquisitionView` take `DeviceMapping`, since any
   device may fill a plan's parameters. A view is a `QWidget` with
   a `placement`, whose constructor starts with `(name, parent)`. Components

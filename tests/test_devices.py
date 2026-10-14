@@ -24,7 +24,7 @@ class TestMMStage:
 
     The axes come from the served PVI tree and live only inside the ``axis``
     map, so readings are keyed ``<device>-axis-<name>``, which is what
-    redsun's ``parse_map_key(key, "axis")`` (used by ``MotorView``) splits.
+    redsun's ``parse_map_key(key, "axis")`` splits.
     """
 
     @needs_mm_adapters

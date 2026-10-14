@@ -59,7 +59,7 @@ Other ways to get the adapters are in the
   <br>
   <em><code>mimir sim</code> running <code>live_stream</code> on the Micro-Manager
   demo camera: acquisition controls on the left, the napari viewer in the
-  centre, detector, light and motor controls on the right.</em>
+  centre, detector, light and stage controls on the right.</em>
 </p>
 
 ## Services
@@ -128,13 +128,17 @@ name normally, not under `if TYPE_CHECKING:`.
 Components never name each other's classes:
 
 - A view asks in `setup` for a protocol from `redsun_mimir.protocols`:
-  `DetectorView` and `ImageView` for `DescribesDetectors`, `MotorView` for
-  `DescribesMotors`, `LightView` for `DescribesLights`. `DetectorPresenter`
-  asks for `HoldsDeferrals`, which `AcquisitionPresenter` satisfies.
+  `DetectorView` and `ImageView` for `DescribesDetectors`, `LightView` for
+  `DescribesLights`. `DetectorPresenter` asks for `HoldsDeferrals`, which
+  `AcquisitionPresenter` satisfies.
 - A presenter asks for `DevicesOf[P]` and gets only the devices satisfying
   `P`, such as `DetectorProtocol` for `DetectorPresenter`.
 - `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
   `live_median_scan`, and `AcquisitionPresenter` runs both.
+- The stage controls are `redsun`'s built-in positioner: `motor_ctrl` is a
+  `PositionerPresenter` and `motor_widget` a `PositionerView`. It finds the
+  axes of every stage by what they can do, so Mimir declares no motor
+  component of its own.
 
 ## The napari hooks
 
@@ -178,8 +182,6 @@ wiring:
   img_widget.sig_roi_drawn: det_widget.on_roi_drawn
   det_widget.sig_roi_selection: img_widget.set_roi_selection
   det_widget.sig_roi_edited: img_widget.set_roi_box
-  motor_widget.sig_motor_move: motor_ctrl.move
-  motor_widget.sig_motor_step_stop: motor_ctrl.stop_step
   light_widget.sig_toggle_light_request: light_ctrl.trigger
   light_widget.sig_intensity_request: light_ctrl.set
   acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan
@@ -197,22 +199,25 @@ wiring:
   path_provider.sig_base_dir_changed: acq_widget.on_base_dir_changed
   acq_ctrl.sig_locks_changed:
     - det_widget.set_locked
+    - motor_ctrl.set_locked
     - motor_widget.set_locked
     - light_widget.set_locked
+pairs:
+  - [motor_widget, motor_ctrl]
 ```
 
 Names are the keys under `devices:`, `presenters:` and `views:`, then the
 signal or slot. `path_provider` is the session's path provider: it names the
 directory a capture goes to and refuses a new one while a plan runs.
 `acq_ctrl.request_action` passes an action request to the component offering
-the running plan.
+the running plan. The `pairs:` entry makes the nine links between the
+positioner's view and presenter; `redsun`'s guide to moving devices by hand
+lists them.
 
-A file can only address `component.port`, so two links need a session class:
+A file can only address `component.port`, so one link needs a session class:
 
 - `acq_ctrl.actions.sig_changed` and `median_ctrl.actions.sig_changed` to
   `acq_widget.on_action_changed`; without it the action buttons stay disabled.
-- each motor axis readback to `motor_widget.update_setpoint`; without it the
-  position labels do not move.
 
 ## Features
 
@@ -232,7 +237,8 @@ A file can only address `component.port`, so two links need a session class:
   ticked, and no others.
 - Zarr v3 storage with [`acquire-zarr`](https://github.com/acquire-project/acquire-zarr),
   written by the camera's service.
-- Manual control of light sources and motors.
+- Manual control of light sources, and of the stages through `redsun`'s
+  positioner: steps, go-to and saved positions, stop.
 - The session log in its own window, from View > Logs.
 - Extensible with further `redsun` components.
 

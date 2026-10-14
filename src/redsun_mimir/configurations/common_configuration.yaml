@@ -11,8 +11,7 @@ presenters:
   acq_ctrl: {}
   light_ctrl:
     timeout: 2.0
-  motor_ctrl:
-    timeout: 2.0
+  motor_ctrl: {}
 
 views:
   light_widget: {}

@@ -19,10 +19,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   board once at startup, so a session opens on where the board left its
   steppers. A board answering no position leaves the axis at zero and logs a
   warning.
-- `DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
-  `HoldsDeferrals` (`redsun_mimir.protocols`) - what a component asks for in
-  `setup` to reach the one describing the detectors, the motors or the light
-  sources, or the one whose engine applies deferred changes.
+- `DescribesDetectors`, `DescribesLights`, `HoldsDeferrals`
+  (`redsun_mimir.protocols`) - what a component asks for in `setup` to reach
+  the one describing the detectors or the light sources, or the one whose
+  engine applies deferred changes.
 - `MedianPresenter.plan_map`, `MedianPresenter.live_median_scan`,
   `MedianPresenter.square_scan`, `MedianPresenter.actions` - the median
   presenter offers the background scan plan, lists itself as that plan's
@@ -62,9 +62,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   `ActionManager` its plans wait on.
 - `HasBuffer` (`redsun_mimir.protocols`) - a device publishing its latest
   frame, the devices `MedianPresenter` takes.
-- `MotorView.sig_motor_step_stop` - emitted with the motor name when its step
-  button is released.
-- `MotorPresenter.stop_step` - ends the move repeating on a motor.
 
 ### Changed
 
@@ -74,8 +71,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   Stage and board commands are logged at `DEBUG`.
 - `napari` 0.9.2 and `msgspec` 0.22.0 are the minimum versions, `napari` in
   the `pyqt` and `pyside` extras too.
-- `MotorView` takes the 100.0 default step size its documentation names, not
-  10.0.
 - `redsun_mimir.services.mmcore_camera`, `mmcore_stage` and `uc2_controller`
   take their name, prefix, ready text and stop request from
   `redsun.services`, and log at the level the session records at.
@@ -91,12 +86,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 - `NapariApplication` serves `create_application` only. A session file names
   `napari` at `configure_application` for the stylesheet.
-- `MotorPresenter.move` repeats its step until `stop_step` is called for
-  the motor or another move starts on it. A session wiring `sig_motor_move`
-  to `move` needs `sig_motor_step_stop` wired to `stop_step`, or the move
-  never ends.
-- `MotorView.sig_motor_move` is emitted when a step button is pressed, not
-  when it is clicked.
+- The example sessions' stage controls are `redsun`'s built-in positioner:
+  `motor_ctrl` is a `PositionerPresenter` and `motor_widget` a
+  `PositionerView`. A session file pairs them with
+  `pairs: [[motor_widget, motor_ctrl]]` and links `acq_ctrl.sig_locks_changed`
+  to `motor_ctrl.set_locked` as well as to `motor_widget.set_locked`.
 - `redsun` 0.14.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
 - `run` (`redsun_mimir.services.uc2_controller`) is `serve_board`.
@@ -104,16 +98,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   `redsun_mimir.services.uc2_controller` talks to the board through
   `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
   `open_board` is a coroutine.
-- `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter`,
-  `MedianPresenter`, `MotorPresenter` take `name` and then keywords only, and
-  inherit no base class. `AcquisitionPresenter` takes every device as
-  `devices`; the others take only the devices they drive, which the session
-  picks by protocol: `DetectorPresenter(detectors=...)`,
-  `LightPresenter(lights=...)`, `MotorPresenter(motors=...)` and
+- `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter` and
+  `MedianPresenter` take `name` and then keywords only, and inherit no base
+  class. `AcquisitionPresenter` takes every device as `devices`; the others
+  take only the devices they drive, which the session picks by protocol:
+  `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)` and
   `MedianPresenter(sources=...)`.
 
   ```python
-  MotorPresenter("motor_ctrl", motors={"XY": stage}, timeout=2.0)
+  LightPresenter("light_ctrl", lights={"laser": laser}, timeout=2.0)
   ```
 
 - `prepare_and_declare` and `teardown_acquisition` move from
@@ -121,7 +114,7 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `teardown_acquisition` (`redsun_mimir.plans`) collects the detectors every
   `FLUSH_PERIOD` seconds until they complete, rather than once after. With
   `follow=True` each detector's completion is shown as a progress scope.
-- `AcquisitionView`, `DetectorView`, `ImageView`, `LightView`, `MotorView` are
+- `AcquisitionView`, `DetectorView`, `ImageView`, `LightView` are
   `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
   for `AcquisitionView`, the centre for `ImageView`, the right dock for the
   rest. Each builds its controls in `setup`.
@@ -129,8 +122,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   `DetectorPresenter.detector_readings`,
   `DetectorPresenter.detector_layer_specs` replace `devices_description`,
   `devices_configuration` and `layer_specs`;
-  `MotorPresenter.motor_descriptors`, `MotorPresenter.motor_readings` replace
-  `devices_description` and `devices_readings`;
   `LightPresenter.light_descriptors`, `LightPresenter.light_readings` replace
   `device_description` and `device_configuration`. Each reads the devices
   when called.
@@ -150,8 +141,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   provider's `set_base_dir`, and `AcquisitionView.on_base_dir_changed` takes
   the `Path` the provider announces.
 - `DetectorView.on_new_configuration` shows the value the device read back.
-- `MotorView` no longer subscribes to the axis readbacks; the example sessions
-  link each readback to `MotorView.update_setpoint`.
 - The example sessions are `QtSession` classes, and their files drop
   `frontend: pyqt`. A `wiring:` section maps each signal to one slot or a
   list of them.
@@ -167,7 +156,10 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `ScanAction`, `StreamAction` (`redsun_mimir.presenter`).
 - `HasAsyncShutdown` (`redsun_mimir.protocols`); the session awaits each
   device's `shutdown`.
-- `LightPresenter.shutdown`, `MotorPresenter.shutdown`.
+- `LightPresenter.shutdown`.
+- `MotorPresenter` (`redsun_mimir.presenter`), `MotorView`
+  (`redsun_mimir.view`) and their `motor` entries in `redsun.yaml`;
+  `redsun`'s `PositionerPresenter` and `PositionerView` take their place.
 - `AcquisitionPresenter.live_median_scan`,
   `AcquisitionPresenter.square_scan`, now on `MedianPresenter`.
 - `AcquisitionPresenter.set_base_dir`,
