@@ -18,10 +18,10 @@ from pathlib import Path
 from unittest import mock
 
 from qtpy.QtCore import QLocale
-from qtpy.QtWidgets import QApplication, QCheckBox, QMainWindow
+from qtpy.QtWidgets import QApplication, QCheckBox, QComboBox, QLineEdit, QMainWindow
+from redsun.view.qt.builtins import AcquisitionView
 
 from redsun_mimir import configurations
-from redsun_mimir.view.acquisition import AcquisitionView
 
 TARGET = Path("images/mimir-sim.png")
 SIZE = (1400, 860)
@@ -48,7 +48,9 @@ def photograph(target: Path) -> int:
     window.resize(*SIZE)
     wait(app, 1.0)
     view = window.findChildren(AcquisitionView)[0]
-    view.plans_combobox.setCurrentText("live_stream")
+    plans = view.findChild(QComboBox, "plans")
+    assert plans is not None
+    plans.setCurrentText("live_stream")
     page = view.plan_widgets["live_stream"]
     for box in page.group_box.findChildren(QCheckBox):
         if box.text() == "mmcamera" and not box.isChecked():
@@ -56,7 +58,9 @@ def photograph(target: Path) -> int:
     wait(app, 0.5)
     page.run_button.click()
     wait(app, SETTLE)
-    view.base_dir_label.setText(SHOWN_DATA_FOLDER)
+    base_dir = view.findChild(QLineEdit, "base-dir")
+    assert base_dir is not None
+    base_dir.setText(SHOWN_DATA_FOLDER)
     wait(app, 0.2)
     target.parent.mkdir(parents=True, exist_ok=True)
     window.grab().save(str(target))
