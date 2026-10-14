@@ -144,7 +144,6 @@ source = ["src/", "*/src/"]
 files = ["src", "tests", "scripts"]
 disable_error_code = [
     "import-untyped",
-    "import-not-found",
     "no-untyped-call"
 ]
 pretty = true
