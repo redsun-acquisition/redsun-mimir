@@ -9,8 +9,7 @@ presenters:
   det_ctrl:
     timeout: 2.0
   acq_ctrl: {}
-  light_ctrl:
-    timeout: 2.0
+  light_ctrl: {}
   motor_ctrl: {}
 
 views:

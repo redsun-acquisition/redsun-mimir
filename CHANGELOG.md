@@ -19,10 +19,9 @@ Dates are specified in the format `DD-MM-YYYY`.
   board once at startup, so a session opens on where the board left its
   steppers. A board answering no position leaves the axis at zero and logs a
   warning.
-- `DescribesDetectors`, `DescribesLights`, `HoldsDeferrals`
-  (`redsun_mimir.protocols`) - what a component asks for in `setup` to reach
-  the one describing the detectors or the light sources, or the one whose
-  engine applies deferred changes.
+- `DescribesDetectors`, `HoldsDeferrals` (`redsun_mimir.protocols`) - what a
+  component asks for in `setup` to reach the one describing the detectors, or
+  the one whose engine applies deferred changes.
 - `MedianPresenter.plan_map`, `MedianPresenter.live_median_scan`,
   `MedianPresenter.square_scan`, `MedianPresenter.actions` - the median
   presenter offers the background scan plan, lists itself as that plan's
@@ -91,6 +90,16 @@ Dates are specified in the format `DD-MM-YYYY`.
   `PositionerView`. A session file pairs them with
   `pairs: [[motor_widget, motor_ctrl]]` and links `acq_ctrl.sig_locks_changed`
   to `motor_ctrl.set_locked` as well as to `motor_widget.set_locked`.
+- The example sessions' light controls are `redsun`'s built-in ones:
+  `light_ctrl` is a `LightPresenter` (`redsun.presenter`) and `light_widget` a
+  `LightView` (`redsun.view.qt.builtins`). A session file pairs them with
+  `pairs: [[light_widget, light_ctrl]]` and links `acq_ctrl.sig_locks_changed`
+  to `light_ctrl.set_locked` as well as to `light_widget.set_locked`.
+- `UC2LaserDevice.enabled` follows the board's intensity: it reads `True`
+  while the intensity is above 0. Writing `False` remembers the intensity and
+  writes 0; writing `True` writes the remembered intensity back, unless an
+  intensity was set while the laser was off.
+- `MockLightDevice` built with `binary=True` has no `intensity` signal.
 - `redsun` 0.14.2 is the minimum version, in the dependencies and the `pyqt`
   and `pyside` extras.
 - `run` (`redsun_mimir.services.uc2_controller`) is `serve_board`.
@@ -98,15 +107,14 @@ Dates are specified in the format `DD-MM-YYYY`.
   `redsun_mimir.services.uc2_controller` talks to the board through
   `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
   `open_board` is a coroutine.
-- `AcquisitionPresenter`, `DetectorPresenter`, `LightPresenter` and
-  `MedianPresenter` take `name` and then keywords only, and inherit no base
-  class. `AcquisitionPresenter` takes every device as `devices`; the others
-  take only the devices they drive, which the session picks by protocol:
-  `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)` and
-  `MedianPresenter(sources=...)`.
+- `AcquisitionPresenter`, `DetectorPresenter` and `MedianPresenter` take
+  `name` and then keywords only, and inherit no base class.
+  `AcquisitionPresenter` takes every device as `devices`; the others take only
+  the devices they drive, which the session picks by protocol:
+  `DetectorPresenter(detectors=...)` and `MedianPresenter(sources=...)`.
 
   ```python
-  LightPresenter("light_ctrl", lights={"laser": laser}, timeout=2.0)
+  DetectorPresenter("det_ctrl", detectors={"camera": camera}, timeout=2.0)
   ```
 
 - `prepare_and_declare` and `teardown_acquisition` move from
@@ -114,17 +122,14 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `teardown_acquisition` (`redsun_mimir.plans`) collects the detectors every
   `FLUSH_PERIOD` seconds until they complete, rather than once after. With
   `follow=True` each detector's completion is shown as a progress scope.
-- `AcquisitionView`, `DetectorView`, `ImageView`, `LightView` are
-  `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
+- `AcquisitionView`, `DetectorView` and `ImageView` are `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
   for `AcquisitionView`, the centre for `ImageView`, the right dock for the
   rest. Each builds its controls in `setup`.
 - `DetectorPresenter.detector_descriptors`,
   `DetectorPresenter.detector_readings`,
   `DetectorPresenter.detector_layer_specs` replace `devices_description`,
-  `devices_configuration` and `layer_specs`;
-  `LightPresenter.light_descriptors`, `LightPresenter.light_readings` replace
-  `device_description` and `device_configuration`. Each reads the devices
-  when called.
+  `devices_configuration` and `layer_specs`. Each reads the devices when
+  called.
 - `DetectorPresenter.setup` takes the component satisfying `HoldsDeferrals`,
   or none.
 - `AcquisitionPresenter.launch_plan` takes the names of the callbacks the user
@@ -156,10 +161,15 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `ScanAction`, `StreamAction` (`redsun_mimir.presenter`).
 - `HasAsyncShutdown` (`redsun_mimir.protocols`); the session awaits each
   device's `shutdown`.
-- `LightPresenter.shutdown`.
 - `MotorPresenter` (`redsun_mimir.presenter`), `MotorView`
   (`redsun_mimir.view`) and their `motor` entries in `redsun.yaml`;
   `redsun`'s `PositionerPresenter` and `PositionerView` take their place.
+- `LightPresenter` (`redsun_mimir.presenter`), `LightView`
+  (`redsun_mimir.view`) and their `light` entries in `redsun.yaml`;
+  `redsun`'s `LightPresenter` and `LightView` take their place.
+- `LightProtocol` (`redsun_mimir.protocols`).
+- `UC2LaserDevice.trigger`, `UC2LaserDevice.binary`, `MockLightDevice.trigger`
+  and `MockLightDevice.binary`; writing `enabled` switches a light.
 - `AcquisitionPresenter.live_median_scan`,
   `AcquisitionPresenter.square_scan`, now on `MedianPresenter`.
 - `AcquisitionPresenter.set_base_dir`,

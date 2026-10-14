@@ -7,32 +7,33 @@ to make.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from redsun import Link
     from redsun.path_provider import SessionPathProvider
-    from redsun.presenter import PositionerPresenter
-    from redsun.view.qt.builtins import PositionerView
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
-    from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
     from redsun_mimir.view.acquisition import AcquisitionView
     from redsun_mimir.view.detector import DetectorView
     from redsun_mimir.view.image import ImageView
-    from redsun_mimir.view.light import LightView
 
 __all__ = [
     "wire_acquisition",
     "wire_detector",
-    "wire_light",
     "wire_locks",
     "wire_median",
 ]
+
+
+class HasLocked(Protocol):
+    """A component told which devices a running plan holds."""
+
+    def set_locked(self, names: frozenset[str]) -> None: ...
 
 
 def wire_detector(
@@ -52,12 +53,6 @@ def wire_median(ctrl: MedianPresenter, image: ImageView) -> Iterator[Link]:
     """Route both median streams to the viewer, each as its own layer."""
     yield ctrl.frames.median, image.update_layers
     yield ctrl.frames.filtered, image.update_layers
-
-
-def wire_light(ctrl: LightPresenter, view: LightView) -> Iterator[Link]:
-    """Link the light source controls."""
-    yield view.sig_toggle_light_request, ctrl.trigger
-    yield view.sig_intensity_request, ctrl.set
 
 
 def wire_acquisition(
@@ -94,7 +89,7 @@ def wire_acquisition(
 
 def wire_locks(
     ctrl: AcquisitionPresenter,
-    *holders: PositionerPresenter | PositionerView | LightView | DetectorView,
+    *holders: HasLocked,
 ) -> Iterator[Link]:
     """Tell each component which devices a running plan holds.
 

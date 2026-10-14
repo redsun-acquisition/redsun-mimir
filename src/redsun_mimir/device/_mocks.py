@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from ophyd_async.core import (
-    AsyncStatus,
     SignalRW,
     SoftSignalBackend,
     StandardReadable,
@@ -101,7 +100,7 @@ class MockLightDevice(StandardReadable, Loggable):
     wavelength :
         In nanometres.
     binary :
-        Mark the source as on/off only.
+        On/off only: the source has no ``intensity``.
     range :
         Bounds of ``intensity`` in mW, ignored when *binary*.
     """
@@ -120,22 +119,13 @@ class MockLightDevice(StandardReadable, Loggable):
             raise ValueError("Range low value must be less than high value")
 
         with self.add_children_as_readables():
-            self.intensity = bounded_soft_signal_rw(
-                range[0], range[1], units="mW", initial_value=0.0
-            )
+            if not binary:
+                self.intensity = bounded_soft_signal_rw(
+                    range[0], range[1], units="mW", initial_value=0.0
+                )
             self.enabled = soft_signal_rw(bool, initial_value=False)
 
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
-            self.binary, _ = soft_signal_r_and_setter(bool, initial_value=binary)
 
         super().__init__(name)
-
-    @AsyncStatus.wrap
-    async def trigger(self) -> None:
-        """Toggle the light source on or off."""
-        current = await self.enabled.get_value()
-        await self.enabled.set(not current)
-        self.logger.debug(
-            f"{'Enabled' if not current else 'Disabled'} light source {self.name}"
-        )

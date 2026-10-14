@@ -20,7 +20,6 @@ from redsun_mimir.configurations import (
 from redsun_mimir.protocols import (
     DetectorProtocol,
     HasBuffer,
-    LightProtocol,
     MotorProtocol,
 )
 
@@ -73,8 +72,13 @@ SIMULATION_LINKS = {
     ("motor_ctrl.sig_failed", "motor_widget.set_failed"),
     ("motor_ctrl.sig_limits", "motor_widget.update_limits"),
     ("motor_ctrl.sig_configuration", "motor_widget.update_configuration"),
-    ("light_widget.sig_toggle_light_request", "light_ctrl.trigger"),
-    ("light_widget.sig_intensity_request", "light_ctrl.set"),
+    ("light_widget.sig_enabled", "light_ctrl.set_enabled"),
+    ("light_widget.sig_intensity", "light_ctrl.set_intensity"),
+    ("light_widget.sig_configure", "light_ctrl.configure"),
+    ("light_ctrl.sig_enabled", "light_widget.update_enabled"),
+    ("light_ctrl.sig_intensity", "light_widget.update_intensity"),
+    ("light_ctrl.sig_failed", "light_widget.set_failed"),
+    ("light_ctrl.sig_configuration", "light_widget.update_configuration"),
     ("acq_widget.sig_launch_plan_request", "acq_ctrl.launch_plan"),
     ("acq_widget.sig_stop_plan_request", "acq_ctrl.stop_plan"),
     ("acq_widget.sig_pause_resume_request", "acq_ctrl.pause_or_resume_plan"),
@@ -91,6 +95,7 @@ SIMULATION_LINKS = {
     ("acq_ctrl.sig_locks_changed", "det_widget.set_locked"),
     ("acq_ctrl.sig_locks_changed", "motor_widget.set_locked"),
     ("acq_ctrl.sig_locks_changed", "motor_ctrl.set_locked"),
+    ("acq_ctrl.sig_locks_changed", "light_ctrl.set_locked"),
     ("acq_ctrl.sig_locks_changed", "light_widget.set_locked"),
 }
 
@@ -167,10 +172,9 @@ def test_the_simulation_builds_every_component(simulation: MimirApp) -> None:
     [
         (DetectorProtocol, {"mmcamera"}),
         (HasBuffer, {"mmcamera"}),
-        (LightProtocol, {"laser", "led"}),
         (MotorProtocol, {"XY", "Z"}),
     ],
-    ids=["detectors", "buffers", "lights", "motors"],
+    ids=["detectors", "buffers", "motors"],
 )
 def test_each_protocol_answers_the_devices_meant_for_it(
     simulation: MimirApp, protocol: type, devices: set[str]
@@ -185,13 +189,21 @@ def test_the_positioner_holds_every_stage_axis(simulation: MimirApp) -> None:
     assert axes == {"XY": {"x", "y"}, "Z": {"z"}}
 
 
+def test_the_light_presenter_holds_every_light(simulation: MimirApp) -> None:
+    """Find both lights in redsun's light presenter, the LED without an intensity."""
+    lights = simulation.light_ctrl.lights
+    assert set(lights) == {"laser", "led"}
+    assert lights["laser"].intensity is not None
+    assert lights["led"].intensity is None
+
+
 def test_every_port_is_reached(simulation: MimirApp) -> None:
     """Leave no signal and no slot of the simulation without a link."""
     assert not simulation.unconnected, str(simulation.unconnected)
 
 
 def test_the_simulation_makes_the_expected_links(simulation: MimirApp) -> None:
-    """Make every link of the simulation, the positioner pair's included."""
+    """Make every link of the simulation, the built-in pairs' included."""
     actual = {
         (f"{c.publisher}.{c.publisher_port}", f"{c.consumer}.{c.consumer_port}")
         for c in simulation.connections

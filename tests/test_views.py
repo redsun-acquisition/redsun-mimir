@@ -20,11 +20,9 @@ from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.common import Roi
 from redsun_mimir.hooks import NapariApplication
-from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
-from redsun_mimir.view.light import LightView
 from redsun_mimir.view.logs import LogsAction
 
 from .conftest import needs_opengl
@@ -36,8 +34,6 @@ if TYPE_CHECKING:
     from bluesky.protocols import Reading
     from qtpy.QtCore import QCoreApplication
     from redsun import PlanEntry
-
-    from redsun_mimir.device._mocks import MockLightDevice
 
     from .conftest import FakeDetector
 
@@ -95,11 +91,6 @@ def open_logs() -> list[LogView]:
         for widget in QtWidgets.QApplication.topLevelWidgets()
         if isinstance(widget, LogView) and widget.isVisible()
     ]
-
-
-def build_light_view(widget: LightView, *devices: MockLightDevice) -> None:
-    """Build *widget* from a presenter describing *devices*."""
-    widget.setup(LightPresenter("light_ctrl", lights={d.name: d for d in devices}))
 
 
 @pytest.mark.parametrize(
@@ -577,122 +568,6 @@ class TestAcquisitionView:
         assert not buttons["stream"].isEnabled()
         assert not buttons["stream"].isChecked()
         assert asked == [("stream", True)]
-
-
-class TestLightView:
-    """Tests for LightView."""
-
-    @pytest.fixture
-    def widget(self, parent: QtWidgets.QWidget) -> LightView:
-        return LightView("light_view", parent)
-
-    async def test_build_creates_button_and_slider(
-        self, widget: LightView, mock_laser: MockLightDevice
-    ) -> None:
-        """Build a button and a slider for a light with an intensity."""
-        build_light_view(widget, mock_laser)
-
-        assert "laser" in widget._groups
-        assert "on:laser" in widget._buttons
-        assert "power:laser" in widget._sliders
-
-    async def test_only_a_locked_light_disables_its_controls(
-        self, widget: LightView, mock_laser: MockLightDevice
-    ) -> None:
-        """Disable the controls of a locked light only."""
-        build_light_view(widget, mock_laser)
-
-        widget.set_locked(frozenset({"another_light"}))
-        assert widget._buttons["on:laser"].isEnabled()
-
-        widget.set_locked(frozenset({"laser"}))
-        assert not widget._buttons["on:laser"].isEnabled()
-        assert not widget._sliders["power:laser"].isEnabled()
-        assert widget._groups["laser"].isEnabled()
-
-    async def test_binary_source_gets_no_slider(
-        self, widget: LightView, mock_binary_led: MockLightDevice
-    ) -> None:
-        """Build no slider for a binary source."""
-        build_light_view(widget, mock_binary_led)
-
-        assert "on:binary_led" in widget._buttons
-        assert "power:binary_led" not in widget._sliders
-
-    async def test_slider_range_follows_device_limits(
-        self, widget: LightView, mock_laser: MockLightDevice
-    ) -> None:
-        """Size the slider from the device's limits."""
-        build_light_view(widget, mock_laser)
-
-        slider = widget._sliders["power:laser"]
-        assert (slider.minimum(), slider.maximum()) == (0.0, 100.0)
-
-    async def test_build_handles_multiple_devices(
-        self,
-        widget: LightView,
-        mock_led: MockLightDevice,
-        mock_laser: MockLightDevice,
-    ) -> None:
-        """Build one group per light."""
-        build_light_view(widget, mock_led, mock_laser)
-
-        assert {"led", "laser"} <= set(widget._groups)
-
-    async def test_toggle_emits_and_relabels(
-        self, widget: LightView, mock_led: MockLightDevice
-    ) -> None:
-        """Ask for a toggle and relabel the button."""
-        build_light_view(widget, mock_led)
-
-        received: list[str] = []
-        widget.sig_toggle_light_request.connect(received.append)
-        button = widget._buttons["on:led"]
-
-        assert button.text() == "ON"
-        button.setChecked(True)
-        widget._on_toggle_button_checked("led")
-        assert button.text() == "OFF"
-        button.setChecked(False)
-        widget._on_toggle_button_checked("led")
-        assert button.text() == "ON"
-
-        assert received == ["led", "led"]
-
-    async def test_slider_change_emits_intensity_request(
-        self, widget: LightView, mock_laser: MockLightDevice
-    ) -> None:
-        """Ask for the intensity a slider is moved to."""
-        build_light_view(widget, mock_laser)
-
-        received: list[tuple[str, Any]] = []
-        widget.sig_intensity_request.connect(
-            lambda name, value: received.append((name, value))
-        )
-
-        widget._on_slider_changed(50, "laser")
-
-        assert received == [("laser", 50)]
-
-    async def test_non_numeric_intensity_is_rejected(
-        self, widget: LightView, mock_led: MockLightDevice
-    ) -> None:
-        """Raise `TypeError` for an intensity that is not a number."""
-        readings: dict[str, Any] = {
-            **await mock_led.read_configuration(),
-            **await mock_led.read(),
-        }
-        description: dict[str, Any] = {
-            **await mock_led.describe_configuration(),
-            **await mock_led.describe(),
-        }
-        description["led-intensity"] = {
-            **description["led-intensity"],
-            "dtype": "string",
-        }
-
-        with pytest.raises(TypeError, match="'number' or 'integer'"):
-            widget.setup_ui(readings, description)
 
 
 @needs_opengl

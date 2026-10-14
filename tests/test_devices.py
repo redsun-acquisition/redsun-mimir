@@ -11,8 +11,7 @@ from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMStage
 from redsun_mimir.device.mmcore._stage import MOVE_TIMEOUT, POSITION_TOLERANCE
 from redsun_mimir.device.youseetoo import UC2LaserDevice
-from redsun_mimir.presenter.light import LightPresenter
-from redsun_mimir.protocols import LightProtocol, MotorProtocol
+from redsun_mimir.protocols import MotorProtocol
 from tests.conftest import CONNECT_TIMEOUT, needs_mm_adapters
 
 if TYPE_CHECKING:
@@ -74,49 +73,51 @@ class TestMMStage:
 
 
 class TestUC2LaserDevice:
-    """The UC2 laser as the light presenter sees it."""
+    """The UC2 laser, switched through the intensity its board knows."""
 
-    async def test_the_laser_satisfies_the_light_protocol(
+    async def test_the_switch_lights_and_darkens_the_board(
         self, uc2_service: Service
     ) -> None:
-        """Without every member, the presenter drops the device in silence."""
-        laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
-        await laser.connect(timeout=CONNECT_TIMEOUT)
-
-        assert isinstance(laser, LightProtocol)
-        assert await laser.binary.get_value() is False
-
-        presenter = LightPresenter("light_ctrl", lights={laser.name: laser})
-        assert f"{laser.name}-intensity" in presenter.light_descriptors()
-
-    async def test_turning_on_keeps_an_intensity_set_while_off(
-        self, uc2_service: Service
-    ) -> None:
-        """The slider lights the laser whatever the button reads; ON must not dim it."""
+        """Switch off to 0 and back on to the intensity the laser had."""
         laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
         await laser.connect(timeout=CONNECT_TIMEOUT)
 
         await laser.intensity.set(500)
-        await laser.trigger()
-
         assert await laser.enabled.get_value() is True
+
+        await laser.enabled.set(False)
+        assert await laser.intensity.get_value() == 0
+        assert await laser.enabled.get_value() is False
+
+        await laser.enabled.set(True)
         assert await laser.intensity.get_value() == 500
+
+    async def test_turning_on_keeps_an_intensity_set_while_off(
+        self, uc2_service: Service
+    ) -> None:
+        """Keep an intensity set while off, since it lit the laser already."""
+        laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
+        await laser.connect(timeout=CONNECT_TIMEOUT)
+        await laser.intensity.set(500)
+        await laser.enabled.set(False)
+
+        await laser.intensity.set(200)
+        await laser.enabled.set(True)
+
+        assert await laser.intensity.get_value() == 200
+
+    async def test_a_laser_never_lit_stays_off(self, uc2_service: Service) -> None:
+        """Leave the laser off when there is no intensity to restore."""
+        laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
+        await laser.connect(timeout=CONNECT_TIMEOUT)
+
+        await laser.enabled.set(True)
+
+        assert await laser.enabled.get_value() is False
 
 
 class TestMockLightDevice:
     """Tests for MockLightDevice."""
-
-    async def test_implements_protocol(self, mock_led: MockLightDevice) -> None:
-        """MockLightDevice satisfies the LightProtocol runtime check."""
-        assert isinstance(mock_led, LightProtocol)
-
-    async def test_trigger_toggles_enabled(self, mock_led: MockLightDevice) -> None:
-        """trigger() toggles the enabled state."""
-        assert await mock_led.enabled.get_value() is False
-        await mock_led.trigger()
-        assert await mock_led.enabled.get_value() is True
-        await mock_led.trigger()
-        assert await mock_led.enabled.get_value() is False
 
     async def test_set_intensity(self, mock_laser: MockLightDevice) -> None:
         """Setting intensity via the signal updates the value."""
