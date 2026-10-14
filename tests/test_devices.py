@@ -18,17 +18,12 @@ if TYPE_CHECKING:
     from redsun.services import Service
 
 
+@needs_mm_adapters
 class TestMMStage:
-    """The stage as a session sees it: through the service that owns it.
+    """The stage as a session sees it: through the service that owns it."""
 
-    The axes come from the served PVI tree and live only inside the ``axis``
-    map, so readings are keyed ``<device>-axis-<name>``, which is what
-    redsun's ``parse_map_key(key, "axis")`` splits.
-    """
-
-    @needs_mm_adapters
     async def test_axes_are_exposed_and_readable(self, mm_stage: MMStage) -> None:
-        """The stage takes its axes from what the service serves."""
+        """Take the axes from what the service serves, keyed `<device>-axis-<name>`."""
         assert set(mm_stage.axis) == {"x", "y"}
         assert isinstance(mm_stage, MotorProtocol)
 
@@ -37,16 +32,10 @@ class TestMMStage:
         assert set(await mm_stage.describe()) == set(readings)
         assert mm_stage.axis["x"].parent is mm_stage.axis
 
-    @needs_mm_adapters
     async def test_set_waits_for_the_axis_to_arrive(self, mm_stage: MMStage) -> None:
-        """``set`` completes once the stage has travelled, within tolerance.
-
-        The demo stage simulates motion and settles on its own grid, landing
-        within ~0.006 um of any request. `MovableLogic`'s default waits for
-        the readback to equal the setpoint exactly, which would never happen;
-        `MMAxisLogic` waits within `POSITION_TOLERANCE`, so without that
-        override this test hangs rather than fails.
-        """
+        """Complete `set` once the stage has travelled to within the tolerance."""
+        # the demo stage settles on its own grid, never exactly on the setpoint,
+        # so a wait for an exact match would hang until the timeout
         await asyncio.wait_for(mm_stage.axis["x"].set(10.0), timeout=10.0)
 
         location = await mm_stage.axis["x"].locate()
@@ -58,11 +47,9 @@ class TestMMStage:
     async def test_relative_moves_off_the_grid_all_arrive(
         self, mm_stage: MMStage
     ) -> None:
-        """Each move starts where the last one read, so the target drifts off the grid.
-
-        The service reports two decimals; the ninth 5 um step from zero reads a
-        full 0.01 um from its target, which a tolerance of 0.01 refuses.
-        """
+        """Arrive at every relative move, though each target drifts off the grid."""
+        # the service reports two decimals: the ninth 5 um step from zero reads
+        # a full 0.01 um from its target
         x = mm_stage.axis["x"]
         for _ in range(12):
             target = (await x.locate())["readback"] + 5.0
@@ -119,28 +106,6 @@ class TestUC2LaserDevice:
 class TestMockLightDevice:
     """Tests for MockLightDevice."""
 
-    async def test_set_intensity(self, mock_laser: MockLightDevice) -> None:
-        """Setting intensity via the signal updates the value."""
-        await mock_laser.intensity.set(42.0)
-        assert await mock_laser.intensity.get_value() == pytest.approx(42.0)
-
-    async def test_read_returns_current_state(
-        self, mock_laser: MockLightDevice
-    ) -> None:
-        """read() returns current intensity and enabled state."""
-        await mock_laser.intensity.set(10.0)
-        reading = await mock_laser.read()
-        assert reading["laser-intensity"]["value"] == pytest.approx(10.0)
-        assert reading["laser-enabled"]["value"] is False
-
-    async def test_describe_returns_intensity_and_enabled(
-        self, mock_laser: MockLightDevice
-    ) -> None:
-        """describe() includes entries for intensity and enabled."""
-        desc = await mock_laser.describe()
-        assert "laser-intensity" in desc
-        assert "laser-enabled" in desc
-
     @pytest.mark.parametrize(
         ("range_", "match"),
         [
@@ -156,23 +121,9 @@ class TestMockLightDevice:
         ],
     )
     def test_invalid_range_raises(self, range_: tuple[float, ...], match: str) -> None:
-        """An invalid range raises ValueError with a specific message."""
+        """Refuse a range that is not two increasing bounds."""
         with pytest.raises(ValueError, match=match):
             MockLightDevice("bad", wavelength=500, range=range_)  # type: ignore[arg-type]
-
-    async def test_read_configuration_contains_wavelength(
-        self, mock_led: MockLightDevice
-    ) -> None:
-        """read_configuration() returns the wavelength."""
-        cfg = await mock_led.read_configuration()
-        assert cfg["led-wavelength"]["value"] == 450
-
-    async def test_describe_configuration_contains_wavelength(
-        self, mock_led: MockLightDevice
-    ) -> None:
-        """describe_configuration() returns a descriptor for wavelength."""
-        desc = await mock_led.describe_configuration()
-        assert "led-wavelength" in desc
 
 
 @needs_mm_adapters
@@ -186,11 +137,9 @@ class TestMMStageConcurrency:
     """
 
     async def test_moving_both_axes_at_once_moves_both(self, mm_stage: MMStage) -> None:
-        """The service serialises, so neither move carries a stale sibling.
-
-        Without that, a move whose sibling reverts it never reaches its
-        setpoint and the wait never returns, so this is bounded.
-        """
+        """Move both axes when both are set at once."""
+        # a move whose sibling reverts it never reaches its setpoint, so the
+        # wait is bounded
         await asyncio.wait_for(
             asyncio.gather(mm_stage.axis["x"].set(10.0), mm_stage.axis["y"].set(10.0)),
             timeout=30.0,

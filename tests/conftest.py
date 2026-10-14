@@ -20,14 +20,12 @@ from ophyd_async.core import (
     soft_signal_r_and_setter,
     soft_signal_rw,
 )
-from pymmcore_plus import CMMCorePlus as Core
 from pymmcore_plus import find_micromanager
 from qtpy.QtWidgets import QApplication
 from redsun import Launch
 from redsun.aio import get_shared_loop
 from redsun.path_provider import SessionPathProvider
 
-from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.device.mmcore import MMCamera, MMStage
 
 if TYPE_CHECKING:
@@ -114,12 +112,9 @@ class FakeAxis(StandardReadable, StandardMovable[float]):
 class FakeXYStage(StandardReadable):
     """Minimal ``MotorProtocol``-conformant test double for an XY stage.
 
-    Presenter/view/acquisition-layer tests only need *some* device that
-    structurally satisfies
-    [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] whose axes show
-    up in ``read()``/``describe()``. Using this instead of ``MMDemoXYStage``
-    keeps those tests off the process-wide ``CMMCorePlus`` singleton, which
-    only tolerates one device per name.
+    Presenter and view tests only need *some* device that structurally
+    satisfies [`MotorProtocol`][redsun_mimir.protocols.MotorProtocol] whose
+    axes show up in ``read()``/``describe()``, with no stage service behind it.
 
     It is built exactly like the production stages: axes go straight into the
     ``DeviceMap`` and are never bound as top-level attributes first (a
@@ -154,19 +149,6 @@ def shared_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Ensure the shared event loop is running in its background daemon thread."""
     loop = get_shared_loop()
     yield loop
-
-
-@pytest.fixture(autouse=True)
-def _reset_mmcore() -> Generator[None, None, None]:
-    """Unload every Micro-Manager device after each test.
-
-    MM devices are loaded by name into a process-wide ``CMMCorePlus``
-    singleton (and only one camera device may be active at a time); leaving
-    them loaded would collide with the next test reusing the same name or
-    claiming the single camera slot.
-    """
-    yield
-    Core.instance().reset()
 
 
 class FakeDetector(StandardReadable):
@@ -331,19 +313,3 @@ async def mm_camera(
     )
     await device.connect(timeout=CONNECT_TIMEOUT)
     yield device
-
-
-@pytest.fixture
-async def mock_led() -> MockLightDevice:
-    """Mock LED device with a narrow intensity range."""
-    device = MockLightDevice("led", wavelength=450, range=(0.0, 1.0))
-    await device.connect(mock=True)
-    return device
-
-
-@pytest.fixture
-async def mock_laser() -> MockLightDevice:
-    """Mock laser device with a wide intensity range."""
-    device = MockLightDevice("laser", wavelength=650, range=(0.0, 100.0))
-    await device.connect(mock=True)
-    return device

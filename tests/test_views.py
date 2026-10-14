@@ -32,11 +32,6 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.qt
 
 
-def _reading(key: str, value: float) -> dict[str, Reading[Any]]:
-    """Build the one-entry reading dict a signal subscription delivers."""
-    return {key: {"value": value, "timestamp": 0.0}}
-
-
 @pytest.fixture
 def parent(qapp: QCoreApplication) -> QtWidgets.QWidget:
     """Return a widget for a view to be built in."""
@@ -65,7 +60,7 @@ def open_logs() -> list[LogView]:
 def test_a_frame_lands_in_its_rectangle(
     frame_shape: tuple[int, int], origin: tuple[int, int], fits: bool
 ) -> None:
-    """The canvas keeps the sensor's size; a frame that does not fit is refused."""
+    """Place a frame in its rectangle of a canvas the sensor's size, and refuse one that does not fit."""
     canvas = np.zeros((4, 6), dtype=np.uint8)
     frame = np.ones(frame_shape, dtype=np.uint8)
 
@@ -95,7 +90,7 @@ def test_a_frame_lands_in_its_rectangle(
 def test_a_box_becomes_a_roi_on_the_sensor(
     bounds: tuple[tuple[float, float], tuple[float, float]], expected: Roi
 ) -> None:
-    """Corners are (y, x); the ROI is whole pixels inside a 6 by 4 sensor."""
+    """Turn a box with (y, x) corners into whole pixels inside a 6 by 4 sensor."""
     assert roi_from_bounds(bounds, (4, 6)) == expected
 
 
@@ -116,6 +111,7 @@ class TestDetectorViewRoi:
     def test_a_locked_detector_disables_its_editors_and_roi_panel(
         self, view: DetectorView
     ) -> None:
+        """Disable the editors and the ROI panel of a locked detector, and enable them again once freed."""
         settings = view.settings_controls["cam"]
         panel = settings.roi_panel
         assert panel is not None
@@ -131,6 +127,7 @@ class TestDetectorViewRoi:
         assert all(editor.isEnabled() for editor in editors)
 
     def test_ok_sends_the_drawn_region_unchanged(self, view: DetectorView) -> None:
+        """Send the drawn region unchanged when OK is pressed."""
         sent: list[tuple[str, str, Any]] = []
         view.sig_property_changed.connect(lambda *args: sent.append(args))
         panel = view.settings_controls["cam"].roi_panel
@@ -149,6 +146,7 @@ class TestDetectorViewRoi:
     def test_select_roi_opens_the_editor_and_asks_the_image_for_a_box(
         self, view: DetectorView
     ) -> None:
+        """Open the editor on Select ROI and ask the image for a box, then close both."""
         asked: list[tuple[str, bool]] = []
         view.sig_roi_selection.connect(lambda *args: asked.append(args))
         panel = view.settings_controls["cam"].roi_panel
@@ -165,7 +163,7 @@ class TestDetectorViewRoi:
     def test_an_edit_reaches_the_image_and_stays_inside_the_sensor(
         self, view: DetectorView
     ) -> None:
-        """The box follows the spin boxes; a corner moved in shrinks what fits."""
+        """Move the box with the spin boxes, and shrink what fits when a corner moves in."""
         edited: list[tuple[str, Roi]] = []
         view.sig_roi_edited.connect(lambda *args: edited.append(args))
         panel = view.settings_controls["cam"].roi_panel
@@ -178,6 +176,7 @@ class TestDetectorViewRoi:
         assert panel.width_box.maximum() == 2
 
     def test_full_then_ok_sends_the_whole_sensor(self, view: DetectorView) -> None:
+        """Send the whole sensor after Full then OK."""
         sent: list[tuple[str, str, Any]] = []
         view.sig_property_changed.connect(lambda *args: sent.append(args))
         panel = view.settings_controls["cam"].roi_panel
@@ -193,6 +192,7 @@ class TestDetectorViewRoi:
     def test_an_applied_region_is_shown_and_needs_no_ok(
         self, view: DetectorView
     ) -> None:
+        """Show a region the camera applied, with OK disabled."""
         panel = view.settings_controls["cam"].roi_panel
         assert panel is not None
         panel.select_button.click()
@@ -259,6 +259,7 @@ class TestImageViewRoi:
     def test_dragging_the_box_announces_a_roi_and_changes_nothing_else(
         self, view: ImageView
     ) -> None:
+        """Announce the ROI a dragged box covers."""
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
 
@@ -269,6 +270,7 @@ class TestImageViewRoi:
     def test_the_box_is_hidden_until_a_selection_is_asked_for(
         self, view: ImageView
     ) -> None:
+        """Hide the box until a selection is asked for."""
         box = view.viewer_model.layers["cam"]._overlays[ROI_BOX]
         assert not box.visible
 
@@ -278,7 +280,7 @@ class TestImageViewRoi:
         assert not box.visible
 
     def test_the_layer_menu_finds_the_embedded_layers(self, view: ImageView) -> None:
-        """The layer list's context menu asks napari's store for the layers."""
+        """Find the embedded layers from the layer list's context menu."""
         view.viewer_model.layers.selection.active = view.viewer_model.layers["cam"]
 
         visible = get_app_model().injection_store.inject(_are_bounding_boxes_visible)
@@ -286,7 +288,7 @@ class TestImageViewRoi:
         assert visible() is False
 
     def test_a_frame_not_shaped_like_its_roi_is_dropped(self, view: ImageView) -> None:
-        """A monitor first reports the frame taken before the ROI changed."""
+        """Drop a frame not shaped like its ROI, as a monitor first reports one."""
         layer = view.viewer_model.layers["cam"]
 
         view.update_layers(
@@ -302,7 +304,7 @@ class TestImageViewRoi:
         assert not layer.data.any()
 
     def test_a_frame_of_a_new_dtype_retypes_its_layer(self, view: ImageView) -> None:
-        """A pixel type change must not be cast into the old layer."""
+        """Retype the layer for a frame of a new dtype instead of casting it."""
         layer = view.viewer_model.layers["cam"]
         assert layer.data.dtype == np.uint8
 
@@ -320,6 +322,7 @@ class TestImageViewRoi:
         assert layer.data[0, 0] == 1000
 
     def test_the_box_follows_an_edit_in_the_panel(self, view: ImageView) -> None:
+        """Move the box to an ROI edited in the panel without announcing it back."""
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
 
@@ -332,6 +335,7 @@ class TestImageViewRoi:
         assert drawn == []
 
     def test_a_detector_layer_is_locked_against_deletion(self, view: ImageView) -> None:
+        """Keep a detector's layer when the user deletes it."""
         layers = view.viewer_model.layers
         layers.selection = {layers["cam"]}
 
@@ -341,6 +345,7 @@ class TestImageViewRoi:
         assert layers["cam"].locked == LayerLock.DELETION
 
     def test_a_derived_layer_is_plain_and_unlocked(self, view: ImageView) -> None:
+        """Show a derived frame on a plain layer with no lock and no box."""
         frame = np.ones((4, 6), dtype=np.float32)
 
         view.update_layers({"cam_median": {"value": frame, "timestamp": 0.0}})
@@ -353,7 +358,7 @@ class TestImageViewRoi:
     def test_a_deleted_layer_comes_back_with_its_box_and_takes_frames(
         self, view: ImageView
     ) -> None:
-        """The user may bin a layer; the next run must not crash on it."""
+        """Bring a deleted layer back with its box and take frames on it."""
         view.set_roi_selection("cam", True)
         view.set_roi_box("cam", Roi(1, 1, 3, 2))
         view.viewer_model.layers.remove("cam")
@@ -379,6 +384,7 @@ class TestImageViewRoi:
     def test_an_applied_roi_moves_the_box_and_blanks_the_layer(
         self, view: ImageView
     ) -> None:
+        """Move the box and blank the layer when an ROI is applied, and leave both on another setting."""
         drawn: list[tuple[str, Roi]] = []
         view.sig_roi_drawn.connect(lambda name, roi: drawn.append((name, roi)))
 
@@ -438,4 +444,5 @@ class TestNapariApplication:
     """Tests for the hook that runs the session on napari's application."""
 
     def test_it_supplies_naparis_application(self, qapp: QCoreApplication) -> None:
+        """Return the application napari runs on."""
         assert NapariApplication().create_application([]) is qapp

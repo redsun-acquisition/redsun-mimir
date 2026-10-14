@@ -212,7 +212,7 @@ def test_the_simulation_makes_the_expected_links(simulation: MimirApp) -> None:
 
 
 def test_both_plans_are_offered_and_run(simulation: MimirApp) -> None:
-    """Offer both plans in the view, and run both from the presenter."""
+    """Offer both plans in the acquisition view and its presenter."""
     plans = {"live_stream", "live_median_scan"}
     assert set(simulation.acq_widget.plan_widgets) == plans
     assert set(simulation.acq_ctrl.plans) == plans
