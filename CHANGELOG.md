@@ -163,6 +163,9 @@ Dates are specified in the format `DD-MM-YYYY`.
 
 ### Fixed
 
+- `MMCamera.read_configuration` and `MMCamera.describe_configuration` list the
+  settings by name, then the properties, so the detector view shows them in
+  the same order on every run.
 - A service run on its own and stopped with Ctrl+C exits with code 0 and no
   traceback.
 - `ImageView` keeps its layer panel on screen when its splitter is dragged to

@@ -232,18 +232,20 @@ class MMCamera(StandardDetector, Loggable):
         )
 
     async def read_configuration(self) -> dict[str, Reading[Any]]:
-        """Return the settings, and every property the camera lets one write."""
+        """Return the settings by name, then every property the camera lets one write."""
         settings, properties = await asyncio.gather(
             super().read_configuration(), self.properties.read()
         )
-        return {**settings, **properties}
+        # the trigger logic hands its settings over as a set, in no fixed order
+        return {**dict(sorted(settings.items())), **properties}
 
     async def describe_configuration(self) -> dict[str, DataKey]:
-        """Describe the settings, and every property the camera lets one write."""
+        """Describe the settings by name, then every property the camera lets one write."""
         settings, properties = await asyncio.gather(
             super().describe_configuration(), self.properties.describe()
         )
-        return {**settings, **properties}
+        # the trigger logic hands its settings over as a set, in no fixed order
+        return {**dict(sorted(settings.items())), **properties}
 
     async def faulted(self) -> None:
         """Raise with the camera's own error if it stopped on a fault.

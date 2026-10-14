@@ -64,12 +64,7 @@ def fly_camera(
 def test_fly_scan_lifecycle(
     fly_camera: MMCamera, bluesky_re: BlueskyRunEngine, tmp_path: Path
 ) -> None:
-    """Stage, prepare, kickoff, collect, unstage, and the store that results.
-
-    Each document batch reports frames the service has already written, so the
-    frames the stream datums account for are the frames on disk. The plan runs
-    twice: the second window counts its own frames, not the first's as well.
-    """
+    """Fly the camera twice, each run's stream datums counting only its own frames on disk."""
     docs: dict[str, list[Any]] = defaultdict(list)
     bluesky_re.subscribe(lambda name, doc: docs[name].append(doc))
 
@@ -110,7 +105,7 @@ def test_fly_scan_lifecycle(
 async def test_a_roi_is_written_as_text_and_sizes_the_frames(
     mm_camera: MMCamera,
 ) -> None:
-    """The one form of the setting a client can put over PVAccess."""
+    """Write an ROI as text and size the frames from it."""
     await mm_camera.roi.set("10,20,100,50")
 
     assert await mm_camera.roi.get_value() == "10,20,100,50"
@@ -123,16 +118,19 @@ async def test_a_roi_is_written_as_text_and_sizes_the_frames(
 async def test_the_camera_carries_its_properties_into_its_configuration(
     mm_camera: MMCamera,
 ) -> None:
-    """A property the camera lets one write is a setting like any other.
-
-    The view builds its panel from ``describe_configuration``, so a property
-    that stays inside the service is a property nobody can change.
-    """
+    """Describe the settings by name, then a camera property, and write and read it."""
     described = await mm_camera.describe_configuration()
 
-    assert f"{mm_camera.name}-exposure" in described
-    assert f"{mm_camera.name}-sensor_size" in described
-    assert f"{mm_camera.name}-properties-Binning" in described
+    assert list(described) == [
+        f"{mm_camera.name}-{key}"
+        for key in (
+            "exposure",
+            "pixel_dtype",
+            "roi",
+            "sensor_size",
+            "properties-Binning",
+        )
+    ]
 
     await mm_camera.properties["Binning"].set("2")
 
@@ -143,7 +141,7 @@ async def test_the_camera_carries_its_properties_into_its_configuration(
 
 @needs_mm_adapters
 async def test_a_pixel_dtype_change_reaches_the_frames(mm_camera: MMCamera) -> None:
-    """The choices are the dtypes the camera reads out in; the buffer follows."""
+    """Offer the dtypes the camera reads out in, and retype the buffer on a change."""
     assert (await mm_camera.buffer.get_value()).dtype == np.uint8
     described = await mm_camera.describe_configuration()
     assert described[f"{mm_camera.name}-pixel_dtype"]["choices"] == [
