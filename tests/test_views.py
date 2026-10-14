@@ -7,20 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
-from bluesky.utils import MsgGenerator
-from event_model import DocumentRouter
 from napari._app_model import get_app_model
 from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
 from qtpy import QtCore, QtWidgets
-from redsun.engine import ProgressState
-from redsun.engine.actions import PlanAction, continuous
-from redsun.path_provider import SessionPathProvider
 from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.common import Roi
 from redsun_mimir.hooks import NapariApplication
-from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
 from redsun_mimir.view.logs import LogsAction
@@ -29,11 +23,9 @@ from .conftest import needs_opengl
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from bluesky.protocols import Reading
     from qtpy.QtCore import QCoreApplication
-    from redsun import PlanEntry
 
     from .conftest import FakeDetector
 
@@ -43,39 +35,6 @@ pytestmark = pytest.mark.qt
 def _reading(key: str, value: float) -> dict[str, Reading[Any]]:
     """Build the one-entry reading dict a signal subscription delivers."""
     return {key: {"value": value, "timestamp": 0.0}}
-
-
-#: A toggle action of the stream plan below.
-STREAM = PlanAction(name="stream", toggle_states=("start", "stop"))
-
-#: A clicked action of the stream plan below.
-SNAP = PlanAction(name="snap")
-
-#: A document callback no plan lists.
-VIEWER = DocumentRouter()
-
-
-class Plans:
-    """Offers two continuous plans; `scan` carries a callback of its own."""
-
-    def __init__(self, own: DocumentRouter) -> None:
-        self.own = own
-
-    @continuous
-    def stream(
-        self, frames: int = 1, stream: PlanAction = STREAM, snap: PlanAction = SNAP
-    ) -> MsgGenerator[None]:
-        yield from ()
-
-    @continuous
-    def scan(self, frames: int = 1) -> MsgGenerator[None]:
-        yield from ()
-
-    def plan_map(self) -> dict[str, PlanEntry]:
-        return {
-            "stream": {"plan": self.stream},
-            "scan": {"plan": self.scan, "callbacks": [self.own]},
-        }
 
 
 @pytest.fixture
@@ -455,119 +414,6 @@ def test_the_logs_open_in_a_window_of_their_own(parent: QtWidgets.QWidget) -> No
     reopened = open_logs()
     assert len(reopened) == 1
     reopened[0].close()
-
-
-class TestAcquisitionView:
-    """Tests for the plan selector and its controls."""
-
-    @pytest.fixture
-    def plans(self) -> Plans:
-        return Plans(DocumentRouter())
-
-    @pytest.fixture
-    def view(
-        self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path
-    ) -> AcquisitionView:
-        view = AcquisitionView("acq_widget", parent)
-        view.setup(
-            {"plans": plans},
-            {"viewer": VIEWER, "median": plans.own},
-            {},
-            SessionPathProvider(base_dir=tmp_path),
-        )
-        return view
-
-    def test_progress_is_shown_on_the_page_of_the_plan(
-        self, view: AcquisitionView
-    ) -> None:
-        """Show each progress scope on the page of the plan in the selector."""
-        page = view.plan_widgets[view.plans_combobox.currentText()]
-        assert page.progress_group is not None
-        frames = ProgressState(
-            name="cam",
-            parent=None,
-            current=412.0,
-            initial=None,
-            target=None,
-            unit="frames",
-            precision=None,
-            fraction=None,
-            time_elapsed=None,
-            time_remaining=None,
-        )
-
-        view.on_progress((frames,))
-        assert not page.progress_group.isHidden()
-
-        view.on_progress(())
-        assert page.progress_group.isHidden()
-
-    def test_a_folder_chosen_while_idle_is_shown_once_the_provider_moves(
-        self, parent: QtWidgets.QWidget, plans: Plans, tmp_path: Path
-    ) -> None:
-        """Show the folder the path provider moved to at the view's request."""
-        paths = SessionPathProvider(base_dir=tmp_path)
-        view = AcquisitionView("acq_widget", parent)
-        view.setup({"plans": plans}, {}, {}, paths)
-        view.sig_base_dir_request.connect(paths.set_base_dir)
-        paths.sig_base_dir_changed.connect(view.on_base_dir_changed)
-
-        view.sig_base_dir_request.emit(str(tmp_path / "elsewhere"))
-
-        assert view.base_dir_label.text() == str(tmp_path / "elsewhere")
-
-    def test_the_selector_is_held_on_the_plan_that_runs(
-        self, view: AcquisitionView
-    ) -> None:
-        """Hold the selector and the root folder until the running plan is done."""
-        view.plans_combobox.setCurrentText("scan")
-        view.plan_widgets["scan"].run_button.setChecked(True)
-        assert not view.plans_combobox.isEnabled()
-        assert not view.base_dir_btn.isEnabled()
-        assert view.open_dir_btn.isEnabled()
-
-        view.plans_combobox.setCurrentText("stream")
-        view.on_plan_done()
-
-        assert view.plans_combobox.isEnabled()
-        assert view.base_dir_btn.isEnabled()
-        assert not view.plan_widgets["scan"].run_button.isChecked()
-
-    def test_a_run_carries_the_callbacks_the_user_attached(
-        self, view: AcquisitionView
-    ) -> None:
-        """Send with a plan the callbacks attached to it, not the ones it lists."""
-        sent: list[tuple[str, Any, Any]] = []
-        view.sig_launch_plan_request.connect(lambda *args: sent.append(args))
-        view.plans_combobox.setCurrentText("scan")
-
-        view.plan_widgets["scan"].run_button.setChecked(True)
-
-        assert sent == [("scan", {"frames": 1}, ["viewer"])]
-
-    def test_an_action_button_follows_the_state_of_its_action(
-        self, view: AcquisitionView
-    ) -> None:
-        """Enable a button while offered, and release it silently once idle."""
-        asked: list[tuple[str, bool]] = []
-        view.sig_action_request.connect(lambda *args: asked.append(args))
-        view.plans_combobox.setCurrentText("stream")
-        view.plan_widgets["stream"].run_button.setChecked(True)
-        buttons = view.plan_widgets["stream"].action_buttons
-
-        view.on_action_changed("stream", "offered")
-        view.on_action_changed("snap", "offered")
-        assert buttons["stream"].isEnabled()
-        buttons["stream"].setChecked(True)
-        view.on_action_changed("stream", "running")
-        view.on_action_changed("snap", "running")
-        assert buttons["stream"].isEnabled()
-        assert not buttons["snap"].isEnabled()
-        view.on_action_changed("stream", "idle")
-
-        assert not buttons["stream"].isEnabled()
-        assert not buttons["stream"].isChecked()
-        assert asked == [("stream", True)]
 
 
 @needs_opengl

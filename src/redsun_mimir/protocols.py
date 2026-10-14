@@ -21,8 +21,6 @@ if TYPE_CHECKING:
     import numpy as np
     from bluesky.protocols import Descriptor, Reading
     from ophyd_async.core import SignalR, SignalRW
-    from redsun.engine import Deferrals
-    from redsun.engine.actions import ActionManager
 
 
 class LayerSpec(TypedDict):
@@ -113,31 +111,10 @@ class DescribesDetectors(Protocol):
         ...
 
 
-@runtime_checkable
-class HoldsDeferrals(Protocol):
-    """A component running plans, whose engine applies deferred changes."""
-
-    def plan_deferrals(self) -> Deferrals:
-        """Return the deferrals of the engine running the plans."""
-        ...
-
-
-@runtime_checkable
-class HasActions(Protocol):
-    """A component whose plans wait on the actions it holds."""
-
-    @property
-    def actions(self) -> ActionManager:
-        """The actions the component's running plan offers."""
-        ...
-
-
 __all__ = [
     "DescribesDetectors",
     "DetectorProtocol",
-    "HasActions",
     "HasBuffer",
-    "HoldsDeferrals",
     "LayerSpec",
     "MotorProtocol",
     "ReadableFlyer",

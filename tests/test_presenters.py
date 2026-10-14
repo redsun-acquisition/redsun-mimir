@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import threading
 from concurrent.futures import Future
@@ -13,18 +12,19 @@ from typing import TYPE_CHECKING, Any, cast
 import bluesky.plan_stubs as bps
 import numpy as np
 import pytest
-import redsun.engine.plan_stubs as rps
 from bluesky.run_engine import RunEngineResult
 from bluesky.simulators import RunEngineSimulator
 from ophyd_async.core import soft_signal_rw
 from redsun.aio import run_coro
 from redsun.engine import Deferrals, RunEngine
+from redsun.engine.actions import ActionState
+from redsun.path_provider import SessionPathProvider
+from redsun.presenter import AcquisitionPresenter
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
 from redsun_mimir.plans import capture
-from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
-from redsun_mimir.presenter.median import SCAN, MedianPresenter
+from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.protocols import (
     DescribesDetectors,
     DetectorProtocol,
@@ -32,7 +32,7 @@ from redsun_mimir.protocols import (
 from tests.conftest import FakeDetector, FakeFlyer, FakeXYStage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Generator
     from pathlib import Path
 
     from bluesky.utils import Msg, MsgGenerator
@@ -55,51 +55,6 @@ def root_attributes(store: Path) -> dict[str, Any]:
 async def set_roi(detector: DetectorProtocol, roi: tuple[int, int, int, int]) -> None:
     """Crop *detector* to *roi*, given as ``x, y, width, height``."""
     await detector.roi.set(str(Roi(*roi)))
-
-
-class EngineHolder:
-    """Holds the deferrals of an engine, as the presenter running plans does."""
-
-    def __init__(self, engine: RunEngine) -> None:
-        self.deferrals = Deferrals(engine)
-
-    def plan_deferrals(self) -> Deferrals:
-        return self.deferrals
-
-
-class FakeFuture:
-    """A future the test finishes by hand, running the callbacks it was given."""
-
-    def __init__(self) -> None:
-        self.callbacks: list[Callable[[FakeFuture], None]] = []
-
-    def add_done_callback(self, callback: Callable[[FakeFuture], None]) -> None:
-        self.callbacks.append(callback)
-
-    def finish(self) -> None:
-        for callback in self.callbacks:
-            callback(self)
-
-
-class FakeEngine:
-    """Records the plans it is handed, and hands back one future."""
-
-    def __init__(self, future: FakeFuture, state: str = "running") -> None:
-        self.future = future
-        self.state = state
-        self.plans: list[Any] = []
-        self.subs: list[list[Any]] = []
-
-    def __call__(self, plan: Any, subs: list[Any] | None = None) -> FakeFuture:
-        self.plans.append(plan)
-        self.subs.append(subs or [])
-        return self.future
-
-    def stop(self) -> None:
-        raise RuntimeError("RunEngine is already idle.")
-
-    def abort(self) -> None:
-        """No-op: satisfies AcquisitionPresenter.shutdown()'s abort path."""
 
 
 @dataclass
@@ -779,7 +734,7 @@ class TestDetectorPresenter:
         """Apply a ROI asked for during a plan between two of its messages."""
         engine = RunEngine()
         presenter = DetectorPresenter("det_ctrl", detectors={"cam": fake_detector})
-        presenter.setup(EngineHolder(engine))
+        presenter.setup(Deferrals(engine))
         announced: list[tuple[str, str, Any]] = []
         presenter.sig_new_configuration.connect(lambda *args: announced.append(args))
         # a message the test keeps waiting, so the change cannot be applied before the
@@ -839,227 +794,42 @@ class TestDetectorPresenter:
         assert run_coro(fake_detector.exposure.get_value()) == pytest.approx(50.0)
 
 
-class TestAcquisitionPresenter:
-    """Tests for AcquisitionPresenter."""
+class TestLiveStream:
+    """The detector presenter's plan, run by redsun's acquisition presenter."""
 
-    @pytest.fixture
-    def devices(
-        self, fake_flyer: FakeFlyer, motor_stage: FakeXYStage
-    ) -> dict[str, Any]:
-        return {fake_flyer.name: fake_flyer, motor_stage.name: motor_stage}
-
-    @pytest.fixture
-    def controller(
-        self, devices: dict[str, Any]
-    ) -> Generator[AcquisitionPresenter, None, None]:
-        ctrl = AcquisitionPresenter("acq_ctrl", devices=devices)
-        ctrl.setup({ctrl.name: ctrl}, {})
-        yield ctrl
-        ctrl.shutdown()
-
-    def test_the_engines_progress_is_passed_on(
-        self, controller: AcquisitionPresenter
+    def test_live_stream_offers_its_action_and_stops(
+        self, fake_flyer: FakeFlyer, tmp_path: Path
     ) -> None:
-        """Pass on each progress announcement of the engine a plan runs on."""
-        received: list[list[tuple[str, float | None]]] = []
-        controller.sig_progress.connect(
-            lambda scopes: received.append([(s.name, s.current) for s in scopes])
-        )
-
-        def plan() -> MsgGenerator[None]:
-            yield from rps.declare_progress("cam")
-            yield from rps.update_progress("cam", current=3, initial=0, target=4)
-            yield from rps.update_progress("cam", done=True)
-
-        controller.engine(plan()).result(timeout=10)
-
-        assert [("cam", 3.0)] in received
-        assert received[-1] == []
-
-    def test_setup_collects_the_plans_of_every_component(
-        self, devices: dict[str, Any]
-    ) -> None:
-        """Collect the plans of every component offering them, its own included."""
-        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", sources={})
-        try:
-            acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
-        finally:
-            acquisition.shutdown()
-
-        assert set(acquisition.plan_specs) == {"live_stream", "live_median_scan"}
-
-    def test_a_plan_no_device_can_fill_is_left_out(self) -> None:
-        """Leave out a plan asking for a device the session does not have."""
-        acquisition = AcquisitionPresenter("acq_ctrl", devices={})
-        try:
-            acquisition.setup({"acq_ctrl": acquisition}, {})
-        finally:
-            acquisition.shutdown()
-
-        assert acquisition.plan_specs == {}
-
-    def test_a_run_gets_the_callbacks_of_its_plan_then_the_attached_ones(
-        self,
-        devices: dict[str, Any],
-        fake_flyer: FakeFlyer,
-        motor_stage: FakeXYStage,
-    ) -> None:
-        """Subscribe for each run only its plan's callbacks and the attached ones."""
-        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
-        detector = DetectorPresenter(
-            "det_ctrl", detectors={fake_flyer.name: fake_flyer}
-        )
+        """Run `live_stream`, offer its stream action, and end it when stopped."""
+        detector = DetectorPresenter("det_ctrl", detectors={"cam": fake_flyer})
+        acquisition = AcquisitionPresenter("acq_ctrl", devices={"cam": fake_flyer})
         acquisition.setup(
-            {"acq_ctrl": acquisition, "median_ctrl": median},
-            {"det_ctrl": detector, "median_ctrl": median},
+            {"det_ctrl": detector}, {}, SessionPathProvider(base_dir=tmp_path)
         )
-        first, second = FakeFuture(), FakeFuture()
-        engine = FakeEngine(first)
-        acquisition.engine = engine  # type: ignore[assignment]
-
-        acquisition.launch_plan(
-            "live_median_scan",
-            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
-            ["det_ctrl"],
+        offered = threading.Event()
+        ended: list[str] = []
+        acquisition.sig_action_changed.connect(
+            lambda action, state: (
+                offered.set()
+                if (action, state) == ("stream", ActionState.OFFERED)
+                else None
+            )
         )
-        first.finish()
-        engine.future = second
-        acquisition.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        second.finish()
-
-        assert engine.subs == [[median, detector], []]
-
-    def test_an_action_reaches_the_component_offering_the_running_plan(
-        self,
-        devices: dict[str, Any],
-        fake_flyer: FakeFlyer,
-        motor_stage: FakeXYStage,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """Pass an action request to the actions of the running plan's component."""
-        acquisition = AcquisitionPresenter("acq_ctrl", devices=devices)
-        median = MedianPresenter("median_ctrl", sources={fake_flyer.name: fake_flyer})
-        acquisition.setup({"acq_ctrl": acquisition, "median_ctrl": median}, {})
-        acquisition.engine = FakeEngine(FakeFuture())  # type: ignore[assignment]
-        acquisition.launch_plan(
-            "live_median_scan",
-            {"detectors": [fake_flyer.name], "motor": motor_stage.name},
-        )
-        waiting = median.actions.wait(SCAN)
-        next(waiting)
-
-        acquisition.request_action("scan", True)
-
-        wait_message = next(waiting)
-        assert wait_message.args[0]["scan"].is_set()
-        assert "refused" not in caplog.text
-
-    def test_launch_plan_argument_round_trip_and_pre_launch_notify(
-        self,
-        controller: AcquisitionPresenter,
-        fake_flyer: FakeFlyer,
-        motor_stage: FakeXYStage,
-    ) -> None:
-        """Resolve the values the view sends into a plan, and announce its name first."""
-        engine = FakeEngine(FakeFuture())
-        controller.engine = engine  # type: ignore[assignment]
-
-        notified: list[str] = []
-        controller.sig_pre_launch_notify.connect(notified.append)
-
-        controller.launch_plan(
-            "live_stream",
-            {"detectors": [fake_flyer.name], "frames": 3},
-        )
-
-        assert notified == ["live_stream"]
-        assert len(engine.plans) == 1
-        assert inspect.isgenerator(engine.plans[0])
-
-    def test_a_continuous_plan_announces_its_end(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
-    ) -> None:
-        """Announce the end of a continuous plan."""
-        run_future = FakeFuture()
-        controller.engine = FakeEngine(run_future)  # type: ignore[assignment]
-        ended: list[bool] = []
-        controller.sig_plan_done.connect(lambda: ended.append(True))
-
-        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        run_future.finish()
-
-        assert ended == [True]
-
-    def test_a_paused_plan_does_not_announce_its_end(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
-    ) -> None:
-        """Keep quiet when the future of a run completes because the plan paused."""
-        run_future = FakeFuture()
-        controller.engine = FakeEngine(run_future, state="paused")  # type: ignore[assignment]
-        ended: list[bool] = []
-        controller.sig_plan_done.connect(lambda: ended.append(True))
-
-        controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
-        run_future.finish()
-
-        assert ended == []
-
-    def test_a_wrapped_plan_locks_its_devices_until_it_ends(
-        self,
-        controller: AcquisitionPresenter,
-        fake_detector: FakeDetector,
-        motor_stage: FakeXYStage,
-    ) -> None:
-        """Announce the devices a wrapped plan locks, then none once it ends."""
-        seen: list[frozenset[str]] = []
-        controller.sig_locks_changed.connect(seen.append)
-
-        controller.engine(
-            rps.lock_wrapper(bps.null(), motor_stage, fake_detector)
-        ).result(timeout=10)
-
-        assert seen == [{motor_stage.name, fake_detector.name}, frozenset()]
-
-    def test_a_failing_wrapped_plan_unlocks(
-        self, controller: AcquisitionPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Unlock the devices of a wrapped plan that fails."""
-        seen: list[frozenset[str]] = []
-        controller.sig_locks_changed.connect(seen.append)
-
-        def fail() -> MsgGenerator[None]:
-            yield from bps.null()
-            raise RuntimeError("the plan failed")
-
-        with pytest.raises(RuntimeError):
-            controller.engine(rps.lock_wrapper(fail(), motor_stage)).result(timeout=10)
-
-        assert seen == [{motor_stage.name}, frozenset()]
-
-    def test_stopping_an_idle_engine_is_nothing(
-        self, controller: AcquisitionPresenter
-    ) -> None:
-        """Do nothing when asked to stop an idle engine."""
-        controller.engine = FakeEngine(FakeFuture(), state="idle")  # type: ignore[assignment]
-
-        controller.stop_plan()
-
-    def test_a_launch_while_a_plan_runs_is_refused(
-        self, controller: AcquisitionPresenter, fake_flyer: FakeFlyer
-    ) -> None:
-        """Refuse to launch a plan while another runs."""
-        engine = FakeEngine(FakeFuture())
-        controller.engine = engine  # type: ignore[assignment]
-        running: Future[None] = Future()
-        controller.futures.add(running)
+        acquisition.sig_plan_done.connect(ended.append)
+        done = threading.Event()
+        acquisition.sig_plan_done.connect(lambda _: done.set())
         try:
-            controller.launch_plan("live_stream", {"detectors": [fake_flyer.name]})
+            acquisition.launch(
+                "live_stream",
+                {"detectors": ["cam"], "frames": 1, "write_forever": False},
+            )
+            assert offered.wait(10)
+            acquisition.stop()
+            assert done.wait(10)
         finally:
-            controller.futures.discard(running)
+            acquisition.shutdown()
 
-        assert engine.plans == []
+        assert ended == ["live_stream"]
 
 
 class TestCapture:
