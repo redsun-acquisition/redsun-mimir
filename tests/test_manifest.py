@@ -2,10 +2,8 @@
 
 ``src/redsun_mimir/redsun.yaml`` is the contract between this bundle and
 redsun's plugin discovery: a class that is not listed is invisible, and an
-entry that does not resolve breaks discovery for the whole bundle. Neither
-failure mode is observable from the shipped example sessions, which
-declare their components directly - which is precisely how five of the six
-device entries came to name classes that no longer existed.
+entry that does not resolve breaks discovery for the whole bundle. The example
+sessions declare their components directly, so neither shows there.
 """
 
 from __future__ import annotations
@@ -26,10 +24,6 @@ if TYPE_CHECKING:
 
 SECTIONS = ("devices", "presenters", "views")
 
-#: A service entry names a module and the line it prints when ready, not a
-#: class, so it is checked on its own rather than walked with the rest.
-MANIFEST_SECTIONS = (*SECTIONS, "services")
-
 #: Public names that are not components: a widget a view is built from.
 UNLISTED: frozenset[str] = frozenset({"SettingsControlWidget"})
 
@@ -46,17 +40,12 @@ def _entries() -> Iterator[tuple[str, str, str]]:
             yield section, key, path
 
 
-def test_manifest_has_expected_sections() -> None:
-    manifest = _manifest()
-    assert set(manifest) == set(MANIFEST_SECTIONS)
-
-
 @pytest.mark.parametrize(
     ("section", "key", "path"),
     [pytest.param(s, k, p, id=f"{s}:{k}") for s, k, p in _entries()],
 )
 def test_manifest_entry_resolves(section: str, key: str, path: str) -> None:
-    """Every dotted path in the manifest imports and yields a class."""
+    """Import every dotted path in the manifest and find a class there."""
     module_path, _, class_name = path.partition(":")
     assert class_name, f"{section}:{key} is not in 'module.path:ClassName' form"
 

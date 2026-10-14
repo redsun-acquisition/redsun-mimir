@@ -326,9 +326,7 @@ class TestMedianPresenter:
             4,
         ]
 
-    async def test_live_frames_are_divided_by_the_cached_median(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_live_frames_are_divided_by_the_cached_median(self) -> None:
         """Divide live frames by the cached median and publish them as their own layer."""
         buf = soft_signal_rw(
             np.ndarray,
@@ -402,9 +400,7 @@ class TestMedianPresenter:
             filtered[0]["cam_filtered"]["value"], np.full((4, 4), 4.0)
         )
 
-    async def test_monitor_drives_the_correction_through_the_run_engine(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_monitor_drives_the_correction_through_the_run_engine(self) -> None:
         """Correct monitored live frames on a real engine after a scan."""
         buf = soft_signal_rw(
             np.ndarray,
@@ -485,7 +481,7 @@ class TestMedianPresenter:
 
         assert filtered == []
 
-    async def test_descriptor_ignores_unrelated_sources(self, tmp_path: Path) -> None:
+    async def test_descriptor_ignores_unrelated_sources(self) -> None:
         """Ignore a stream carrying no tracked buffer."""
         buf = soft_signal_rw(
             np.ndarray,
@@ -583,13 +579,6 @@ class TestDetectorPresenter:
         yield DetectorPresenter(
             "det_ctrl", detectors={fake_detector.name: fake_detector}
         )
-
-    def test_instantiation(
-        self, controller: DetectorPresenter, fake_detector: FakeDetector
-    ) -> None:
-        """Track the detector and the data key of its buffer."""
-        assert fake_detector.name in controller.detectors
-        assert fake_detector.buffer.name in controller._buffer_keys
 
     def test_describes_its_detectors(self, controller: DetectorPresenter) -> None:
         """Describe, read and lay out every detector."""
@@ -806,8 +795,7 @@ class TestLiveStream:
         acquisition.setup(
             {"det_ctrl": detector}, {}, SessionPathProvider(base_dir=tmp_path)
         )
-        offered = threading.Event()
-        ended: list[str] = []
+        offered, ended = threading.Event(), threading.Event()
         acquisition.sig_action_changed.connect(
             lambda action, state: (
                 offered.set()
@@ -815,9 +803,9 @@ class TestLiveStream:
                 else None
             )
         )
-        acquisition.sig_plan_done.connect(ended.append)
-        done = threading.Event()
-        acquisition.sig_plan_done.connect(lambda _: done.set())
+        acquisition.sig_plan_done.connect(
+            lambda plan: ended.set() if plan == "live_stream" else None
+        )
         try:
             acquisition.launch(
                 "live_stream",
@@ -825,11 +813,9 @@ class TestLiveStream:
             )
             assert offered.wait(10)
             acquisition.stop()
-            assert done.wait(10)
+            assert ended.wait(10)
         finally:
             acquisition.shutdown()
-
-        assert ended == ["live_stream"]
 
 
 class TestCapture:

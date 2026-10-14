@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import msgspec
 import numpy as np
 import pytest
+from p4p.client.thread import Context
 from redsun.services import Service
 
 from redsun_mimir.common import Roi
@@ -273,16 +274,10 @@ async def controller() -> AsyncGenerator[tuple[MMCameraController, FakeCore], No
 def test_the_service_serves_a_camera_and_captures_what_it_grabs(
     camera_service: Service, tmp_path: Path
 ) -> None:
-    """One capture window, from the client's side.
-
-    Reading and writing a setting, watching frames arrive, and writing four of
-    them to a store the client named, which is what a session's camera device
-    does over the same PVs.
-    """
-    p4p = pytest.importorskip("p4p.client.thread")
+    """Set the exposure, grab, and write four frames to the store a PVA client names."""
     store = tmp_path / "capture.zarr"
 
-    with p4p.Context("pva") as client:
+    with Context("pva") as client:
         client.get(f"{PREFIX}:PVI", timeout=30.0)
         client.put(f"{PREFIX}:Exposure", 25.0, timeout=10.0)
         client.put(f"{PREFIX}:Acquire", True, timeout=10.0)
@@ -317,11 +312,7 @@ def test_the_service_serves_a_camera_and_captures_what_it_grabs(
 async def test_the_frame_count_follows_the_camera_and_not_the_clock(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """A tick with no new frame publishes nothing.
-
-    A client reads a frame after a move and waits for ``FrameCount`` to
-    advance, so a count that rises on its own hands it the frame it had.
-    """
+    """Advance `FrameCount` only when the camera grabbed a new frame."""
     camera, core = controller
 
     await camera.publish_frame()
@@ -343,7 +334,7 @@ async def test_the_frame_count_follows_the_camera_and_not_the_clock(
 async def test_a_bounded_window_closes_where_its_last_frame_is_written(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:
-    """``Captured`` and ``Capture`` are answered without waiting for a tick."""
+    """Close a bounded window at its last frame, setting `Captured` and `Capture` at once."""
     camera, _ = controller
     store = tmp_path / "window.zarr"
 
@@ -365,7 +356,7 @@ async def test_a_bounded_window_closes_where_its_last_frame_is_written(
 async def test_a_second_window_counts_from_zero(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:
-    """Naming a store starts ``Captured`` over, so a client can wait on it."""
+    """Start `Captured` over when a new store is named."""
     camera, _ = controller
     await camera.file_path.put(str(tmp_path / "first.zarr"))
     await camera.num_capture.put(2)
@@ -389,7 +380,7 @@ async def test_a_second_window_counts_from_zero(
 async def test_closing_an_unbounded_window_publishes_what_it_wrote(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:
-    """``Captured`` is final once ``Capture`` falls, with no tick in between."""
+    """Publish the final `Captured` as soon as an unbounded window closes."""
     camera, _ = controller
     await camera.file_path.put(str(tmp_path / "window.zarr"))
     await camera.num_capture.put(0)
@@ -403,7 +394,7 @@ async def test_closing_an_unbounded_window_publishes_what_it_wrote(
 
 
 def test_uncropping_grows_the_readout_back_to_the_whole_sensor() -> None:
-    """One clear leaves the size the offsets allowed, which is short of the sensor."""
+    """Grow the readout back to the whole sensor, which one clear of the ROI does not."""
     core = FakeCore()
     core.setROI(2, 1, 3, 2)
 
@@ -422,13 +413,7 @@ def test_uncropping_grows_the_readout_back_to_the_whole_sensor() -> None:
 async def test_a_roi_widens_again_from_a_cropped_camera(
     controller: tuple[MMCameraController, FakeCore], first: str, second: str
 ) -> None:
-    """A camera capping the width at the room left beyond its offset takes both.
-
-    The second ROI is wider than what is left of the sensor beyond the first
-    one's offset, which such a camera refuses while it stands cropped. A
-    ``DahengGalaxy`` camera refuses it and the ``DemoCamera`` adapter does
-    not, so `FakeCore` is what the cap is reproduced on.
-    """
+    """Take a wider ROI on a camera that caps the width at what is left beyond its offset."""
     camera, core = controller
 
     await camera.roi.put(first)
@@ -441,11 +426,7 @@ async def test_a_roi_widens_again_from_a_cropped_camera(
 async def test_a_roi_write_waits_for_the_frame_the_camera_is_taking(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """A camera driven by two threads at once can take the process down.
-
-    A write rebuilds the driver's buffers, so it waits for the exposure in
-    flight rather than running beside it.
-    """
+    """Wait for the exposure in flight before writing an ROI to the camera."""
     camera, core = controller
     core.sequences = False
     core.exposure_allowed.clear()
@@ -468,7 +449,7 @@ async def test_a_roi_write_waits_for_the_frame_the_camera_is_taking(
 async def test_a_setting_refused_mid_sequence_pauses_it(
     controller: tuple[MMCameraController, FakeCore], setting: str
 ) -> None:
-    """Micro-Manager refuses some writes during a sequence; the sequence resumes."""
+    """Pause the sequence for a setting Micro-Manager refuses mid-sequence, then resume it."""
     camera, core = controller
     await camera.acquire.put(True)
     await until(lambda: core.sequencing, camera)
@@ -490,7 +471,7 @@ async def test_a_setting_refused_mid_sequence_pauses_it(
 async def test_a_fault_is_forgotten_once_grabbing_restarts(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """Toggling ``Acquire`` after a fault puts the camera back to work."""
+    """Forget a fault once `Acquire` is toggled, and grab again."""
     camera, core = controller
     core.fault = RuntimeError("camera unplugged")
     await camera.acquire.put(True)
@@ -510,7 +491,7 @@ async def test_a_fault_is_forgotten_once_grabbing_restarts(
 async def test_a_setting_is_applied_off_the_event_loop(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """Micro-Manager blocks, so a put reaches it from a worker thread."""
+    """Apply a setting on a worker thread, since Micro-Manager blocks."""
     camera, core = controller
 
     await camera.exposure.put(25.0)
@@ -523,6 +504,7 @@ async def test_a_setting_is_applied_off_the_event_loop(
 async def test_the_sensor_size_is_reported_as_width_and_height(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
+    """Report the sensor size as width, then height."""
     camera, _ = controller
 
     assert camera.sensor_size.get().tolist() == [FRAME_SHAPE[1], FRAME_SHAPE[0]]
@@ -531,7 +513,7 @@ async def test_the_sensor_size_is_reported_as_width_and_height(
 async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """A camera that takes a sequence is read through its circular buffer."""
+    """Read a camera that takes a sequence through its circular buffer."""
     camera, core = controller
     snapped = core.snapped
 
@@ -554,13 +536,9 @@ async def test_frames_come_from_the_sequence_and_not_from_exposing_each_one(
 async def test_no_property_is_read_from_the_camera_while_it_sequences(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """Polling a property mid-sequence would end it on some adapters.
-
-    The DahengGalaxy adapter delivers no further frame once ``PixelType`` is
-    read during a sequence, so every property poll waits for the camera to be
-    idle. Nothing but a write changes a property meanwhile, and a write
-    updates the attribute itself.
-    """
+    """Read no property from the camera while it sequences, and read them once it is idle."""
+    # the DahengGalaxy adapter delivers no further frame once a property such
+    # as PixelType is read during a sequence
     camera, core = controller
     await camera.acquire.put(True)
     await until(lambda: core.sequencing, camera)
@@ -599,11 +577,7 @@ async def test_the_board_reset_runs_on_a_port_with_no_board(
 async def test_a_property_poll_reads_under_the_camera_lock(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """A sequence starting between the check and the read would take the read.
-
-    On the Daheng that read ends the sequence for good, so the check and the
-    read are one step under the lock ``_start_sequence`` runs under.
-    """
+    """Read a polled property under the lock a sequence starts under."""
     camera, core = controller
     core.guarded = camera._camera_lock.locked
 
@@ -615,7 +589,7 @@ async def test_a_property_poll_reads_under_the_camera_lock(
 
 
 async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None:
-    """The camera still gives frames when it takes no sequence."""
+    """Expose frame by frame on an adapter that refuses a sequence."""
     core = FakeCore(sequences=False)
     camera = MMCameraController(core, LABEL, DATA_KEY)  # type: ignore[arg-type]
     await camera.initialise()
@@ -634,7 +608,7 @@ async def test_an_adapter_that_refuses_a_sequence_is_exposed_per_frame() -> None
 async def test_a_camera_that_fails_says_so_and_can_be_restarted(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """Grabbing stops on a fault, and ``reconnect`` puts it back to work."""
+    """Stop grabbing on a fault, report it, and grab again after `reconnect`."""
     camera, core = controller
     core.fault = RuntimeError("camera unplugged")
 
@@ -685,12 +659,7 @@ async def board() -> AsyncGenerator[tuple[UC2Controller, FakeBoard], None]:
 async def test_an_axis_starts_from_where_the_board_left_its_stepper(
     steps: dict[int, int], position: dict[str, float]
 ) -> None:
-    """The board keeps its steppers across a restart, so each axis asks it once.
-
-    The board answers in steps, framed in ``++`` and ``--``; an axis reads
-    micrometres. A negative position has a minus sign the framing must not
-    take with it.
-    """
+    """Start each axis at the position the board reports, in micrometres and with its sign."""
     serial = FakeBoard(positions=steps)
     controller = UC2Controller(serial)
     await controller.initialise()
@@ -711,7 +680,7 @@ async def test_an_axis_starts_from_where_the_board_left_its_stepper(
 async def test_an_axis_is_commanded_and_echoes_what_it_took(
     board: tuple[UC2Controller, FakeBoard],
 ) -> None:
-    """The board reports nothing, so the readback is the commanded value."""
+    """Command an axis in steps and read back the position it was given."""
     controller, serial = board
     axis = controller.sub_controllers["stage"].sub_controllers["axis"]
 
@@ -726,7 +695,7 @@ async def test_an_axis_is_commanded_and_echoes_what_it_took(
 async def test_a_laser_is_commanded_in_its_own_counts(
     board: tuple[UC2Controller, FakeBoard],
 ) -> None:
-    """Intensity travels as the board's integer, and is read back."""
+    """Command the laser with the board's integer intensity and read it back."""
     controller, serial = board
 
     await controller.sub_controllers["laser1"].intensity.put(500)
@@ -740,7 +709,7 @@ async def test_a_laser_is_commanded_in_its_own_counts(
 async def test_the_uc2_devices_are_built_from_what_the_service_serves(
     uc2_service: Service,
 ) -> None:
-    """The stage takes its axes from PVI, and the laser its limits."""
+    """Build the stage's axes and the laser's limits from what the service serves."""
     stage = UC2MotorDevice(uc2_service.prefix, name="stage")
     laser = UC2LaserDevice(uc2_service.prefix, wavelength=650, name="laser")
     await stage.connect()
@@ -756,7 +725,7 @@ async def test_the_uc2_devices_are_built_from_what_the_service_serves(
 async def test_the_camera_publishes_the_properties_it_lets_one_write(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """Read-only properties are left out, and a PV name takes no spaces."""
+    """Publish only writable properties, with spaces in their names replaced."""
     camera, core = controller
     properties = camera.sub_controllers["properties"]
 
@@ -771,7 +740,7 @@ async def test_the_camera_publishes_the_properties_it_lets_one_write(
 async def test_pixel_dtype_maps_to_the_pixel_type_the_camera_supports(
     controller: tuple[MMCameraController, FakeCore],
 ) -> None:
-    """A dtype the camera reads out in sets ``PixelType`` and retypes the buffer."""
+    """Set `PixelType` from a dtype the camera reads out in, and retype the buffer."""
     camera, core = controller
     choices = cast("Enum[Any]", camera.pixel_dtype.datatype).enum_cls
     assert [choice.name for choice in choices] == ["uint8", "uint16"]
@@ -789,7 +758,7 @@ async def test_pixel_dtype_maps_to_the_pixel_type_the_camera_supports(
 async def test_the_pixel_dtype_is_refused_while_a_capture_writes(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:
-    """The store's dtype is fixed when the window opens; it takes again after."""
+    """Refuse a pixel dtype change while a capture writes, and take it after."""
     camera, core = controller
     choices = cast("Enum[Any]", camera.pixel_dtype.datatype).enum_cls
     await camera.file_path.put(str(tmp_path / "window.zarr"))
@@ -809,7 +778,7 @@ async def test_the_pixel_dtype_is_refused_while_a_capture_writes(
 
 
 async def test_the_camera_publishes_only_the_properties_chosen() -> None:
-    """A chosen name the camera lacks, or cannot write, is skipped."""
+    """Skip a chosen property the camera lacks or cannot write."""
     core = FakeCore()
     camera = MMCameraController(core, LABEL, DATA_KEY, ["Gain", "CameraName", "Nope"])  # type: ignore[arg-type]
     await camera.initialise()
@@ -823,7 +792,7 @@ async def test_the_camera_publishes_only_the_properties_chosen() -> None:
 async def test_a_fault_mid_capture_ends_the_window(
     controller: tuple[MMCameraController, FakeCore], tmp_path: Path
 ) -> None:
-    """A client waits for ``Capture`` to fall, and no frame will end it now."""
+    """End the capture window when the camera faults mid-capture."""
     camera, core = controller
     await camera.file_path.put(str(tmp_path / "interrupted.zarr"))
     await camera.num_capture.put(10)
