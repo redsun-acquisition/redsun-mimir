@@ -64,11 +64,15 @@ SIMULATION_LINKS = {
     ("det_widget.sig_roi_edited", "img_widget.set_roi_box"),
     ("median_ctrl.median", "img_widget.update_layers"),
     ("median_ctrl.filtered", "img_widget.update_layers"),
-    ("motor_widget.sig_motor_move", "motor_ctrl.move"),
-    ("motor_widget.sig_motor_step_stop", "motor_ctrl.stop_step"),
-    ("XY.axis-x", "motor_widget.update_setpoint"),
-    ("XY.axis-y", "motor_widget.update_setpoint"),
-    ("Z.axis-z", "motor_widget.update_setpoint"),
+    ("motor_widget.sig_move", "motor_ctrl.move"),
+    ("motor_widget.sig_move_to", "motor_ctrl.move_to"),
+    ("motor_widget.sig_stop_device", "motor_ctrl.stop"),
+    ("motor_widget.sig_configure", "motor_ctrl.configure"),
+    ("motor_ctrl.sig_readback", "motor_widget.update_readback"),
+    ("motor_ctrl.sig_moving", "motor_widget.set_moving"),
+    ("motor_ctrl.sig_failed", "motor_widget.set_failed"),
+    ("motor_ctrl.sig_limits", "motor_widget.update_limits"),
+    ("motor_ctrl.sig_configuration", "motor_widget.update_configuration"),
     ("light_widget.sig_toggle_light_request", "light_ctrl.trigger"),
     ("light_widget.sig_intensity_request", "light_ctrl.set"),
     ("acq_widget.sig_launch_plan_request", "acq_ctrl.launch_plan"),
@@ -86,6 +90,7 @@ SIMULATION_LINKS = {
     ("acq_ctrl.sig_pre_launch_notify", "median_ctrl.clear_medians"),
     ("acq_ctrl.sig_locks_changed", "det_widget.set_locked"),
     ("acq_ctrl.sig_locks_changed", "motor_widget.set_locked"),
+    ("acq_ctrl.sig_locks_changed", "motor_ctrl.set_locked"),
     ("acq_ctrl.sig_locks_changed", "light_widget.set_locked"),
 }
 
@@ -174,13 +179,19 @@ def test_each_protocol_answers_the_devices_meant_for_it(
     assert set(satisfying(simulation.devices, protocol)) == devices
 
 
+def test_the_positioner_holds_every_stage_axis(simulation: MimirApp) -> None:
+    """Find every axis of the simulated stages in redsun's positioner."""
+    axes = {device: set(found) for device, found in simulation.motor_ctrl.axes.items()}
+    assert axes == {"XY": {"x", "y"}, "Z": {"z"}}
+
+
 def test_every_port_is_reached(simulation: MimirApp) -> None:
     """Leave no signal and no slot of the simulation without a link."""
     assert not simulation.unconnected, str(simulation.unconnected)
 
 
 def test_the_simulation_makes_the_expected_links(simulation: MimirApp) -> None:
-    """Make every link of the simulation, the axis readbacks included."""
+    """Make every link of the simulation, the positioner pair's included."""
     actual = {
         (f"{c.publisher}.{c.publisher_port}", f"{c.consumer}.{c.consumer_port}")
         for c in simulation.connections

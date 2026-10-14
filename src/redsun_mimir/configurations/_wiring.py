@@ -14,17 +14,17 @@ if TYPE_CHECKING:
 
     from redsun import Link
     from redsun.path_provider import SessionPathProvider
+    from redsun.presenter import PositionerPresenter
+    from redsun.view.qt.builtins import PositionerView
 
     from redsun_mimir.presenter.acquisition import AcquisitionPresenter
     from redsun_mimir.presenter.detector import DetectorPresenter
     from redsun_mimir.presenter.light import LightPresenter
     from redsun_mimir.presenter.median import MedianPresenter
-    from redsun_mimir.presenter.motor import MotorPresenter
     from redsun_mimir.view.acquisition import AcquisitionView
     from redsun_mimir.view.detector import DetectorView
     from redsun_mimir.view.image import ImageView
     from redsun_mimir.view.light import LightView
-    from redsun_mimir.view.motor import MotorView
 
 __all__ = [
     "wire_acquisition",
@@ -32,7 +32,6 @@ __all__ = [
     "wire_light",
     "wire_locks",
     "wire_median",
-    "wire_motor",
 ]
 
 
@@ -53,18 +52,6 @@ def wire_median(ctrl: MedianPresenter, image: ImageView) -> Iterator[Link]:
     """Route both median streams to the viewer, each as its own layer."""
     yield ctrl.frames.median, image.update_layers
     yield ctrl.frames.filtered, image.update_layers
-
-
-def wire_motor(ctrl: MotorPresenter, view: MotorView) -> Iterator[Link]:
-    """Link stage step requests, and every axis readback to its label.
-
-    The labels follow the readbacks, not the presenter, so they show moves
-    the presenter never made.
-    """
-    yield view.sig_motor_move, ctrl.move
-    yield view.sig_motor_step_stop, ctrl.stop_step
-    for readback in ctrl.devices_readbacks().values():
-        yield readback, view.update_setpoint
 
 
 def wire_light(ctrl: LightPresenter, view: LightView) -> Iterator[Link]:
@@ -106,8 +93,12 @@ def wire_acquisition(
 
 
 def wire_locks(
-    ctrl: AcquisitionPresenter, *views: MotorView | LightView | DetectorView
+    ctrl: AcquisitionPresenter,
+    *holders: PositionerPresenter | PositionerView | LightView | DetectorView,
 ) -> Iterator[Link]:
-    """Disable, in each view, the controls of the devices a running plan holds."""
-    for view in views:
-        yield ctrl.sig_locks_changed, view.set_locked
+    """Tell each component which devices a running plan holds.
+
+    A view disables their controls; the positioner refuses to move them by hand.
+    """
+    for holder in holders:
+        yield ctrl.sig_locks_changed, holder.set_locked

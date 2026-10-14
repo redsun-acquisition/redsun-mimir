@@ -21,13 +21,11 @@ from redsun.view.qt.builtins import LogView
 from redsun_mimir.common import Roi
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.presenter.light import LightPresenter
-from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
 from redsun_mimir.view.light import LightView
 from redsun_mimir.view.logs import LogsAction
-from redsun_mimir.view.motor import MotorView
 
 from .conftest import needs_opengl
 
@@ -41,7 +39,7 @@ if TYPE_CHECKING:
 
     from redsun_mimir.device._mocks import MockLightDevice
 
-    from .conftest import FakeDetector, FakeXYStage
+    from .conftest import FakeDetector
 
 pytestmark = pytest.mark.qt
 
@@ -97,11 +95,6 @@ def open_logs() -> list[LogView]:
         for widget in QtWidgets.QApplication.topLevelWidgets()
         if isinstance(widget, LogView) and widget.isVisible()
     ]
-
-
-def build_motor_view(widget: MotorView, motor: FakeXYStage) -> None:
-    """Build *widget* from a presenter describing *motor*."""
-    widget.setup(MotorPresenter("motor_ctrl", motors={motor.name: motor}))
 
 
 def build_light_view(widget: LightView, *devices: MockLightDevice) -> None:
@@ -584,97 +577,6 @@ class TestAcquisitionView:
         assert not buttons["stream"].isEnabled()
         assert not buttons["stream"].isChecked()
         assert asked == [("stream", True)]
-
-
-class TestMotorView:
-    """Tests for MotorView."""
-
-    @pytest.fixture
-    def widget(self, parent: QtWidgets.QWidget) -> MotorView:
-        return MotorView("motor_view", parent)
-
-    async def test_build_creates_one_group_per_axis(
-        self, widget: MotorView, motor_stage: FakeXYStage
-    ) -> None:
-        """Build one group per motor from the `<device>-axis-<name>` keys."""
-        build_motor_view(widget, motor_stage)
-
-        assert "xystage" in widget._groups
-        for axis in ("x", "y"):
-            assert f"pos:xystage:{axis}" in widget._labels
-            assert f"step:xystage:{axis}" in widget._steps
-            assert f"button:xystage:{axis}:up" in widget._buttons
-            assert f"button:xystage:{axis}:down" in widget._buttons
-
-    async def test_a_locked_motor_disables_its_step_controls_and_keeps_its_position(
-        self, widget: MotorView, motor_stage: FakeXYStage
-    ) -> None:
-        """Disable a locked motor's step controls and keep its position updating."""
-        build_motor_view(widget, motor_stage)
-
-        widget.set_locked(frozenset({"xystage"}))
-        widget.update_setpoint(_reading("xystage-axis-x", 7.5))
-
-        assert not widget._buttons["button:xystage:x:up"].isEnabled()
-        assert not widget._steps["step:xystage:x"].isEnabled()
-        assert widget._labels["pos:xystage:x"].isEnabled()
-        assert widget._labels["pos:xystage:x"].text().startswith("7.50")
-
-        widget.set_locked(frozenset())
-        assert widget._buttons["button:xystage:x:up"].isEnabled()
-
-    async def test_step_size_comes_from_the_view(
-        self, parent: QtWidgets.QWidget, motor_stage: FakeXYStage
-    ) -> None:
-        """Take the step size from the view, not from a device property."""
-        widget = MotorView("motor_view", parent, step_size=2.5)
-        build_motor_view(widget, motor_stage)
-
-        assert widget._steps["step:xystage:x"].value() == pytest.approx(2.5)
-
-    async def test_update_setpoint_refreshes_label(
-        self, widget: MotorView, motor_stage: FakeXYStage
-    ) -> None:
-        """Write an axis reading into its position label."""
-        build_motor_view(widget, motor_stage)
-
-        widget.update_setpoint(_reading("xystage-axis-x", 7.5))
-        assert widget._labels["pos:xystage:x"].text().startswith("7.50")
-
-    @pytest.mark.parametrize(
-        ("direction", "expected"),
-        [
-            pytest.param("up", 100.0, id="step-up"),
-            pytest.param("down", -100.0, id="step-down"),
-        ],
-    )
-    async def test_a_step_starts_on_press_and_stops_on_release(
-        self,
-        widget: MotorView,
-        motor_stage: FakeXYStage,
-        direction: str,
-        expected: float,
-    ) -> None:
-        """Emit a signed step on press and a stop on release."""
-        build_motor_view(widget, motor_stage)
-        widget.update_setpoint(_reading("xystage-axis-x", 123.0))
-        button = widget._buttons[f"button:xystage:x:{direction}"]
-
-        steps: list[tuple[str, str, float]] = []
-        stops: list[str] = []
-        widget.sig_motor_move.connect(
-            lambda motor, axis, delta: steps.append((motor, axis, delta))
-        )
-        widget.sig_motor_step_stop.connect(stops.append)
-
-        button.pressed.emit()
-        assert [(m, a) for m, a, _ in steps] == [("xystage", "x")]
-        assert steps[0][2] == pytest.approx(expected)
-        assert stops == []
-
-        button.released.emit()
-        assert len(steps) == 1
-        assert stops == ["xystage"]
 
 
 class TestLightView:

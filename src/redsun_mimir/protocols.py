@@ -170,19 +170,6 @@ class DescribesDetectors(Protocol):
 
 
 @runtime_checkable
-class DescribesMotors(Protocol):
-    """A component describing the motors of the session."""
-
-    def motor_descriptors(self) -> dict[str, Descriptor]:
-        """Return the descriptors of every motor axis, by data key."""
-        ...
-
-    def motor_readings(self) -> dict[str, Reading[Any]]:
-        """Return the current readings of every motor axis, by data key."""
-        ...
-
-
-@runtime_checkable
 class DescribesLights(Protocol):
     """A component describing the light sources of the session."""
 
@@ -217,7 +204,6 @@ class HasActions(Protocol):
 __all__ = [
     "DescribesDetectors",
     "DescribesLights",
-    "DescribesMotors",
     "DetectorProtocol",
     "HasActions",
     "HasBuffer",

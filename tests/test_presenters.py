@@ -27,11 +27,9 @@ from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import SCAN, MedianPresenter
-from redsun_mimir.presenter.motor import MotorPresenter
 from redsun_mimir.protocols import (
     DescribesDetectors,
     DescribesLights,
-    DescribesMotors,
     DetectorProtocol,
 )
 from tests.conftest import FakeDetector, FakeFlyer, FakeXYStage
@@ -130,71 +128,6 @@ def simulate_capture(plan: MsgGenerator[Any], written: int = 5) -> list[Msg]:
     simulator.add_handler("wait_for", index)
     messages: list[Msg] = simulator.simulate_plan(plan)
     return messages
-
-
-class TestMotorPresenter:
-    """Tests for MotorPresenter."""
-
-    @pytest.fixture
-    def controller(
-        self, motor_stage: FakeXYStage
-    ) -> Generator[MotorPresenter, None, None]:
-        yield MotorPresenter("motor_presenter", motors={motor_stage.name: motor_stage})
-
-    def test_describes_its_motors(self, controller: MotorPresenter) -> None:
-        """Describe every axis, and return a readback for each axis read."""
-        assert isinstance(controller, DescribesMotors)
-        readings = controller.motor_readings()
-        assert any("xystage" in k for k in readings)
-        assert any("xystage" in k for k in controller.motor_descriptors())
-        assert set(controller.devices_readbacks()) == set(readings)
-
-    async def test_a_held_step_repeats_until_stopped(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Repeat a step until it is stopped, then finish the step in flight."""
-        x = motor_stage.axis["x"]
-        held = asyncio.create_task(controller.move(motor_stage.name, "x", 1.0))
-        async with asyncio.timeout(5):
-            while (await x.locate())["readback"] < 3.0:
-                await asyncio.sleep(0)
-        await controller.stop_step(motor_stage.name)
-        await held
-
-        position = (await x.locate())["readback"]
-        assert position >= 3.0
-        assert position == pytest.approx(round(position))
-
-    async def test_a_tap_moves_one_step(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """Move one step when the stop arrives before the first step lands."""
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.stop_step(motor_stage.name),
-        )
-
-        assert (await motor_stage.axis["x"].locate())["readback"] == pytest.approx(10.0)
-
-    async def test_a_new_step_takes_over_from_the_held_one(
-        self, controller: MotorPresenter, motor_stage: FakeXYStage
-    ) -> None:
-        """End a held step after its move when another starts, and run the new one."""
-        await asyncio.gather(
-            controller.move(motor_stage.name, "x", 10.0),
-            controller.move(motor_stage.name, "y", 5.0),
-            controller.stop_step(motor_stage.name),
-        )
-
-        x = (await motor_stage.axis["x"].locate())["readback"]
-        y = (await motor_stage.axis["y"].locate())["readback"]
-        assert x == pytest.approx(10.0)
-        assert y == pytest.approx(5.0)
-
-    async def test_move_unknown_motor_raises(self, controller: MotorPresenter) -> None:
-        """Raise `KeyError` for a motor the presenter does not track."""
-        with pytest.raises(KeyError):
-            await controller.move("does-not-exist", "x", 1.0)
 
 
 class TestLightPresenter:
