@@ -129,11 +129,13 @@ Components never name each other's classes:
 
 - A view asks in `setup` for a protocol from `redsun_mimir.protocols`:
   `DetectorView` and `ImageView` for `DescribesDetectors`. `DetectorPresenter`
-  asks for `HoldsDeferrals`, which `AcquisitionPresenter` satisfies.
+  asks for `Deferrals`, which `redsun`'s `AcquisitionPresenter` shares.
 - A presenter asks for `DevicesOf[P]` and gets only the devices satisfying
   `P`, such as `DetectorProtocol` for `DetectorPresenter`.
-- `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
-  `live_median_scan`, and `AcquisitionPresenter` runs both.
+- The acquisition controls are `redsun`'s built-in ones: `acq_ctrl` is an
+  `AcquisitionPresenter` and `acq_widget` an `AcquisitionView`.
+  `DetectorPresenter` offers `live_stream`, `MedianPresenter` offers
+  `live_median_scan`, and `acq_ctrl` runs both.
 - The stage controls are `redsun`'s built-in positioner: `motor_ctrl` is a
   `PositionerPresenter` and `motor_widget` a `PositionerView`. It finds the
   axes of every stage by what they can do, so Mimir declares no motor
@@ -185,19 +187,7 @@ wiring:
   img_widget.sig_roi_drawn: det_widget.on_roi_drawn
   det_widget.sig_roi_selection: img_widget.set_roi_selection
   det_widget.sig_roi_edited: img_widget.set_roi_box
-  acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan
-  acq_widget.sig_stop_plan_request: acq_ctrl.stop_plan
-  acq_widget.sig_pause_resume_request: acq_ctrl.pause_or_resume_plan
-  acq_widget.sig_action_request: acq_ctrl.request_action
-  acq_ctrl.sig_progress: acq_widget.on_progress
-  acq_ctrl.sig_plan_done:
-    - acq_widget.on_plan_done
-    - path_provider.reset_plan
-  acq_ctrl.sig_pre_launch_notify:
-    - median_ctrl.clear_medians
-    - path_provider.set_plan
-  acq_widget.sig_base_dir_request: path_provider.set_base_dir
-  path_provider.sig_base_dir_changed: acq_widget.on_base_dir_changed
+  acq_ctrl.sig_plan_started: median_ctrl.clear_medians
   acq_ctrl.sig_locks_changed:
     - det_widget.set_locked
     - motor_ctrl.set_locked
@@ -207,20 +197,16 @@ wiring:
 pairs:
   - [motor_widget, motor_ctrl]
   - [light_widget, light_ctrl]
+  - [acq_widget, acq_ctrl]
 ```
 
 Names are the keys under `devices:`, `presenters:` and `views:`, then the
-signal or slot. `path_provider` is the session's path provider: it names the
-directory a capture goes to and refuses a new one while a plan runs.
-`acq_ctrl.request_action` passes an action request to the component offering
-the running plan. Each `pairs:` entry makes the links between a built-in view
+signal or slot. Each `pairs:` entry makes the links between a built-in view
 and its presenter: nine for the positioner, which `redsun`'s guide to moving
-devices by hand lists, and seven for the lights.
-
-A file can only address `component.port`, so one link needs a session class:
-
-- `acq_ctrl.actions.sig_changed` and `median_ctrl.actions.sig_changed` to
-  `acq_widget.on_action_changed`; without it the action buttons stay disabled.
+devices by hand lists, seven for the lights and twelve for the acquisition.
+`acq_ctrl` names the files of each run through the session's path provider,
+and passes the actions of `DetectorPresenter` and `MedianPresenter` to the
+view itself, so neither needs a link.
 
 ## Features
 

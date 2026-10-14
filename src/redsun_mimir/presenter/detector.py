@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Sequence  # noqa: TC003
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+import bluesky.plan_stubs as bps
+import redsun.engine.plan_stubs as rps
+from bluesky.utils import MsgGenerator  # noqa: TC002
 from event_model import DocumentRouter
+from ophyd_async.core import TriggerInfo
 from psygnal import Signal
 from redsun import DevicesOf, slot
 from redsun.aio import run_coro
+from redsun.engine import Deferrals  # noqa: TC002
+from redsun.engine.actions import ActionManager, PlanAction, continuous
 from redsun.log import Loggable
 
-from redsun_mimir.common import Roi
-from redsun_mimir.protocols import DetectorProtocol, HoldsDeferrals  # noqa: TC001
+from redsun_mimir.common import LIVE_VIEW_STREAM, Roi
+from redsun_mimir.plans import capture, prepare_and_declare
+from redsun_mimir.protocols import DetectorProtocol, ReadableFlyer  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -18,9 +26,16 @@ if TYPE_CHECKING:
     from bluesky.protocols import Descriptor, Reading
     from event_model.documents import Event, EventDescriptor
     from ophyd_async.core import SignalRW
-    from redsun.engine import Deferrals
+    from redsun import PlanEntry
 
     from redsun_mimir.protocols import LayerSpec
+
+#: The action of `live_stream` writing frames to disk.
+STREAM = PlanAction(
+    name="stream",
+    description="Toggle data streaming to disk.",
+    toggle_states=("start", "stop"),
+)
 
 
 #: The settings a view may change, each named after the signal carrying it, so
@@ -44,6 +59,8 @@ def _writable_settings(detector: DetectorProtocol) -> dict[str, SignalRW[Any]]:
 class DetectorPresenter(DocumentRouter, Loggable):
     """Presenter for detector configuration and live data routing.
 
+    It offers `live_stream`, and holds as `actions` the `ActionManager` that
+    plan waits on.
     Live frames arrive as Event documents, the plan having put each
     detector's buffer signal under `bps.monitor`, so every displayed frame
     is part of the run and ordered against its other documents. Frames are
@@ -96,6 +113,7 @@ class DetectorPresenter(DocumentRouter, Loggable):
         self._rois: dict[str, Roi] = {}
         self._roi_callbacks: dict[str, Callable[[dict[str, Reading[Any]]], None]] = {}
         self._deferrals: Deferrals | None = None
+        self.actions = ActionManager()
         run_coro(self._subscribe_rois())
 
     async def _subscribe_rois(self) -> None:
@@ -150,9 +168,75 @@ class DetectorPresenter(DocumentRouter, Loggable):
             self.sig_new_data.emit(readings)
         return doc
 
-    def setup(self, plans: HoldsDeferrals | None = None) -> None:
-        """Take the deferrals of the engine running the plans, if one does."""
-        self._deferrals = None if plans is None else plans.plan_deferrals()
+    def setup(self, deferrals: Deferrals | None = None) -> None:
+        """Take the deferrals of the engine running the plans, if a component shares them."""
+        self._deferrals = deferrals
+
+    def plan_map(self) -> Mapping[str, PlanEntry]:
+        """Return the plan this presenter offers."""
+        return {"live_stream": {"plan": self.live_stream}}
+
+    @continuous
+    def live_stream(
+        self,
+        detectors: Sequence[ReadableFlyer],
+        frames: int = 10,
+        write_forever: bool = False,
+        /,
+        stream: PlanAction = STREAM,
+    ) -> MsgGenerator[None]:
+        """Perform live data collection and optionally store data to disk.
+
+        The `stream` action streams the acquired frames to a Zarr store for
+        `frames` frames, as a run nested in this one whose start document
+        names this run as `parent`. Live visualization continues meanwhile.
+
+        Parameters
+        ----------
+        detectors
+            The detectors to collect from.
+        frames
+            The number of frames to stream to disk.
+        write_forever
+            Stream until the `stream` action is released, ignoring `frames`.
+        """
+        stream_name = "live_stream"
+        trigger_info = TriggerInfo(number_of_events=0 if write_forever else frames)
+
+        parent = yield from bps.open_run()
+
+        # live visualization travels as Event documents, so the viewer sees
+        # frames through the same document sequence as everything else
+        for det in detectors:
+            yield from bps.monitor(det.buffer, name=LIVE_VIEW_STREAM)
+
+        while True:
+            # preparing starts the live view and hands each detector the
+            # store its next capture writes; the capture declares it
+            yield from bps.stage_all(*detectors)
+            yield from prepare_and_declare(
+                detectors, trigger_info, stream_name, declare=False
+            )
+            name = yield from self.actions.wait(stream)
+            try:
+                names = ", ".join(det.name for det in detectors)
+                self.logger.info(f"live_stream: writing {names} to disk")
+                yield from rps.lock_wrapper(
+                    capture(
+                        detectors,
+                        stream_name,
+                        parent=parent,
+                        until=(
+                            self.actions.wait_released(stream)
+                            if write_forever
+                            else None
+                        ),
+                    ),
+                    *detectors,
+                )
+                self.logger.info(f"live_stream: finished writing {names}")
+            finally:
+                self.actions.done(name)
 
     def detector_layer_specs(self) -> dict[str, LayerSpec]:
         """Return the layer spec of every detector.

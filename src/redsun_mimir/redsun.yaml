@@ -22,12 +22,10 @@ services:
     ready: uc2 controller ready
 
 presenters:
-  acquisition: redsun_mimir.presenter.acquisition:AcquisitionPresenter
   detector: redsun_mimir.presenter.detector:DetectorPresenter
   median: redsun_mimir.presenter.median:MedianPresenter
 
 views:
-  acquisition: redsun_mimir.view.acquisition:AcquisitionView
   image: redsun_mimir.view.image:ImageView
   detector: redsun_mimir.view.detector:DetectorView
   logs: redsun_mimir.view.logs:LogsAction

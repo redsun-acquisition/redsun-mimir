@@ -22,8 +22,8 @@ src/redsun_mimir/
                    #   containers.py - ReadableDeviceMap
                    #   mmcore/    - camera and stage clients
                    #   youseetoo/ - UC2 motor and laser clients (no CI coverage)
-  presenter/       # acquisition, detector, median
-  view/            # Qt/napari widgets: acquisition, detector, image, logs
+  presenter/       # detector, median
+  view/            # Qt/napari widgets: detector, image, logs
   configurations/  # runnable example sessions (_full_simulation, _full_uc2)
                    #   + their .yaml session files, _base.py (MimirApp), _wiring.py
   common/          # what every layer shares: Roi, the stream names
@@ -157,28 +157,27 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   driving devices asks for `DevicesOf[P]`, the devices satisfying one protocol
   from `protocols.py`, and never filters a mapping itself:
   `DetectorPresenter(detectors=...)`, `MedianPresenter(sources=...)`. The
-  stage and light controls are `redsun`'s built-in `PositionerPresenter`,
-  `PositionerView`, `LightPresenter` and `LightView`, not Mimir components.
-  `AcquisitionPresenter` and `AcquisitionView` take `DeviceMapping`, since any
-  device may fill a plan's parameters. A view is a `QWidget` with
+  stage, light and acquisition controls are `redsun`'s built-in
+  `PositionerPresenter`, `PositionerView`, `LightPresenter`, `LightView`,
+  `AcquisitionPresenter` and `AcquisitionView`, not Mimir components. A view is
+  a `QWidget` with
   a `placement`, whose constructor starts with `(name, parent)`. Components
   inherit no `redsun` base class: the session fills every parameter by type
   and checks the built instance by shape.
 - **A component never names another component's class and never receives a
-  value shared by type.** It asks in `setup` for a protocol from
-  `protocols.py` (`DescribesDetectors`, `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
-  A presenter module imports no other presenter module: plan stubs more than
-  one presenter uses live in `redsun_mimir.plans`.
+  value shared by type,** with one exception: `DetectorPresenter` asks in
+  `setup` for the `Deferrals` that `redsun`'s `AcquisitionPresenter` shares.
+  Otherwise it asks in `setup` for a protocol from `protocols.py`
+  (`DescribesDetectors`), whose method names no device has, and calls its
+  methods. A presenter module imports no other presenter module: plan stubs
+  more than one presenter uses live in `redsun_mimir.plans`.
   Nothing here uses `redsun.provides`. What the session itself hands out,
   such as `DeviceMapping`, the path provider or the document callbacks, is
   still asked for by type.
 - A component offering plans has a `plan_map` and holds, as `actions`, the
   `ActionManager` its plans wait on. `MedianPresenter` offers
-  `live_median_scan` and lists itself as its callback; `AcquisitionPresenter`
-  offers `live_stream`, collects every plan in `setup` and runs them all,
-  giving each run its plan's callbacks and the ones the user attached, for
-  that run only. It passes an action request to the `HasActions` component
-  offering the running plan.
+  `live_median_scan` and lists itself as its callback; `DetectorPresenter`
+  offers `live_stream`. `redsun`'s `AcquisitionPresenter` runs them all.
 - **The bundle writes acquisition bytes in the service owning the hardware**,
   not in the session: the camera service writes the capture window with
   `acquire-zarr`, and the device reports it with `StreamResource`/`StreamDatum`.

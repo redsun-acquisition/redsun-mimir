@@ -19,17 +19,15 @@ Dates are specified in the format `DD-MM-YYYY`.
   board once at startup, so a session opens on where the board left its
   steppers. A board answering no position leaves the axis at zero and logs a
   warning.
-- `DescribesDetectors`, `HoldsDeferrals` (`redsun_mimir.protocols`) - what a
-  component asks for in `setup` to reach the one describing the detectors, or
-  the one whose engine applies deferred changes.
+- `DescribesDetectors` (`redsun_mimir.protocols`) - what a component asks
+  for in `setup` to reach the one describing the detectors.
 - `MedianPresenter.plan_map`, `MedianPresenter.live_median_scan`,
   `MedianPresenter.square_scan`, `MedianPresenter.actions` - the median
   presenter offers the background scan plan, lists itself as that plan's
   callback, and holds the `ActionManager` the plan waits on.
-- `AcquisitionPresenter.plan_map`, `AcquisitionPresenter.setup`,
-  `AcquisitionPresenter.actions`, `AcquisitionPresenter.plan_deferrals` - the
-  acquisition presenter offers `live_stream`, collects the plans of every
-  component with a `plan_map` in `setup`, and runs them all.
+- `DetectorPresenter.plan_map`, `DetectorPresenter.live_stream`,
+  `DetectorPresenter.actions` - the detector presenter offers `live_stream`
+  and holds the `ActionManager` the plan waits on.
 - `capture` (`redsun_mimir.plans`) - flies prepared detectors to disk in a
   nested run, until a given plan returns when one is given, and collects them
   every `FLUSH_PERIOD` seconds while they write. Each detector's written
@@ -40,10 +38,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   that waits, collecting the detectors each time it has slept `FLUSH_PERIOD`
   seconds, and shows each detector's count of written frames as a progress
   scope while the plan runs.
-- `AcquisitionPresenter.sig_progress` - the progress scopes of the running
-  plan, as the engine announces them.
-- `AcquisitionView.on_progress` - shows the running plan's progress scopes on
-  its page.
 - `MedianPresenter.square_scan` shows the frames it has taken as a progress
   scope named `scan`, against the whole square.
 - `MedianPresenter` logs a warning when it drops a scan stack no capture has
@@ -53,20 +47,13 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `LogsAction` (`redsun_mimir.view`) - the Logs entry of a View menu, opening
   the session's log in a window of its own. The example sessions declare it
   in place of the log view docked at the bottom.
-- `AcquisitionView.on_action_changed` - sets an action button of the running
-  plan from the state its `ActionManager` reports.
-- `AcquisitionPresenter.request_action` - passes an action request to the
-  actions of the component offering the running plan.
-- `HasActions` (`redsun_mimir.protocols`) - a component holding the
-  `ActionManager` its plans wait on.
 - `HasBuffer` (`redsun_mimir.protocols`) - a device publishing its latest
   frame, the devices `MedianPresenter` takes.
 
 ### Changed
 
-- Plans launched, paused, resumed, stopped and ended, captures, medians,
-  detector settings, light switches and motor moves are logged at `INFO`;
-  the camera service logs acquisition and each capture it opens and closes.
+- Captures, medians and detector settings are logged at `INFO`; the camera
+  service logs acquisition and each capture it opens and closes.
   Stage and board commands are logged at `DEBUG`.
 - `napari` 0.9.2 and `msgspec` 0.22.0 are the minimum versions, `napari` in
   the `pyqt` and `pyside` extras too.
@@ -95,6 +82,12 @@ Dates are specified in the format `DD-MM-YYYY`.
   `LightView` (`redsun.view.qt.builtins`). A session file pairs them with
   `pairs: [[light_widget, light_ctrl]]` and links `acq_ctrl.sig_locks_changed`
   to `light_ctrl.set_locked` as well as to `light_widget.set_locked`.
+- The example sessions' acquisition controls are `redsun`'s built-in ones:
+  `acq_ctrl` is an `AcquisitionPresenter` (`redsun.presenter`) and
+  `acq_widget` an `AcquisitionView` (`redsun.view.qt.builtins`). A session
+  file pairs them with `pairs: [[acq_widget, acq_ctrl]]` and links
+  `acq_ctrl.sig_plan_started` to `median_ctrl.clear_medians`; links to the
+  path provider and to each component's `actions` are not needed.
 - `UC2LaserDevice.enabled` follows the board's intensity: it reads `True`
   while the intensity is above 0. Writing `False` remembers the intensity and
   writes 0; writing `True` writes the remembered intensity back, unless an
@@ -107,11 +100,10 @@ Dates are specified in the format `DD-MM-YYYY`.
   `redsun_mimir.services.uc2_controller` talks to the board through
   `oxiserial.aio`, one command at a time under an `asyncio.Lock`, and
   `open_board` is a coroutine.
-- `AcquisitionPresenter`, `DetectorPresenter` and `MedianPresenter` take
-  `name` and then keywords only, and inherit no base class.
-  `AcquisitionPresenter` takes every device as `devices`; the others take only
-  the devices they drive, which the session picks by protocol:
-  `DetectorPresenter(detectors=...)` and `MedianPresenter(sources=...)`.
+- `DetectorPresenter` and `MedianPresenter` take `name` and then keywords
+  only, and inherit no base class. Each takes only the devices it drives,
+  which the session picks by protocol: `DetectorPresenter(detectors=...)` and
+  `MedianPresenter(sources=...)`.
 
   ```python
   DetectorPresenter("det_ctrl", detectors={"camera": camera}, timeout=2.0)
@@ -122,29 +114,20 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `teardown_acquisition` (`redsun_mimir.plans`) collects the detectors every
   `FLUSH_PERIOD` seconds until they complete, rather than once after. With
   `follow=True` each detector's completion is shown as a progress scope.
-- `AcquisitionView`, `DetectorView` and `ImageView` are `QWidget`s built as `(name, parent)`, each with a `placement`: the left dock
-  for `AcquisitionView`, the centre for `ImageView`, the right dock for the
-  rest. Each builds its controls in `setup`.
+- `DetectorView` and `ImageView` are `QWidget`s built as `(name, parent)`,
+  each with a `placement`: the centre for `ImageView`, the right dock for
+  `DetectorView`. Each builds its controls in `setup`.
 - `DetectorPresenter.detector_descriptors`,
   `DetectorPresenter.detector_readings`,
   `DetectorPresenter.detector_layer_specs` replace `devices_description`,
   `devices_configuration` and `layer_specs`. Each reads the devices when
   called.
-- `DetectorPresenter.setup` takes the component satisfying `HoldsDeferrals`,
-  or none.
-- `AcquisitionPresenter.launch_plan` takes the names of the callbacks the user
-  attached. A run gets the callbacks its plan lists, then those, for that run
-  only.
-- `AcquisitionView.sig_launch_plan_request` carries the names of the attached
-  callbacks as its third argument. `AcquisitionView` lists every plan of the
-  session, each with the callbacks it can run with.
+- `DetectorPresenter.setup` takes the `Deferrals` that `redsun`'s
+  `AcquisitionPresenter` shares, or none.
 - `live_stream` and `live_median_scan` are continuous plans started and
   stopped from one toggle. Their actions are `PlanAction`s: `STREAM`
-  (`redsun_mimir.presenter.acquisition`), `SCAN` and `STREAM_ONCE`
+  (`redsun_mimir.presenter.detector`), `SCAN` and `STREAM_ONCE`
   (`redsun_mimir.presenter.median`).
-- `AcquisitionView.sig_base_dir_request` is linked to the session path
-  provider's `set_base_dir`, and `AcquisitionView.on_base_dir_changed` takes
-  the `Path` the provider announces.
 - `DetectorView.on_new_configuration` shows the value the device read back.
 - The example sessions are `QtSession` classes, and their files drop
   `frontend: pyqt`. A `wiring:` section maps each signal to one slot or a
@@ -170,17 +153,11 @@ Dates are specified in the format `DD-MM-YYYY`.
 - `LightProtocol` (`redsun_mimir.protocols`).
 - `UC2LaserDevice.trigger`, `UC2LaserDevice.binary`, `MockLightDevice.trigger`
   and `MockLightDevice.binary`; writing `enabled` switches a light.
-- `AcquisitionPresenter.live_median_scan`,
-  `AcquisitionPresenter.square_scan`, now on `MedianPresenter`.
-- `AcquisitionPresenter.set_base_dir`,
-  `AcquisitionPresenter.sig_base_dir_changed`,
-  `AcquisitionPresenter.sig_action_done`,
-  `AcquisitionPresenter.toggle_action_event` (replaced by
-  `AcquisitionPresenter.request_action`),
-  `AcquisitionPresenter.clear_and_notify`, and the `callbacks` keyword of
-  `AcquisitionPresenter`.
-- `AcquisitionView.on_action_done`.
-- `AcquisitionPresenter.discard_by_pause`.
+- `AcquisitionPresenter` (`redsun_mimir.presenter`), `AcquisitionView`
+  (`redsun_mimir.view`) and their `acquisition` entries in `redsun.yaml`;
+  `redsun`'s `AcquisitionPresenter` and `AcquisitionView` take their place.
+  `live_stream` is on `DetectorPresenter`, and `live_median_scan` and
+  `square_scan` on `MedianPresenter`.
 - `ImageView.closeEvent`, replaced by `ImageView.shutdown`.
 - `register_providers` and `inject_dependencies` on every presenter and view.
 
@@ -190,8 +167,6 @@ Dates are specified in the format `DD-MM-YYYY`.
   traceback.
 - `ImageView` keeps its layer panel on screen when its splitter is dragged to
   the edge; a collapsed panel could not be brought back.
-- `AcquisitionPresenter` emits `sig_plan_done` when a plan ends, not when it
-  pauses, and when a paused plan is stopped.
 - `ImageView` unregisters its napari providers when the session shuts down.
   A docked view is not sent a close event when the window closes.
 - `redsun_mimir.services.mmcore_camera` uncrops the camera before it writes a

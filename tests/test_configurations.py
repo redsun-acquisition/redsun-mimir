@@ -79,19 +79,19 @@ SIMULATION_LINKS = {
     ("light_ctrl.sig_intensity", "light_widget.update_intensity"),
     ("light_ctrl.sig_failed", "light_widget.set_failed"),
     ("light_ctrl.sig_configuration", "light_widget.update_configuration"),
-    ("acq_widget.sig_launch_plan_request", "acq_ctrl.launch_plan"),
-    ("acq_widget.sig_stop_plan_request", "acq_ctrl.stop_plan"),
-    ("acq_widget.sig_pause_resume_request", "acq_ctrl.pause_or_resume_plan"),
-    ("acq_ctrl.sig_plan_done", "acq_widget.on_plan_done"),
-    ("acq_ctrl.sig_progress", "acq_widget.on_progress"),
-    ("acq_widget.sig_action_request", "acq_ctrl.request_action"),
-    ("acq_ctrl.sig_changed", "acq_widget.on_action_changed"),
-    ("median_ctrl.sig_changed", "acq_widget.on_action_changed"),
-    ("acq_widget.sig_base_dir_request", "SessionPathProvider.set_base_dir"),
-    ("SessionPathProvider.sig_base_dir_changed", "acq_widget.on_base_dir_changed"),
-    ("acq_ctrl.sig_pre_launch_notify", "SessionPathProvider.set_plan"),
-    ("acq_ctrl.sig_plan_done", "SessionPathProvider.reset_plan"),
-    ("acq_ctrl.sig_pre_launch_notify", "median_ctrl.clear_medians"),
+    ("acq_widget.sig_launch", "acq_ctrl.launch"),
+    ("acq_widget.sig_pause", "acq_ctrl.pause"),
+    ("acq_widget.sig_resume", "acq_ctrl.resume"),
+    ("acq_widget.sig_stop", "acq_ctrl.stop"),
+    ("acq_widget.sig_action", "acq_ctrl.request_action"),
+    ("acq_widget.sig_base_dir", "acq_ctrl.set_base_dir"),
+    ("acq_ctrl.sig_plan_started", "acq_widget.set_started"),
+    ("acq_ctrl.sig_plan_done", "acq_widget.set_done"),
+    ("acq_ctrl.sig_plan_failed", "acq_widget.set_failed"),
+    ("acq_ctrl.sig_progress", "acq_widget.update_progress"),
+    ("acq_ctrl.sig_action_changed", "acq_widget.update_action"),
+    ("acq_ctrl.sig_base_dir_changed", "acq_widget.update_base_dir"),
+    ("acq_ctrl.sig_plan_started", "median_ctrl.clear_medians"),
     ("acq_ctrl.sig_locks_changed", "det_widget.set_locked"),
     ("acq_ctrl.sig_locks_changed", "motor_widget.set_locked"),
     ("acq_ctrl.sig_locks_changed", "motor_ctrl.set_locked"),
@@ -215,4 +215,4 @@ def test_both_plans_are_offered_and_run(simulation: MimirApp) -> None:
     """Offer both plans in the view, and run both from the presenter."""
     plans = {"live_stream", "live_median_scan"}
     assert set(simulation.acq_widget.plan_widgets) == plans
-    assert set(simulation.acq_ctrl.plan_specs) == plans
+    assert set(simulation.acq_ctrl.plans) == plans
