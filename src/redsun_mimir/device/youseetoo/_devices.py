@@ -4,14 +4,13 @@ from functools import cached_property
 from typing import Annotated as A
 
 from ophyd_async.core import (
-    AsyncStatus,
     MovableLogic,
     SignalRW,
     StandardMovable,
     StandardReadable,
     StandardReadableFormat,
+    derived_signal_rw,
     soft_signal_r_and_setter,
-    soft_signal_rw,
 )
 from ophyd_async.fastcs.core import fastcs_connector
 from redsun.log import Loggable
@@ -60,8 +59,18 @@ class UC2MotorDevice(StandardReadable, Loggable):
         )
 
 
+def is_lit(intensity: int) -> bool:
+    """Tell whether a laser at *intensity* is on."""
+    return intensity > 0
+
+
 class UC2LaserDevice(StandardReadable, Loggable):
     """A YouSeeToo laser, reached through the service that owns its board.
+
+    The board knows only an intensity, so `enabled` is derived from it: the
+    laser is on while its intensity is above 0. Switching it off remembers
+    the intensity and writes 0; switching it on writes the remembered one
+    back. An intensity set while the laser is off lights it.
 
     Parameters
     ----------
@@ -81,26 +90,26 @@ class UC2LaserDevice(StandardReadable, Loggable):
         )
         with self.add_children_as_readables(StandardReadableFormat.CONFIG_SIGNAL):
             self.wavelength, _ = soft_signal_r_and_setter(int, initial_value=wavelength)
-            self.enabled = soft_signal_rw(bool, initial_value=False)
-            # the board takes an intensity, so the light presenter may set one
-            self.binary, _ = soft_signal_r_and_setter(bool, initial_value=False)
+            self.enabled = derived_signal_rw(
+                is_lit,
+                self._switch,
+                derived_datatype=bool,
+                intensity=self.intensity,
+            )
 
-    @AsyncStatus.wrap
-    async def trigger(self) -> None:
-        """Turn the laser off, remembering its intensity, or back on.
-
-        An intensity set while off has lit the laser already and is kept;
-        the remembered one is restored only from zero.
-        """
-        enabled = await self.enabled.get_value()
-        if enabled:
-            self._saved_intensity = await self.intensity.get_value()
+    async def _switch(self, on: bool) -> None:
+        current = await self.intensity.get_value()
+        if not on:
+            if current > 0:
+                self._saved_intensity = current
             await self.intensity.set(0)
-        elif await self.intensity.get_value() == 0:
+        elif current == 0:
+            if self._saved_intensity == 0:
+                self.logger.info(
+                    f"{self.name} has no intensity to restore; it stays off"
+                )
             await self.intensity.set(self._saved_intensity)
-        await self.enabled.set(not enabled)
 
     async def shutdown(self) -> None:
         """Leave the laser off."""
         await self.intensity.set(0)
-        await self.enabled.set(False)

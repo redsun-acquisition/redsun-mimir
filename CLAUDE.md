@@ -22,8 +22,8 @@ src/redsun_mimir/
                    #   containers.py - ReadableDeviceMap
                    #   mmcore/    - camera and stage clients
                    #   youseetoo/ - UC2 motor and laser clients (no CI coverage)
-  presenter/       # acquisition, detector, light, median
-  view/            # Qt/napari widgets: acquisition, detector, image, light
+  presenter/       # acquisition, detector, median
+  view/            # Qt/napari widgets: acquisition, detector, image, logs
   configurations/  # runnable example sessions (_full_simulation, _full_uc2)
                    #   + their .yaml session files, _base.py (MimirApp), _wiring.py
   common/          # what every layer shares: Roi, the stream names
@@ -156,9 +156,9 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
 - A presenter's constructor takes `name` and then keywords only. A presenter
   driving devices asks for `DevicesOf[P]`, the devices satisfying one protocol
   from `protocols.py`, and never filters a mapping itself:
-  `DetectorPresenter(detectors=...)`, `LightPresenter(lights=...)`,
-  `MedianPresenter(sources=...)`. The stage controls are `redsun`'s built-in
-  `PositionerPresenter` and `PositionerView`, not a Mimir component.
+  `DetectorPresenter(detectors=...)`, `MedianPresenter(sources=...)`. The
+  stage and light controls are `redsun`'s built-in `PositionerPresenter`,
+  `PositionerView`, `LightPresenter` and `LightView`, not Mimir components.
   `AcquisitionPresenter` and `AcquisitionView` take `DeviceMapping`, since any
   device may fill a plan's parameters. A view is a `QWidget` with
   a `placement`, whose constructor starts with `(name, parent)`. Components
@@ -166,8 +166,7 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   and checks the built instance by shape.
 - **A component never names another component's class and never receives a
   value shared by type.** It asks in `setup` for a protocol from
-  `protocols.py` (`DescribesDetectors`, `DescribesMotors`, `DescribesLights`,
-  `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
+  `protocols.py` (`DescribesDetectors`, `HoldsDeferrals`, `HasActions`), whose method names no device has, and calls its methods.
   A presenter module imports no other presenter module: plan stubs more than
   one presenter uses live in `redsun_mimir.plans`.
   Nothing here uses `redsun.provides`. What the session itself hands out,

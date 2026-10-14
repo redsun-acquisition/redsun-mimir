@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     import numpy as np
     from bluesky.protocols import Descriptor, Reading
-    from ophyd_async.core import AsyncStatus, SignalR, SignalRW
+    from ophyd_async.core import SignalR, SignalRW
     from redsun.engine import Deferrals
     from redsun.engine.actions import ActionManager
 
@@ -51,62 +51,6 @@ class MotorProtocol(AsyncReadable, Protocol):
         ``locate`` reports setpoint and readback separately; a controller
         that cannot be queried reports them equal.
         """
-        ...
-
-
-@runtime_checkable
-class LightProtocol(AsyncConfigurable, Protocol):
-    """Protocol for light sources.
-
-    Attributes
-    ----------
-    intensity :
-        Settable intensity; the ``units`` field of its ``Descriptor`` carries
-        the engineering unit.
-    wavelength :
-        Wavelength in nanometres.
-    enabled :
-        On/off state, updated by each
-        [`trigger`][redsun_mimir.protocols.LightProtocol.trigger] call.
-    binary :
-        Marks the source as on/off only; a binary source refuses intensity
-        changes.
-    """
-
-    @property
-    def intensity(self) -> SignalRW[Any]:
-        """Light source intensity.
-
-        Read-only, as `MotorProtocol.axis` is: a mutable protocol attribute
-        is invariant, so an ``int`` intensity would not match ``int | float``.
-        """
-        ...
-
-    @property
-    def wavelength(self) -> SignalR[int]:
-        """Wavelength in nanometres."""
-        ...
-
-    @property
-    def enabled(self) -> SignalRW[bool]:
-        """Current on/off state."""
-        ...
-
-    @property
-    def binary(self) -> SignalR[bool]:
-        """Whether the source is on/off only, ignoring ``intensity``."""
-        ...
-
-    async def read(self) -> dict[str, Reading[Any]]:
-        """Return the current value of every signal, by name."""
-        ...
-
-    async def describe(self) -> dict[str, Descriptor]:
-        """Return the descriptor of every signal, by name."""
-        ...
-
-    def trigger(self) -> AsyncStatus[None]:
-        """Toggle the light source on or off."""
         ...
 
 
@@ -170,19 +114,6 @@ class DescribesDetectors(Protocol):
 
 
 @runtime_checkable
-class DescribesLights(Protocol):
-    """A component describing the light sources of the session."""
-
-    def light_descriptors(self) -> dict[str, Descriptor]:
-        """Return the descriptors of every light source, by data key."""
-        ...
-
-    def light_readings(self) -> dict[str, Reading[Any]]:
-        """Return the current readings of every light source, by data key."""
-        ...
-
-
-@runtime_checkable
 class HoldsDeferrals(Protocol):
     """A component running plans, whose engine applies deferred changes."""
 
@@ -203,13 +134,11 @@ class HasActions(Protocol):
 
 __all__ = [
     "DescribesDetectors",
-    "DescribesLights",
     "DetectorProtocol",
     "HasActions",
     "HasBuffer",
     "HoldsDeferrals",
     "LayerSpec",
-    "LightProtocol",
     "MotorProtocol",
     "ReadableFlyer",
 ]

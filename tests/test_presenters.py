@@ -21,15 +21,12 @@ from redsun.aio import run_coro
 from redsun.engine import Deferrals, RunEngine
 
 from redsun_mimir.common import LIVE_VIEW_STREAM, MEDIAN_SCAN_STREAM, Roi
-from redsun_mimir.device._mocks import MockLightDevice
 from redsun_mimir.plans import capture
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
-from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import SCAN, MedianPresenter
 from redsun_mimir.protocols import (
     DescribesDetectors,
-    DescribesLights,
     DetectorProtocol,
 )
 from tests.conftest import FakeDetector, FakeFlyer, FakeXYStage
@@ -128,63 +125,6 @@ def simulate_capture(plan: MsgGenerator[Any], written: int = 5) -> list[Msg]:
     simulator.add_handler("wait_for", index)
     messages: list[Msg] = simulator.simulate_plan(plan)
     return messages
-
-
-class TestLightPresenter:
-    """Tests for LightPresenter."""
-
-    @pytest.fixture
-    def devices(
-        self, mock_led: MockLightDevice, mock_laser: MockLightDevice
-    ) -> dict[str, MockLightDevice]:
-        return {"led": mock_led, "laser": mock_laser}
-
-    @pytest.fixture
-    def controller(self, devices: dict[str, MockLightDevice]) -> LightPresenter:
-        return LightPresenter("light_presenter", lights=devices)
-
-    def test_describes_its_lights(self, controller: LightPresenter) -> None:
-        """Describe and read every light source."""
-        assert isinstance(controller, DescribesLights)
-        assert any("led" in k for k in controller.light_readings())
-        assert any("led" in k for k in controller.light_descriptors())
-
-    async def test_trigger_toggles_led(
-        self, controller: LightPresenter, mock_led: MockLightDevice
-    ) -> None:
-        """Toggle a light source on and off."""
-        assert await mock_led.enabled.get_value() is False
-        await controller.trigger("led")
-        assert await mock_led.enabled.get_value() is True
-        await controller.trigger("led")
-        assert await mock_led.enabled.get_value() is False
-
-    async def test_set_intensity(
-        self, controller: LightPresenter, mock_laser: MockLightDevice
-    ) -> None:
-        """Set the intensity of a light source."""
-        await controller.set("laser", 75.0)
-        assert await mock_laser.intensity.get_value() == pytest.approx(75.0)
-
-    async def test_binary_source_refuses_intensity(
-        self, mock_binary_led: MockLightDevice
-    ) -> None:
-        """Ignore an intensity asked of a binary source."""
-        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
-
-        await ctrl.set("binary_led", 42.0)
-
-        assert await mock_binary_led.intensity.get_value() == pytest.approx(0.0)
-
-    async def test_binary_source_still_toggles(
-        self, mock_binary_led: MockLightDevice
-    ) -> None:
-        """Toggle a binary source."""
-        ctrl = LightPresenter("light_presenter", lights={"binary_led": mock_binary_led})
-
-        await ctrl.trigger("binary_led")
-
-        assert await mock_binary_led.enabled.get_value() is True
 
 
 class TestMedianPresenter:

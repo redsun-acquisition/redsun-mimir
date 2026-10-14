@@ -6,26 +6,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from redsun import AsHook, AsPresenter, AsView, Declare, Serves, links_between
-from redsun.presenter import PositionerPresenter
+from redsun.presenter import LightPresenter, PositionerPresenter
 from redsun.qt import QtHook, QtSession
 from redsun.qt.styles.napari import NapariStyle
-from redsun.view.qt.builtins import PositionerView
+from redsun.view.qt.builtins import LightView, PositionerView
 
 from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.acquisition import AcquisitionPresenter
 from redsun_mimir.presenter.detector import DetectorPresenter
-from redsun_mimir.presenter.light import LightPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.view.acquisition import AcquisitionView
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ImageView
-from redsun_mimir.view.light import LightView
 from redsun_mimir.view.logs import LogsAction
 
 from ._wiring import (
     wire_acquisition,
     wire_detector,
-    wire_light,
     wire_locks,
     wire_median,
 )
@@ -75,7 +72,7 @@ class MimirApp(QtSession):
         yield from wire_detector(self.det_ctrl, self.det_widget, self.img_widget)
         yield from wire_median(self.median_ctrl, self.img_widget)
         yield from links_between(self.motor_widget, self.motor_ctrl)
-        yield from wire_light(self.light_ctrl, self.light_widget)
+        yield from links_between(self.light_widget, self.light_ctrl)
         yield from wire_acquisition(
             self.acq_ctrl, self.acq_widget, self.median_ctrl, self.path_provider
         )
@@ -83,6 +80,7 @@ class MimirApp(QtSession):
             self.acq_ctrl,
             self.motor_ctrl,
             self.motor_widget,
+            self.light_ctrl,
             self.light_widget,
             self.det_widget,
         )

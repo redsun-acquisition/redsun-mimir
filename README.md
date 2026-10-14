@@ -128,9 +128,8 @@ name normally, not under `if TYPE_CHECKING:`.
 Components never name each other's classes:
 
 - A view asks in `setup` for a protocol from `redsun_mimir.protocols`:
-  `DetectorView` and `ImageView` for `DescribesDetectors`, `LightView` for
-  `DescribesLights`. `DetectorPresenter` asks for `HoldsDeferrals`, which
-  `AcquisitionPresenter` satisfies.
+  `DetectorView` and `ImageView` for `DescribesDetectors`. `DetectorPresenter`
+  asks for `HoldsDeferrals`, which `AcquisitionPresenter` satisfies.
 - A presenter asks for `DevicesOf[P]` and gets only the devices satisfying
   `P`, such as `DetectorProtocol` for `DetectorPresenter`.
 - `AcquisitionPresenter` offers `live_stream`, `MedianPresenter` offers
@@ -139,6 +138,10 @@ Components never name each other's classes:
   `PositionerPresenter` and `motor_widget` a `PositionerView`. It finds the
   axes of every stage by what they can do, so Mimir declares no motor
   component of its own.
+- The light controls are `redsun`'s built-in ones too: `light_ctrl` is a
+  `LightPresenter` and `light_widget` a `LightView`. A light is a device whose
+  `enabled` signal can be written; one with an `intensity` signal also gets a
+  slider.
 
 ## The napari hooks
 
@@ -182,8 +185,6 @@ wiring:
   img_widget.sig_roi_drawn: det_widget.on_roi_drawn
   det_widget.sig_roi_selection: img_widget.set_roi_selection
   det_widget.sig_roi_edited: img_widget.set_roi_box
-  light_widget.sig_toggle_light_request: light_ctrl.trigger
-  light_widget.sig_intensity_request: light_ctrl.set
   acq_widget.sig_launch_plan_request: acq_ctrl.launch_plan
   acq_widget.sig_stop_plan_request: acq_ctrl.stop_plan
   acq_widget.sig_pause_resume_request: acq_ctrl.pause_or_resume_plan
@@ -201,18 +202,20 @@ wiring:
     - det_widget.set_locked
     - motor_ctrl.set_locked
     - motor_widget.set_locked
+    - light_ctrl.set_locked
     - light_widget.set_locked
 pairs:
   - [motor_widget, motor_ctrl]
+  - [light_widget, light_ctrl]
 ```
 
 Names are the keys under `devices:`, `presenters:` and `views:`, then the
 signal or slot. `path_provider` is the session's path provider: it names the
 directory a capture goes to and refuses a new one while a plan runs.
 `acq_ctrl.request_action` passes an action request to the component offering
-the running plan. The `pairs:` entry makes the nine links between the
-positioner's view and presenter; `redsun`'s guide to moving devices by hand
-lists them.
+the running plan. Each `pairs:` entry makes the links between a built-in view
+and its presenter: nine for the positioner, which `redsun`'s guide to moving
+devices by hand lists, and seven for the lights.
 
 A file can only address `component.port`, so one link needs a session class:
 
