@@ -99,7 +99,7 @@ error. `redsun_mimir.services.*` also disables `misc` and `untyped-decorator`:
 ### prek
 
 `prek.toml` lists the commit hooks. The same hooks run in the tox `lint` env
-and in the CI `prek` job, so `uv run prek run --all-files` passing locally
+and in the CI `Lint and type checks` job, so `uv run prek run --all-files` passing locally
 means lint passes in CI. `prek` and `ruff` live in the `lint` dependency group
 (included in `dev`); the ruff hooks run `uv run --locked --only-group lint`, so
 the ruff version comes from `uv.lock` and `prek.toml` pins none. A hook that
