@@ -34,6 +34,10 @@ src/redsun_mimir/
 tests/             # flat: conftest.py + test_<subsystem>.py
 scripts/mypy_qt.py # mypy with the qtpy flags for the binding QT_API names
 scripts/screenshot.py # the README picture of mimir sim, images/mimir-sim.png
+scripts/release_notes.py # a release's section of CHANGELOG.md, for the GitHub release
+changelog.d/       # towncrier entry files, one per change
+CHANGELOG.md       # releases after 0.5.1, written by towncrier
+LEGACY_CHANGELOG.md # releases from 0.1.0 to 0.5.1
 pyproject.toml     # all tool config: pytest, ruff, mypy, coverage, tox
 ```
 
@@ -255,7 +259,8 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   the annotation that needs it.
 - asyncio only. Hardware goes through `ophyd-async`; Qt work stays on the Qt
   thread and crosses over through psygnal signals.
-- Public API change -> docstring + `CHANGELOG.md` entry.
+- Public API change -> docstring + an entry file in `changelog.d/` (see
+  "Changelog entries").
 
 ### Docstrings and comments
 
@@ -309,6 +314,27 @@ Prefer PowerShell over `cmd.exe` for Claude Code sessions on this repo.
   test driving the whole sequence and asserting the observable end state, then
   small focused tests for the unhappy paths.
 - Parametrize normal and edge cases together in one `@pytest.mark.parametrize`.
+
+## Changelog entries
+
+A change a user can see gets a file in `changelog.d/`, named
+`<pr>.<type>.md`, where `<pr>` is the pull request's number and `<type>` is
+one of `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed` or
+`security`. A second entry of the same type in one pull request is
+`<pr>.<type>.2.md`. Each file holds one line naming the public symbol and what
+changed for it. Nobody edits `CHANGELOG.md` by hand, except to fix an entry
+while releasing.
+
+The `Require a changelog entry` check fails a pull request with no new file.
+A change nobody using mimir can see, such as CI, tests or a refactor, takes the
+`skip-changelog` label instead.
+
+To release, run Actions -> Prepare release with the version, such as `0.6.0`.
+It writes the section with `towncrier` and opens a pull request; approve its
+workflows and merge it. Then Releases -> Draft a new release, with the tag
+`v<version>`: the tag publishes the package to PyPI and the section as the
+release's notes. A release candidate, such as `v0.6.0rc1`, is a tag only and
+leaves `changelog.d/` as it is.
 
 ## Response style (agents)
 
