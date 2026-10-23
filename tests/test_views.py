@@ -11,13 +11,11 @@ from napari._app_model import get_app_model
 from napari.layers import LayerLock
 from napari.layers._layer_actions import _are_bounding_boxes_visible
 from qtpy import QtCore, QtWidgets
-from redsun.view.qt.builtins import LogView
 
 from redsun_mimir.common import Roi
 from redsun_mimir.hooks import NapariApplication
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ROI_BOX, ImageView, place, roi_from_bounds
-from redsun_mimir.view.logs import LogsAction
 
 from .conftest import needs_opengl
 
@@ -36,15 +34,6 @@ pytestmark = pytest.mark.qt
 def parent(qapp: QCoreApplication) -> QtWidgets.QWidget:
     """Return a widget for a view to be built in."""
     return QtWidgets.QWidget()
-
-
-def open_logs() -> list[LogView]:
-    """Return every log window on screen."""
-    return [
-        widget
-        for widget in QtWidgets.QApplication.topLevelWidgets()
-        if isinstance(widget, LogView) and widget.isVisible()
-    ]
 
 
 @pytest.mark.parametrize(
@@ -399,27 +388,6 @@ class TestImageViewRoi:
         assert box.bounds == ((1, 2), (3, 5))
         assert drawn == []
         assert not layer.data.any()
-
-
-def test_the_logs_open_in_a_window_of_their_own(parent: QtWidgets.QWidget) -> None:
-    """Open one log window, bring it forward when asked again, and a new one once closed."""
-    action = LogsAction("logs", parent)
-
-    action.trigger()
-    first = open_logs()
-    action.trigger()
-    assert open_logs() == first and len(first) == 1
-
-    first[0].close()
-    QtWidgets.QApplication.sendPostedEvents(
-        None, QtCore.QEvent.Type.DeferredDelete.value
-    )
-    assert open_logs() == []
-
-    action.trigger()
-    reopened = open_logs()
-    assert len(reopened) == 1
-    reopened[0].close()
 
 
 @needs_opengl

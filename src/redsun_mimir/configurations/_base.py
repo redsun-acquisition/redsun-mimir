@@ -9,14 +9,18 @@ from redsun import AsHook, AsPresenter, AsView, Declare, Serves, links_between
 from redsun.presenter import AcquisitionPresenter, LightPresenter, PositionerPresenter
 from redsun.qt import QtHook, QtSession
 from redsun.qt.styles.napari import NapariStyle
-from redsun.view.qt.builtins import AcquisitionView, LightView, PositionerView
+from redsun.view.qt.builtins import (
+    AcquisitionView,
+    LightView,
+    LogWindowAction,
+    PositionerView,
+)
 
 from redsun_mimir.hooks import FONT_SIZE, NapariApplication
 from redsun_mimir.presenter.detector import DetectorPresenter
 from redsun_mimir.presenter.median import MedianPresenter
 from redsun_mimir.view.detector import DetectorView
 from redsun_mimir.view.image import ImageView
-from redsun_mimir.view.logs import LogsAction
 
 from ._wiring import (
     wire_detector,
@@ -62,7 +66,7 @@ class MimirApp(QtSession):
     det_widget: AsView[DetectorView]
     light_widget: AsView[LightView]
     motor_widget: AsView[PositionerView]
-    logs: AsView[LogsAction]
+    logs: AsView[LogWindowAction]
 
     def wire(self) -> Iterator[Link]:
         """Link the presenters to the views."""

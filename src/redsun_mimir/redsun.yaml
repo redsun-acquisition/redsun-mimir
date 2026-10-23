@@ -28,4 +28,3 @@ presenters:
 views:
   image: redsun_mimir.view.image:ImageView
   detector: redsun_mimir.view.detector:DetectorView
-  logs: redsun_mimir.view.logs:LogsAction
