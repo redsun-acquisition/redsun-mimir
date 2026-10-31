@@ -6,6 +6,7 @@ from bluesky.protocols import (
     Collectable,
     Flyable,
     Preparable,
+    Triggerable,
     WritesStreamAssets,
 )
 from ophyd_async.core import (
@@ -13,6 +14,7 @@ from ophyd_async.core import (
     AsyncReadable,
     AsyncStageable,
     StandardMovable,
+    TriggerInfo,
 )
 
 if TYPE_CHECKING:
@@ -85,13 +87,18 @@ class HasBuffer(Protocol):
 @runtime_checkable
 class ReadableFlyer(
     DetectorProtocol,
-    Preparable,
+    Preparable[TriggerInfo],
+    Triggerable,
     Flyable,
     Collectable,
     WritesStreamAssets,
     Protocol,
 ):
     """Protocol for detectors that fly and write stream assets."""
+
+    async def get_index(self) -> int:
+        """Return how many frames the detector has written."""
+        ...
 
 
 @runtime_checkable
