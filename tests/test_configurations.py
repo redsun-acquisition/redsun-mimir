@@ -85,8 +85,10 @@ SIMULATION_LINKS = {
     ("acq_widget.sig_stop", "acq_ctrl.stop"),
     ("acq_widget.sig_action", "acq_ctrl.request_action"),
     ("acq_widget.sig_base_dir", "acq_ctrl.set_base_dir"),
+    ("acq_widget.sig_label", "acq_ctrl.set_label"),
     ("acq_ctrl.sig_plan_started", "acq_widget.set_started"),
     ("acq_ctrl.sig_plan_done", "acq_widget.set_done"),
+    ("acq_ctrl.sig_plan_stopped", "acq_widget.set_stopped"),
     ("acq_ctrl.sig_plan_failed", "acq_widget.set_failed"),
     ("acq_ctrl.sig_progress", "acq_widget.update_progress"),
     ("acq_ctrl.sig_action_changed", "acq_widget.update_action"),
@@ -186,7 +188,7 @@ def test_each_protocol_answers_the_devices_meant_for_it(
 def test_the_positioner_holds_every_stage_axis(simulation: MimirApp) -> None:
     """Find every axis of the simulated stages in redsun's positioner."""
     axes = {device: set(found) for device, found in simulation.motor_ctrl.axes.items()}
-    assert axes == {"XY": {"x", "y"}, "Z": {"z"}}
+    assert axes == {"XY-axis": {"x", "y"}, "Z-axis": {"z"}}
 
 
 def test_the_light_presenter_holds_every_light(simulation: MimirApp) -> None:

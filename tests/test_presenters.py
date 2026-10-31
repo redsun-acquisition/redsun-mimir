@@ -803,7 +803,7 @@ class TestLiveStream:
                 else None
             )
         )
-        acquisition.sig_plan_done.connect(
+        acquisition.sig_plan_stopped.connect(
             lambda plan: ended.set() if plan == "live_stream" else None
         )
         try:
