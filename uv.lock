@@ -5047,6 +5047,7 @@ zarr = [
 name = "redsun-mimir"
 source = { editable = "." }
 dependencies = [
+    { name = "bluesky" },
     { name = "fastcs", extra = ["epicspva"] },
     { name = "msgspec" },
     { name = "napari" },
@@ -5119,6 +5120,7 @@ uc2 = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bluesky", specifier = ">=1.16.0" },
     { name = "fastcs", extras = ["epicspva"], specifier = ">=0.14.4" },
     { name = "msgspec", specifier = ">=0.22.0" },
     { name = "napari", specifier = ">=0.10.0" },

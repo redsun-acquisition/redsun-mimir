@@ -38,6 +38,7 @@ dependencies = [
     "redsun[zarr]>=0.16.0",
     "fastcs[epicspva]>=0.14.4",
     "ophyd-async[pva]>=0.21.3",
+    "bluesky>=1.16.0",
 ]
 
 [dependency-groups]
