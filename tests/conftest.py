@@ -193,6 +193,10 @@ class FakeFlyer(FakeDetector):
         """Do nothing."""
 
     @AsyncStatus.wrap
+    async def trigger(self) -> None:
+        """Do nothing."""
+
+    @AsyncStatus.wrap
     async def kickoff(self) -> None:
         """Do nothing."""
 
