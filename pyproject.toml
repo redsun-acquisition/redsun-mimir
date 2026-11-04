@@ -35,7 +35,7 @@ requires-python = ">=3.11"
 dependencies = [
     "napari>=0.10.0",
     "msgspec>=0.22.0",
-    "redsun[zarr]>=0.16.0",
+    "redsun[zarr]>=0.17.0",
     "fastcs[epicspva]>=0.14.4",
     "ophyd-async[pva]>=0.21.3",
     "bluesky>=1.16.0",
@@ -53,7 +53,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
     "pytest-qt>=4.5.0",
-    "redsun[testing]>=0.16.0",
+    "redsun[testing]>=0.17.0",
     "towncrier>=26.9.0",
 ]
 uc2 = [
@@ -62,7 +62,7 @@ uc2 = [
 ]
 pyqt = [
     "napari[pyqt6]>=0.10.0",
-    "redsun[pyqt]>=0.16.0",
+    "redsun[pyqt]>=0.17.0",
 ]
 sim = [
     "redsun-mimir[pyqt]",
@@ -70,7 +70,7 @@ sim = [
 ]
 pyside = [
     "napari[pyside6]>=0.10.0",
-    "redsun[pyside]>=0.16.0",
+    "redsun[pyside]>=0.17.0",
 ]
 lint = [
     "prek>=0.5.9",
@@ -86,11 +86,11 @@ tox = [
 [project.optional-dependencies]
 pyqt = [
     "napari[pyqt6]>=0.10.0",
-    "redsun[pyqt]>=0.16.0",
+    "redsun[pyqt]>=0.17.0",
 ]
 pyside = [
     "napari[pyside6]>=0.10.0",
-    "redsun[pyside]>=0.16.0",
+    "redsun[pyside]>=0.17.0",
 ]
 uc2 = [
     "oxiserial>=0.4.0",
