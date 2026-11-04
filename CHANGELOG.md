@@ -37,18 +37,16 @@ Releases up to 0.5.1 are in [LEGACY_CHANGELOG.md](LEGACY_CHANGELOG.md).
 
 ### Added
 
-- `DetectorPresenter.plan_map`, `DetectorPresenter.live_stream`, `DetectorPresenter.actions` - the detector presenter offers `live_stream` and holds the `ActionManager` the plan waits on. ([#48](https://github.com/redsun-acquisition/redsun-mimir/pull/48))
+- `DetectorPresenter` (`redsun_mimir.presenter`) offers the `live_stream` plan through `plan_map`, and holds in `actions` the `ActionManager` the plan waits on. ([#48](https://github.com/redsun-acquisition/redsun-mimir/pull/48))
 
 ### Changed
 
 - The example sessions install `redsun.qt.styles.napari.NapariStyle` at `configure_application`, at `FONT_SIZE`, so the window follows the colour scheme between napari's dark and light themes. ([#45](https://github.com/redsun-acquisition/redsun-mimir/pull/45))
 - `ImageView` gives its viewer napari's dark theme, in place of the theme in napari's settings, so its canvas is black. ([#45](https://github.com/redsun-acquisition/redsun-mimir/pull/45))
-- `redsun` 0.16.0 is the minimum version. ([#45](https://github.com/redsun-acquisition/redsun-mimir/pull/45))
 - `CHANGELOG.md` holds the releases after 0.5.1; the earlier ones are in `LEGACY_CHANGELOG.md`. ([#51](https://github.com/redsun-acquisition/redsun-mimir/pull/51))
 - `ReadableFlyer` (`redsun_mimir.protocols`) also requires `trigger`, and an async `get_index`. ([#59](https://github.com/redsun-acquisition/redsun-mimir/pull/59))
-- `redsun-mimir` requires `bluesky>=1.16.0`, `napari>=0.10.0`, `fastcs>=0.14.4` and `ophyd-async>=0.21.3`, and its `uc2` extra requires `oxiserial>=0.4.0`. ([#59](https://github.com/redsun-acquisition/redsun-mimir/pull/59))
+- `redsun-mimir` requires `redsun>=0.17.0`, `bluesky>=1.16.0`, `napari>=0.10.0`, `fastcs>=0.14.4` and `ophyd-async>=0.21.3`, and its `uc2` extra requires `oxiserial>=0.4.0`. ([#59](https://github.com/redsun-acquisition/redsun-mimir/pull/59), [#60](https://github.com/redsun-acquisition/redsun-mimir/pull/60))
 - The acquisition view of the example sessions shows the values a plan was launched with in its form. ([#60](https://github.com/redsun-acquisition/redsun-mimir/pull/60))
-- `redsun-mimir` requires `redsun>=0.17.0`. ([#60](https://github.com/redsun-acquisition/redsun-mimir/pull/60))
 
 ### Removed
 
